@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { listarVariantes } from "../services/catalogoService";
 import { listarStock } from "../services/stockService";
-import { crearVenta } from "../services/ventasService";
+import { crearVenta, entregarVenta } from "../services/ventasService";
 
 export default function NuevaVentaPage() {
   const [variantes, setVariantes] = useState([]);
@@ -12,10 +12,6 @@ export default function NuevaVentaPage() {
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
-
-  useEffect(() => {
-    cargarDatos();
-  }, []);
 
   async function cargarDatos() {
     try {
@@ -35,6 +31,10 @@ export default function NuevaVentaPage() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    cargarDatos();
+  }, []);
 
   const stockMap = useMemo(() => {
     const map = {};
@@ -109,7 +109,7 @@ export default function NuevaVentaPage() {
   }
 
   function cambiarCantidad(idVariante, nuevaCantidad) {
-    if (nuevaCantidad < 1) return;
+    if (!Number.isFinite(nuevaCantidad) || nuevaCantidad < 1) return;
 
     const stockDisponible = Number(stockMap[idVariante] ?? 0);
 
@@ -119,6 +119,7 @@ export default function NuevaVentaPage() {
     }
 
     setError("");
+    setMensaje("");
 
     setItems((prev) =>
       prev.map((item) =>
@@ -132,6 +133,7 @@ export default function NuevaVentaPage() {
   function quitarItem(idVariante) {
     setItems((prev) => prev.filter((item) => item.id_variante !== idVariante));
     setError("");
+    setMensaje("");
   }
 
   const total = useMemo(() => {
@@ -153,21 +155,26 @@ export default function NuevaVentaPage() {
       const payload = {
         id_cliente: 1,
         id_sucursal: 1,
+        id_usuario: 1,
         items: items.map((item) => ({
           id_variante: item.id_variante,
           cantidad: item.cantidad,
         })),
       };
 
-      const data = await crearVenta(payload);
+      const venta = await crearVenta(payload);
 
-      setMensaje(`Venta creada correctamente. ID: ${data.venta_id}`);
+      await entregarVenta(venta.venta_id, {
+        id_usuario: 1,
+      });
+
+      setMensaje(`Venta registrada y entregada correctamente. ID: ${venta.venta_id}`);
       setItems([]);
       setBusqueda("");
 
       await cargarDatos();
     } catch (err) {
-      setError(err.message || "No se pudo registrar la venta");
+      setError(err.message || "No se pudo registrar y entregar la venta");
     } finally {
       setGuardando(false);
     }
@@ -207,7 +214,9 @@ export default function NuevaVentaPage() {
 
         <tbody>
           {resultados.map((v) => {
-            const sinStock = Number(v.stock_disponible) <= 0;
+            const stockDisponible = Number(v.stock_disponible ?? 0);
+            const yaEnCarrito = cantidadEnCarrito(v.id);
+            const sinStock = stockDisponible <= 0 || yaEnCarrito >= stockDisponible;
 
             return (
               <tr key={v.id}>
@@ -219,20 +228,24 @@ export default function NuevaVentaPage() {
                 <td
                   style={{
                     color:
-                      Number(v.stock_disponible) === 0
+                      stockDisponible === 0
                         ? "red"
-                        : Number(v.stock_disponible) <= 2
+                        : stockDisponible <= 2
                         ? "darkorange"
                         : "inherit",
-                    fontWeight: Number(v.stock_disponible) <= 2 ? "bold" : "normal",
+                    fontWeight: stockDisponible <= 2 ? "bold" : "normal",
                   }}
                 >
-                  {Number(v.stock_disponible).toLocaleString("es-AR")}
+                  {stockDisponible.toLocaleString("es-AR")}
                 </td>
-                <td>{cantidadEnCarrito(v.id)}</td>
+                <td>{yaEnCarrito}</td>
                 <td>
                   <button onClick={() => agregarAlCarrito(v)} disabled={sinStock}>
-                    {sinStock ? "Sin stock" : "Agregar"}
+                    {stockDisponible <= 0
+                      ? "Sin stock"
+                      : yaEnCarrito >= stockDisponible
+                      ? "Tope carrito"
+                      : "Agregar"}
                   </button>
                 </td>
               </tr>
@@ -295,7 +308,7 @@ export default function NuevaVentaPage() {
 
       <div style={{ marginTop: "24px", display: "flex", gap: "12px" }}>
         <button onClick={confirmarVenta} disabled={guardando}>
-          {guardando ? "Guardando..." : "Confirmar venta"}
+          {guardando ? "Procesando..." : "Cobrar y entregar"}
         </button>
 
         <button

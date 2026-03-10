@@ -45,17 +45,31 @@ def db_conn():
 def clean_db(db_conn):
     with db_conn.cursor() as cur:
         # Orden importante por FKs
+
+        # tablas hijas de pagos
+        cur.execute("DELETE FROM pagos_tarjeta_detalle")
+        cur.execute("DELETE FROM pagos_reversiones")
+
+        # pagos antes que clientes/ventas
+        cur.execute("DELETE FROM pagos")
+
+        # tablas hijas de ventas
         cur.execute("DELETE FROM movimientos_stock")
         cur.execute("DELETE FROM venta_anulaciones")
         cur.execute("DELETE FROM venta_items")
         cur.execute("DELETE FROM ventas")
+
+        # stock y catálogo
         cur.execute("DELETE FROM stock_sucursal")
         cur.execute("DELETE FROM variantes")
         cur.execute("DELETE FROM productos")
         cur.execute("DELETE FROM categorias")
+
+        # maestros
         cur.execute("DELETE FROM sucursales")
         cur.execute("DELETE FROM clientes WHERE nombre <> 'Consumidor final'")
         cur.execute("DELETE FROM usuarios")
+
     db_conn.commit()
 
 
