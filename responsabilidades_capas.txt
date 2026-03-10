@@ -1,0 +1,21 @@
+routes
+→ endpoints FastAPI
+
+service
+→ lógica de negocio
+
+repository
+→ consultas SQL
+
+schema
+→ modelos Pydantic
+
+request
+  ↓
+route
+  ↓
+service
+  ↓
+repository
+  ↓
+PostgreSQL
