@@ -7,6 +7,7 @@ from .repository import (
     insert_pago_venta,
     update_venta_saldo_y_estado,
     get_pagos,
+    obtener_pagos_por_venta
 )
 
 MEDIOS_VALIDOS = {"efectivo", "transferencia", "mercadopago", "tarjeta"}
@@ -91,5 +92,12 @@ def listar_pagos():
     conn = get_connection()
     try:
         return get_pagos(conn)
+    finally:
+        conn.close()
+
+def obtener_pagos_venta(venta_id: int):
+    conn = get_connection()
+    try:
+        return obtener_pagos_por_venta(conn, venta_id)
     finally:
         conn.close()

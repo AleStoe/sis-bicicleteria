@@ -299,6 +299,12 @@ def entregar_venta(venta_id: int, data):
             venta = get_venta_for_update(conn, venta_id)
             _validar_venta_entregable(venta, venta_id)
 
+            if venta["saldo_pendiente"] > 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"La venta {venta_id} tiene saldo pendiente y no se puede entregar",
+                )
+
             items = get_venta_items_by_venta_id(conn, venta_id)
 
             if not items:
@@ -370,7 +376,6 @@ def entregar_venta(venta_id: int, data):
 
     finally:
         conn.close()
-
 
 def anular_venta(venta_id: int, data):
     conn = get_connection()

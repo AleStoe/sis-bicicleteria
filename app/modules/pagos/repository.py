@@ -81,3 +81,27 @@ def get_pagos(conn):
             """
         )
         return cur.fetchall()
+    
+def obtener_pagos_por_venta(conn, venta_id: int):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT
+                id,
+                fecha,
+                id_cliente,
+                origen_tipo,
+                origen_id,
+                medio_pago,
+                monto_total_cobrado,
+                estado,
+                nota,
+                id_usuario
+            FROM pagos
+            WHERE origen_tipo = 'venta'
+              AND origen_id = %s
+            ORDER BY fecha
+            """,
+            (venta_id,),
+        )
+        return cur.fetchall()
