@@ -1,8 +1,14 @@
 from typing import List
 from fastapi import APIRouter
 
-from .schema import PagoCreateInput, PagoCreateOutput, PagoResumenOutput
-from .service import crear_pago, listar_pagos, obtener_pagos_venta
+from .schema import (
+    PagoCreateInput,
+    PagoCreateOutput,
+    PagoReversionInput,
+    PagoReversionOutput,
+    PagoResumenOutput,
+)
+from .service import crear_pago, listar_pagos, obtener_pagos_venta, revertir_pago
 
 router = APIRouter()
 
@@ -10,6 +16,11 @@ router = APIRouter()
 @router.post("/", response_model=PagoCreateOutput)
 def registrar_pago(data: PagoCreateInput):
     return crear_pago(data)
+
+
+@router.post("/{pago_id}/revertir", response_model=PagoReversionOutput)
+def revertir_pago_route(pago_id: int, data: PagoReversionInput):
+    return revertir_pago(pago_id, data)
 
 
 @router.get("/", response_model=List[PagoResumenOutput])

@@ -10,12 +10,27 @@ class PagoCreateInput(BaseModel):
     nota: str | None = None
 
 
+class PagoReversionInput(BaseModel):
+    motivo: str = Field(min_length=3, max_length=500)
+    id_usuario: int = Field(gt=0)
+
+
 class PagoCreateOutput(BaseModel):
     ok: bool
     pago_id: int
     venta_id: int
     estado_venta: str
     saldo_restante: Decimal
+
+
+class PagoReversionOutput(BaseModel):
+    ok: bool
+    pago_id_original: int
+    pago_id_reversion: int
+    venta_id: int
+    estado_venta: str
+    saldo_restante: Decimal
+    reversion_id: int
 
 
 class PagoResumenOutput(BaseModel):

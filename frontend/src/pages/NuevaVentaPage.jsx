@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { listarVariantes } from "../services/catalogoService";
 import { listarStock } from "../services/stockService";
 import { crearVenta, crearPago, entregarVenta } from "../services/ventasService";
+import { Link } from "react-router-dom";
+import { listarClientes } from "../services/clientesService";
 
 const MEDIOS_PAGO = [
   { value: "efectivo", label: "Efectivo" },
@@ -21,19 +23,30 @@ export default function NuevaVentaPage() {
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
+  const [clientes, setClientes] = useState([]);
+  const [clienteSeleccionadoId, setClienteSeleccionadoId] = useState(1);
 
   async function cargarDatos() {
     try {
       setLoading(true);
       setError("");
 
-      const [variantesData, stockData] = await Promise.all([
+      const [variantesData, stockData, clientesData] = await Promise.all([
         listarVariantes(),
         listarStock(),
+        listarClientes({ solo_activos: true }),
       ]);
 
       setVariantes(variantesData);
       setStock(stockData);
+      setClientes(clientesData);
+
+      const existeConsumidorFinal = clientesData.some((c) => c.id === 1);
+      if (existeConsumidorFinal) {
+        setClienteSeleccionadoId(1);
+      } else if (clientesData.length > 0) {
+        setClienteSeleccionadoId(clientesData[0].id);
+      }
     } catch (err) {
       setError(err.message || "Error al cargar datos");
     } finally {
@@ -178,13 +191,17 @@ export default function NuevaVentaPage() {
     setBusqueda("");
     setPagos([{ medio_pago: "efectivo", monto: "" }]);
     setModoMixto(false);
+    setClienteSeleccionadoId(1);
     setError("");
     setMensaje("");
   }
 
   async function ejecutarVentaConPagos(pagosFinales) {
+    if (!clienteSeleccionadoId) {
+      throw new Error("Seleccioná un cliente antes de continuar");
+    }
     const payloadVenta = {
-      id_cliente: 1,
+      id_cliente: Number(clienteSeleccionadoId),
       id_sucursal: 1,
       id_usuario: 1,
       items: items.map((item) => ({
@@ -192,7 +209,11 @@ export default function NuevaVentaPage() {
         cantidad: item.cantidad,
       })),
     };
-
+    if (restante > 0 && Number(clienteSeleccionadoId) === 1) {
+        throw new Error(
+          "Para ventas con saldo pendiente debés seleccionar un cliente real"
+        );
+      }
     const venta = await crearVenta(payloadVenta);
 
     for (const pago of pagosFinales) {
@@ -437,6 +458,47 @@ export default function NuevaVentaPage() {
           }}
         >
           <h2>Carrito</h2>
+          <div
+            style={{
+              marginBottom: "16px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "8px",
+            }}
+          >
+            <label style={{ fontWeight: "bold" }}>Cliente</label>
+
+            <select
+              value={clienteSeleccionadoId}
+              onChange={(e) => setClienteSeleccionadoId(Number(e.target.value))}
+              style={{
+                padding: "10px",
+                borderRadius: "8px",
+                border: "1px solid #ccc",
+                fontSize: "15px",
+              }}
+            >
+              {clientes.map((cliente) => (
+                <option key={cliente.id} value={cliente.id}>
+                  #{cliente.id} - {cliente.nombre}
+                  {cliente.telefono ? ` (${cliente.telefono})` : ""}
+                </option>
+              ))}
+            </select>
+
+            <Link
+              to="/clientes/nuevo"
+              style={{
+                textDecoration: "none",
+                fontWeight: "bold",
+                color: "#1565c0",
+                fontSize: "14px",
+                width: "fit-content",
+              }}
+            >
+              + Nuevo cliente
+            </Link>
+          </div>
 
           {items.length === 0 ? (
             <p>No hay productos cargados.</p>

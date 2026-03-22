@@ -1,4 +1,15 @@
-import { Link } from "react-router-dom";
+import { NavLink } from "react-router-dom";
+
+function navStyle({ isActive }) {
+  return {
+    textDecoration: "none",
+    padding: "8px 10px",
+    borderRadius: "8px",
+    background: isActive ? "#e5e7eb" : "transparent",
+    fontWeight: isActive ? "bold" : "normal",
+    color: "#111827",
+  };
+}
 
 export default function Sidebar() {
   return (
@@ -11,10 +22,27 @@ export default function Sidebar() {
       }}
     >
       <h2>Sis Bicicletería</h2>
+
       <nav style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-        <Link to="/ventas/nueva">Nueva venta</Link>
-        <Link to="/ventas">Ventas</Link>
-        <Link to="/stock">Stock</Link>
+        <NavLink to="/ventas/nueva" style={navStyle}>
+          Nueva venta
+        </NavLink>
+
+        <NavLink to="/ventas" style={navStyle}>
+          Ventas
+        </NavLink>
+
+        <NavLink to="/clientes" style={navStyle}>
+          Clientes
+        </NavLink>
+
+        <NavLink to="/stock" style={navStyle}>
+          Stock
+        </NavLink>
+
+        <NavLink to="/caja" style={navStyle}>
+          Caja
+        </NavLink>
       </nav>
     </aside>
   );
