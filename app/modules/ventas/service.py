@@ -1,27 +1,23 @@
 from decimal import Decimal
+
 from fastapi import HTTPException
 
 from app.db.connection import get_connection
+from app.modules.stock import service as stock_service
 
 from .repository import (
     get_cliente_by_id,
     get_sucursal_by_id,
     get_variantes_by_ids,
-    get_stock_for_update,
     insert_venta,
     insert_venta_item,
-    mover_a_vendido_pendiente_entrega,
-    registrar_entrega_stock,
-    liberar_vendido_pendiente_entrega,
-    insert_movimiento_venta,
-    insert_movimiento_entrega,
     get_ventas,
     get_venta_by_id,
     get_venta_items_by_venta_id,
     get_venta_for_update,
     update_venta_estado,
+    update_venta_saldo_y_estado,
     insert_venta_anulacion,
-    insert_movimiento_anulacion_venta,
 )
 
 
@@ -44,14 +40,6 @@ def _consolidar_items(items):
             consolidados[item.id_variante]["cantidad"] += Decimal(str(item.cantidad))
 
     return list(consolidados.values())
-
-
-def _calcular_disponible(stock):
-    return (
-        stock["stock_fisico"]
-        - stock["stock_reservado"]
-        - stock["stock_vendido_pendiente_entrega"]
-    )
 
 
 def _validar_cliente(conn, id_cliente: int):
@@ -176,7 +164,7 @@ def crear_venta(data):
 
             for item in items_consolidados:
                 variante = variantes_map[item["id_variante"]]
-                subtotal = variante["precio_minorista"] * item["cantidad"]
+                subtotal = Decimal(str(variante["precio_minorista"])) * item["cantidad"]
                 subtotal_total += subtotal
 
                 venta_items.append(
@@ -187,68 +175,55 @@ def crear_venta(data):
                     }
                 )
 
-            venta_id = insert_venta(conn, data, subtotal_total, data.id_usuario)
+            venta_id = insert_venta(
+                conn,
+                {
+                    "id_sucursal": data.id_sucursal,
+                    "id_cliente": data.id_cliente,
+                    "estado": "creada",
+                    "subtotal_base": float(subtotal_total),
+                    "descuento_total": 0,
+                    "recargo_total": 0,
+                    "total_final": float(subtotal_total),
+                    "saldo_pendiente": float(subtotal_total),
+                    "id_usuario_creador": data.id_usuario,
+                    "observaciones": getattr(data, "observaciones", None),
+                    "id_reserva_origen": None,
+                },
+            )
 
             for fila in venta_items:
                 item = fila["item"]
                 variante = fila["variante"]
                 subtotal = fila["subtotal"]
 
-                if variante["stockeable"]:
-                    stock = get_stock_for_update(
-                        conn,
-                        data.id_sucursal,
-                        variante["id"],
-                    )
-
-                    if stock is None:
-                        raise HTTPException(
-                            status_code=400,
-                            detail=(
-                                f"No existe stock cargado para la variante {variante['id']} "
-                                f"en la sucursal {data.id_sucursal}"
-                            ),
-                        )
-
-                    disponible = _calcular_disponible(stock)
-
-                    if disponible < item["cantidad"]:
-                        raise HTTPException(
-                            status_code=400,
-                            detail=f"Stock insuficiente para la variante {variante['id']}",
-                        )
-
                 insert_venta_item(
                     conn,
-                    venta_id,
-                    item,
-                    variante,
-                    subtotal,
+                    {
+                        "id_venta": venta_id,
+                        "id_variante": variante["id"],
+                        "id_bicicleta_serializada": None,
+                        "descripcion_snapshot": f"{variante['producto_nombre']} - {variante['nombre_variante']}",
+                        "cantidad": float(item["cantidad"]),
+                        "precio_lista": float(variante["precio_minorista"]),
+                        "precio_final": float(variante["precio_minorista"]),
+                        "costo_unitario_aplicado": float(variante["costo_promedio_vigente"] or 0),
+                        "subtotal": float(subtotal),
+                    },
                 )
 
                 if variante["stockeable"]:
-                    stock = get_stock_for_update(
-                        conn,
-                        data.id_sucursal,
-                        variante["id"],
-                    )
-
-                    mover_a_vendido_pendiente_entrega(
-                        conn,
-                        stock["id"],
-                        item["cantidad"],
-                    )
-
-                    insert_movimiento_venta(
+                    stock_service.marcar_stock_pendiente_entrega(
                         conn,
                         {
                             "id_sucursal": data.id_sucursal,
                             "id_variante": variante["id"],
-                            "cantidad": item["cantidad"],
-                            "venta_id": venta_id,
-                            "costo_unitario_aplicado": variante["costo_promedio_vigente"],
-                            "nota": f"Venta #{venta_id} pendiente de entrega",
+                            "cantidad": float(item["cantidad"]),
                             "id_usuario": data.id_usuario,
+                            "descontar_de_reservado": False,
+                            "origen_tipo": "venta",
+                            "origen_id": venta_id,
+                            "nota": f"Venta #{venta_id} pendiente de entrega",
                         },
                     )
 
@@ -299,7 +274,7 @@ def entregar_venta(venta_id: int, data):
             venta = get_venta_for_update(conn, venta_id)
             _validar_venta_entregable(venta, venta_id)
 
-            if venta["saldo_pendiente"] > 0:
+            if Decimal(str(venta["saldo_pendiente"])) > 0:
                 raise HTTPException(
                     status_code=400,
                     detail=f"La venta {venta_id} tiene saldo pendiente y no se puede entregar",
@@ -314,55 +289,16 @@ def entregar_venta(venta_id: int, data):
                 )
 
             for item in items:
-                stock = get_stock_for_update(
-                    conn,
-                    venta["id_sucursal"],
-                    item["id_variante"],
-                )
-
-                if stock is None:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=(
-                            f"No existe stock cargado para la variante {item['id_variante']} "
-                            f"en la sucursal {venta['id_sucursal']}"
-                        ),
-                    )
-
-                if stock["stock_vendido_pendiente_entrega"] < item["cantidad"]:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=(
-                            f"La variante {item['id_variante']} no tiene suficiente stock "
-                            "vendido pendiente de entrega"
-                        ),
-                    )
-
-                if stock["stock_fisico"] < item["cantidad"]:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=(
-                            f"La variante {item['id_variante']} no tiene suficiente stock físico "
-                            "para concretar la entrega"
-                        ),
-                    )
-
-                registrar_entrega_stock(
-                    conn,
-                    stock["id"],
-                    item["cantidad"],
-                )
-
-                insert_movimiento_entrega(
+                stock_service.registrar_entrega_stock(
                     conn,
                     {
                         "id_sucursal": venta["id_sucursal"],
                         "id_variante": item["id_variante"],
-                        "cantidad": item["cantidad"],
-                        "venta_id": venta_id,
-                        "costo_unitario_aplicado": item["costo_unitario_aplicado"],
-                        "nota": f"Entrega de venta #{venta_id}",
+                        "cantidad": float(item["cantidad"]),
                         "id_usuario": data.id_usuario,
+                        "origen_tipo": "venta",
+                        "origen_id": venta_id,
+                        "nota": f"Entrega de venta #{venta_id}",
                     },
                 )
 
@@ -376,6 +312,7 @@ def entregar_venta(venta_id: int, data):
 
     finally:
         conn.close()
+
 
 def anular_venta(venta_id: int, data):
     conn = get_connection()
@@ -401,46 +338,16 @@ def anular_venta(venta_id: int, data):
             )
 
             for item in items:
-                stock = get_stock_for_update(
-                    conn,
-                    venta["id_sucursal"],
-                    item["id_variante"],
-                )
-
-                if stock is None:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=(
-                            f"No existe stock cargado para la variante {item['id_variante']} "
-                            f"en la sucursal {venta['id_sucursal']}"
-                        ),
-                    )
-
-                if stock["stock_vendido_pendiente_entrega"] < item["cantidad"]:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=(
-                            f"La variante {item['id_variante']} no tiene suficiente stock "
-                            "vendido pendiente para anular la venta"
-                        ),
-                    )
-
-                liberar_vendido_pendiente_entrega(
-                    conn,
-                    stock["id"],
-                    item["cantidad"],
-                )
-
-                insert_movimiento_anulacion_venta(
+                stock_service.devolver_stock_a_disponible_desde_pendiente(
                     conn,
                     {
                         "id_sucursal": venta["id_sucursal"],
                         "id_variante": item["id_variante"],
-                        "cantidad": item["cantidad"],
-                        "costo_unitario_aplicado": item["costo_unitario_aplicado"],
-                        "venta_id": venta_id,
-                        "nota": f"Liberación por anulación de venta #{venta_id}",
+                        "cantidad": float(item["cantidad"]),
                         "id_usuario": data.id_usuario,
+                        "origen_tipo": "venta",
+                        "origen_id": venta_id,
+                        "nota": f"Liberación por anulación de venta #{venta_id}",
                     },
                 )
 

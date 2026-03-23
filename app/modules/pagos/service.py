@@ -12,15 +12,15 @@ from .repository import (
     get_reversion_by_pago_original,
     get_venta_for_update,
     get_pagos,
-    insert_pago_reversion,
+    insert_pago,
     insert_pago_reversion_relacion,
-    insert_pago_venta,
     obtener_pagos_por_venta,
     update_pago_estado,
     update_venta_saldo_y_estado,
 )
 
 MEDIOS_VALIDOS = {"efectivo", "transferencia", "mercadopago", "tarjeta"}
+ORIGENES_VALIDOS = {"venta", "reserva", "orden_taller", "deuda_cliente"}
 
 
 def _obtener_caja_abierta_obligatoria(conn, id_sucursal: int):
@@ -38,91 +38,194 @@ def _obtener_caja_abierta_obligatoria(conn, id_sucursal: int):
     return caja
 
 
-def crear_pago(data):
-    conn = get_connection()
+def registrar_pago(conn, data: dict):
+    """
+    Función transaccional reutilizable.
+    NO abre conexión.
+    NO hace commit.
+    Debe ejecutarse dentro de una transacción externa.
 
-    try:
-        with conn.transaction():
-            if data.medio_pago not in MEDIOS_VALIDOS:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Medio de pago inválido: {data.medio_pago}",
-                )
+    data esperado:
+    {
+        "id_sucursal": int,  # obligatorio para reserva / otros, no para venta
+        "id_cliente": int | None,
+        "origen_tipo": "venta" | "reserva" | "orden_taller" | "deuda_cliente",
+        "origen_id": int,
+        "medio_pago": str,
+        "monto": float | Decimal,
+        "nota": str | None,
+        "id_usuario": int
+    }
+    """
+    medio_pago = data["medio_pago"]
+    origen_tipo = data["origen_tipo"]
+    monto = Decimal(str(data["monto"]))
 
-            venta = get_venta_for_update(conn, data.venta_id)
+    if medio_pago not in MEDIOS_VALIDOS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Medio de pago inválido: {medio_pago}",
+        )
 
-            if venta is None:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"No existe la venta {data.venta_id}",
-                )
+    if origen_tipo not in ORIGENES_VALIDOS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Origen de pago inválido: {origen_tipo}",
+        )
 
-            if venta["estado"] == "anulada":
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"La venta {data.venta_id} está anulada y no puede recibir pagos",
-                )
+    if monto <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="El monto del pago debe ser mayor a 0",
+        )
 
-            if venta["estado"] == "entregada":
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"La venta {data.venta_id} ya fue entregada y no admite nuevos pagos",
-                )
+    # =====================================================
+    # CASO 1: PAGO DE VENTA
+    # =====================================================
+    if origen_tipo == "venta":
+        venta = get_venta_for_update(conn, data["origen_id"])
 
-            if venta["saldo_pendiente"] <= 0:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"La venta {data.venta_id} no tiene saldo pendiente",
-                )
-
-            if data.monto > venta["saldo_pendiente"]:
-                raise HTTPException(
-                    status_code=400,
-                    detail="El monto del pago supera el saldo pendiente",
-                )
-
-            caja = _obtener_caja_abierta_obligatoria(conn, venta["id_sucursal"])
-            saldo_restante = venta["saldo_pendiente"] - Decimal(str(data.monto))
-            nuevo_estado = "pagada_total" if saldo_restante == 0 else "pagada_parcial"
-
-            pago_id = insert_pago_venta(
-                conn,
-                {
-                    "id_cliente": venta["id_cliente"],
-                    "venta_id": venta["id"],
-                    "medio_pago": data.medio_pago,
-                    "monto": data.monto,
-                    "nota": data.nota,
-                    "id_usuario": data.id_usuario,
-                },
+        if venta is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No existe la venta {data['origen_id']}",
             )
 
-            insert_caja_movimiento(
-                conn,
-                id_caja=caja["id"],
-                tipo_movimiento="ingreso",
-                submedio=data.medio_pago,
-                monto=data.monto,
-                origen_tipo="pago",
-                origen_id=pago_id,
-                nota=f"Pago venta #{venta['id']}",
-                id_usuario=data.id_usuario,
+        if venta["estado"] == "anulada":
+            raise HTTPException(
+                status_code=400,
+                detail=f"La venta {venta['id']} está anulada y no puede recibir pagos",
             )
 
-            update_venta_saldo_y_estado(
-                conn,
-                venta["id"],
-                saldo_restante,
-                nuevo_estado,
+        if venta["estado"] == "entregada":
+            raise HTTPException(
+                status_code=400,
+                detail=f"La venta {venta['id']} ya fue entregada y no admite nuevos pagos",
             )
+
+        if Decimal(str(venta["saldo_pendiente"])) <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"La venta {venta['id']} no tiene saldo pendiente",
+            )
+
+        if monto > Decimal(str(venta["saldo_pendiente"])):
+            raise HTTPException(
+                status_code=400,
+                detail="El monto del pago supera el saldo pendiente",
+            )
+
+        caja = _obtener_caja_abierta_obligatoria(conn, venta["id_sucursal"])
+        saldo_restante = Decimal(str(venta["saldo_pendiente"])) - monto
+        nuevo_estado = "pagada_total" if saldo_restante == 0 else "pagada_parcial"
+
+        pago_id = insert_pago(
+            conn,
+            {
+                "id_cliente": venta["id_cliente"],
+                "origen_tipo": "venta",
+                "origen_id": venta["id"],
+                "medio_pago": medio_pago,
+                "monto_total_cobrado": monto,
+                "nota": data.get("nota"),
+                "id_usuario": data["id_usuario"],
+            },
+        )
+
+        insert_caja_movimiento(
+            conn,
+            id_caja=caja["id"],
+            tipo_movimiento="ingreso",
+            submedio=medio_pago,
+            monto=monto,
+            origen_tipo="pago",
+            origen_id=pago_id,
+            nota=f"Pago venta #{venta['id']}",
+            id_usuario=data["id_usuario"],
+        )
+
+        update_venta_saldo_y_estado(
+            conn,
+            venta["id"],
+            saldo_restante,
+            nuevo_estado,
+        )
 
         return {
             "ok": True,
             "pago_id": pago_id,
             "venta_id": venta["id"],
             "estado_venta": nuevo_estado,
-            "saldo_restante": saldo_restante,
+            "saldo_restante": float(saldo_restante),
         }
+
+    # =====================================================
+    # CASO 2: PAGO DE RESERVA / OTROS ORÍGENES
+    # =====================================================
+    if "id_sucursal" not in data:
+        raise HTTPException(
+            status_code=400,
+            detail="id_sucursal es obligatorio para pagos que no sean de venta",
+        )
+
+    id_sucursal = data["id_sucursal"]
+    caja = _obtener_caja_abierta_obligatoria(conn, id_sucursal)
+
+    pago_id = insert_pago(
+        conn,
+        {
+            "id_cliente": data.get("id_cliente"),
+            "origen_tipo": origen_tipo,
+            "origen_id": data["origen_id"],
+            "medio_pago": medio_pago,
+            "monto_total_cobrado": monto,
+            "nota": data.get("nota"),
+            "id_usuario": data["id_usuario"],
+        },
+    )
+
+    insert_caja_movimiento(
+        conn,
+        id_caja=caja["id"],
+        tipo_movimiento="ingreso",
+        submedio=medio_pago,
+        monto=monto,
+        origen_tipo="pago",
+        origen_id=pago_id,
+        nota=f"Pago {origen_tipo} #{data['origen_id']}",
+        id_usuario=data["id_usuario"],
+    )
+
+    return {
+        "ok": True,
+        "pago_id": pago_id,
+        "origen_tipo": origen_tipo,
+        "origen_id": data["origen_id"],
+    }
+
+
+def crear_pago(data):
+    """
+    Wrapper para endpoint / uso simple.
+    """
+    conn = get_connection()
+
+    try:
+        with conn.transaction():
+            payload = {
+                "id_cliente": getattr(data, "id_cliente", None),
+                "origen_tipo": data.origen_tipo,
+                "origen_id": data.origen_id,
+                "medio_pago": data.medio_pago,
+                "monto": data.monto,
+                "nota": data.nota,
+                "id_usuario": data.id_usuario,
+            }
+
+            if hasattr(data, "id_sucursal"):
+                payload["id_sucursal"] = data.id_sucursal
+
+            return registrar_pago(conn, payload)
     finally:
         conn.close()
 
@@ -166,16 +269,23 @@ def revertir_pago(pago_id: int, data):
                 )
 
             caja = _obtener_caja_abierta_obligatoria(conn, venta["id_sucursal"])
-            saldo_restante = venta["saldo_pendiente"] + pago_original["monto_total_cobrado"]
-            nuevo_estado = "creada" if saldo_restante == venta["total_final"] else "pagada_parcial"
+            saldo_restante = Decimal(str(venta["saldo_pendiente"])) + Decimal(
+                str(pago_original["monto_total_cobrado"])
+            )
+            nuevo_estado = (
+                "creada"
+                if saldo_restante == Decimal(str(venta["total_final"]))
+                else "pagada_parcial"
+            )
 
-            pago_reversion_id = insert_pago_reversion(
+            pago_reversion_id = insert_pago(
                 conn,
                 {
                     "id_cliente": pago_original["id_cliente"],
-                    "venta_id": venta["id"],
+                    "origen_tipo": "venta",
+                    "origen_id": venta["id"],
                     "medio_pago": pago_original["medio_pago"],
-                    "monto": pago_original["monto_total_cobrado"],
+                    "monto_total_cobrado": pago_original["monto_total_cobrado"],
                     "nota": f"Reversión de pago #{pago_original['id']}: {data.motivo}",
                     "id_usuario": data.id_usuario,
                 },

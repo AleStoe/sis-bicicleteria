@@ -1,5 +1,12 @@
+from psycopg.rows import dict_row
+
+
+# =========================================================
+# LOOKUPS / VALIDACIONES
+# =========================================================
+
 def get_cliente_by_id(conn, cliente_id: int):
-    with conn.cursor() as cur:
+    with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
             SELECT
@@ -15,7 +22,7 @@ def get_cliente_by_id(conn, cliente_id: int):
 
 
 def get_sucursal_by_id(conn, sucursal_id: int):
-    with conn.cursor() as cur:
+    with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
             SELECT
@@ -31,7 +38,7 @@ def get_sucursal_by_id(conn, sucursal_id: int):
 
 
 def get_variantes_by_ids(conn, ids):
-    with conn.cursor() as cur:
+    with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
             SELECT
@@ -56,64 +63,55 @@ def get_variantes_by_ids(conn, ids):
         return cur.fetchall()
 
 
-def get_stock_for_update(conn, id_sucursal, id_variante):
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            SELECT
-                id,
-                id_sucursal,
-                id_variante,
-                stock_fisico,
-                stock_reservado,
-                stock_vendido_pendiente_entrega
-            FROM stock_sucursal
-            WHERE id_sucursal = %s
-              AND id_variante = %s
-            FOR UPDATE
-            """,
-            (id_sucursal, id_variante),
-        )
-        return cur.fetchone()
+# =========================================================
+# ESCRITURA
+# =========================================================
 
-
-def insert_venta(conn, data, subtotal, id_usuario):
-    with conn.cursor() as cur:
+def insert_venta(conn, data: dict):
+    with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
             INSERT INTO ventas (
                 id_sucursal,
                 id_cliente,
+                estado,
                 subtotal_base,
+                descuento_total,
+                recargo_total,
                 total_final,
                 saldo_pendiente,
-                estado,
-                id_usuario_creador
+                id_usuario_creador,
+                observaciones,
+                id_reserva_origen
             )
-            VALUES (%s, %s, %s, %s, %s, 'creada', %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
             (
-                data.id_sucursal,
-                data.id_cliente,
-                subtotal,
-                subtotal,
-                subtotal,
-                id_usuario,
+                data["id_sucursal"],
+                data["id_cliente"],
+                data.get("estado", "creada"),
+                data.get("subtotal_base", 0),
+                data.get("descuento_total", 0),
+                data.get("recargo_total", 0),
+                data.get("total_final", 0),
+                data.get("saldo_pendiente", 0),
+                data["id_usuario_creador"],
+                data.get("observaciones"),
+                data.get("id_reserva_origen"),
             ),
         )
         return cur.fetchone()["id"]
 
 
-def insert_venta_item(conn, venta_id, item, variante, subtotal):
-    descripcion_snapshot = f"{variante['producto_nombre']} - {variante['nombre_variante']}"
-
-    with conn.cursor() as cur:
+def insert_venta_item(conn, data: dict):
+    with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
             INSERT INTO venta_items (
                 id_venta,
                 id_variante,
+                id_bicicleta_serializada,
                 descripcion_snapshot,
                 cantidad,
                 precio_lista,
@@ -121,150 +119,110 @@ def insert_venta_item(conn, venta_id, item, variante, subtotal):
                 costo_unitario_aplicado,
                 subtotal
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
             """,
             (
+                data["id_venta"],
+                data["id_variante"],
+                data.get("id_bicicleta_serializada"),
+                data["descripcion_snapshot"],
+                data["cantidad"],
+                data["precio_lista"],
+                data["precio_final"],
+                data["costo_unitario_aplicado"],
+                data["subtotal"],
+            ),
+        )
+        return cur.fetchone()["id"]
+
+
+def update_venta_totales_y_estado(
+    conn,
+    venta_id: int,
+    subtotal_base,
+    total_final,
+    saldo_pendiente,
+    estado: str,
+    descuento_total=0,
+    recargo_total=0,
+):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE ventas
+            SET
+                subtotal_base = %s,
+                descuento_total = %s,
+                recargo_total = %s,
+                total_final = %s,
+                saldo_pendiente = %s,
+                estado = %s,
+                updated_at = NOW()
+            WHERE id = %s
+            """,
+            (
+                subtotal_base,
+                descuento_total,
+                recargo_total,
+                total_final,
+                saldo_pendiente,
+                estado,
                 venta_id,
-                variante["id"],
-                descripcion_snapshot,
-                item["cantidad"],
-                variante["precio_minorista"],
-                variante["precio_minorista"],
-                variante["costo_promedio_vigente"],
-                subtotal,
             ),
         )
 
 
-def mover_a_vendido_pendiente_entrega(conn, stock_id, cantidad):
+def update_venta_estado(conn, venta_id: int, nuevo_estado: str):
     with conn.cursor() as cur:
         cur.execute(
             """
-            UPDATE stock_sucursal
-            SET stock_vendido_pendiente_entrega = stock_vendido_pendiente_entrega + %s,
+            UPDATE ventas
+            SET estado = %s,
                 updated_at = NOW()
             WHERE id = %s
             """,
-            (cantidad, stock_id),
+            (nuevo_estado, venta_id),
         )
 
 
-def registrar_entrega_stock(conn, stock_id, cantidad):
+def update_venta_saldo_y_estado(conn, venta_id: int, saldo_pendiente, estado: str):
     with conn.cursor() as cur:
         cur.execute(
             """
-            UPDATE stock_sucursal
-            SET stock_fisico = stock_fisico - %s,
-                stock_vendido_pendiente_entrega = stock_vendido_pendiente_entrega - %s,
+            UPDATE ventas
+            SET saldo_pendiente = %s,
+                estado = %s,
                 updated_at = NOW()
             WHERE id = %s
             """,
-            (cantidad, cantidad, stock_id),
+            (saldo_pendiente, estado, venta_id),
         )
 
 
-def liberar_vendido_pendiente_entrega(conn, stock_id, cantidad):
-    with conn.cursor() as cur:
+def insert_venta_anulacion(conn, venta_id: int, motivo: str, id_usuario: int):
+    with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
-            UPDATE stock_sucursal
-            SET stock_vendido_pendiente_entrega = stock_vendido_pendiente_entrega - %s,
-                updated_at = NOW()
-            WHERE id = %s
-            """,
-            (cantidad, stock_id),
-        )
-
-
-def insert_movimiento_venta(conn, data):
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            INSERT INTO movimientos_stock (
-                id_sucursal,
-                id_variante,
-                tipo_movimiento,
-                cantidad,
-                costo_unitario_aplicado,
-                origen_tipo,
-                origen_id,
-                nota,
+            INSERT INTO venta_anulaciones (
+                id_venta,
+                motivo,
                 id_usuario
             )
-            VALUES (%s, %s, 'venta', %s, %s, 'venta', %s, %s, %s)
+            VALUES (%s, %s, %s)
+            RETURNING id
             """,
-            (
-                data["id_sucursal"],
-                data["id_variante"],
-                data["cantidad"],
-                data["costo_unitario_aplicado"],
-                data["venta_id"],
-                data.get("nota"),
-                data["id_usuario"],
-            ),
+            (venta_id, motivo, id_usuario),
         )
+        return cur.fetchone()["id"]
 
 
-def insert_movimiento_entrega(conn, data):
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            INSERT INTO movimientos_stock (
-                id_sucursal,
-                id_variante,
-                tipo_movimiento,
-                cantidad,
-                costo_unitario_aplicado,
-                origen_tipo,
-                origen_id,
-                nota,
-                id_usuario
-            )
-            VALUES (%s, %s, 'entrega', %s, %s, 'venta', %s, %s, %s)
-            """,
-            (
-                data["id_sucursal"],
-                data["id_variante"],
-                data["cantidad"],
-                data["costo_unitario_aplicado"],
-                data["venta_id"],
-                data.get("nota"),
-                data["id_usuario"],
-            ),
-        )
-
-
-def insert_movimiento_anulacion_venta(conn, data):
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            INSERT INTO movimientos_stock (
-                id_sucursal,
-                id_variante,
-                tipo_movimiento,
-                cantidad,
-                costo_unitario_aplicado,
-                origen_tipo,
-                origen_id,
-                nota,
-                id_usuario
-            )
-            VALUES (%s, %s, 'ajuste', %s, %s, 'venta', %s, %s, %s)
-            """,
-            (
-                data["id_sucursal"],
-                data["id_variante"],
-                data["cantidad"],
-                data["costo_unitario_aplicado"],
-                data["venta_id"],
-                data["nota"],
-                data["id_usuario"],
-            ),
-        )
-
+# =========================================================
+# LECTURAS
+# =========================================================
 
 def get_ventas(conn):
-    with conn.cursor() as cur:
+    with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
             SELECT
@@ -276,7 +234,8 @@ def get_ventas(conn):
                 s.nombre AS sucursal_nombre,
                 v.estado,
                 v.total_final,
-                v.saldo_pendiente
+                v.saldo_pendiente,
+                v.id_reserva_origen
             FROM ventas v
             INNER JOIN clientes c
                 ON c.id = v.id_cliente
@@ -288,8 +247,8 @@ def get_ventas(conn):
         return cur.fetchall()
 
 
-def get_venta_by_id(conn, venta_id):
-    with conn.cursor() as cur:
+def get_venta_by_id(conn, venta_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
             SELECT
@@ -304,7 +263,9 @@ def get_venta_by_id(conn, venta_id):
                 v.descuento_total,
                 v.recargo_total,
                 v.total_final,
-                v.saldo_pendiente
+                v.saldo_pendiente,
+                v.observaciones,
+                v.id_reserva_origen
             FROM ventas v
             INNER JOIN clientes c
                 ON c.id = v.id_cliente
@@ -317,8 +278,8 @@ def get_venta_by_id(conn, venta_id):
         return cur.fetchone()
 
 
-def get_venta_items_by_venta_id(conn, venta_id):
-    with conn.cursor() as cur:
+def get_venta_items_by_venta_id(conn, venta_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
             SELECT
@@ -341,8 +302,8 @@ def get_venta_items_by_venta_id(conn, venta_id):
         return cur.fetchall()
 
 
-def get_venta_for_update(conn, venta_id):
-    with conn.cursor() as cur:
+def get_venta_for_update(conn, venta_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
             SELECT
@@ -351,7 +312,8 @@ def get_venta_for_update(conn, venta_id):
                 id_sucursal,
                 estado,
                 total_final,
-                saldo_pendiente
+                saldo_pendiente,
+                id_reserva_origen
             FROM ventas
             WHERE id = %s
             FOR UPDATE
@@ -359,33 +321,3 @@ def get_venta_for_update(conn, venta_id):
             (venta_id,),
         )
         return cur.fetchone()
-
-
-def update_venta_estado(conn, venta_id, nuevo_estado):
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            UPDATE ventas
-            SET estado = %s,
-                updated_at = NOW()
-            WHERE id = %s
-            """,
-            (nuevo_estado, venta_id),
-        )
-
-
-def insert_venta_anulacion(conn, venta_id, motivo, id_usuario):
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            INSERT INTO venta_anulaciones (
-                id_venta,
-                motivo,
-                id_usuario
-            )
-            VALUES (%s, %s, %s)
-            RETURNING id
-            """,
-            (venta_id, motivo, id_usuario),
-        )
-        return cur.fetchone()["id"]

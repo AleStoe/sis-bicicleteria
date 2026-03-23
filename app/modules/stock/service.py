@@ -1,24 +1,199 @@
 from app.db.connection import get_connection
-from .repository import get_stock_sucursal, crear_ingreso_stock
+from app.modules.stock import repository
 
+
+# =========================================================
+# HELPERS
+# =========================================================
+
+def _manejar_error_transaccional(conn, exc: Exception):
+    if conn:
+        conn.rollback()
+    raise exc
+
+
+# =========================================================
+# CONSULTAS (READ ONLY)
+# =========================================================
 
 def listar_stock():
-
     conn = get_connection()
-
     try:
-        return get_stock_sucursal(conn)
-
+        return repository.get_stock_sucursal(conn)
     finally:
         conn.close()
 
 
-def registrar_ingreso_stock(data):
-
+def obtener_stock_disponible(id_sucursal: int, id_variante: int):
     conn = get_connection()
-
     try:
-        return crear_ingreso_stock(conn, data)
+        stock_disponible = repository.obtener_stock_disponible(
+            conn,
+            id_sucursal=id_sucursal,
+            id_variante=id_variante,
+        )
 
+        return {
+            "id_sucursal": id_sucursal,
+            "id_variante": id_variante,
+            "stock_disponible": round(float(stock_disponible), 3),
+        }
     finally:
         conn.close()
+
+def obtener_stock_disponible_tx(conn, id_sucursal: int, id_variante: int):
+    stock = repository.obtener_stock_actual(
+        conn,
+        id_sucursal=id_sucursal,
+        id_variante=id_variante,
+    )
+
+    return {
+        "id_sucursal": id_sucursal,
+        "id_variante": id_variante,
+        "stock_disponible": round(float(stock["stock_disponible"]), 3),
+    }
+
+def obtener_stock_actual(id_sucursal: int, id_variante: int):
+    conn = get_connection()
+    try:
+        stock = repository.obtener_stock_actual(
+            conn,
+            id_sucursal=id_sucursal,
+            id_variante=id_variante,
+        )
+
+        return {
+            "id_sucursal": stock["id_sucursal"],
+            "id_variante": stock["id_variante"],
+            "stock_fisico": round(float(stock["stock_fisico"]), 3),
+            "stock_reservado": round(float(stock["stock_reservado"]), 3),
+            "stock_vendido_pendiente_entrega": round(
+                float(stock["stock_vendido_pendiente_entrega"]), 3
+            ),
+            "stock_disponible": round(float(stock["stock_disponible"]), 3),
+        }
+    finally:
+        conn.close()
+
+
+# =========================================================
+# INGRESOS (TRANSACCIONAL EXTERNO)
+# =========================================================
+
+def registrar_ingreso_stock(conn, data: dict):
+    """
+    NO maneja commit.
+    Debe usarse dentro de una transacción externa.
+    """
+    return repository.crear_ingreso_stock(conn, data)
+
+
+# =========================================================
+# OPERACIONES CENTRALES DE STOCK (SIN COMMIT)
+# =========================================================
+
+def reservar_stock(conn, data: dict):
+    return repository.reservar_stock(
+        conn,
+        id_sucursal=data["id_sucursal"],
+        id_variante=data["id_variante"],
+        cantidad=data["cantidad"],
+        id_usuario=data["id_usuario"],
+        origen_tipo=data.get("origen_tipo"),
+        origen_id=data.get("origen_id"),
+        nota=data.get("nota"),
+    )
+
+
+def liberar_stock_reservado(conn, data: dict):
+    return repository.liberar_stock_reservado(
+        conn,
+        id_sucursal=data["id_sucursal"],
+        id_variante=data["id_variante"],
+        cantidad=data["cantidad"],
+        id_usuario=data["id_usuario"],
+        origen_tipo=data.get("origen_tipo"),
+        origen_id=data.get("origen_id"),
+        nota=data.get("nota"),
+    )
+
+
+def marcar_stock_pendiente_entrega(conn, data: dict):
+    return repository.marcar_stock_pendiente_entrega(
+        conn,
+        id_sucursal=data["id_sucursal"],
+        id_variante=data["id_variante"],
+        cantidad=data["cantidad"],
+        id_usuario=data["id_usuario"],
+        descontar_de_reservado=data.get("descontar_de_reservado", False),
+        origen_tipo=data.get("origen_tipo"),
+        origen_id=data.get("origen_id"),
+        nota=data.get("nota"),
+    )
+
+
+def descontar_stock_por_venta(conn, data: dict):
+    return repository.descontar_stock_por_venta(
+        conn,
+        id_sucursal=data["id_sucursal"],
+        id_variante=data["id_variante"],
+        cantidad=data["cantidad"],
+        id_usuario=data["id_usuario"],
+        descontar_de_reservado=data.get("descontar_de_reservado", False),
+        origen_tipo=data.get("origen_tipo"),
+        origen_id=data.get("origen_id"),
+        nota=data.get("nota"),
+    )
+
+
+def registrar_entrega_stock(conn, data: dict):
+    return repository.registrar_entrega_stock(
+        conn,
+        id_sucursal=data["id_sucursal"],
+        id_variante=data["id_variante"],
+        cantidad=data["cantidad"],
+        id_usuario=data["id_usuario"],
+        origen_tipo=data.get("origen_tipo"),
+        origen_id=data.get("origen_id"),
+        nota=data.get("nota"),
+    )
+
+
+def devolver_stock_a_disponible_desde_pendiente(conn, data: dict):
+    return repository.devolver_stock_a_disponible_desde_pendiente(
+        conn,
+        id_sucursal=data["id_sucursal"],
+        id_variante=data["id_variante"],
+        cantidad=data["cantidad"],
+        id_usuario=data["id_usuario"],
+        origen_tipo=data.get("origen_tipo"),
+        origen_id=data.get("origen_id"),
+        nota=data.get("nota"),
+    )
+
+
+def registrar_devolucion_stock(conn, data: dict):
+    return repository.registrar_devolucion_stock(
+        conn,
+        id_sucursal=data["id_sucursal"],
+        id_variante=data["id_variante"],
+        cantidad=data["cantidad"],
+        id_usuario=data["id_usuario"],
+        origen_tipo=data.get("origen_tipo"),
+        origen_id=data.get("origen_id"),
+        nota=data.get("nota"),
+    )
+
+
+def registrar_salida_taller(conn, data: dict):
+    return repository.registrar_salida_taller(
+        conn,
+        id_sucursal=data["id_sucursal"],
+        id_variante=data["id_variante"],
+        cantidad=data["cantidad"],
+        id_usuario=data["id_usuario"],
+        origen_tipo=data.get("origen_tipo", "taller"),
+        origen_id=data.get("origen_id"),
+        nota=data.get("nota"),
+    )

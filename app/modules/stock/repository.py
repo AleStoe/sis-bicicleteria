@@ -1,11 +1,14 @@
 from app.db.connection import get_connection
 
 
-def get_stock_sucursal(conn):
-    
+# =========================================================
+# CONSULTAS
+# =========================================================
 
+def get_stock_sucursal(conn):
     with conn.cursor() as cur:
-        cur.execute("""
+        cur.execute(
+            """
             SELECT
                 s.id AS sucursal_id,
                 s.nombre AS sucursal_nombre,
@@ -29,218 +32,755 @@ def get_stock_sucursal(conn):
             INNER JOIN productos p
                 ON p.id = v.id_producto
             ORDER BY s.nombre, p.nombre, v.nombre_variante
-        """)
-        result = cur.fetchall()
-
-    
-    return result
+            """
+        )
+        return cur.fetchall()
 
 
-def crear_ingreso_stock(data: dict):
-    conn = get_connection()
+def obtener_stock_disponible(conn, id_sucursal: int, id_variante: int) -> float:
+    stock = obtener_stock_actual(conn, id_sucursal, id_variante)
+    return float(stock["stock_disponible"])
 
-    try:
-        with conn.cursor() as cur:
-            # 1. validar sucursal
-            cur.execute(
-                "SELECT id FROM sucursales WHERE id = %s AND activa = TRUE",
-                (data["id_sucursal"],),
-            )
-            sucursal = cur.fetchone()
-            if not sucursal:
-                raise ValueError("La sucursal no existe o esta inactiva")
 
-            # 2. validar variante
-            cur.execute(
-                """
-                SELECT id, costo_promedio_vigente
-                FROM variantes
-                WHERE id = %s AND activo = TRUE
-                """,
-                (data["id_variante"],),
-            )
-            variante = cur.fetchone()
-            if not variante:
-                raise ValueError("La variante no existe o esta inactiva")
-
-            # 3. validar proveedor
-            cur.execute(
-                "SELECT id FROM proveedores WHERE id = %s AND activo = TRUE",
-                (data["id_proveedor"],),
-            )
-            proveedor = cur.fetchone()
-            if not proveedor:
-                raise ValueError("El proveedor no existe o esta inactivo")
-
-            # 4. validar usuario
-            cur.execute(
-                "SELECT id FROM usuarios WHERE id = %s AND activo = TRUE",
-                (data["id_usuario"],),
-            )
-            usuario = cur.fetchone()
-            if not usuario:
-                raise ValueError("El usuario no existe o esta inactivo")
-
-            cantidad_ingresada = float(data["cantidad_ingresada"])
-            costo_productos = float(data["costo_productos"])
-            gastos_adicionales = float(data.get("gastos_adicionales", 0) or 0)
-
-            costo_total_lote = costo_productos + gastos_adicionales
-            costo_unitario_calculado = costo_total_lote / cantidad_ingresada
-
-            # 5. insertar ingreso_stock
-            cur.execute(
-                """
-                INSERT INTO ingresos_stock (
-                    id_sucursal,
-                    id_variante,
-                    id_proveedor,
-                    cantidad_ingresada,
-                    costo_productos,
-                    gastos_adicionales,
-                    costo_total_lote,
-                    costo_unitario_calculado,
-                    origen_ingreso,
-                    observacion,
-                    id_usuario
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING id
-                """,
+def obtener_stock_actual(conn, id_sucursal: int, id_variante: int):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT
+                id_sucursal,
+                id_variante,
+                stock_fisico,
+                stock_reservado,
+                stock_vendido_pendiente_entrega,
                 (
-                    data["id_sucursal"],
-                    data["id_variante"],
-                    data["id_proveedor"],
-                    cantidad_ingresada,
-                    costo_productos,
-                    gastos_adicionales,
-                    costo_total_lote,
-                    costo_unitario_calculado,
-                    data.get("origen_ingreso", "manual"),
-                    data.get("observacion"),
-                    data["id_usuario"],
-                ),
-            )
-            ingreso = cur.fetchone()
-            ingreso_id = ingreso["id"]
+                    stock_fisico
+                    - stock_reservado
+                    - stock_vendido_pendiente_entrega
+                ) AS stock_disponible
+            FROM stock_sucursal
+            WHERE id_sucursal = %s
+              AND id_variante = %s
+            """,
+            (id_sucursal, id_variante),
+        )
+        row = cur.fetchone()
 
-            # 6. leer stock actual
-            cur.execute(
-                """
-                SELECT stock_fisico
-                FROM stock_sucursal
-                WHERE id_sucursal = %s AND id_variante = %s
-                """,
-                (data["id_sucursal"], data["id_variante"]),
-            )
-            stock_actual = cur.fetchone()
+    if row:
+        return row
 
-            if stock_actual:
-                stock_fisico_anterior = float(stock_actual["stock_fisico"])
-                nuevo_stock_fisico = stock_fisico_anterior + cantidad_ingresada
+    return {
+        "id_sucursal": id_sucursal,
+        "id_variante": id_variante,
+        "stock_fisico": 0.0,
+        "stock_reservado": 0.0,
+        "stock_vendido_pendiente_entrega": 0.0,
+        "stock_disponible": 0.0,
+    }
 
-                cur.execute(
-                    """
-                    UPDATE stock_sucursal
-                    SET stock_fisico = %s,
-                        updated_at = NOW()
-                    WHERE id_sucursal = %s AND id_variante = %s
-                    """,
-                    (
-                        nuevo_stock_fisico,
-                        data["id_sucursal"],
-                        data["id_variante"],
-                    ),
-                )
-            else:
-                stock_fisico_anterior = 0.0
-                nuevo_stock_fisico = cantidad_ingresada
 
-                cur.execute(
-                    """
-                    INSERT INTO stock_sucursal (
-                        id_sucursal,
-                        id_variante,
-                        stock_fisico,
-                        stock_reservado,
-                        stock_vendido_pendiente_entrega
-                    )
-                    VALUES (%s, %s, %s, 0, 0)
-                    """,
-                    (
-                        data["id_sucursal"],
-                        data["id_variante"],
-                        nuevo_stock_fisico,
-                    ),
-                )
-
-            # 7. recalcular costo promedio vigente
-            costo_promedio_anterior = float(variante["costo_promedio_vigente"])
-            stock_anterior = stock_fisico_anterior
-
-            if stock_anterior <= 0:
-                nuevo_costo_promedio = costo_unitario_calculado
-            else:
-                nuevo_costo_promedio = (
-                    (stock_anterior * costo_promedio_anterior)
-                    + (cantidad_ingresada * costo_unitario_calculado)
-                ) / (stock_anterior + cantidad_ingresada)
-
-            cur.execute(
-                """
-                UPDATE variantes
-                SET costo_promedio_vigente = %s,
-                    updated_at = NOW()
-                WHERE id = %s
-                """,
-                (nuevo_costo_promedio, data["id_variante"]),
-            )
-
-            # 8. movimiento de stock
-            cur.execute(
-                """
-                INSERT INTO movimientos_stock (
-                    id_sucursal,
-                    id_variante,
-                    tipo_movimiento,
-                    cantidad,
-                    costo_unitario_aplicado,
-                    origen_tipo,
-                    origen_id,
-                    nota,
-                    id_usuario
-                )
-                VALUES (%s, %s, 'ingreso', %s, %s, 'ingreso_stock', %s, %s, %s)
-                """,
+def obtener_stock_actual_para_update(conn, id_sucursal: int, id_variante: int):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT
+                id_sucursal,
+                id_variante,
+                stock_fisico,
+                stock_reservado,
+                stock_vendido_pendiente_entrega,
                 (
-                    data["id_sucursal"],
-                    data["id_variante"],
-                    cantidad_ingresada,
-                    costo_unitario_calculado,
-                    ingreso_id,
-                    data.get("observacion"),
-                    data["id_usuario"],
-                ),
+                    stock_fisico
+                    - stock_reservado
+                    - stock_vendido_pendiente_entrega
+                ) AS stock_disponible
+            FROM stock_sucursal
+            WHERE id_sucursal = %s
+              AND id_variante = %s
+            FOR UPDATE
+            """,
+            (id_sucursal, id_variante),
+        )
+        row = cur.fetchone()
+
+    if row:
+        return row
+
+    return None
+
+
+# =========================================================
+# VALIDACIONES BASE
+# =========================================================
+
+def validar_sucursal_activa(conn, id_sucursal: int):
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT id FROM sucursales WHERE id = %s AND activa = TRUE",
+            (id_sucursal,),
+        )
+        row = cur.fetchone()
+
+    if not row:
+        raise ValueError("La sucursal no existe o está inactiva")
+
+
+def validar_variante_activa(conn, id_variante: int):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id, costo_promedio_vigente
+            FROM variantes
+            WHERE id = %s AND activo = TRUE
+            """,
+            (id_variante,),
+        )
+        row = cur.fetchone()
+
+    if not row:
+        raise ValueError("La variante no existe o está inactiva")
+
+    return row
+
+
+def validar_proveedor_activo(conn, id_proveedor: int):
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT id FROM proveedores WHERE id = %s AND activo = TRUE",
+            (id_proveedor,),
+        )
+        row = cur.fetchone()
+
+    if not row:
+        raise ValueError("El proveedor no existe o está inactivo")
+
+
+def validar_usuario_activo(conn, id_usuario: int):
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT id FROM usuarios WHERE id = %s AND activo = TRUE",
+            (id_usuario,),
+        )
+        row = cur.fetchone()
+
+    if not row:
+        raise ValueError("El usuario no existe o está inactivo")
+
+
+# =========================================================
+# HELPERS INTERNOS DE STOCK
+# =========================================================
+
+def asegurar_stock_sucursal_para_update(conn, id_sucursal: int, id_variante: int):
+    """
+    Devuelve la fila de stock bloqueada con FOR UPDATE.
+    Si no existe, la crea en cero y la vuelve a leer bloqueada.
+    """
+    row = obtener_stock_actual_para_update(conn, id_sucursal, id_variante)
+    if row:
+        return row
+
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO stock_sucursal (
+                id_sucursal,
+                id_variante,
+                stock_fisico,
+                stock_reservado,
+                stock_vendido_pendiente_entrega
             )
+            VALUES (%s, %s, 0, 0, 0)
+            ON CONFLICT (id_sucursal, id_variante) DO NOTHING
+            """,
+            (id_sucursal, id_variante),
+        )
 
-        conn.commit()
+    row = obtener_stock_actual_para_update(conn, id_sucursal, id_variante)
+    if not row:
+        raise ValueError("No se pudo inicializar stock_sucursal")
 
-        return {
-            "ok": True,
-            "ingreso_id": ingreso_id,
-            "id_sucursal": data["id_sucursal"],
-            "id_variante": data["id_variante"],
-            "cantidad_ingresada": round(cantidad_ingresada, 3),
-            "costo_total_lote": round(costo_total_lote, 2),
-            "costo_unitario_calculado": round(costo_unitario_calculado, 4),
-            "stock_anterior": round(stock_fisico_anterior, 3),
-            "stock_nuevo": round(nuevo_stock_fisico, 3),
-            "costo_promedio_anterior": round(costo_promedio_anterior, 4),
-            "costo_promedio_nuevo": round(nuevo_costo_promedio, 4),
-        }
+    return row
 
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+
+def actualizar_stock_sucursal(
+    conn,
+    id_sucursal: int,
+    id_variante: int,
+    nuevo_stock_fisico: float,
+    nuevo_stock_reservado: float,
+    nuevo_stock_vendido_pendiente_entrega: float,
+):
+    if nuevo_stock_fisico < 0:
+        raise ValueError("stock_fisico no puede quedar negativo")
+    if nuevo_stock_reservado < 0:
+        raise ValueError("stock_reservado no puede quedar negativo")
+    if nuevo_stock_vendido_pendiente_entrega < 0:
+        raise ValueError("stock_vendido_pendiente_entrega no puede quedar negativo")
+
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE stock_sucursal
+            SET
+                stock_fisico = %s,
+                stock_reservado = %s,
+                stock_vendido_pendiente_entrega = %s,
+                updated_at = NOW()
+            WHERE id_sucursal = %s
+              AND id_variante = %s
+            """,
+            (
+                nuevo_stock_fisico,
+                nuevo_stock_reservado,
+                nuevo_stock_vendido_pendiente_entrega,
+                id_sucursal,
+                id_variante,
+            ),
+        )
+
+
+def registrar_movimiento_stock(
+    conn,
+    *,
+    id_sucursal: int,
+    id_variante: int,
+    tipo_movimiento: str,
+    cantidad: float,
+    id_usuario: int,
+    costo_unitario_aplicado: float | None = None,
+    origen_tipo: str | None = None,
+    origen_id: int | None = None,
+    nota: str | None = None,
+):
+    if cantidad <= 0:
+        raise ValueError("La cantidad del movimiento debe ser mayor a 0")
+
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO movimientos_stock (
+                id_sucursal,
+                id_variante,
+                tipo_movimiento,
+                cantidad,
+                costo_unitario_aplicado,
+                origen_tipo,
+                origen_id,
+                nota,
+                id_usuario
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+            """,
+            (
+                id_sucursal,
+                id_variante,
+                tipo_movimiento,
+                cantidad,
+                costo_unitario_aplicado,
+                origen_tipo,
+                origen_id,
+                nota,
+                id_usuario,
+            ),
+        )
+        row = cur.fetchone()
+
+    return row["id"]
+
+
+def _aplicar_operacion_stock(
+    conn,
+    *,
+    id_sucursal: int,
+    id_variante: int,
+    id_usuario: int,
+    tipo_movimiento: str,
+    cantidad: float,
+    delta_fisico: float = 0,
+    delta_reservado: float = 0,
+    delta_pendiente_entrega: float = 0,
+    origen_tipo: str | None = None,
+    origen_id: int | None = None,
+    nota: str | None = None,
+    costo_unitario_aplicado: float | None = None,
+):
+    if cantidad <= 0:
+        raise ValueError("La cantidad debe ser mayor a 0")
+
+    validar_sucursal_activa(conn, id_sucursal)
+    validar_variante_activa(conn, id_variante)
+    validar_usuario_activo(conn, id_usuario)
+
+    actual = asegurar_stock_sucursal_para_update(conn, id_sucursal, id_variante)
+
+    stock_fisico_actual = float(actual["stock_fisico"])
+    stock_reservado_actual = float(actual["stock_reservado"])
+    stock_pendiente_actual = float(actual["stock_vendido_pendiente_entrega"])
+
+    nuevo_stock_fisico = stock_fisico_actual + float(delta_fisico)
+    nuevo_stock_reservado = stock_reservado_actual + float(delta_reservado)
+    nuevo_stock_pendiente = stock_pendiente_actual + float(delta_pendiente_entrega)
+
+    stock_disponible_nuevo = (
+        nuevo_stock_fisico - nuevo_stock_reservado - nuevo_stock_pendiente
+    )
+
+    if nuevo_stock_fisico < 0:
+        raise ValueError("No hay stock físico suficiente")
+    if nuevo_stock_reservado < 0:
+        raise ValueError("No hay stock reservado suficiente")
+    if nuevo_stock_pendiente < 0:
+        raise ValueError("No hay stock pendiente de entrega suficiente")
+    if stock_disponible_nuevo < 0:
+        raise ValueError("No hay stock disponible suficiente")
+
+    actualizar_stock_sucursal(
+        conn,
+        id_sucursal=id_sucursal,
+        id_variante=id_variante,
+        nuevo_stock_fisico=nuevo_stock_fisico,
+        nuevo_stock_reservado=nuevo_stock_reservado,
+        nuevo_stock_vendido_pendiente_entrega=nuevo_stock_pendiente,
+    )
+
+    movimiento_id = registrar_movimiento_stock(
+        conn,
+        id_sucursal=id_sucursal,
+        id_variante=id_variante,
+        tipo_movimiento=tipo_movimiento,
+        cantidad=cantidad,
+        costo_unitario_aplicado=costo_unitario_aplicado,
+        origen_tipo=origen_tipo,
+        origen_id=origen_id,
+        nota=nota,
+        id_usuario=id_usuario,
+    )
+
+    return {
+        "ok": True,
+        "movimiento_id": movimiento_id,
+        "id_sucursal": id_sucursal,
+        "id_variante": id_variante,
+        "tipo_movimiento": tipo_movimiento,
+        "cantidad": round(float(cantidad), 3),
+        "stock_fisico_anterior": round(stock_fisico_actual, 3),
+        "stock_reservado_anterior": round(stock_reservado_actual, 3),
+        "stock_vendido_pendiente_entrega_anterior": round(stock_pendiente_actual, 3),
+        "stock_fisico_nuevo": round(nuevo_stock_fisico, 3),
+        "stock_reservado_nuevo": round(nuevo_stock_reservado, 3),
+        "stock_vendido_pendiente_entrega_nuevo": round(nuevo_stock_pendiente, 3),
+        "stock_disponible_nuevo": round(stock_disponible_nuevo, 3),
+    }
+
+
+# =========================================================
+# OPERACIONES CENTRALES DE STOCK
+# =========================================================
+
+def reservar_stock(
+    conn,
+    *,
+    id_sucursal: int,
+    id_variante: int,
+    cantidad: float,
+    id_usuario: int,
+    origen_tipo: str | None = None,
+    origen_id: int | None = None,
+    nota: str | None = None,
+):
+    """
+    Reserva stock disponible.
+    Efecto:
+    - stock_reservado += cantidad
+    - stock_fisico no cambia
+    """
+    return _aplicar_operacion_stock(
+        conn,
+        id_sucursal=id_sucursal,
+        id_variante=id_variante,
+        id_usuario=id_usuario,
+        tipo_movimiento="reserva",
+        cantidad=cantidad,
+        delta_reservado=+cantidad,
+        origen_tipo=origen_tipo,
+        origen_id=origen_id,
+        nota=nota,
+    )
+
+
+def liberar_stock_reservado(
+    conn,
+    *,
+    id_sucursal: int,
+    id_variante: int,
+    cantidad: float,
+    id_usuario: int,
+    origen_tipo: str | None = None,
+    origen_id: int | None = None,
+    nota: str | None = None,
+):
+    """
+    Libera stock previamente reservado.
+    Efecto:
+    - stock_reservado -= cantidad
+    - stock_fisico no cambia
+    """
+    return _aplicar_operacion_stock(
+        conn,
+        id_sucursal=id_sucursal,
+        id_variante=id_variante,
+        id_usuario=id_usuario,
+        tipo_movimiento="cancelacion_reserva",
+        cantidad=cantidad,
+        delta_reservado=-cantidad,
+        origen_tipo=origen_tipo,
+        origen_id=origen_id,
+        nota=nota,
+    )
+
+
+def marcar_stock_pendiente_entrega(
+    conn,
+    *,
+    id_sucursal: int,
+    id_variante: int,
+    cantidad: float,
+    id_usuario: int,
+    descontar_de_reservado: bool = False,
+    origen_tipo: str | None = None,
+    origen_id: int | None = None,
+    nota: str | None = None,
+):
+    """
+    Marca stock vendido pendiente de entrega.
+
+    Caso 1: venta desde stock disponible
+    - stock_vendido_pendiente_entrega += cantidad
+
+    Caso 2: venta de algo ya reservado
+    - stock_reservado -= cantidad
+    - stock_vendido_pendiente_entrega += cantidad
+
+    NO baja stock_fisico todavía.
+    """
+    delta_reservado = -cantidad if descontar_de_reservado else 0
+
+    return _aplicar_operacion_stock(
+        conn,
+        id_sucursal=id_sucursal,
+        id_variante=id_variante,
+        id_usuario=id_usuario,
+        tipo_movimiento="venta",
+        cantidad=cantidad,
+        delta_reservado=delta_reservado,
+        delta_pendiente_entrega=+cantidad,
+        origen_tipo=origen_tipo,
+        origen_id=origen_id,
+        nota=nota,
+    )
+
+
+def descontar_stock_por_venta(
+    conn,
+    *,
+    id_sucursal: int,
+    id_variante: int,
+    cantidad: float,
+    id_usuario: int,
+    descontar_de_reservado: bool = False,
+    origen_tipo: str | None = None,
+    origen_id: int | None = None,
+    nota: str | None = None,
+):
+    """
+    Venta con entrega inmediata.
+
+    Caso 1: venta directa
+    - stock_fisico -= cantidad
+
+    Caso 2: venta de algo reservado
+    - stock_reservado -= cantidad
+    - stock_fisico -= cantidad
+
+    NO usa pendiente_entrega.
+    """
+    delta_reservado = -cantidad if descontar_de_reservado else 0
+
+    return _aplicar_operacion_stock(
+        conn,
+        id_sucursal=id_sucursal,
+        id_variante=id_variante,
+        id_usuario=id_usuario,
+        tipo_movimiento="venta",
+        cantidad=cantidad,
+        delta_fisico=-cantidad,
+        delta_reservado=delta_reservado,
+        origen_tipo=origen_tipo,
+        origen_id=origen_id,
+        nota=nota,
+    )
+
+
+def registrar_entrega_stock(
+    conn,
+    *,
+    id_sucursal: int,
+    id_variante: int,
+    cantidad: float,
+    id_usuario: int,
+    origen_tipo: str | None = None,
+    origen_id: int | None = None,
+    nota: str | None = None,
+):
+    """
+    Entrega de stock ya vendido y pendiente de entrega.
+    Efecto:
+    - stock_vendido_pendiente_entrega -= cantidad
+    - stock_fisico -= cantidad
+    """
+    return _aplicar_operacion_stock(
+        conn,
+        id_sucursal=id_sucursal,
+        id_variante=id_variante,
+        id_usuario=id_usuario,
+        tipo_movimiento="entrega",
+        cantidad=cantidad,
+        delta_fisico=-cantidad,
+        delta_pendiente_entrega=-cantidad,
+        origen_tipo=origen_tipo,
+        origen_id=origen_id,
+        nota=nota,
+    )
+
+
+def devolver_stock_a_disponible_desde_pendiente(
+    conn,
+    *,
+    id_sucursal: int,
+    id_variante: int,
+    cantidad: float,
+    id_usuario: int,
+    origen_tipo: str | None = None,
+    origen_id: int | None = None,
+    nota: str | None = None,
+):
+    """
+    Revierte una venta pendiente antes de la entrega.
+    Efecto:
+    - stock_vendido_pendiente_entrega -= cantidad
+    - stock_fisico no cambia
+    """
+    return _aplicar_operacion_stock(
+        conn,
+        id_sucursal=id_sucursal,
+        id_variante=id_variante,
+        id_usuario=id_usuario,
+        tipo_movimiento="cancelacion_venta",
+        cantidad=cantidad,
+        delta_pendiente_entrega=-cantidad,
+        origen_tipo=origen_tipo,
+        origen_id=origen_id,
+        nota=nota,
+    )
+
+
+def registrar_devolucion_stock(
+    conn,
+    *,
+    id_sucursal: int,
+    id_variante: int,
+    cantidad: float,
+    id_usuario: int,
+    origen_tipo: str | None = None,
+    origen_id: int | None = None,
+    nota: str | None = None,
+):
+    """
+    Devuelve unidades al stock físico.
+    Efecto:
+    - stock_fisico += cantidad
+    """
+    return _aplicar_operacion_stock(
+        conn,
+        id_sucursal=id_sucursal,
+        id_variante=id_variante,
+        id_usuario=id_usuario,
+        tipo_movimiento="devolucion",
+        cantidad=cantidad,
+        delta_fisico=+cantidad,
+        origen_tipo=origen_tipo,
+        origen_id=origen_id,
+        nota=nota,
+    )
+
+
+def registrar_salida_taller(
+    conn,
+    *,
+    id_sucursal: int,
+    id_variante: int,
+    cantidad: float,
+    id_usuario: int,
+    origen_tipo: str | None = "taller",
+    origen_id: int | None = None,
+    nota: str | None = None,
+):
+    """
+    Consume stock físico para uso interno / taller.
+    Efecto:
+    - stock_fisico -= cantidad
+    """
+    return _aplicar_operacion_stock(
+        conn,
+        id_sucursal=id_sucursal,
+        id_variante=id_variante,
+        id_usuario=id_usuario,
+        tipo_movimiento="uso_taller",
+        cantidad=cantidad,
+        delta_fisico=-cantidad,
+        origen_tipo=origen_tipo,
+        origen_id=origen_id,
+        nota=nota,
+    )
+
+
+# =========================================================
+# INGRESO DE STOCK
+# =========================================================
+
+def crear_ingreso_stock(conn, data: dict):
+    """
+    Mantiene el comportamiento actual:
+    - inserta ingreso_stock
+    - sube stock_fisico
+    - recalcula costo promedio
+    - registra movimiento 'ingreso'
+
+    NO hace commit.
+    """
+
+    validar_sucursal_activa(conn, data["id_sucursal"])
+    variante = validar_variante_activa(conn, data["id_variante"])
+    validar_proveedor_activo(conn, data["id_proveedor"])
+    validar_usuario_activo(conn, data["id_usuario"])
+
+    cantidad_ingresada = float(data["cantidad_ingresada"])
+    costo_productos = float(data["costo_productos"])
+    gastos_adicionales = float(data.get("gastos_adicionales", 0) or 0)
+
+    if cantidad_ingresada <= 0:
+        raise ValueError("La cantidad ingresada debe ser mayor a 0")
+
+    costo_total_lote = costo_productos + gastos_adicionales
+    costo_unitario_calculado = costo_total_lote / cantidad_ingresada
+
+    with conn.cursor() as cur:
+        # 1. insertar cabecera de ingreso
+        cur.execute(
+            """
+            INSERT INTO ingresos_stock (
+                id_sucursal,
+                id_variante,
+                id_proveedor,
+                cantidad_ingresada,
+                costo_productos,
+                gastos_adicionales,
+                costo_total_lote,
+                costo_unitario_calculado,
+                origen_ingreso,
+                observacion,
+                id_usuario
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+            """,
+            (
+                data["id_sucursal"],
+                data["id_variante"],
+                data["id_proveedor"],
+                cantidad_ingresada,
+                costo_productos,
+                gastos_adicionales,
+                costo_total_lote,
+                costo_unitario_calculado,
+                data.get("origen_ingreso", "manual"),
+                data.get("observacion"),
+                data["id_usuario"],
+            ),
+        )
+        ingreso = cur.fetchone()
+        ingreso_id = ingreso["id"]
+
+    # 2. bloquear / asegurar fila de stock
+    stock = asegurar_stock_sucursal_para_update(
+        conn,
+        data["id_sucursal"],
+        data["id_variante"],
+    )
+
+    stock_fisico_anterior = float(stock["stock_fisico"])
+    stock_reservado_actual = float(stock["stock_reservado"])
+    stock_pendiente_actual = float(stock["stock_vendido_pendiente_entrega"])
+
+    nuevo_stock_fisico = stock_fisico_anterior + cantidad_ingresada
+
+    actualizar_stock_sucursal(
+        conn,
+        id_sucursal=data["id_sucursal"],
+        id_variante=data["id_variante"],
+        nuevo_stock_fisico=nuevo_stock_fisico,
+        nuevo_stock_reservado=stock_reservado_actual,
+        nuevo_stock_vendido_pendiente_entrega=stock_pendiente_actual,
+    )
+
+    # 3. recalcular costo promedio vigente
+    costo_promedio_anterior = float(variante["costo_promedio_vigente"] or 0)
+    stock_anterior = stock_fisico_anterior
+
+    if stock_anterior <= 0:
+        nuevo_costo_promedio = costo_unitario_calculado
+    else:
+        nuevo_costo_promedio = (
+            (stock_anterior * costo_promedio_anterior)
+            + (cantidad_ingresada * costo_unitario_calculado)
+        ) / (stock_anterior + cantidad_ingresada)
+
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE variantes
+            SET costo_promedio_vigente = %s,
+                updated_at = NOW()
+            WHERE id = %s
+            """,
+            (nuevo_costo_promedio, data["id_variante"]),
+        )
+
+    # 4. movimiento
+    registrar_movimiento_stock(
+        conn,
+        id_sucursal=data["id_sucursal"],
+        id_variante=data["id_variante"],
+        tipo_movimiento="ingreso",
+        cantidad=cantidad_ingresada,
+        costo_unitario_aplicado=costo_unitario_calculado,
+        origen_tipo="ingreso_stock",
+        origen_id=ingreso_id,
+        nota=data.get("observacion"),
+        id_usuario=data["id_usuario"],
+    )
+
+    return {
+        "ok": True,
+        "ingreso_id": ingreso_id,
+        "id_sucursal": data["id_sucursal"],
+        "id_variante": data["id_variante"],
+        "cantidad_ingresada": round(cantidad_ingresada, 3),
+        "costo_total_lote": round(costo_total_lote, 2),
+        "costo_unitario_calculado": round(costo_unitario_calculado, 4),
+        "stock_anterior": round(stock_fisico_anterior, 3),
+        "stock_nuevo": round(nuevo_stock_fisico, 3),
+        "costo_promedio_anterior": round(costo_promedio_anterior, 4),
+        "costo_promedio_nuevo": round(nuevo_costo_promedio, 4),
+    }

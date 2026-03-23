@@ -1,12 +1,12 @@
 from decimal import Decimal
 from pydantic import BaseModel, Field, ConfigDict
 
-
 class PagoCreateInput(BaseModel):
-    venta_id: int = Field(gt=0)
+    origen_tipo: str
+    origen_id: int
     medio_pago: str
-    monto: Decimal = Field(gt=0)
-    id_usuario: int = Field(gt=0)
+    monto: float
+    id_usuario: int
     nota: str | None = None
 
 

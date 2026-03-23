@@ -200,6 +200,20 @@ export default function NuevaVentaPage() {
     if (!clienteSeleccionadoId) {
       throw new Error("Seleccioná un cliente antes de continuar");
     }
+
+    const totalPagadoFinal = pagosFinales.reduce(
+      (acc, pago) => acc + Number(pago.monto || 0),
+      0
+    );
+
+    const restanteFinal = total - totalPagadoFinal;
+
+    if (restanteFinal > 0 && Number(clienteSeleccionadoId) === 1) {
+      throw new Error(
+        "Para ventas con saldo pendiente debés seleccionar un cliente real"
+      );
+    }
+
     const payloadVenta = {
       id_cliente: Number(clienteSeleccionadoId),
       id_sucursal: 1,
@@ -209,11 +223,7 @@ export default function NuevaVentaPage() {
         cantidad: item.cantidad,
       })),
     };
-    if (restante > 0 && Number(clienteSeleccionadoId) === 1) {
-        throw new Error(
-          "Para ventas con saldo pendiente debés seleccionar un cliente real"
-        );
-      }
+
     const venta = await crearVenta(payloadVenta);
 
     for (const pago of pagosFinales) {
