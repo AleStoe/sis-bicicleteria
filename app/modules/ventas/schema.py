@@ -10,10 +10,14 @@ class VentaItemCreateInput(BaseModel):
 
 
 class VentaCreateInput(BaseModel):
-    id_cliente: int = Field(gt=0)
-    id_sucursal: int = Field(gt=0)
-    id_usuario: int = Field(gt=0)
-    items: List[VentaItemCreateInput]
+    id_cliente: int
+    id_sucursal: int
+    id_usuario: int
+    items: list
+    observaciones: Optional[str] = None
+
+    usar_credito: bool = True
+    monto_credito_a_aplicar: Optional[Decimal] = None
 
 
 class VentaEntregaInput(BaseModel):
@@ -29,6 +33,8 @@ class VentaCreateOutput(BaseModel):
     ok: bool
     venta_id: int
     estado: str
+    credito_aplicado: Decimal
+    saldo_pendiente: Decimal
 
 
 class VentaEstadoOutput(BaseModel):
@@ -42,6 +48,8 @@ class VentaAnulacionOutput(BaseModel):
     venta_id: int
     estado: str
     anulacion_id: int
+    credito_generado: bool
+    monto_credito: Decimal
 
 
 class VentaResumenOutput(BaseModel):
@@ -93,3 +101,4 @@ class VentaDetalleItemOutput(BaseModel):
 class VentaDetalleOutput(BaseModel):
     venta: VentaDetalleCabeceraOutput
     items: List[VentaDetalleItemOutput]
+

@@ -289,6 +289,51 @@ def registrar_movimiento_stock(
     return row["id"]
 
 
+def _calcular_stock_nuevo(
+    *,
+    stock_fisico_actual: float,
+    stock_reservado_actual: float,
+    stock_pendiente_actual: float,
+    delta_fisico: float = 0,
+    delta_reservado: float = 0,
+    delta_pendiente_entrega: float = 0,
+):
+    nuevo_stock_fisico = stock_fisico_actual + float(delta_fisico)
+    nuevo_stock_reservado = stock_reservado_actual + float(delta_reservado)
+    nuevo_stock_pendiente = stock_pendiente_actual + float(delta_pendiente_entrega)
+
+    stock_disponible_nuevo = (
+        nuevo_stock_fisico - nuevo_stock_reservado - nuevo_stock_pendiente
+    )
+
+    return {
+        "stock_fisico_nuevo": nuevo_stock_fisico,
+        "stock_reservado_nuevo": nuevo_stock_reservado,
+        "stock_pendiente_nuevo": nuevo_stock_pendiente,
+        "stock_disponible_nuevo": stock_disponible_nuevo,
+    }
+
+
+def _validar_saldos_no_negativos(
+    *,
+    nuevo_stock_fisico: float,
+    nuevo_stock_reservado: float,
+    nuevo_stock_pendiente: float,
+):
+    if nuevo_stock_fisico < 0:
+        raise ValueError("No hay stock físico suficiente")
+
+    if nuevo_stock_reservado < 0:
+        raise ValueError("No hay stock reservado suficiente")
+
+    if nuevo_stock_pendiente < 0:
+        raise ValueError("No hay stock pendiente de entrega suficiente")
+
+
+def _validar_stock_disponible_no_negativo(*, stock_disponible_nuevo: float):
+    if stock_disponible_nuevo < 0:
+        raise ValueError("No hay stock disponible suficiente")
+
 def _aplicar_operacion_stock(
     conn,
     *,
@@ -304,6 +349,7 @@ def _aplicar_operacion_stock(
     origen_id: int | None = None,
     nota: str | None = None,
     costo_unitario_aplicado: float | None = None,
+    validar_stock_disponible: bool = True,
 ):
     if cantidad <= 0:
         raise ValueError("La cantidad debe ser mayor a 0")
@@ -318,22 +364,30 @@ def _aplicar_operacion_stock(
     stock_reservado_actual = float(actual["stock_reservado"])
     stock_pendiente_actual = float(actual["stock_vendido_pendiente_entrega"])
 
-    nuevo_stock_fisico = stock_fisico_actual + float(delta_fisico)
-    nuevo_stock_reservado = stock_reservado_actual + float(delta_reservado)
-    nuevo_stock_pendiente = stock_pendiente_actual + float(delta_pendiente_entrega)
-
-    stock_disponible_nuevo = (
-        nuevo_stock_fisico - nuevo_stock_reservado - nuevo_stock_pendiente
+    calculo = _calcular_stock_nuevo(
+        stock_fisico_actual=stock_fisico_actual,
+        stock_reservado_actual=stock_reservado_actual,
+        stock_pendiente_actual=stock_pendiente_actual,
+        delta_fisico=delta_fisico,
+        delta_reservado=delta_reservado,
+        delta_pendiente_entrega=delta_pendiente_entrega,
     )
 
-    if nuevo_stock_fisico < 0:
-        raise ValueError("No hay stock físico suficiente")
-    if nuevo_stock_reservado < 0:
-        raise ValueError("No hay stock reservado suficiente")
-    if nuevo_stock_pendiente < 0:
-        raise ValueError("No hay stock pendiente de entrega suficiente")
-    if stock_disponible_nuevo < 0:
-        raise ValueError("No hay stock disponible suficiente")
+    nuevo_stock_fisico = calculo["stock_fisico_nuevo"]
+    nuevo_stock_reservado = calculo["stock_reservado_nuevo"]
+    nuevo_stock_pendiente = calculo["stock_pendiente_nuevo"]
+    stock_disponible_nuevo = calculo["stock_disponible_nuevo"]
+
+    _validar_saldos_no_negativos(
+        nuevo_stock_fisico=nuevo_stock_fisico,
+        nuevo_stock_reservado=nuevo_stock_reservado,
+        nuevo_stock_pendiente=nuevo_stock_pendiente,
+    )
+
+    if validar_stock_disponible:
+        _validar_stock_disponible_no_negativo(
+            stock_disponible_nuevo=stock_disponible_nuevo
+        )
 
     actualizar_stock_sucursal(
         conn,
@@ -372,8 +426,6 @@ def _aplicar_operacion_stock(
         "stock_vendido_pendiente_entrega_nuevo": round(nuevo_stock_pendiente, 3),
         "stock_disponible_nuevo": round(stock_disponible_nuevo, 3),
     }
-
-
 # =========================================================
 # OPERACIONES CENTRALES DE STOCK
 # =========================================================
@@ -551,6 +603,7 @@ def registrar_entrega_stock(
         origen_tipo=origen_tipo,
         origen_id=origen_id,
         nota=nota,
+        validar_stock_disponible=False,
     )
 
 

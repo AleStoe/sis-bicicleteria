@@ -313,7 +313,10 @@ def convertir_reserva_en_venta(reserva_id: int, data):
             if reserva["estado"] != "activa":
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Solo se pueden convertir reservas activas. Estado actual: {reserva['estado']}",
+                    detail=(
+                        f"Solo se pueden convertir reservas activas. "
+                        f"Estado actual: {reserva['estado']}"
+                    ),
                 )
 
             # =====================================================
@@ -334,17 +337,19 @@ def convertir_reserva_en_venta(reserva_id: int, data):
             # =====================================================
             # 3. CREAR VENTA
             # =====================================================
+            estado_venta = "pagada_parcial" if saldo > Decimal("0") else "pagada_total"
+
             venta_id = ventas_repo.insert_venta(
                 conn,
                 {
                     "id_sucursal": reserva["id_sucursal"],
                     "id_cliente": reserva["id_cliente"],
-                    "estado": "pagada_parcial" if saldo > 0 else "pagada_total",
-                    "subtotal_base": float(total),
-                    "descuento_total": 0,
-                    "recargo_total": 0,
-                    "total_final": float(total),
-                    "saldo_pendiente": float(saldo),
+                    "estado": estado_venta,
+                    "subtotal_base": total,
+                    "descuento_total": Decimal("0"),
+                    "recargo_total": Decimal("0"),
+                    "total_final": total,
+                    "saldo_pendiente": saldo,
                     "id_usuario_creador": data.id_usuario,
                     "observaciones": getattr(data, "observaciones", None),
                     "id_reserva_origen": reserva_id,
@@ -355,6 +360,9 @@ def convertir_reserva_en_venta(reserva_id: int, data):
             # 4. ITEMS + STOCK
             # =====================================================
             for item in items:
+                precio_estimado = Decimal(str(item["precio_estimado"]))
+                costo_promedio = Decimal(str(item["costo_promedio_vigente"] or 0))
+                subtotal_estimado = Decimal(str(item["subtotal_estimado"]))
 
                 ventas_repo.insert_venta_item(
                     conn,
@@ -363,15 +371,15 @@ def convertir_reserva_en_venta(reserva_id: int, data):
                         "id_variante": item["id_variante"],
                         "id_bicicleta_serializada": item.get("id_bicicleta_serializada"),
                         "descripcion_snapshot": item.get("descripcion_snapshot"),
-                        "cantidad": float(item["cantidad"]),
-                        "precio_lista": float(item["precio_estimado"]),
-                        "precio_final": float(item["precio_estimado"]),
-                        "costo_unitario_aplicado": float(item["costo_promedio_vigente"] or 0),
-                        "subtotal": float(item["subtotal_estimado"]),
+                        "cantidad": item["cantidad"],
+                        "precio_lista": precio_estimado,
+                        "precio_final": precio_estimado,
+                        "costo_unitario_aplicado": costo_promedio,
+                        "subtotal": subtotal_estimado,
                     },
                 )
 
-                # 🔥 CLAVE: mover stock reservado → vendido pendiente
+                # mover stock reservado -> vendido pendiente
                 stock_service.marcar_stock_pendiente_entrega(
                     conn,
                     {
@@ -379,7 +387,7 @@ def convertir_reserva_en_venta(reserva_id: int, data):
                         "id_variante": item["id_variante"],
                         "cantidad": float(item["cantidad"]),
                         "id_usuario": data.id_usuario,
-                        "descontar_de_reservado": True,  # 👈 esto es CLAVE
+                        "descontar_de_reservado": True,
                         "origen_tipo": "venta",
                         "origen_id": venta_id,
                         "nota": f"Reserva #{reserva_id} convertida en venta #{venta_id}",

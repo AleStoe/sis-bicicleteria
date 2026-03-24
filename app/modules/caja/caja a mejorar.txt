@@ -1,0 +1,34 @@
+✅ CAJA — Estado actual
+
+✔ Apertura
+✔ Pagos impactan
+✔ Egresos
+✔ Ajustes (+ / -)
+✔ Cálculo correcto
+✔ UI usable
+
+👉 Esto ya es MVP funcional real.
+
+🧾 TODO LIST (lo que le falta a Caja)
+🔴 CRÍTICO (no ahora, pero sí antes de producción)
+ Validar ajustes grandes
+evitar meter +1.000.000 por error
+ Permisos
+no cualquiera puede ajustar
+ No permitir acciones sin caja abierta (revisar todo)
+ Evitar doble caja abierta (ya lo tenés, mantener)
+🟠 IMPORTANTE (mejora de uso)
+ Mostrar usuario con nombre (no id)
+ Mejorar labels:
+ingreso / egreso / ajuste + / ajuste -
+ Diferenciar visualmente ajustes (color o badge)
+ Ordenar mejor movimientos (ya está bastante bien)
+🟡 MEDIO (cuando escale)
+ Ajustes por submedio (no solo efectivo)
+ Filtros de movimientos (fecha, tipo)
+ Resumen del día más claro
+ Exportar caja (PDF / Excel)
+🟢 OPCIONAL (más adelante)
+ Historial de cajas por día
+ Reapertura de caja
+ Auditoría completa (log de cambios)

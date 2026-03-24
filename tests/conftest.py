@@ -1,10 +1,9 @@
 import os
-from pathlib import Path
 
 import psycopg
 import pytest
-from psycopg.rows import dict_row
 from fastapi.testclient import TestClient
+from psycopg.rows import dict_row
 
 # Forzar .env.test antes de importar la app/config
 os.environ["DB_HOST"] = "localhost"
@@ -44,31 +43,47 @@ def db_conn():
 @pytest.fixture()
 def clean_db(db_conn):
     with db_conn.cursor() as cur:
-        # Orden importante por FKs
+        cur.execute(
+            """
+            TRUNCATE TABLE
+                pagos_tarjeta_detalle,
+                pagos_reversiones,
+                pagos,
+                credito_movimientos,
+                creditos_cliente,
+                movimientos_stock,
+                venta_anulaciones,
+                venta_items,
+                ventas,
+                reserva_eventos,
+                reserva_items,
+                reservas,
+                bicicletas_serializadas,
+                ingresos_stock,
+                stock_sucursal,
+                variantes,
+                productos,
+                categorias,
+                proveedores,
+                marcas,
+                sucursales,
+                clientes,
+                usuarios
+            RESTART IDENTITY CASCADE
+            """
+        )
 
-        # tablas hijas de pagos
-        cur.execute("DELETE FROM pagos_tarjeta_detalle")
-        cur.execute("DELETE FROM pagos_reversiones")
-
-        # pagos antes que clientes/ventas
-        cur.execute("DELETE FROM pagos")
-
-        # tablas hijas de ventas
-        cur.execute("DELETE FROM movimientos_stock")
-        cur.execute("DELETE FROM venta_anulaciones")
-        cur.execute("DELETE FROM venta_items")
-        cur.execute("DELETE FROM ventas")
-
-        # stock y catálogo
-        cur.execute("DELETE FROM stock_sucursal")
-        cur.execute("DELETE FROM variantes")
-        cur.execute("DELETE FROM productos")
-        cur.execute("DELETE FROM categorias")
-
-        # maestros
-        cur.execute("DELETE FROM sucursales")
-        cur.execute("DELETE FROM clientes WHERE nombre <> 'Consumidor final'")
-        cur.execute("DELETE FROM usuarios")
+        cur.execute(
+            """
+            INSERT INTO clientes (nombre, tipo_cliente, activo, notas)
+            VALUES (
+                'Consumidor final',
+                'consumidor_final',
+                TRUE,
+                'Cliente genérico para ventas rápidas'
+            )
+            """
+        )
 
     db_conn.commit()
 
@@ -131,12 +146,7 @@ def seed_venta_basica(db_conn, clean_db):
 
         cur.execute(
             """
-            INSERT INTO clientes (
-                nombre,
-                telefono,
-                tipo_cliente,
-                activo
-            )
+            INSERT INTO clientes (nombre, telefono, tipo_cliente, activo)
             VALUES ('Cliente Test', '2910000000', 'minorista', TRUE)
             RETURNING id
             """
@@ -145,11 +155,7 @@ def seed_venta_basica(db_conn, clean_db):
 
         cur.execute(
             """
-            INSERT INTO sucursales (
-                nombre,
-                direccion,
-                activa
-            )
+            INSERT INTO sucursales (nombre, direccion, activa)
             VALUES ('Sucursal Test', 'Direccion Test', TRUE)
             RETURNING id
             """
@@ -178,42 +184,183 @@ def seed_venta_basica(db_conn, clean_db):
         "usuario_id": usuario_id,
         "cliente_id": cliente_id,
         "sucursal_id": sucursal_id,
+        "producto_id": producto_id,
         "variante_id": variante_id,
         "stock_id": stock_id,
+        "precio_venta": 24440,
     }
 
 
-def get_stock_row(db_conn, sucursal_id, variante_id):
+@pytest.fixture()
+def seed_venta_mixta(db_conn, clean_db):
     with db_conn.cursor() as cur:
         cur.execute(
             """
-            SELECT
-                id,
+            INSERT INTO usuarios (nombre, username, password_hash, activo)
+            VALUES ('Admin Test', 'admin_test_mixta', 'hash_dummy', TRUE)
+            RETURNING id
+            """
+        )
+        usuario_id = cur.fetchone()["id"]
+
+        cur.execute(
+            """
+            INSERT INTO categorias (nombre)
+            VALUES ('Accesorios')
+            RETURNING id
+            """
+        )
+        categoria_producto_id = cur.fetchone()["id"]
+
+        cur.execute(
+            """
+            INSERT INTO categorias (nombre)
+            VALUES ('Servicios')
+            RETURNING id
+            """
+        )
+        categoria_servicio_id = cur.fetchone()["id"]
+
+        cur.execute(
+            """
+            INSERT INTO productos (
+                id_categoria,
+                nombre,
+                tipo_item,
+                stockeable,
+                serializable,
+                activo
+            )
+            VALUES (%s, 'Casco Test', 'producto', TRUE, FALSE, TRUE)
+            RETURNING id
+            """,
+            (categoria_producto_id,),
+        )
+        producto_stockeable_id = cur.fetchone()["id"]
+
+        cur.execute(
+            """
+            INSERT INTO productos (
+                id_categoria,
+                nombre,
+                tipo_item,
+                stockeable,
+                serializable,
+                activo
+            )
+            VALUES (%s, 'Armado Test', 'servicio', FALSE, FALSE, TRUE)
+            RETURNING id
+            """,
+            (categoria_servicio_id,),
+        )
+        producto_servicio_id = cur.fetchone()["id"]
+
+        cur.execute(
+            """
+            INSERT INTO variantes (
+                id_producto,
+                nombre_variante,
+                sku,
+                precio_minorista,
+                precio_mayorista,
+                costo_promedio_vigente,
+                activo
+            )
+            VALUES (%s, 'Casco único', 'CASCO-TEST', 30000, 25000, 15000, TRUE)
+            RETURNING id
+            """,
+            (producto_stockeable_id,),
+        )
+        variante_stockeable_id = cur.fetchone()["id"]
+
+        cur.execute(
+            """
+            INSERT INTO variantes (
+                id_producto,
+                nombre_variante,
+                sku,
+                precio_minorista,
+                precio_mayorista,
+                costo_promedio_vigente,
+                activo
+            )
+            VALUES (%s, 'Armado único', 'SERV-TEST', 10000, 10000, 0, TRUE)
+            RETURNING id
+            """,
+            (producto_servicio_id,),
+        )
+        variante_servicio_id = cur.fetchone()["id"]
+
+        cur.execute(
+            """
+            INSERT INTO clientes (nombre, telefono, tipo_cliente, activo)
+            VALUES ('Cliente Mixto', '2911111111', 'minorista', TRUE)
+            RETURNING id
+            """
+        )
+        cliente_id = cur.fetchone()["id"]
+
+        cur.execute(
+            """
+            INSERT INTO sucursales (nombre, direccion, activa)
+            VALUES ('Sucursal Mixta', 'Direccion Mixta', TRUE)
+            RETURNING id
+            """
+        )
+        sucursal_id = cur.fetchone()["id"]
+
+        cur.execute(
+            """
+            INSERT INTO stock_sucursal (
                 id_sucursal,
                 id_variante,
                 stock_fisico,
                 stock_reservado,
                 stock_vendido_pendiente_entrega
+            )
+            VALUES (%s, %s, 6, 0, 0)
+            RETURNING id
+            """,
+            (sucursal_id, variante_stockeable_id),
+        )
+        stock_id = cur.fetchone()["id"]
+
+    db_conn.commit()
+
+    return {
+        "usuario_id": usuario_id,
+        "cliente_id": cliente_id,
+        "sucursal_id": sucursal_id,
+        "producto_stockeable_id": producto_stockeable_id,
+        "producto_servicio_id": producto_servicio_id,
+        "variante_stockeable_id": variante_stockeable_id,
+        "variante_servicio_id": variante_servicio_id,
+        "stock_id": stock_id,
+        "precio_stockeable": 30000,
+        "precio_servicio": 10000,
+        "total_venta": 40000,
+    }
+
+
+def get_stock_row(conn, id_sucursal: int, id_variante: int):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT *
             FROM stock_sucursal
             WHERE id_sucursal = %s
               AND id_variante = %s
             """,
-            (sucursal_id, variante_id),
+            (id_sucursal, id_variante),
         )
         return cur.fetchone()
 
 
-def get_venta(db_conn, venta_id):
-    with db_conn.cursor() as cur:
+def get_venta(conn, venta_id: int):
+    with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT
-                id,
-                estado,
-                total_final,
-                saldo_pendiente,
-                id_cliente,
-                id_sucursal
+            SELECT *
             FROM ventas
             WHERE id = %s
             """,
@@ -222,23 +369,120 @@ def get_venta(db_conn, venta_id):
         return cur.fetchone()
 
 
-def get_movimientos_by_venta(db_conn, venta_id):
-    with db_conn.cursor() as cur:
+def get_movimientos_by_venta(conn, venta_id: int):
+    with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT
-                id,
-                id_variante,
-                tipo_movimiento,
-                cantidad,
-                origen_tipo,
-                origen_id,
-                nota
+            SELECT *
             FROM movimientos_stock
             WHERE origen_tipo = 'venta'
               AND origen_id = %s
             ORDER BY id
             """,
             (venta_id,),
+        )
+        return cur.fetchall()
+
+
+@pytest.fixture()
+def caja_abierta_basica(client, seed_venta_basica):
+    abrir = client.post(
+        "/cajas/abrir",
+        json={
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "monto_apertura": 0,
+        },
+    )
+    assert abrir.status_code == 200
+    data = abrir.json()
+
+    yield data
+
+    cerrar = client.post(
+        f"/cajas/{data['caja_id']}/cerrar",
+        json={
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "monto_cierre_real": 0,
+        },
+    )
+    assert cerrar.status_code == 200
+
+
+@pytest.fixture()
+def caja_abierta_mixta(client, seed_venta_mixta):
+    abrir = client.post(
+        "/cajas/abrir",
+        json={
+            "id_sucursal": seed_venta_mixta["sucursal_id"],
+            "id_usuario": seed_venta_mixta["usuario_id"],
+            "monto_apertura": 0,
+        },
+    )
+    assert abrir.status_code == 200
+    data = abrir.json()
+
+    yield data
+
+    cerrar = client.post(
+        f"/cajas/{data['caja_id']}/cerrar",
+        json={
+            "id_usuario": seed_venta_mixta["usuario_id"],
+            "monto_cierre_real": 0,
+        },
+    )
+    assert cerrar.status_code == 200
+
+
+def get_creditos_by_cliente(conn, id_cliente: int):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT *
+            FROM creditos_cliente
+            WHERE id_cliente = %s
+            ORDER BY id
+            """,
+            (id_cliente,),
+        )
+        return cur.fetchall()
+
+
+def get_credito_movimientos(conn, id_credito: int):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT *
+            FROM credito_movimientos
+            WHERE id_credito = %s
+            ORDER BY id
+            """,
+            (id_credito,),
+        )
+        return cur.fetchall()
+
+def get_caja(conn, caja_id: int):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT *
+            FROM cajas
+            WHERE id = %s
+            """,
+            (caja_id,),
+        )
+        return cur.fetchone()
+
+
+def get_caja_movimientos(conn, caja_id: int):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT *
+            FROM caja_movimientos
+            WHERE id_caja = %s
+            ORDER BY id
+            """,
+            (caja_id,),
         )
         return cur.fetchall()

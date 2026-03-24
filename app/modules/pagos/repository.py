@@ -1,5 +1,5 @@
 from psycopg.rows import dict_row
-
+from decimal import Decimal
 
 # =========================================================
 # PAGOS
@@ -200,3 +200,18 @@ def get_reversion_by_pago_original(conn, pago_id: int):
             (pago_id,),
         )
         return cur.fetchone()
+
+def get_total_pagado_confirmado_por_venta(conn, venta_id: int) -> Decimal:
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT COALESCE(SUM(monto_total_cobrado), 0) AS total_pagado
+            FROM pagos
+            WHERE origen_tipo = 'venta'
+              AND origen_id = %s
+              AND estado = 'confirmado'
+            """,
+            (venta_id,),
+        )
+        row = cur.fetchone()
+        return Decimal(str(row["total_pagado"]))

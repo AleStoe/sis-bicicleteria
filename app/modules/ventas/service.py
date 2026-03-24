@@ -4,7 +4,8 @@ from fastapi import HTTPException
 
 from app.db.connection import get_connection
 from app.modules.stock import service as stock_service
-
+from app.modules.creditos import service as creditos_service
+from app.modules.pagos.repository import get_total_pagado_confirmado_por_venta
 from .repository import (
     get_cliente_by_id,
     get_sucursal_by_id,
@@ -14,6 +15,7 @@ from .repository import (
     get_ventas,
     get_venta_by_id,
     get_venta_items_by_venta_id,
+    get_venta_items_detallados_by_venta_id,
     get_venta_for_update,
     update_venta_estado,
     update_venta_saldo_y_estado,
@@ -25,19 +27,22 @@ def _consolidar_items(items):
     consolidados = {}
 
     for item in items:
-        if item.cantidad <= 0:
+        id_variante = item["id_variante"]
+        cantidad = Decimal(str(item["cantidad"]))
+
+        if cantidad <= 0:
             raise HTTPException(
                 status_code=400,
-                detail=f"La cantidad debe ser mayor a 0 para la variante {item.id_variante}",
+                detail="La cantidad debe ser mayor a 0",
             )
 
-        if item.id_variante not in consolidados:
-            consolidados[item.id_variante] = {
-                "id_variante": item.id_variante,
-                "cantidad": Decimal(str(item.cantidad)),
+        if id_variante not in consolidados:
+            consolidados[id_variante] = {
+                "id_variante": id_variante,
+                "cantidad": cantidad,
             }
         else:
-            consolidados[item.id_variante]["cantidad"] += Decimal(str(item.cantidad))
+            consolidados[id_variante]["cantidad"] += cantidad
 
     return list(consolidados.values())
 
@@ -123,6 +128,12 @@ def _validar_venta_entregable(venta, venta_id: int):
             detail=f"La venta {venta_id} ya fue entregada",
         )
 
+    if Decimal(str(venta["saldo_pendiente"])) > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"La venta {venta_id} tiene saldo pendiente y no se puede entregar",
+        )
+
 
 def _validar_venta_anulable(venta, venta_id: int):
     if venta is None:
@@ -131,7 +142,9 @@ def _validar_venta_anulable(venta, venta_id: int):
             detail=f"No existe la venta {venta_id}",
         )
 
-    if venta["estado"] != "creada":
+    estados_anulables = {"creada", "pagada_parcial", "pagada_total"}
+
+    if venta["estado"] not in estados_anulables:
         raise HTTPException(
             status_code=400,
             detail=(
@@ -164,7 +177,8 @@ def crear_venta(data):
 
             for item in items_consolidados:
                 variante = variantes_map[item["id_variante"]]
-                subtotal = Decimal(str(variante["precio_minorista"])) * item["cantidad"]
+                precio_minorista = Decimal(str(variante["precio_minorista"]))
+                subtotal = precio_minorista * item["cantidad"]
                 subtotal_total += subtotal
 
                 venta_items.append(
@@ -175,17 +189,22 @@ def crear_venta(data):
                     }
                 )
 
+            total_final = subtotal_total
+            saldo_pendiente = total_final
+            estado_venta = "creada"
+            credito_aplicado = Decimal("0")
+
             venta_id = insert_venta(
                 conn,
                 {
                     "id_sucursal": data.id_sucursal,
                     "id_cliente": data.id_cliente,
                     "estado": "creada",
-                    "subtotal_base": float(subtotal_total),
-                    "descuento_total": 0,
-                    "recargo_total": 0,
-                    "total_final": float(subtotal_total),
-                    "saldo_pendiente": float(subtotal_total),
+                    "subtotal_base": subtotal_total,
+                    "descuento_total": Decimal("0"),
+                    "recargo_total": Decimal("0"),
+                    "total_final": total_final,
+                    "saldo_pendiente": saldo_pendiente,
                     "id_usuario_creador": data.id_usuario,
                     "observaciones": getattr(data, "observaciones", None),
                     "id_reserva_origen": None,
@@ -197,6 +216,9 @@ def crear_venta(data):
                 variante = fila["variante"]
                 subtotal = fila["subtotal"]
 
+                precio_minorista = Decimal(str(variante["precio_minorista"]))
+                costo_promedio = Decimal(str(variante["costo_promedio_vigente"] or 0))
+
                 insert_venta_item(
                     conn,
                     {
@@ -204,33 +226,71 @@ def crear_venta(data):
                         "id_variante": variante["id"],
                         "id_bicicleta_serializada": None,
                         "descripcion_snapshot": f"{variante['producto_nombre']} - {variante['nombre_variante']}",
-                        "cantidad": float(item["cantidad"]),
-                        "precio_lista": float(variante["precio_minorista"]),
-                        "precio_final": float(variante["precio_minorista"]),
-                        "costo_unitario_aplicado": float(variante["costo_promedio_vigente"] or 0),
-                        "subtotal": float(subtotal),
+                        "cantidad": item["cantidad"],
+                        "precio_lista": precio_minorista,
+                        "precio_final": precio_minorista,
+                        "costo_unitario_aplicado": costo_promedio,
+                        "subtotal": subtotal,
                     },
                 )
 
                 if variante["stockeable"]:
-                    stock_service.marcar_stock_pendiente_entrega(
-                        conn,
-                        {
-                            "id_sucursal": data.id_sucursal,
-                            "id_variante": variante["id"],
-                            "cantidad": float(item["cantidad"]),
-                            "id_usuario": data.id_usuario,
-                            "descontar_de_reservado": False,
-                            "origen_tipo": "venta",
-                            "origen_id": venta_id,
-                            "nota": f"Venta #{venta_id} pendiente de entrega",
-                        },
-                    )
+                    try:
+                        stock_service.marcar_stock_pendiente_entrega(
+                            conn,
+                            {
+                                "id_sucursal": data.id_sucursal,
+                                "id_variante": variante["id"],
+                                "cantidad": float(item["cantidad"]),
+                                "id_usuario": data.id_usuario,
+                                "descontar_de_reservado": False,
+                                "origen_tipo": "venta",
+                                "origen_id": venta_id,
+                                "nota": f"Venta #{venta_id} pendiente de entrega",
+                            },
+                        )
+                    except ValueError as e:
+                        raise HTTPException(status_code=400, detail=str(e))
+
+            usar_credito = getattr(data, "usar_credito", True)
+            monto_credito_a_aplicar = getattr(data, "monto_credito_a_aplicar", None)
+
+            if usar_credito:
+                resultado_credito = creditos_service.aplicar_credito_a_venta(
+                    conn,
+                    id_cliente=data.id_cliente,
+                    id_venta=venta_id,
+                    total_venta=total_final,
+                    usar_credito=usar_credito,
+                    monto_credito_a_aplicar=monto_credito_a_aplicar,
+                    id_usuario=data.id_usuario,
+                )
+                credito_aplicado = Decimal(
+                    str(resultado_credito["credito_aplicado_total"])
+                )
+
+            saldo_pendiente = total_final - credito_aplicado
+
+            if saldo_pendiente == Decimal("0"):
+                estado_venta = "pagada_total"
+            elif credito_aplicado > Decimal("0"):
+                estado_venta = "pagada_parcial"
+            else:
+                estado_venta = "creada"
+
+            update_venta_saldo_y_estado(
+                conn,
+                venta_id,
+                saldo_pendiente,
+                estado_venta,
+            )
 
         return {
             "ok": True,
             "venta_id": venta_id,
-            "estado": "creada",
+            "estado": estado_venta,
+            "credito_aplicado": credito_aplicado,
+            "saldo_pendiente": saldo_pendiente,
         }
 
     finally:
@@ -280,7 +340,7 @@ def entregar_venta(venta_id: int, data):
                     detail=f"La venta {venta_id} tiene saldo pendiente y no se puede entregar",
                 )
 
-            items = get_venta_items_by_venta_id(conn, venta_id)
+            items = get_venta_items_detallados_by_venta_id(conn, venta_id)
 
             if not items:
                 raise HTTPException(
@@ -289,6 +349,9 @@ def entregar_venta(venta_id: int, data):
                 )
 
             for item in items:
+                if not item["stockeable"]:
+                    continue
+
                 stock_service.registrar_entrega_stock(
                     conn,
                     {
@@ -322,7 +385,7 @@ def anular_venta(venta_id: int, data):
             venta = get_venta_for_update(conn, venta_id)
             _validar_venta_anulable(venta, venta_id)
 
-            items = get_venta_items_by_venta_id(conn, venta_id)
+            items = get_venta_items_detallados_by_venta_id(conn, venta_id)
 
             if not items:
                 raise HTTPException(
@@ -338,6 +401,9 @@ def anular_venta(venta_id: int, data):
             )
 
             for item in items:
+                if not item["stockeable"]:
+                    continue
+
                 stock_service.devolver_stock_a_disponible_desde_pendiente(
                     conn,
                     {
@@ -351,13 +417,26 @@ def anular_venta(venta_id: int, data):
                     },
                 )
 
-            update_venta_estado(conn, venta_id, "anulada")
+            total_pagado = get_total_pagado_confirmado_por_venta(conn, venta_id)
+
+            if total_pagado > 0:
+                creditos_service.crear_credito_por_anulacion_venta(
+                    conn,
+                    id_cliente=venta["id_cliente"],
+                    id_venta=venta_id,
+                    monto_credito=total_pagado,
+                    id_usuario=data.id_usuario,
+                )
+
+            update_venta_saldo_y_estado(conn, venta_id, Decimal("0"), "anulada")
 
         return {
             "ok": True,
             "venta_id": venta_id,
             "estado": "anulada",
             "anulacion_id": anulacion_id,
+            "credito_generado": total_pagado > 0,
+            "monto_credito": total_pagado,
         }
 
     finally:

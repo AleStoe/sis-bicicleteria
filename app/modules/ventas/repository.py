@@ -301,6 +301,39 @@ def get_venta_items_by_venta_id(conn, venta_id: int):
         )
         return cur.fetchall()
 
+def get_venta_items_detallados_by_venta_id(conn, venta_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT
+                vi.id,
+                vi.id_venta,
+                vi.id_variante,
+                vi.id_bicicleta_serializada,
+                vi.descripcion_snapshot,
+                vi.cantidad,
+                vi.precio_lista,
+                vi.precio_final,
+                vi.costo_unitario_aplicado,
+                vi.subtotal,
+                v.id_producto,
+                v.activo AS variante_activa,
+                p.nombre AS producto_nombre,
+                p.tipo_item,
+                p.stockeable,
+                p.serializable,
+                p.activo AS producto_activo
+            FROM venta_items vi
+            INNER JOIN variantes v
+                ON v.id = vi.id_variante
+            INNER JOIN productos p
+                ON p.id = v.id_producto
+            WHERE vi.id_venta = %s
+            ORDER BY vi.id
+            """,
+            (venta_id,),
+        )
+        return cur.fetchall()
 
 def get_venta_for_update(conn, venta_id: int):
     with conn.cursor(row_factory=dict_row) as cur:
