@@ -2,6 +2,13 @@ from decimal import Decimal
 
 from fastapi import HTTPException
 
+from app.shared.constants import (
+    ORIGEN_VENTA,
+    CREDITO_MOVIMIENTO_GENERADO,
+    CREDITO_MOVIMIENTO_APLICACION_VENTA,
+    CREDITO_ESTADO_APLICADO_TOTAL,
+    CREDITO_ESTADO_APLICADO_PARCIAL,
+)
 from . import repository
 
 
@@ -23,7 +30,7 @@ def crear_credito_por_anulacion_venta(
 
     credito_existente = repository.get_credito_abierto_by_origen(
         conn,
-        origen_tipo="venta",
+        origen_tipo=ORIGEN_VENTA,
         origen_id=id_venta,
     )
     if credito_existente:
@@ -35,7 +42,7 @@ def crear_credito_por_anulacion_venta(
     credito = repository.insert_credito_cliente(
         conn,
         id_cliente=id_cliente,
-        origen_tipo="venta",
+        origen_tipo=ORIGEN_VENTA,
         origen_id=id_venta,
         saldo_actual=monto_credito,
         observacion=f"Crédito generado por anulación de venta #{id_venta}",
@@ -44,9 +51,9 @@ def crear_credito_por_anulacion_venta(
     repository.insert_credito_movimiento(
         conn,
         id_credito=credito["id"],
-        tipo_movimiento="credito_generado",
+        tipo_movimiento=CREDITO_MOVIMIENTO_GENERADO,
         monto=monto_credito,
-        origen_tipo="venta",
+        origen_tipo=ORIGEN_VENTA,
         origen_id=id_venta,
         nota=f"Crédito generado por anulación de venta #{id_venta}",
         id_usuario=id_usuario,
@@ -97,7 +104,7 @@ def aplicar_credito_a_venta(
             detail="El total de la venta debe ser mayor a 0 para aplicar crédito",
         )
 
-    creditos = repository.get_creditos_disponibles_cliente(conn, id_cliente)
+    creditos = repository.get_creditos_disponibles_cliente_for_update(conn, id_cliente)
 
     if not creditos:
         return {
@@ -153,9 +160,9 @@ def aplicar_credito_a_venta(
         nuevo_saldo = saldo_actual - aplicado
 
         if nuevo_saldo == Decimal("0"):
-            nuevo_estado = "aplicado_total"
+            nuevo_estado = CREDITO_ESTADO_APLICADO_TOTAL
         else:
-            nuevo_estado = "aplicado_parcial"
+            nuevo_estado = CREDITO_ESTADO_APLICADO_PARCIAL
 
         repository.update_credito_saldo_y_estado(
             conn,
@@ -167,9 +174,9 @@ def aplicar_credito_a_venta(
         movimiento = repository.insert_credito_movimiento(
             conn,
             id_credito=credito["id"],
-            tipo_movimiento="aplicacion_a_venta",
+            tipo_movimiento=CREDITO_MOVIMIENTO_APLICACION_VENTA,
             monto=aplicado,
-            origen_tipo="venta",
+            origen_tipo=ORIGEN_VENTA,
             origen_id=id_venta,
             nota=f"Crédito aplicado a venta #{id_venta}",
             id_usuario=id_usuario,

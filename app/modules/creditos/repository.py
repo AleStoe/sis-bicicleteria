@@ -184,3 +184,19 @@ def get_credito_movimientos(conn, credito_id: int):
         )
         return cur.fetchall()
 
+
+def get_creditos_disponibles_cliente_for_update(conn, id_cliente: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT *
+            FROM creditos_cliente
+            WHERE id_cliente = %s
+              AND estado IN ('abierto', 'aplicado_parcial')
+              AND saldo_actual > 0
+            ORDER BY id ASC
+            FOR UPDATE
+            """,
+            (id_cliente,),
+        )
+        return cur.fetchall()

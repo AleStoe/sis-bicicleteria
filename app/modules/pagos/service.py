@@ -1,7 +1,5 @@
 from decimal import Decimal
-
 from fastapi import HTTPException
-
 from app.db.connection import get_connection
 from app.modules.caja.repository import (
     get_caja_abierta_hoy_by_sucursal_for_update,
@@ -19,8 +17,16 @@ from .repository import (
     update_venta_saldo_y_estado,
 )
 
-MEDIOS_VALIDOS = {"efectivo", "transferencia", "mercadopago", "tarjeta"}
-ORIGENES_VALIDOS = {"venta", "reserva", "orden_taller", "deuda_cliente"}
+from app.shared.constants import (
+    MEDIOS_PAGO_VALIDOS,
+    ORIGENES_PAGO_VALIDOS,
+    ORIGEN_VENTA,
+    VENTA_ESTADO_ANULADA,
+    VENTA_ESTADO_ENTREGADA,
+    VENTA_ESTADO_PAGADA_TOTAL,
+    VENTA_ESTADO_PAGADA_PARCIAL,
+
+)
 
 
 def _obtener_caja_abierta_obligatoria(conn, id_sucursal: int):
@@ -61,13 +67,13 @@ def registrar_pago(conn, data: dict):
     origen_tipo = data["origen_tipo"]
     monto = Decimal(str(data["monto"]))
 
-    if medio_pago not in MEDIOS_VALIDOS:
+    if medio_pago not in MEDIOS_PAGO_VALIDOS:
         raise HTTPException(
             status_code=400,
             detail=f"Medio de pago inválido: {medio_pago}",
         )
 
-    if origen_tipo not in ORIGENES_VALIDOS:
+    if origen_tipo not in ORIGENES_PAGO_VALIDOS:
         raise HTTPException(
             status_code=400,
             detail=f"Origen de pago inválido: {origen_tipo}",
@@ -82,7 +88,7 @@ def registrar_pago(conn, data: dict):
     # =====================================================
     # CASO 1: PAGO DE VENTA
     # =====================================================
-    if origen_tipo == "venta":
+    if origen_tipo == ORIGEN_VENTA:
         venta = get_venta_for_update(conn, data["origen_id"])
 
         if venta is None:
@@ -91,13 +97,13 @@ def registrar_pago(conn, data: dict):
                 detail=f"No existe la venta {data['origen_id']}",
             )
 
-        if venta["estado"] == "anulada":
+        if venta["estado"] == VENTA_ESTADO_ANULADA:
             raise HTTPException(
                 status_code=400,
                 detail=f"La venta {venta['id']} está anulada y no puede recibir pagos",
             )
 
-        if venta["estado"] == "entregada":
+        if venta["estado"] == VENTA_ESTADO_ENTREGADA:
             raise HTTPException(
                 status_code=400,
                 detail=f"La venta {venta['id']} ya fue entregada y no admite nuevos pagos",
@@ -117,7 +123,11 @@ def registrar_pago(conn, data: dict):
 
         caja = _obtener_caja_abierta_obligatoria(conn, venta["id_sucursal"])
         saldo_restante = Decimal(str(venta["saldo_pendiente"])) - monto
-        nuevo_estado = "pagada_total" if saldo_restante == 0 else "pagada_parcial"
+        nuevo_estado = (
+                        VENTA_ESTADO_PAGADA_TOTAL
+                        if saldo_restante == 0
+                        else VENTA_ESTADO_PAGADA_PARCIAL
+                    )
 
         pago_id = insert_pago(
             conn,
@@ -239,7 +249,7 @@ def revertir_pago(pago_id: int, data):
             if pago_original is None:
                 raise HTTPException(status_code=404, detail=f"No existe el pago {pago_id}")
 
-            if pago_original["origen_tipo"] != "venta":
+            if pago_original["origen_tipo"] != ORIGEN_VENTA:
                 raise HTTPException(
                     status_code=400,
                     detail="Solo está implementada la reversión de pagos de venta",
@@ -262,7 +272,7 @@ def revertir_pago(pago_id: int, data):
                     detail=f"No existe la venta {pago_original['origen_id']}",
                 )
 
-            if venta["estado"] == "entregada":
+            if venta["estado"] == VENTA_ESTADO_ENTREGADA:
                 raise HTTPException(
                     status_code=400,
                     detail="No se puede revertir un pago de una venta ya entregada",
