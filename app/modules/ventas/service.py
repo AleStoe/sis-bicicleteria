@@ -234,23 +234,35 @@ def crear_venta(data):
                     },
                 )
 
-                if variante["stockeable"]:
-                    try:
-                        stock_service.marcar_stock_pendiente_entrega(
-                            conn,
-                            {
-                                "id_sucursal": data.id_sucursal,
-                                "id_variante": variante["id"],
-                                "cantidad": float(item["cantidad"]),
-                                "id_usuario": data.id_usuario,
-                                "descontar_de_reservado": False,
-                                "origen_tipo": "venta",
-                                "origen_id": venta_id,
-                                "nota": f"Venta #{venta_id} pendiente de entrega",
-                            },
-                        )
-                    except ValueError as e:
-                        raise HTTPException(status_code=400, detail=str(e))
+            items_stock = sorted(
+                [
+                    fila
+                    for fila in venta_items
+                    if fila["variante"]["stockeable"]
+                ],
+                key=lambda fila: fila["variante"]["id"],
+            )
+
+            for fila in items_stock:
+                item = fila["item"]
+                variante = fila["variante"]
+
+                try:
+                    stock_service.marcar_stock_pendiente_entrega(
+                        conn,
+                        {
+                            "id_sucursal": data.id_sucursal,
+                            "id_variante": variante["id"],
+                            "cantidad": float(item["cantidad"]),
+                            "id_usuario": data.id_usuario,
+                            "descontar_de_reservado": False,
+                            "origen_tipo": "venta",
+                            "origen_id": venta_id,
+                            "nota": f"Venta #{venta_id} pendiente de entrega",
+                        },
+                    )
+                except ValueError as e:
+                    raise HTTPException(status_code=400, detail=str(e))
 
             usar_credito = getattr(data, "usar_credito", True)
             monto_credito_a_aplicar = getattr(data, "monto_credito_a_aplicar", None)
@@ -348,10 +360,9 @@ def entregar_venta(venta_id: int, data):
                     detail=f"La venta {venta_id} no tiene items para entregar",
                 )
 
-            for item in items:
-                if not item["stockeable"]:
-                    continue
+            items_stock = _ordenar_items_stockeables_por_variante(items)
 
+            for item in items_stock:
                 stock_service.registrar_entrega_stock(
                     conn,
                     {
@@ -400,10 +411,9 @@ def anular_venta(venta_id: int, data):
                 data.id_usuario,
             )
 
-            for item in items:
-                if not item["stockeable"]:
-                    continue
+            items_stock = _ordenar_items_stockeables_por_variante(items)
 
+            for item in items_stock:
                 stock_service.devolver_stock_a_disponible_desde_pendiente(
                     conn,
                     {
@@ -441,3 +451,9 @@ def anular_venta(venta_id: int, data):
 
     finally:
         conn.close()
+    
+def _ordenar_items_stockeables_por_variante(items: list[dict]) -> list[dict]:
+    return sorted(
+        [item for item in items if item.get("stockeable", True)],
+        key=lambda item: item["id_variante"],
+    )
