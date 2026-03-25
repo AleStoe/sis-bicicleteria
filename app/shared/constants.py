@@ -30,3 +30,5 @@ ORIGENES_PAGO_VALIDOS = {
 }
 
 DECIMAL_ZERO = Decimal("0")
+
+PAGO_ESTADO_REVERTIDO = "revertido"

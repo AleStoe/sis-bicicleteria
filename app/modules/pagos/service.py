@@ -25,6 +25,7 @@ from app.shared.constants import (
     VENTA_ESTADO_ENTREGADA,
     VENTA_ESTADO_PAGADA_TOTAL,
     VENTA_ESTADO_PAGADA_PARCIAL,
+    PAGO_ESTADO_REVERTIDO,
 
 )
 
@@ -255,7 +256,7 @@ def revertir_pago(pago_id: int, data):
                     detail="Solo está implementada la reversión de pagos de venta",
                 )
 
-            if pago_original["estado"] == "revertido":
+            if pago_original["estado"] == PAGO_ESTADO_REVERTIDO :
                 raise HTTPException(status_code=400, detail=f"El pago {pago_id} ya fue revertido")
 
             reversion_existente = get_reversion_by_pago_original(conn, pago_id)
