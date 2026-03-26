@@ -6,6 +6,7 @@ from app.modules.pagos.routes import router as pagos_router
 from app.modules.caja.routes import router as caja_router
 from app.modules.clientes.routes import router as clientes_router
 from app.modules.reservas.routes import router as reservas_router
+from app.modules.taller.routes import router as taller_router
 
 router = APIRouter()
 
@@ -16,3 +17,4 @@ router.include_router(pagos_router, prefix="/pagos", tags=["Pagos"])
 router.include_router(caja_router, prefix="/cajas", tags=["Caja"])
 router.include_router(clientes_router, prefix="/clientes", tags=["Clientes"])
 router.include_router(reservas_router, prefix="/reservas", tags=["Reservas"])
+router.include_router(taller_router, tags=["Taller"])

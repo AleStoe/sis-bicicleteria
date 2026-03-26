@@ -67,6 +67,9 @@ def clean_db(db_conn):
                 proveedores,
                 marcas,
                 sucursales,
+                ordenes_taller_eventos,
+                ordenes_taller,
+                bicicletas_clientes,
                 clientes,
                 usuarios
             RESTART IDENTITY CASCADE
@@ -486,3 +489,70 @@ def get_caja_movimientos(conn, caja_id: int):
             (caja_id,),
         )
         return cur.fetchall()
+
+@pytest.fixture()
+def seed_taller_basico(db_conn, clean_db):
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO usuarios (nombre, username, password_hash, activo)
+            VALUES ('Admin Taller', 'admin_taller', 'hash_dummy', TRUE)
+            RETURNING id
+            """
+        )
+        usuario_id = cur.fetchone()["id"]
+
+        cur.execute(
+            """
+            INSERT INTO clientes (nombre, telefono, tipo_cliente, activo)
+            VALUES ('Cliente Taller', '2912222222', 'minorista', TRUE)
+            RETURNING id
+            """
+        )
+        cliente_id = cur.fetchone()["id"]
+
+        cur.execute(
+            """
+            INSERT INTO clientes (nombre, telefono, tipo_cliente, activo)
+            VALUES ('Otro Cliente', '2919999999', 'minorista', TRUE)
+            RETURNING id
+            """
+        )
+        otro_cliente_id = cur.fetchone()["id"]
+
+        cur.execute(
+            """
+            INSERT INTO sucursales (nombre, direccion, activa)
+            VALUES ('Sucursal Taller', 'Direccion Taller', TRUE)
+            RETURNING id
+            """
+        )
+        sucursal_id = cur.fetchone()["id"]
+
+        cur.execute(
+            """
+            INSERT INTO bicicletas_clientes (
+                id_cliente,
+                marca,
+                modelo,
+                rodado,
+                color,
+                numero_cuadro,
+                notas
+            )
+            VALUES (%s, 'Venzo', 'R29 Test', '29', 'Negra', 'CUADRO-TALLER-001', 'Bici para test')
+            RETURNING id
+            """,
+            (cliente_id,),
+        )
+        bicicleta_cliente_id = cur.fetchone()["id"]
+
+    db_conn.commit()
+
+    return {
+        "usuario_id": usuario_id,
+        "cliente_id": cliente_id,
+        "otro_cliente_id": otro_cliente_id,
+        "sucursal_id": sucursal_id,
+        "bicicleta_cliente_id": bicicleta_cliente_id,
+    }
