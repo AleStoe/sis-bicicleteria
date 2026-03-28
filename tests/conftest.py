@@ -46,6 +46,8 @@ def clean_db(db_conn):
         cur.execute(
             """
             TRUNCATE TABLE
+                deuda_movimientos,
+                deudas_cliente,
                 auditoria_eventos,
                 pagos_tarjeta_detalle,
                 pagos_reversiones,
@@ -581,4 +583,44 @@ def get_auditoria(conn):
             ORDER BY id
             """
         )
-        return cur.fetchall()    
+        return cur.fetchall()   
+
+def get_deuda(conn, deuda_id: int):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT *
+            FROM deudas_cliente
+            WHERE id = %s
+            """,
+            (deuda_id,),
+        )
+        return cur.fetchone()
+
+
+def get_deudas_by_cliente(conn, id_cliente: int):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT *
+            FROM deudas_cliente
+            WHERE id_cliente = %s
+            ORDER BY id
+            """,
+            (id_cliente,),
+        )
+        return cur.fetchall()
+
+
+def get_deuda_movimientos(conn, deuda_id: int):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT *
+            FROM deuda_movimientos
+            WHERE id_deuda = %s
+            ORDER BY id
+            """,
+            (deuda_id,),
+        )
+        return cur.fetchall()
