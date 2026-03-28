@@ -5,6 +5,7 @@ from fastapi import HTTPException
 from app.db.connection import get_connection
 from app.modules.stock import service as stock_service
 from app.modules.creditos import service as creditos_service
+from app.modules.auditoria import service as auditoria_service
 from app.modules.pagos.repository import get_total_pagado_confirmado_por_venta
 from .repository import (
     get_cliente_by_id,
@@ -21,7 +22,15 @@ from .repository import (
     update_venta_saldo_y_estado,
     insert_venta_anulacion,
 )
-
+from app.shared.constants import (
+    AUDITORIA_ENTIDAD_VENTA,
+    AUDITORIA_ACCION_VENTA_CREADA,
+    AUDITORIA_ACCION_VENTA_ENTREGADA,
+    AUDITORIA_ACCION_VENTA_ANULADA,
+    VENTA_ESTADO_ANULADA,
+    VENTA_ESTADO_ENTREGADA,
+    
+)
 
 def _consolidar_items(items):
     consolidados = {}
@@ -296,7 +305,20 @@ def crear_venta(data):
                 saldo_pendiente,
                 estado_venta,
             )
-
+            auditoria_service.registrar_evento(
+                conn,
+                id_usuario=data.id_usuario,
+                id_sucursal=data.id_sucursal,
+                entidad=AUDITORIA_ENTIDAD_VENTA,
+                entidad_id=venta_id,
+                accion=AUDITORIA_ACCION_VENTA_CREADA,
+                detalle=(
+                    f"Venta creada. cliente={data.id_cliente}, "
+                    f"total_final={total_final}, "
+                    f"credito_aplicado={credito_aplicado}, "
+                    f"estado={estado_venta}"
+                ),
+            )
         return {
             "ok": True,
             "venta_id": venta_id,
@@ -376,12 +398,22 @@ def entregar_venta(venta_id: int, data):
                     },
                 )
 
-            update_venta_estado(conn, venta_id, "entregada")
+            update_venta_estado(conn, venta_id, VENTA_ESTADO_ENTREGADA)
+
+            auditoria_service.registrar_evento(
+                conn,
+                id_usuario=data.id_usuario,
+                id_sucursal=venta["id_sucursal"],
+                entidad=AUDITORIA_ENTIDAD_VENTA,
+                entidad_id=venta_id,
+                accion=AUDITORIA_ACCION_VENTA_ENTREGADA,
+                detalle="Venta entregada. estado_final=entregada",
+            )
 
         return {
             "ok": True,
             "venta_id": venta_id,
-            "estado": "entregada",
+            "estado": VENTA_ESTADO_ENTREGADA,
         }
 
     finally:
@@ -438,12 +470,32 @@ def anular_venta(venta_id: int, data):
                     id_usuario=data.id_usuario,
                 )
 
-            update_venta_saldo_y_estado(conn, venta_id, Decimal("0"), "anulada")
+            update_venta_saldo_y_estado(
+                conn,
+                venta_id,
+                Decimal("0"),
+                VENTA_ESTADO_ANULADA,
+            )
+
+            auditoria_service.registrar_evento(
+                conn,
+                id_usuario=data.id_usuario,
+                id_sucursal=venta["id_sucursal"],
+                entidad=AUDITORIA_ENTIDAD_VENTA,
+                entidad_id=venta_id,
+                accion=AUDITORIA_ACCION_VENTA_ANULADA,
+                detalle=(
+                    f"Venta anulada. anulacion_id={anulacion_id}, "
+                    f"motivo={data.motivo}, "
+                    f"total_pagado={total_pagado}, "
+                    f"credito_generado={'si' if total_pagado > 0 else 'no'}"
+                ),
+            )
 
         return {
             "ok": True,
             "venta_id": venta_id,
-            "estado": "anulada",
+            "estado": VENTA_ESTADO_ANULADA,
             "anulacion_id": anulacion_id,
             "credito_generado": total_pagado > 0,
             "monto_credito": total_pagado,

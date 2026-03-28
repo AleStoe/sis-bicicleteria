@@ -46,6 +46,7 @@ def clean_db(db_conn):
         cur.execute(
             """
             TRUNCATE TABLE
+                auditoria_eventos,
                 pagos_tarjeta_detalle,
                 pagos_reversiones,
                 pagos,
@@ -556,3 +557,28 @@ def seed_taller_basico(db_conn, clean_db):
         "sucursal_id": sucursal_id,
         "bicicleta_cliente_id": bicicleta_cliente_id,
     }
+
+def get_auditoria_by_entidad(conn, entidad: str, entidad_id: int):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT *
+            FROM auditoria_eventos
+            WHERE entidad = %s
+              AND entidad_id = %s
+            ORDER BY id
+            """,
+            (entidad, entidad_id),
+        )
+        return cur.fetchall()
+
+def get_auditoria(conn):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT *
+            FROM auditoria_eventos
+            ORDER BY id
+            """
+        )
+        return cur.fetchall()    

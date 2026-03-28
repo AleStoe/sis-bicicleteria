@@ -1,6 +1,9 @@
 from decimal import Decimal
+
 from fastapi import HTTPException
+
 from app.db.connection import get_connection
+from app.modules.auditoria import service as auditoria_service
 from app.modules.caja.repository import (
     get_caja_abierta_hoy_by_sucursal_for_update,
     insert_caja_movimiento,
@@ -21,14 +24,19 @@ from app.shared.constants import (
     MEDIOS_PAGO_VALIDOS,
     ORIGENES_PAGO_VALIDOS,
     ORIGEN_VENTA,
+    VENTA_ESTADO_CREADA,
     VENTA_ESTADO_ANULADA,
     VENTA_ESTADO_ENTREGADA,
     VENTA_ESTADO_PAGADA_TOTAL,
     VENTA_ESTADO_PAGADA_PARCIAL,
     PAGO_ESTADO_REVERTIDO,
-
+    AUDITORIA_ENTIDAD_PAGO,
+    AUDITORIA_ACCION_PAGO_REGISTRADO,
+    AUDITORIA_ACCION_PAGO_REVERTIDO,
+    CAJA_MOVIMIENTO_INGRESO,
+    CAJA_MOVIMIENTO_EGRESO,
+    CAJA_ORIGEN_PAGO,
 )
-
 
 def _obtener_caja_abierta_obligatoria(conn, id_sucursal: int):
     caja = get_caja_abierta_hoy_by_sucursal_for_update(conn, id_sucursal)
@@ -125,16 +133,16 @@ def registrar_pago(conn, data: dict):
         caja = _obtener_caja_abierta_obligatoria(conn, venta["id_sucursal"])
         saldo_restante = Decimal(str(venta["saldo_pendiente"])) - monto
         nuevo_estado = (
-                        VENTA_ESTADO_PAGADA_TOTAL
-                        if saldo_restante == 0
-                        else VENTA_ESTADO_PAGADA_PARCIAL
-                    )
+            VENTA_ESTADO_PAGADA_TOTAL
+            if saldo_restante == 0
+            else VENTA_ESTADO_PAGADA_PARCIAL
+        )
 
         pago_id = insert_pago(
             conn,
             {
                 "id_cliente": venta["id_cliente"],
-                "origen_tipo": "venta",
+                "origen_tipo": ORIGEN_VENTA,
                 "origen_id": venta["id"],
                 "medio_pago": medio_pago,
                 "monto_total_cobrado": monto,
@@ -146,10 +154,10 @@ def registrar_pago(conn, data: dict):
         insert_caja_movimiento(
             conn,
             id_caja=caja["id"],
-            tipo_movimiento="ingreso",
+            tipo_movimiento=CAJA_MOVIMIENTO_INGRESO,
             submedio=medio_pago,
             monto=monto,
-            origen_tipo="pago",
+            origen_tipo=CAJA_ORIGEN_PAGO,
             origen_id=pago_id,
             nota=f"Pago venta #{venta['id']}",
             id_usuario=data["id_usuario"],
@@ -160,6 +168,21 @@ def registrar_pago(conn, data: dict):
             venta["id"],
             saldo_restante,
             nuevo_estado,
+        )
+
+        auditoria_service.registrar_evento(
+            conn,
+            id_usuario=data["id_usuario"],
+            id_sucursal=venta["id_sucursal"],
+            entidad=AUDITORIA_ENTIDAD_PAGO,
+            entidad_id=pago_id,
+            accion=AUDITORIA_ACCION_PAGO_REGISTRADO,
+            detalle=(
+                f"Pago registrado para venta #{venta['id']}. "
+                f"medio={medio_pago}, monto={monto}, "
+                f"saldo_restante={saldo_restante}, "
+                f"estado_venta={nuevo_estado}"
+            ),
         )
 
         return {
@@ -198,13 +221,26 @@ def registrar_pago(conn, data: dict):
     insert_caja_movimiento(
         conn,
         id_caja=caja["id"],
-        tipo_movimiento="ingreso",
+        tipo_movimiento=CAJA_MOVIMIENTO_INGRESO,
         submedio=medio_pago,
         monto=monto,
-        origen_tipo="pago",
+        origen_tipo=CAJA_ORIGEN_PAGO,
         origen_id=pago_id,
         nota=f"Pago {origen_tipo} #{data['origen_id']}",
         id_usuario=data["id_usuario"],
+    )
+
+    auditoria_service.registrar_evento(
+        conn,
+        id_usuario=data["id_usuario"],
+        id_sucursal=id_sucursal,
+        entidad=AUDITORIA_ENTIDAD_PAGO,
+        entidad_id=pago_id,
+        accion=AUDITORIA_ACCION_PAGO_REGISTRADO,
+        detalle=(
+            f"Pago registrado. origen_tipo={origen_tipo}, "
+            f"origen_id={data['origen_id']}, medio={medio_pago}, monto={monto}"
+        ),
     )
 
     return {
@@ -256,7 +292,7 @@ def revertir_pago(pago_id: int, data):
                     detail="Solo está implementada la reversión de pagos de venta",
                 )
 
-            if pago_original["estado"] == PAGO_ESTADO_REVERTIDO :
+            if pago_original["estado"] == PAGO_ESTADO_REVERTIDO:
                 raise HTTPException(status_code=400, detail=f"El pago {pago_id} ya fue revertido")
 
             reversion_existente = get_reversion_by_pago_original(conn, pago_id)
@@ -284,16 +320,16 @@ def revertir_pago(pago_id: int, data):
                 str(pago_original["monto_total_cobrado"])
             )
             nuevo_estado = (
-                "creada"
+                VENTA_ESTADO_CREADA
                 if saldo_restante == Decimal(str(venta["total_final"]))
-                else "pagada_parcial"
+                else VENTA_ESTADO_PAGADA_PARCIAL
             )
 
             pago_reversion_id = insert_pago(
                 conn,
                 {
                     "id_cliente": pago_original["id_cliente"],
-                    "origen_tipo": "venta",
+                    "origen_tipo": ORIGEN_VENTA,
                     "origen_id": venta["id"],
                     "medio_pago": pago_original["medio_pago"],
                     "monto_total_cobrado": pago_original["monto_total_cobrado"],
@@ -309,13 +345,13 @@ def revertir_pago(pago_id: int, data):
                 motivo=data.motivo,
             )
 
-            update_pago_estado(conn, pago_original["id"], "revertido")
-            update_pago_estado(conn, pago_reversion_id, "revertido")
+            update_pago_estado(conn, pago_original["id"], PAGO_ESTADO_REVERTIDO)
+            update_pago_estado(conn, pago_reversion_id, PAGO_ESTADO_REVERTIDO)
 
             insert_caja_movimiento(
                 conn,
                 id_caja=caja["id"],
-                tipo_movimiento="egreso",
+                tipo_movimiento=CAJA_MOVIMIENTO_EGRESO,
                 submedio=pago_original["medio_pago"],
                 monto=pago_original["monto_total_cobrado"],
                 origen_tipo="pago_reversion",
@@ -329,6 +365,20 @@ def revertir_pago(pago_id: int, data):
                 venta["id"],
                 saldo_restante,
                 nuevo_estado,
+            )
+
+            auditoria_service.registrar_evento(
+                conn,
+                id_usuario=data.id_usuario,
+                id_sucursal=venta["id_sucursal"],
+                entidad=AUDITORIA_ENTIDAD_PAGO,
+                entidad_id=pago_original["id"],
+                accion=AUDITORIA_ACCION_PAGO_REVERTIDO,
+                detalle=(
+                    f"Pago revertido. pago_original={pago_original['id']}, "
+                    f"pago_reversion={pago_reversion_id}, "
+                    f"motivo={data.motivo}"
+                ),
             )
 
         return {

@@ -1,5 +1,5 @@
 from decimal import Decimal
-
+from tests.conftest import get_auditoria_by_entidad
 from tests.conftest import (
     get_caja_movimientos,
     get_creditos_by_cliente,
@@ -505,6 +505,16 @@ def test_crear_venta_con_credito_total_la_deja_pagada_total_y_no_toca_caja(
     tipos = [m["tipo_movimiento"] for m in movimientos_credito]
     assert tipos == ["credito_generado", "aplicacion_a_venta"]
 
+    auditoria = get_auditoria_by_entidad(
+        db_conn,
+        "credito",
+        creditos[0]["id"],
+    )
+    acciones = [a["accion"] for a in auditoria]
+
+    assert "credito_generado" in acciones
+    assert "credito_aplicado" in acciones
+
     movimientos_caja_despues = get_caja_movimientos(db_conn, caja_id)
     assert len(movimientos_caja_despues) == cantidad_antes
 
@@ -554,7 +564,15 @@ def test_crear_venta_con_credito_parcial_la_deja_pagada_parcial(
     assert _to_decimal(creditos[0]["saldo_actual"]) == Decimal("0")
     assert creditos[0]["estado"] == "aplicado_total"
 
+    auditoria = get_auditoria_by_entidad(
+        db_conn,
+        "credito",
+        creditos[0]["id"],
+    )
+    acciones = [a["accion"] for a in auditoria]
 
+    assert "credito_generado" in acciones
+    assert "credito_aplicado" in acciones
 def test_crear_venta_con_monto_manual_de_credito_menor_al_disponible(
     client, db_conn, seed_venta_basica
 ):
@@ -599,10 +617,18 @@ def test_crear_venta_con_monto_manual_de_credito_menor_al_disponible(
 
     movimientos_credito = get_credito_movimientos(db_conn, creditos[0]["id"])
     tipos = [m["tipo_movimiento"] for m in movimientos_credito]
-    
     assert tipos == ["credito_generado", "aplicacion_a_venta"]
     assert _to_decimal(movimientos_credito[1]["monto"]) == Decimal("5000")
 
+    auditoria = get_auditoria_by_entidad(
+        db_conn,
+        "credito",
+        creditos[0]["id"],
+    )
+    acciones = [a["accion"] for a in auditoria]
+
+    assert "credito_generado" in acciones
+    assert "credito_aplicado" in acciones
 
 def test_rechaza_usar_mas_credito_del_disponible(client, db_conn, seed_venta_basica):
     _crear_credito_por_anulacion(
@@ -666,3 +692,13 @@ def test_crear_venta_sin_usar_credito_no_lo_consume(client, db_conn, seed_venta_
     assert len(creditos) == 1
     assert _to_decimal(creditos[0]["saldo_actual"]) == Decimal("10000")
     assert creditos[0]["estado"] == "abierto"
+
+    auditoria = get_auditoria_by_entidad(
+        db_conn,
+        "credito",
+        creditos[0]["id"],
+    )
+    acciones = [a["accion"] for a in auditoria]
+
+    assert "credito_generado" in acciones
+    assert "credito_aplicado" not in acciones

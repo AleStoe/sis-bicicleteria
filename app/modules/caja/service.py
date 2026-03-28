@@ -3,6 +3,7 @@ from decimal import Decimal
 from fastapi import HTTPException
 
 from app.db.connection import get_connection
+from app.modules.auditoria import service as auditoria_service
 from .schema import CajaAbrirInput, CajaCerrarInput, CajaEgresoInput, CajaAjusteInput
 from .repository import (
     close_caja,
@@ -16,7 +17,18 @@ from .repository import (
     insert_caja,
     insert_caja_movimiento,
 )
-
+from app.shared.constants import (
+    AUDITORIA_ENTIDAD_CAJA,
+    AUDITORIA_ACCION_CAJA_EGRESO,
+    AUDITORIA_ACCION_CAJA_CERRADA,
+    AUDITORIA_ACCION_CAJA_AJUSTE,
+    CAJA_ESTADO_ABIERTA,
+    CAJA_ESTADO_CERRADA,
+    CAJA_MOVIMIENTO_EGRESO,
+    CAJA_MOVIMIENTO_AJUSTE,
+    CAJA_ORIGEN_EGRESO_MANUAL,
+    CAJA_ORIGEN_AJUSTE_MANUAL,
+)
 
 SUBMEDIOS = ("efectivo", "transferencia", "mercadopago", "tarjeta")
 
@@ -68,7 +80,7 @@ def abrir_caja(data):
                 data.id_usuario,
             )
 
-        return {"ok": True, "caja_id": caja_id, "estado": "abierta"}
+        return {"ok": True, "caja_id": caja_id, "estado": CAJA_ESTADO_ABIERTA}
     finally:
         conn.close()
 
@@ -120,45 +132,48 @@ def obtener_caja_detalle(caja_id: int):
 
 def registrar_egreso(caja_id: int, data: CajaEgresoInput):
     conn = get_connection()
-    print("=== ENTRE A registrar_egreso ===")
-    print("caja_id:", caja_id)
-    print("data:", data)
 
     try:
         with conn.transaction():
-            print("=== ANTES DE get_caja_by_id_for_update ===")
             caja = get_caja_by_id_for_update(conn, caja_id)
-            print("caja:", caja)
 
             if caja is None:
                 raise HTTPException(status_code=404, detail=f"No existe la caja {caja_id}")
 
-            if caja["estado"] != "abierta":
+            if caja["estado"] != CAJA_ESTADO_ABIERTA:
                 raise HTTPException(status_code=400, detail="La caja no está abierta")
 
-            print("=== ANTES DE insert_caja_movimiento ===")
             movimiento_id = insert_caja_movimiento(
                 conn,
                 id_caja=caja_id,
-                tipo_movimiento="egreso",
+                tipo_movimiento=CAJA_MOVIMIENTO_EGRESO,
                 submedio="efectivo",
                 monto=data.monto,
-                origen_tipo="egreso_manual",
+                origen_tipo=CAJA_ORIGEN_EGRESO_MANUAL,
                 origen_id=None,
                 nota=data.nota,
                 id_usuario=data.id_usuario,
             )
-            print("movimiento_id:", movimiento_id)
 
-        print("=== SALIO BIEN registrar_egreso ===")
+            auditoria_service.registrar_evento(
+                conn,
+                id_usuario=data.id_usuario,
+                id_sucursal=caja["id_sucursal"],
+                entidad=AUDITORIA_ENTIDAD_CAJA,
+                entidad_id=caja_id,
+                accion=AUDITORIA_ACCION_CAJA_EGRESO,
+                detalle=(
+                    f"Egreso manual registrado. movimiento_id={movimiento_id}, "
+                    f"monto={data.monto}, nota={data.nota}"
+                ),
+            )
+
         return {"ok": True, "movimiento_id": movimiento_id, "caja_id": caja_id}
-    except Exception as e:
-        print("=== ERROR EN registrar_egreso ===", repr(e))
-        raise
     finally:
         conn.close()
 
-def cerrar_caja(caja_id: int, data):
+
+def cerrar_caja(caja_id: int, data: CajaCerrarInput):
     conn = get_connection()
 
     try:
@@ -168,7 +183,7 @@ def cerrar_caja(caja_id: int, data):
             if caja is None:
                 raise HTTPException(status_code=404, detail=f"No existe la caja {caja_id}")
 
-            if caja["estado"] != "abierta":
+            if caja["estado"] != CAJA_ESTADO_ABIERTA:
                 raise HTTPException(status_code=400, detail="La caja ya está cerrada")
 
             efectivo_teorico = get_efectivo_teorico(conn, caja_id)
@@ -183,16 +198,30 @@ def cerrar_caja(caja_id: int, data):
                 id_usuario=data.id_usuario,
             )
 
+            auditoria_service.registrar_evento(
+                conn,
+                id_usuario=data.id_usuario,
+                id_sucursal=caja["id_sucursal"],
+                entidad=AUDITORIA_ENTIDAD_CAJA,
+                entidad_id=caja_id,
+                accion=AUDITORIA_ACCION_CAJA_CERRADA,
+                detalle=(
+                    f"Caja cerrada. teorico={efectivo_teorico}, "
+                    f"real={data.monto_cierre_real}, diferencia={diferencia}"
+                ),
+            )
+
         return {
             "ok": True,
             "caja_id": caja_id,
-            "estado": "cerrada",
+            "estado": CAJA_ESTADO_CERRADA,
             "monto_cierre_teorico": efectivo_teorico,
             "monto_cierre_real": data.monto_cierre_real,
             "diferencia": diferencia,
         }
     finally:
         conn.close()
+
 
 def registrar_ajuste(caja_id: int, data: CajaAjusteInput):
     conn = get_connection()
@@ -204,20 +233,33 @@ def registrar_ajuste(caja_id: int, data: CajaAjusteInput):
             if caja is None:
                 raise HTTPException(status_code=404, detail=f"No existe la caja {caja_id}")
 
-            if caja["estado"] != "abierta":
+            if caja["estado"] != CAJA_ESTADO_ABIERTA:
                 raise HTTPException(status_code=400, detail="La caja no está abierta")
 
             movimiento_id = insert_caja_movimiento(
                 conn,
                 id_caja=caja_id,
-                tipo_movimiento="ajuste",
+                tipo_movimiento=CAJA_MOVIMIENTO_AJUSTE,
                 submedio="efectivo",
                 monto=data.monto,
-                origen_tipo="ajuste_manual",
+                origen_tipo=CAJA_ORIGEN_AJUSTE_MANUAL,
                 origen_id=None,
                 nota=data.nota,
                 id_usuario=data.id_usuario,
                 direccion_ajuste=data.direccion,
+            )
+
+            auditoria_service.registrar_evento(
+                conn,
+                id_usuario=data.id_usuario,
+                id_sucursal=caja["id_sucursal"],
+                entidad=AUDITORIA_ENTIDAD_CAJA,
+                entidad_id=caja_id,
+                accion=AUDITORIA_ACCION_CAJA_AJUSTE,
+                detalle=(
+                    f"Ajuste de caja registrado. movimiento_id={movimiento_id}, "
+                    f"direccion={data.direccion}, monto={data.monto}, nota={data.nota}"
+                ),
             )
 
         return {

@@ -1,5 +1,5 @@
 from tests.conftest import get_venta
-
+from tests.conftest import get_auditoria_by_entidad
 
 def _abrir_caja(client, sucursal_id: int, usuario_id: int):
     return client.post(
@@ -573,3 +573,31 @@ def test_no_permite_pago_en_venta_totalmente_pagada(client, seed_venta_basica):
     )
 
     assert segundo_pago.status_code == 400
+
+def test_pago_crea_auditoria(client, db_conn, seed_venta_basica):
+    venta_id = crear_venta_base(client, seed_venta_basica)
+
+    _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+
+    response = client.post(
+        "/pagos/",
+        json=_payload_pago(
+            venta_id,
+            "efectivo",
+            1000,
+            seed_venta_basica["usuario_id"],
+            "Test auditoria",
+        ),
+    )
+
+    assert response.status_code == 200
+    pago_id = response.json()["pago_id"]
+
+    eventos = get_auditoria_by_entidad(db_conn, "pago", pago_id)
+
+    assert len(eventos) == 1
+    assert eventos[0]["accion"] == "pago_registrado"

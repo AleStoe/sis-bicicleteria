@@ -2,12 +2,16 @@ from decimal import Decimal
 
 from fastapi import HTTPException
 
+from app.modules.auditoria import service as auditoria_service
 from app.shared.constants import (
     ORIGEN_VENTA,
     CREDITO_MOVIMIENTO_GENERADO,
     CREDITO_MOVIMIENTO_APLICACION_VENTA,
     CREDITO_ESTADO_APLICADO_TOTAL,
     CREDITO_ESTADO_APLICADO_PARCIAL,
+    AUDITORIA_ENTIDAD_CREDITO,
+    AUDITORIA_ACCION_CREDITO_GENERADO,
+    AUDITORIA_ACCION_CREDITO_APLICADO,
 )
 from . import repository
 
@@ -57,6 +61,19 @@ def crear_credito_por_anulacion_venta(
         origen_id=id_venta,
         nota=f"Crédito generado por anulación de venta #{id_venta}",
         id_usuario=id_usuario,
+    )
+
+    auditoria_service.registrar_evento(
+        conn,
+        id_usuario=id_usuario,
+        id_sucursal=None,
+        entidad=AUDITORIA_ENTIDAD_CREDITO,
+        entidad_id=credito["id"],
+        accion=AUDITORIA_ACCION_CREDITO_GENERADO,
+        detalle=(
+            f"Crédito generado por anulación de venta. "
+            f"cliente={id_cliente}, venta_id={id_venta}, monto={monto_credito}"
+        ),
     )
 
     return credito
@@ -180,6 +197,20 @@ def aplicar_credito_a_venta(
             origen_id=id_venta,
             nota=f"Crédito aplicado a venta #{id_venta}",
             id_usuario=id_usuario,
+        )
+
+        auditoria_service.registrar_evento(
+            conn,
+            id_usuario=id_usuario,
+            id_sucursal=None,
+            entidad=AUDITORIA_ENTIDAD_CREDITO,
+            entidad_id=credito["id"],
+            accion=AUDITORIA_ACCION_CREDITO_APLICADO,
+            detalle=(
+                f"Crédito aplicado a venta. "
+                f"venta_id={id_venta}, monto_aplicado={aplicado}, "
+                f"saldo_nuevo={nuevo_saldo}, estado_nuevo={nuevo_estado}"
+            ),
         )
 
         movimientos.append(movimiento)
