@@ -26,6 +26,13 @@ class OrdenTallerEstadoUpdate(BaseModel):
     id_usuario: int = Field(gt=0)
 
 
+class OrdenTallerItemCreate(BaseModel):
+    id_variante: int = Field(gt=0)
+    cantidad: Decimal = Field(gt=0)
+    precio_unitario: Decimal = Field(ge=0)
+    id_usuario: int = Field(gt=0)
+
+
 class OrdenTallerResponse(BaseModel):
     id: int
     fecha_ingreso: datetime
@@ -53,5 +60,17 @@ class OrdenTallerEventoResponse(BaseModel):
     created_at: datetime
 
 
+class OrdenTallerItemResponse(BaseModel):
+    id: int
+    id_orden_taller: int
+    id_variante: int
+    descripcion_snapshot: str
+    cantidad: Decimal
+    precio_unitario: Decimal
+    subtotal: Decimal
+    created_at: datetime
+
+
 class OrdenTallerDetalleResponse(OrdenTallerResponse):
     eventos: list[OrdenTallerEventoResponse] = Field(default_factory=list)
+    items: list[OrdenTallerItemResponse] = Field(default_factory=list)

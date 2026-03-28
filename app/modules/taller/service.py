@@ -1,10 +1,13 @@
+from decimal import Decimal
+
 from fastapi import HTTPException
 
 from app.db.connection import get_connection
-from app.shared.constants import(
+from app.shared.constants import (
     ORDEN_TALLER_ESTADO_INGRESADA,
     ORDEN_TALLER_EVENTO_CREADA,
     ORDEN_TALLER_EVENTO_CAMBIO_ESTADO,
+    ORDEN_TALLER_EVENTO_AGREGADO_ITEM,
 )
 
 from .repository import (
@@ -12,14 +15,35 @@ from .repository import (
     validar_usuario_activo,
     validar_cliente_existente,
     get_bicicleta_cliente,
+    get_variante_by_id,
     insert_orden_taller,
     get_ordenes_taller,
     get_orden_taller_by_id,
     get_orden_taller_by_id_for_update,
     update_orden_taller_estado,
+    insert_orden_taller_item,
+    get_items_orden_taller,
+    recalcular_total_orden_taller,
     insert_orden_taller_evento,
     get_eventos_orden_taller,
 )
+
+
+def _build_descripcion_snapshot(variante: dict) -> str:
+    producto_nombre = (variante.get("producto_nombre") or "").strip()
+    producto_descripcion = (variante.get("producto_descripcion") or "").strip()
+    codigo_proveedor = (variante.get("codigo_proveedor") or "").strip()
+
+    if producto_nombre and producto_descripcion:
+        return f"{producto_nombre} - {producto_descripcion}"
+    if producto_nombre and codigo_proveedor:
+        return f"{producto_nombre} - {codigo_proveedor}"
+    if producto_nombre:
+        return producto_nombre
+    if producto_descripcion:
+        return producto_descripcion
+
+    return f"Variante #{variante['id']}"
 
 
 def crear_orden_taller(data):
@@ -90,10 +114,12 @@ def obtener_orden_taller(orden_id: int):
             )
 
         eventos = get_eventos_orden_taller(conn, orden_id)
+        items = get_items_orden_taller(conn, orden_id)
 
         return {
             **orden,
             "eventos": eventos,
+            "items": items,
         }
     finally:
         conn.close()
@@ -133,5 +159,58 @@ def cambiar_estado_orden_taller(orden_id: int, data):
 
             orden_actualizada = get_orden_taller_by_id(conn, orden_id)
             return orden_actualizada
+    finally:
+        conn.close()
+
+
+def agregar_item_orden_taller(orden_id: int, data):
+    conn = get_connection()
+    try:
+        with conn.transaction():
+            try:
+                validar_usuario_activo(conn, data.id_usuario)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+
+            orden = get_orden_taller_by_id_for_update(conn, orden_id)
+            if orden is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No existe la orden de taller {orden_id}",
+                )
+
+            variante = get_variante_by_id(conn, data.id_variante)
+            if variante is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No existe la variante {data.id_variante}",
+                )
+
+            descripcion_snapshot = _build_descripcion_snapshot(variante)
+            subtotal = Decimal(data.cantidad) * Decimal(data.precio_unitario)
+
+            item = insert_orden_taller_item(
+                conn,
+                {
+                    "id_orden_taller": orden_id,
+                    "id_variante": data.id_variante,
+                    "descripcion_snapshot": descripcion_snapshot,
+                    "cantidad": data.cantidad,
+                    "precio_unitario": data.precio_unitario,
+                    "subtotal": subtotal,
+                },
+            )
+
+            recalcular_total_orden_taller(conn, orden_id)
+
+            insert_orden_taller_evento(
+                conn,
+                id_orden_taller=orden_id,
+                tipo_evento=ORDEN_TALLER_EVENTO_AGREGADO_ITEM,
+                detalle=f"Item agregado: {descripcion_snapshot}",
+                id_usuario=data.id_usuario,
+            )
+
+            return item
     finally:
         conn.close()

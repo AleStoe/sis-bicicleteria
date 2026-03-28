@@ -72,6 +72,26 @@ def get_bicicleta_cliente(conn, id_bicicleta_cliente: int):
         return cur.fetchone()
 
 
+def get_variante_by_id(conn, id_variante: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT
+                v.id,
+                v.codigo_proveedor,
+                p.nombre AS producto_nombre,
+                p.descripcion AS producto_descripcion,
+                p.tipo_item,
+                p.stockeable
+            FROM variantes v
+            JOIN productos p ON p.id = v.id_producto
+            WHERE v.id = %s
+            """,
+            (id_variante,),
+        )
+        return cur.fetchone()
+
+
 def insert_orden_taller(conn, data: dict):
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
@@ -204,6 +224,83 @@ def update_orden_taller_estado(conn, orden_id: int, nuevo_estado: str) -> None:
             WHERE id = %s
             """,
             (nuevo_estado, orden_id),
+        )
+
+
+def insert_orden_taller_item(conn, data: dict):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            INSERT INTO ordenes_taller_items (
+                id_orden_taller,
+                id_variante,
+                descripcion_snapshot,
+                cantidad,
+                precio_unitario,
+                subtotal
+            )
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING
+                id,
+                id_orden_taller,
+                id_variante,
+                descripcion_snapshot,
+                cantidad,
+                precio_unitario,
+                subtotal,
+                created_at
+            """,
+            (
+                data["id_orden_taller"],
+                data["id_variante"],
+                data["descripcion_snapshot"],
+                data["cantidad"],
+                data["precio_unitario"],
+                data["subtotal"],
+            ),
+        )
+        return cur.fetchone()
+
+
+def get_items_orden_taller(conn, orden_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT
+                id,
+                id_orden_taller,
+                id_variante,
+                descripcion_snapshot,
+                cantidad,
+                precio_unitario,
+                subtotal,
+                created_at
+            FROM ordenes_taller_items
+            WHERE id_orden_taller = %s
+            ORDER BY id
+            """,
+            (orden_id,),
+        )
+        return cur.fetchall()
+
+
+def recalcular_total_orden_taller(conn, orden_id: int) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE ordenes_taller
+            SET total_final = COALESCE(
+                    (
+                        SELECT SUM(subtotal)
+                        FROM ordenes_taller_items
+                        WHERE id_orden_taller = %s
+                    ),
+                    0
+                ),
+                updated_at = NOW()
+            WHERE id = %s
+            """,
+            (orden_id, orden_id),
         )
 
 
