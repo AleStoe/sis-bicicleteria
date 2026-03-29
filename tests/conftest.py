@@ -184,6 +184,8 @@ def seed_venta_basica(db_conn, clean_db):
         )
         stock_id = cur.fetchone()["id"]
 
+    asignar_rol_usuario(db_conn, usuario_id, "administrador")
+
     db_conn.commit()
 
     return {
@@ -330,6 +332,8 @@ def seed_venta_mixta(db_conn, clean_db):
             (sucursal_id, variante_stockeable_id),
         )
         stock_id = cur.fetchone()["id"]
+
+    asignar_rol_usuario(db_conn, usuario_id, "administrador")
 
     db_conn.commit()
 
@@ -550,6 +554,8 @@ def seed_taller_basico(db_conn, clean_db):
         )
         bicicleta_cliente_id = cur.fetchone()["id"]
 
+    asignar_rol_usuario(db_conn, usuario_id, "administrador")
+
     db_conn.commit()
 
     return {
@@ -624,3 +630,31 @@ def get_deuda_movimientos(conn, deuda_id: int):
             (deuda_id,),
         )
         return cur.fetchall()
+
+def ensure_rol(db_conn, nombre: str):
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO roles (nombre)
+            VALUES (%s)
+            ON CONFLICT (nombre) DO UPDATE
+            SET nombre = EXCLUDED.nombre
+            RETURNING id
+            """,
+            (nombre,),
+        )
+        return cur.fetchone()["id"]
+
+
+def asignar_rol_usuario(db_conn, id_usuario: int, nombre_rol: str):
+    rol_id = ensure_rol(db_conn, nombre_rol)
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO usuario_roles (id_usuario, id_rol)
+            VALUES (%s, %s)
+            ON CONFLICT DO NOTHING
+            """,
+            (id_usuario, rol_id),
+        )

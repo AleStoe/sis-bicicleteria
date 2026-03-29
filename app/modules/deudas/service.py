@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from fastapi import HTTPException
 
+from app.modules.authz.service import exigir_rol_admin
 from app.db.connection import get_connection
 from app.modules.auditoria import service as auditoria_service
 from app.modules.pagos import service as pagos_service
@@ -72,6 +73,7 @@ def crear_deuda_por_venta(data):
 
     try:
         with conn.transaction():
+            exigir_rol_admin(conn, data.id_usuario)
             monto_inicial = Decimal(str(data.monto_inicial))
 
             if monto_inicial <= Decimal("0"):

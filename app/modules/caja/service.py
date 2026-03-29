@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 from fastapi import HTTPException
-
+from app.modules.authz.service import exigir_rol_admin
 from app.db.connection import get_connection
 from app.modules.auditoria import service as auditoria_service
 from .schema import CajaAbrirInput, CajaCerrarInput, CajaEgresoInput, CajaAjusteInput
@@ -178,6 +178,7 @@ def cerrar_caja(caja_id: int, data: CajaCerrarInput):
 
     try:
         with conn.transaction():
+            exigir_rol_admin(conn, data.id_usuario)
             caja = get_caja_by_id_for_update(conn, caja_id)
 
             if caja is None:
@@ -228,6 +229,7 @@ def registrar_ajuste(caja_id: int, data: CajaAjusteInput):
 
     try:
         with conn.transaction():
+            exigir_rol_admin(conn, data.id_usuario)
             caja = get_caja_by_id_for_update(conn, caja_id)
 
             if caja is None:

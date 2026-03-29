@@ -1,12 +1,17 @@
 from decimal import Decimal
 
 from fastapi import HTTPException
-
+from app.modules.authz.service import exigir_rol_admin
 from app.db.connection import get_connection
 from app.modules.stock import service as stock_service
 from app.modules.creditos import service as creditos_service
 from app.modules.auditoria import service as auditoria_service
 from app.modules.pagos.repository import get_total_pagado_confirmado_por_venta
+from app.modules.serializadas.repository import (
+    get_bicicleta_serializada_for_update,
+    update_bicicleta_serializada_estado,
+    insert_bicicleta_cliente,
+)
 from .repository import (
     get_cliente_by_id,
     get_sucursal_by_id,
@@ -29,8 +34,8 @@ from app.shared.constants import (
     AUDITORIA_ACCION_VENTA_ANULADA,
     VENTA_ESTADO_ANULADA,
     VENTA_ESTADO_ENTREGADA,
-    
 )
+
 
 def _consolidar_items(items):
     consolidados = {}
@@ -38,6 +43,7 @@ def _consolidar_items(items):
     for item in items:
         id_variante = item["id_variante"]
         cantidad = Decimal(str(item["cantidad"]))
+        id_bicicleta_serializada = item.get("id_bicicleta_serializada")
 
         if cantidad <= 0:
             raise HTTPException(
@@ -45,16 +51,40 @@ def _consolidar_items(items):
                 detail="La cantidad debe ser mayor a 0",
             )
 
-        if id_variante not in consolidados:
-            consolidados[id_variante] = {
+        if id_bicicleta_serializada:
+            if cantidad != Decimal("1"):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Un item con bicicleta serializada debe tener cantidad = 1",
+                )
+
+            clave = (id_variante, id_bicicleta_serializada)
+
+            if clave in consolidados:
+                raise HTTPException(
+                    status_code=400,
+                    detail="La misma bicicleta serializada no puede repetirse en la venta",
+                )
+
+            consolidados[clave] = {
                 "id_variante": id_variante,
                 "cantidad": cantidad,
+                "id_bicicleta_serializada": id_bicicleta_serializada,
+            }
+            continue
+
+        clave = (id_variante, None)
+
+        if clave not in consolidados:
+            consolidados[clave] = {
+                "id_variante": id_variante,
+                "cantidad": cantidad,
+                "id_bicicleta_serializada": None,
             }
         else:
-            consolidados[id_variante]["cantidad"] += cantidad
+            consolidados[clave]["cantidad"] += cantidad
 
     return list(consolidados.values())
-
 
 def _validar_cliente(conn, id_cliente: int):
     cliente = get_cliente_by_id(conn, id_cliente)
@@ -163,6 +193,133 @@ def _validar_venta_anulable(venta, venta_id: int):
         )
 
 
+def _validar_y_bloquear_bicicleta_serializada_para_venta(
+    conn,
+    *,
+    id_bicicleta_serializada: int,
+    id_variante: int,
+    id_sucursal: int,
+):
+    bicicleta = get_bicicleta_serializada_for_update(conn, id_bicicleta_serializada)
+
+    if bicicleta is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"No existe la bicicleta serializada {id_bicicleta_serializada}"
+            ),
+        )
+
+    if bicicleta["id_variante"] != id_variante:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "La bicicleta serializada no corresponde a la variante informada"
+            ),
+        )
+
+    if bicicleta["id_sucursal_actual"] != id_sucursal:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "La bicicleta serializada no pertenece a la sucursal de la venta"
+            ),
+        )
+
+    if bicicleta["estado"] != "disponible":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"La bicicleta serializada {id_bicicleta_serializada} "
+                f"no está disponible"
+            ),
+        )
+
+    return bicicleta
+
+
+def _validar_y_bloquear_bicicleta_serializada_para_entrega(
+    conn,
+    *,
+    item: dict,
+    venta_id: int,
+):
+    bicicleta_id = item.get("id_bicicleta_serializada")
+    if not bicicleta_id:
+        return None
+
+    bicicleta = get_bicicleta_serializada_for_update(conn, bicicleta_id)
+
+    if bicicleta is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"No existe la bicicleta serializada {bicicleta_id}"
+            ),
+        )
+
+    if bicicleta["id_variante"] != item["id_variante"]:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"La bicicleta serializada {bicicleta_id} "
+                f"no coincide con la variante del item de la venta {venta_id}"
+            ),
+        )
+
+    if bicicleta["estado"] != "vendida_pendiente_entrega":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"La bicicleta serializada {bicicleta_id} "
+                f"no está en estado vendida_pendiente_entrega"
+            ),
+        )
+
+    return bicicleta
+
+
+def _validar_y_bloquear_bicicleta_serializada_para_anulacion(
+    conn,
+    *,
+    item: dict,
+    venta_id: int,
+):
+    bicicleta_id = item.get("id_bicicleta_serializada")
+    if not bicicleta_id:
+        return None
+
+    bicicleta = get_bicicleta_serializada_for_update(conn, bicicleta_id)
+
+    if bicicleta is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"No existe la bicicleta serializada {bicicleta_id}"
+            ),
+        )
+
+    if bicicleta["id_variante"] != item["id_variante"]:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"La bicicleta serializada {bicicleta_id} "
+                f"no coincide con la variante del item de la venta {venta_id}"
+            ),
+        )
+
+    if bicicleta["estado"] != "vendida_pendiente_entrega":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"La bicicleta serializada {bicicleta_id} "
+                f"no está en estado vendida_pendiente_entrega"
+            ),
+        )
+
+    return bicicleta
+
+
 def crear_venta(data):
     conn = get_connection()
 
@@ -177,8 +334,17 @@ def crear_venta(data):
             _validar_cliente(conn, data.id_cliente)
             _validar_sucursal(conn, data.id_sucursal)
 
-            items_consolidados = _consolidar_items(data.items)
-            ids_unicos = [item["id_variante"] for item in items_consolidados]
+            items_input = [
+                {
+                    "id_variante": item.id_variante,
+                    "cantidad": item.cantidad,
+                    "id_bicicleta_serializada": item.id_bicicleta_serializada,
+                }
+                for item in data.items
+            ]
+
+            items_consolidados = _consolidar_items(items_input)
+            ids_unicos = list({item["id_variante"] for item in items_consolidados})
             variantes_map = _obtener_variantes_map(conn, ids_unicos)
 
             subtotal_total = Decimal("0")
@@ -189,6 +355,14 @@ def crear_venta(data):
                 precio_minorista = Decimal(str(variante["precio_minorista"]))
                 subtotal = precio_minorista * item["cantidad"]
                 subtotal_total += subtotal
+
+                if item["id_bicicleta_serializada"] is not None:
+                    _validar_y_bloquear_bicicleta_serializada_para_venta(
+                        conn,
+                        id_bicicleta_serializada=item["id_bicicleta_serializada"],
+                        id_variante=item["id_variante"],
+                        id_sucursal=data.id_sucursal,
+                    )
 
                 venta_items.append(
                     {
@@ -233,7 +407,7 @@ def crear_venta(data):
                     {
                         "id_venta": venta_id,
                         "id_variante": variante["id"],
-                        "id_bicicleta_serializada": None,
+                        "id_bicicleta_serializada": item["id_bicicleta_serializada"],
                         "descripcion_snapshot": f"{variante['producto_nombre']} - {variante['nombre_variante']}",
                         "cantidad": item["cantidad"],
                         "precio_lista": precio_minorista,
@@ -242,6 +416,13 @@ def crear_venta(data):
                         "subtotal": subtotal,
                     },
                 )
+
+                if item["id_bicicleta_serializada"] is not None:
+                    update_bicicleta_serializada_estado(
+                        conn,
+                        item["id_bicicleta_serializada"],
+                        "vendida_pendiente_entrega",
+                    )
 
             items_stock = sorted(
                 [
@@ -267,6 +448,7 @@ def crear_venta(data):
                             "descontar_de_reservado": False,
                             "origen_tipo": "venta",
                             "origen_id": venta_id,
+                            "id_bicicleta_serializada": item.get("id_bicicleta_serializada"),
                             "nota": f"Venta #{venta_id} pendiente de entrega",
                         },
                     )
@@ -305,6 +487,7 @@ def crear_venta(data):
                 saldo_pendiente,
                 estado_venta,
             )
+
             auditoria_service.registrar_evento(
                 conn,
                 id_usuario=data.id_usuario,
@@ -319,6 +502,7 @@ def crear_venta(data):
                     f"estado={estado_venta}"
                 ),
             )
+
         return {
             "ok": True,
             "venta_id": venta_id,
@@ -368,12 +552,6 @@ def entregar_venta(venta_id: int, data):
             venta = get_venta_for_update(conn, venta_id)
             _validar_venta_entregable(venta, venta_id)
 
-            if Decimal(str(venta["saldo_pendiente"])) > 0:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"La venta {venta_id} tiene saldo pendiente y no se puede entregar",
-                )
-
             items = get_venta_items_detallados_by_venta_id(conn, venta_id)
 
             if not items:
@@ -381,6 +559,27 @@ def entregar_venta(venta_id: int, data):
                     status_code=400,
                     detail=f"La venta {venta_id} no tiene items para entregar",
                 )
+
+            for item in items:
+                if item.get("id_bicicleta_serializada") is not None:
+                    bicicleta = _validar_y_bloquear_bicicleta_serializada_para_entrega(
+                        conn,
+                        item=item,
+                        venta_id=venta_id,
+                    )
+                    update_bicicleta_serializada_estado(
+                        conn,
+                        bicicleta["id"],
+                        "entregada",
+                    )
+                    insert_bicicleta_cliente(
+                        conn,
+                        {
+                            "id_cliente": venta["id_cliente"],
+                            "numero_cuadro": bicicleta["numero_cuadro"],
+                            "notas": f"Generada desde venta #{venta_id}",
+                        },
+                    )
 
             items_stock = _ordenar_items_stockeables_por_variante(items)
 
@@ -394,6 +593,7 @@ def entregar_venta(venta_id: int, data):
                         "id_usuario": data.id_usuario,
                         "origen_tipo": "venta",
                         "origen_id": venta_id,
+                        "id_bicicleta_serializada": item.get("id_bicicleta_serializada"),
                         "nota": f"Entrega de venta #{venta_id}",
                     },
                 )
@@ -425,6 +625,7 @@ def anular_venta(venta_id: int, data):
 
     try:
         with conn.transaction():
+            exigir_rol_admin(conn, data.id_usuario)
             venta = get_venta_for_update(conn, venta_id)
             _validar_venta_anulable(venta, venta_id)
 
@@ -435,6 +636,19 @@ def anular_venta(venta_id: int, data):
                     status_code=400,
                     detail=f"La venta {venta_id} no tiene items para anular",
                 )
+
+            for item in items:
+                if item.get("id_bicicleta_serializada") is not None:
+                    bicicleta = _validar_y_bloquear_bicicleta_serializada_para_anulacion(
+                        conn,
+                        item=item,
+                        venta_id=venta_id,
+                    )
+                    update_bicicleta_serializada_estado(
+                        conn,
+                        bicicleta["id"],
+                        "disponible",
+                    )
 
             anulacion_id = insert_venta_anulacion(
                 conn,
@@ -455,6 +669,7 @@ def anular_venta(venta_id: int, data):
                         "id_usuario": data.id_usuario,
                         "origen_tipo": "venta",
                         "origen_id": venta_id,
+                        "id_bicicleta_serializada": item.get("id_bicicleta_serializada"),
                         "nota": f"Liberación por anulación de venta #{venta_id}",
                     },
                 )
@@ -503,7 +718,8 @@ def anular_venta(venta_id: int, data):
 
     finally:
         conn.close()
-    
+
+
 def _ordenar_items_stockeables_por_variante(items: list[dict]) -> list[dict]:
     return sorted(
         [item for item in items if item.get("stockeable", True)],
