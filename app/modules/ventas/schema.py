@@ -6,14 +6,15 @@ from pydantic import BaseModel, Field, ConfigDict
 
 class VentaItemCreateInput(BaseModel):
     id_variante: int = Field(gt=0)
-    cantidad: Decimal = Field(gt=0)
+    cantidad: Decimal
+    id_bicicleta_serializada: Optional[int] = Field(default=None, gt=0)
 
 
 class VentaCreateInput(BaseModel):
     id_cliente: int
     id_sucursal: int
     id_usuario: int
-    items: list
+    items: List[VentaItemCreateInput]
     observaciones: Optional[str] = None
 
     usar_credito: bool = True
@@ -101,4 +102,3 @@ class VentaDetalleItemOutput(BaseModel):
 class VentaDetalleOutput(BaseModel):
     venta: VentaDetalleCabeceraOutput
     items: List[VentaDetalleItemOutput]
-

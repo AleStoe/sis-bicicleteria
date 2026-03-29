@@ -129,8 +129,10 @@ def marcar_stock_pendiente_entrega(conn, data: dict):
         descontar_de_reservado=data.get("descontar_de_reservado", False),
         origen_tipo=data.get("origen_tipo"),
         origen_id=data.get("origen_id"),
+        id_bicicleta_serializada=data.get("id_bicicleta_serializada"),
         nota=data.get("nota"),
     )
+
 
 
 def descontar_stock_por_venta(conn, data: dict):
@@ -156,6 +158,7 @@ def registrar_entrega_stock(conn, data: dict):
         id_usuario=data["id_usuario"],
         origen_tipo=data.get("origen_tipo"),
         origen_id=data.get("origen_id"),
+        id_bicicleta_serializada=data.get("id_bicicleta_serializada"),
         nota=data.get("nota"),
     )
 
@@ -169,6 +172,7 @@ def devolver_stock_a_disponible_desde_pendiente(conn, data: dict):
         id_usuario=data["id_usuario"],
         origen_tipo=data.get("origen_tipo"),
         origen_id=data.get("origen_id"),
+        id_bicicleta_serializada=data.get("id_bicicleta_serializada"),
         nota=data.get("nota"),
     )
 
@@ -195,5 +199,18 @@ def registrar_salida_taller(conn, data: dict):
         id_usuario=data["id_usuario"],
         origen_tipo=data.get("origen_tipo", "taller"),
         origen_id=data.get("origen_id"),
+        nota=data.get("nota"),
+    )
+
+def registrar_salida_por_serializacion(conn, data: dict):
+    return repository.registrar_salida_por_serializacion(
+        conn,
+        id_sucursal=data["id_sucursal"],
+        id_variante=data["id_variante"],
+        cantidad=data["cantidad"],
+        id_usuario=data["id_usuario"],
+        origen_tipo=data.get("origen_tipo"),
+        origen_id=data.get("origen_id"),
+        id_bicicleta_serializada=data.get("id_bicicleta_serializada"),
         nota=data.get("nota"),
     )

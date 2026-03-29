@@ -250,6 +250,7 @@ def registrar_movimiento_stock(
     costo_unitario_aplicado: float | None = None,
     origen_tipo: str | None = None,
     origen_id: int | None = None,
+    id_bicicleta_serializada: int | None = None,
     nota: str | None = None,
 ):
     if cantidad <= 0:
@@ -261,6 +262,7 @@ def registrar_movimiento_stock(
             INSERT INTO movimientos_stock (
                 id_sucursal,
                 id_variante,
+                id_bicicleta_serializada,
                 tipo_movimiento,
                 cantidad,
                 costo_unitario_aplicado,
@@ -269,12 +271,13 @@ def registrar_movimiento_stock(
                 nota,
                 id_usuario
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
             (
                 id_sucursal,
                 id_variante,
+                id_bicicleta_serializada,
                 tipo_movimiento,
                 cantidad,
                 costo_unitario_aplicado,
@@ -287,7 +290,6 @@ def registrar_movimiento_stock(
         row = cur.fetchone()
 
     return row["id"]
-
 
 def _calcular_stock_nuevo(
     *,
@@ -347,6 +349,7 @@ def _aplicar_operacion_stock(
     delta_pendiente_entrega: float = 0,
     origen_tipo: str | None = None,
     origen_id: int | None = None,
+    id_bicicleta_serializada: int | None = None,
     nota: str | None = None,
     costo_unitario_aplicado: float | None = None,
     validar_stock_disponible: bool = True,
@@ -407,6 +410,7 @@ def _aplicar_operacion_stock(
         costo_unitario_aplicado=costo_unitario_aplicado,
         origen_tipo=origen_tipo,
         origen_id=origen_id,
+        id_bicicleta_serializada=id_bicicleta_serializada,
         nota=nota,
         id_usuario=id_usuario,
     )
@@ -502,6 +506,7 @@ def marcar_stock_pendiente_entrega(
     descontar_de_reservado: bool = False,
     origen_tipo: str | None = None,
     origen_id: int | None = None,
+    id_bicicleta_serializada: int | None = None,
     nota: str | None = None,
 ):
     """
@@ -530,6 +535,7 @@ def marcar_stock_pendiente_entrega(
         origen_tipo=origen_tipo,
         origen_id=origen_id,
         nota=nota,
+        id_bicicleta_serializada=id_bicicleta_serializada,
     )
 
 
@@ -583,6 +589,7 @@ def registrar_entrega_stock(
     id_usuario: int,
     origen_tipo: str | None = None,
     origen_id: int | None = None,
+    id_bicicleta_serializada: int | None = None,
     nota: str | None = None,
 ):
     """
@@ -604,6 +611,7 @@ def registrar_entrega_stock(
         origen_id=origen_id,
         nota=nota,
         validar_stock_disponible=False,
+        id_bicicleta_serializada=id_bicicleta_serializada,
     )
 
 
@@ -616,6 +624,7 @@ def devolver_stock_a_disponible_desde_pendiente(
     id_usuario: int,
     origen_tipo: str | None = None,
     origen_id: int | None = None,
+    id_bicicleta_serializada: int | None = None,
     nota: str | None = None,
 ):
     """
@@ -634,9 +643,9 @@ def devolver_stock_a_disponible_desde_pendiente(
         delta_pendiente_entrega=-cantidad,
         origen_tipo=origen_tipo,
         origen_id=origen_id,
+        id_bicicleta_serializada=id_bicicleta_serializada,
         nota=nota,
     )
-
 
 def registrar_devolucion_stock(
     conn,
@@ -837,3 +846,29 @@ def crear_ingreso_stock(conn, data: dict):
         "costo_promedio_anterior": round(costo_promedio_anterior, 4),
         "costo_promedio_nuevo": round(nuevo_costo_promedio, 4),
     }
+
+def registrar_salida_por_serializacion(
+    conn,
+    *,
+    id_sucursal: int,
+    id_variante: int,
+    cantidad: float,
+    id_usuario: int,
+    origen_tipo: str | None = None,
+    origen_id: int | None = None,
+    id_bicicleta_serializada: int | None = None,
+    nota: str | None = None,
+):
+    return _aplicar_operacion_stock(
+        conn,
+        id_sucursal=id_sucursal,
+        id_variante=id_variante,
+        id_usuario=id_usuario,
+        tipo_movimiento="serializacion",
+        cantidad=cantidad,
+        delta_fisico=-cantidad,
+        origen_tipo=origen_tipo,
+        origen_id=origen_id,
+        id_bicicleta_serializada=id_bicicleta_serializada,
+        nota=nota,
+    )
