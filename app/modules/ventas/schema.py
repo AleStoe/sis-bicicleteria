@@ -102,3 +102,20 @@ class VentaDetalleItemOutput(BaseModel):
 class VentaDetalleOutput(BaseModel):
     venta: VentaDetalleCabeceraOutput
     items: List[VentaDetalleItemOutput]
+
+class VentaDevolucionSerializadaInput(BaseModel):
+    id_bicicleta_serializada: int = Field(gt=0)
+    motivo: str = Field(min_length=3, max_length=500)
+    id_usuario: int = Field(gt=0)
+
+class VentaDevolucionSerializadaInput(BaseModel):
+    id_bicicleta_serializada: int = Field(gt=0)
+    motivo: str = Field(min_length=3, max_length=500)
+    id_usuario: int = Field(gt=0)
+
+class VentaDevolucionSerializadaOutput(BaseModel):
+    ok: bool
+    venta_id: int
+    devolucion_id: int
+    id_bicicleta_serializada: int
+    estado_bicicleta: str

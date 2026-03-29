@@ -336,6 +336,21 @@ def _validar_stock_disponible_no_negativo(*, stock_disponible_nuevo: float):
     if stock_disponible_nuevo < 0:
         raise ValueError("No hay stock disponible suficiente")
 
+def _validar_consistencia_tipo_y_origen_stock(
+    *,
+    tipo_movimiento: str,
+    origen_tipo: str | None,
+):
+    if tipo_movimiento == "devolucion" and origen_tipo == "venta":
+        raise ValueError(
+            "No usar 'devolucion' para ventas. Usar 'devolucion_venta'."
+        )
+
+    if tipo_movimiento == "devolucion_venta" and origen_tipo != "venta":
+        raise ValueError(
+            "'devolucion_venta' solo puede usarse con origen_tipo='venta'."
+        )
+
 def _aplicar_operacion_stock(
     conn,
     *,
@@ -356,7 +371,11 @@ def _aplicar_operacion_stock(
 ):
     if cantidad <= 0:
         raise ValueError("La cantidad debe ser mayor a 0")
-
+    
+    _validar_consistencia_tipo_y_origen_stock(
+        tipo_movimiento=tipo_movimiento,
+        origen_tipo=origen_tipo,
+    )
     validar_sucursal_activa(conn, id_sucursal)
     validar_variante_activa(conn, id_variante)
     validar_usuario_activo(conn, id_usuario)
@@ -656,23 +675,27 @@ def registrar_devolucion_stock(
     id_usuario: int,
     origen_tipo: str | None = None,
     origen_id: int | None = None,
+    id_bicicleta_serializada: int | None = None,
     nota: str | None = None,
 ):
     """
-    Devuelve unidades al stock físico.
-    Efecto:
-    - stock_fisico += cantidad
+    Devuelve unidades al stock físico por devolución de venta.
+
+    IMPORTANTE:
+    - Usa tipo_movimiento='devolucion_venta'
+    - NO usar 'devolucion' para ventas (rompe trazabilidad)
     """
     return _aplicar_operacion_stock(
         conn,
         id_sucursal=id_sucursal,
         id_variante=id_variante,
         id_usuario=id_usuario,
-        tipo_movimiento="devolucion",
+        tipo_movimiento="devolucion_venta",  # ← FIX CLAVE
         cantidad=cantidad,
         delta_fisico=+cantidad,
         origen_tipo=origen_tipo,
         origen_id=origen_id,
+        id_bicicleta_serializada=id_bicicleta_serializada,  # ← IMPORTANTE
         nota=nota,
     )
 

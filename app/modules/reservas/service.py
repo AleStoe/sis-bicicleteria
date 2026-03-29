@@ -6,7 +6,10 @@ from app.modules.stock import service as stock_service
 from app.modules.reservas import repository as reserva_repo
 from app.modules.pagos import service as pagos_service
 from app.modules.ventas import repository as ventas_repo
-
+from app.modules.serializadas.repository import (
+    get_bicicleta_serializada_for_update,
+    update_bicicleta_serializada_estado,
+)
 
 
 # =========================================================
@@ -20,7 +23,82 @@ def _validar_estado_cancelable(reserva):
             detail=f"No se puede cancelar una reserva en estado {reserva['estado']}",
         )
 
+def _validar_y_bloquear_bicicleta_serializada_para_reserva(
+    conn,
+    *,
+    id_bicicleta_serializada: int,
+    id_variante: int,
+    id_sucursal: int,
+):
+    bicicleta = get_bicicleta_serializada_for_update(conn, id_bicicleta_serializada)
 
+    if bicicleta is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No existe la bicicleta serializada {id_bicicleta_serializada}",
+        )
+
+    if bicicleta["id_variante"] != id_variante:
+        raise HTTPException(
+            status_code=400,
+            detail="La bicicleta serializada no corresponde a la variante informada",
+        )
+
+    if bicicleta["id_sucursal_actual"] != id_sucursal:
+        raise HTTPException(
+            status_code=400,
+            detail="La bicicleta serializada no pertenece a la sucursal de la reserva",
+        )
+
+    if bicicleta["estado"] != "disponible":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"La bicicleta serializada {id_bicicleta_serializada} "
+                f"no está disponible"
+            ),
+        )
+
+    return bicicleta
+
+
+def _validar_y_bloquear_bicicleta_serializada_reservada_para_conversion(
+    conn,
+    *,
+    id_bicicleta_serializada: int,
+    id_variante: int,
+    id_sucursal: int,
+):
+    bicicleta = get_bicicleta_serializada_for_update(conn, id_bicicleta_serializada)
+
+    if bicicleta is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No existe la bicicleta serializada {id_bicicleta_serializada}",
+        )
+
+    if bicicleta["id_variante"] != id_variante:
+        raise HTTPException(
+            status_code=400,
+            detail="La bicicleta serializada no corresponde a la variante informada",
+        )
+
+    if bicicleta["id_sucursal_actual"] != id_sucursal:
+        raise HTTPException(
+            status_code=400,
+            detail="La bicicleta serializada no pertenece a la sucursal de la reserva",
+        )
+
+    if bicicleta["estado"] != "reservada":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"La bicicleta serializada {id_bicicleta_serializada} "
+                f"debe estar en estado reservada para convertir la reserva en venta"
+            ),
+        )
+
+    return bicicleta
 # =========================================================
 # CREAR RESERVA
 # =========================================================
@@ -28,111 +106,130 @@ def _validar_estado_cancelable(reserva):
 def crear_reserva(data):
     data = data.model_dump()
     conn = get_connection()
+
     try:
-        total_estimado = Decimal("0")
+        with conn.transaction():
+            total_estimado = Decimal("0")
 
-        # =====================================================
-        # 1. VALIDAR STOCK (ANTES)
-        # =====================================================
-        for item in data["items"]:
-            stock = stock_service.obtener_stock_disponible_tx(
-                conn,
-                id_sucursal=data["id_sucursal"],
-                id_variante=item["id_variante"],
-            )
-
-            if Decimal(str(stock["stock_disponible"])) < Decimal(str(item["cantidad"])):
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Stock insuficiente para variante {item['id_variante']}",
+            # =====================================================
+            # 1. VALIDAR STOCK Y SERIALIZADAS
+            # =====================================================
+            for item in data["items"]:
+                stock = stock_service.obtener_stock_disponible_tx(
+                    conn,
+                    id_sucursal=data["id_sucursal"],
+                    id_variante=item["id_variante"],
                 )
 
-        # =====================================================
-        # 2. CREAR RESERVA
-        # =====================================================
-        reserva_id = reserva_repo.insert_reserva(conn, data)
+                if Decimal(str(stock["stock_disponible"])) < Decimal(str(item["cantidad"])):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Stock insuficiente para variante {item['id_variante']}",
+                    )
 
-        # =====================================================
-        # 3. ITEMS + STOCK
-        # =====================================================
-        for item in data["items"]:
-            subtotal = Decimal(str(item["cantidad"])) * Decimal(str(item["precio_estimado"]))
-            total_estimado += subtotal
+                bicicleta_id = item.get("id_bicicleta_serializada")
+                if bicicleta_id is not None:
+                    if Decimal(str(item["cantidad"])) != Decimal("1"):
+                        raise HTTPException(
+                            status_code=400,
+                            detail="Un item con bicicleta serializada debe tener cantidad = 1",
+                        )
 
-            reserva_repo.insert_reserva_item(
+                    _validar_y_bloquear_bicicleta_serializada_para_reserva(
+                        conn,
+                        id_bicicleta_serializada=bicicleta_id,
+                        id_variante=item["id_variante"],
+                        id_sucursal=data["id_sucursal"],
+                    )
+
+            # =====================================================
+            # 2. CREAR RESERVA
+            # =====================================================
+            reserva_id = reserva_repo.insert_reserva(conn, data)
+
+            # =====================================================
+            # 3. ITEMS + SERIALIZADAS + STOCK
+            # =====================================================
+            for item in data["items"]:
+                subtotal = Decimal(str(item["cantidad"])) * Decimal(str(item["precio_estimado"]))
+                total_estimado += subtotal
+
+                reserva_repo.insert_reserva_item(
+                    conn,
+                    {
+                        "id_reserva": reserva_id,
+                        "id_variante": item["id_variante"],
+                        "id_bicicleta_serializada": item.get("id_bicicleta_serializada"),
+                        "cantidad": item["cantidad"],
+                        "precio_estimado": item["precio_estimado"],
+                        "subtotal_estimado": float(subtotal),
+                    },
+                )
+
+                bicicleta_id = item.get("id_bicicleta_serializada")
+                if bicicleta_id is not None:
+                    update_bicicleta_serializada_estado(conn, bicicleta_id, "reservada")
+
+                stock_service.reservar_stock(
+                    conn,
+                    {
+                        "id_sucursal": data["id_sucursal"],
+                        "id_variante": item["id_variante"],
+                        "cantidad": item["cantidad"],
+                        "id_usuario": data["id_usuario"],
+                        "origen_tipo": "reserva",
+                        "origen_id": reserva_id,
+                        "nota": "Reserva creada",
+                    },
+                )
+
+            # =====================================================
+            # 4. SEÑA Y SALDO
+            # =====================================================
+            sena = Decimal("0")
+            pago = data.get("pago_inicial")
+
+            if pago and pago.get("registrar"):
+                sena = Decimal(str(pago["monto"]))
+
+            saldo = total_estimado - sena
+
+            reserva_repo.actualizar_totales_reserva(
                 conn,
-                {
-                    "id_reserva": reserva_id,
-                    "id_variante": item["id_variante"],
-                    "id_bicicleta_serializada": item.get("id_bicicleta_serializada"),
-                    "cantidad": item["cantidad"],
-                    "precio_estimado": item["precio_estimado"],
-                    "subtotal_estimado": float(subtotal),
-                },
+                reserva_id,
+                float(total_estimado),
+                float(sena),
+                float(saldo),
             )
 
-            stock_service.reservar_stock(
+            # =====================================================
+            # 5. PAGO (SEÑA)
+            # =====================================================
+            if pago and pago.get("registrar"):
+                pagos_service.registrar_pago(
+                    conn,
+                    {
+                        "id_sucursal": data["id_sucursal"],
+                        "id_cliente": data["id_cliente"],
+                        "monto": float(pago["monto"]),
+                        "medio_pago": pago["medio_pago"],
+                        "origen_tipo": "reserva",
+                        "origen_id": reserva_id,
+                        "nota": pago.get("nota"),
+                        "id_usuario": data["id_usuario"],
+                    },
+                )
+
+            # =====================================================
+            # 6. EVENTO
+            # =====================================================
+            reserva_repo.insert_reserva_evento(
                 conn,
-                {
-                    "id_sucursal": data["id_sucursal"],
-                    "id_variante": item["id_variante"],
-                    "cantidad": item["cantidad"],
-                    "id_usuario": data["id_usuario"],
-                    "origen_tipo": "reserva",
-                    "origen_id": reserva_id,
-                    "nota": "Reserva creada",
-                },
+                reserva_id,
+                "creada",
+                "Reserva creada correctamente",
+                data["id_usuario"],
             )
-
-        # =====================================================
-        # 4. SEÑA Y SALDO
-        # =====================================================
-        sena = Decimal("0")
-        pago = data.get("pago_inicial")
-
-        if pago and pago.get("registrar"):
-            sena = Decimal(str(pago["monto"]))
-
-        saldo = total_estimado - sena
-
-        reserva_repo.actualizar_totales_reserva(
-            conn,
-            reserva_id,
-            float(total_estimado),
-            float(sena),
-            float(saldo),
-        )
-
-        # =====================================================
-        # 5. PAGO (SEÑA)
-        # =====================================================
-        if pago and pago.get("registrar"):
-            pagos_service.registrar_pago(
-                conn,
-                {
-                    "id_sucursal": data["id_sucursal"],
-                    "id_cliente": data["id_cliente"],
-                    "monto": float(pago["monto"]),
-                    "medio_pago": pago["medio_pago"],
-                    "origen_tipo": "reserva",
-                    "origen_id": reserva_id,
-                    "nota": pago.get("nota"),
-                    "id_usuario": data["id_usuario"],
-                },
-            )
-
-          # =====================================================
-        # 6. EVENTO
-        # =====================================================
-        reserva_repo.insert_reserva_evento(
-            conn,
-            reserva_id,
-            "creada",
-            "Reserva creada correctamente",
-            data["id_usuario"],
-        )
-
-        conn.commit()
 
         return {
             "ok": True,
@@ -143,13 +240,8 @@ def crear_reserva(data):
             "saldo_estimado": float(saldo),
         }
 
-    except Exception as e:
-        conn.rollback()
-        raise e
-
     finally:
         conn.close()
-
 
 # =========================================================
 # CANCELAR RESERVA
@@ -159,59 +251,80 @@ def cancelar_reserva(data: dict):
     conn = get_connection()
 
     try:
-        # =====================================================
-        # 1. LOCK RESERVA
-        # =====================================================
-        reserva = reserva_repo.get_reserva_by_id_for_update(conn, data["id_reserva"])
+        with conn.transaction():
+            # =====================================================
+            # 1. LOCK RESERVA
+            # =====================================================
+            reserva = reserva_repo.get_reserva_by_id_for_update(conn, data["id_reserva"])
 
-        if not reserva:
-            raise HTTPException(status_code=404, detail="Reserva no encontrada")
+            if not reserva:
+                raise HTTPException(status_code=404, detail="Reserva no encontrada")
 
-        _validar_estado_cancelable(reserva)
+            _validar_estado_cancelable(reserva)
 
-        # =====================================================
-        # 2. ITEMS
-        # =====================================================
-        items = reserva_repo.get_reserva_items(conn, data["id_reserva"])
+            # =====================================================
+            # 2. ITEMS
+            # =====================================================
+            items = reserva_repo.get_reserva_items(conn, data["id_reserva"])
 
-        # =====================================================
-        # 3. LIBERAR STOCK
-        # =====================================================
-        for item in items:
-            stock_service.liberar_stock_reservado(
+            # =====================================================
+            # 3. LIBERAR SERIALIZADAS + STOCK
+            # =====================================================
+            for item in items:
+                bicicleta_id = item.get("id_bicicleta_serializada")
+
+                if bicicleta_id is not None:
+                    bicicleta = get_bicicleta_serializada_for_update(conn, bicicleta_id)
+
+                    if bicicleta is None:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"No existe la bicicleta serializada {bicicleta_id}",
+                        )
+
+                    if bicicleta["estado"] != "reservada":
+                        raise HTTPException(
+                            status_code=400,
+                            detail=(
+                                f"La bicicleta serializada {bicicleta_id} "
+                                f"debe estar en estado reservada para cancelar la reserva"
+                            ),
+                        )
+
+                    update_bicicleta_serializada_estado(conn, bicicleta_id, "disponible")
+
+                stock_service.liberar_stock_reservado(
+                    conn,
+                    {
+                        "id_sucursal": reserva["id_sucursal"],
+                        "id_variante": item["id_variante"],
+                        "cantidad": item["cantidad"],
+                        "id_usuario": data["id_usuario"],
+                        "origen_tipo": "reserva",
+                        "origen_id": data["id_reserva"],
+                        "nota": "Cancelación de reserva",
+                    },
+                )
+
+            # =====================================================
+            # 4. UPDATE RESERVA
+            # =====================================================
+            reserva_repo.update_reserva_cancelacion(
                 conn,
-                {
-                    "id_sucursal": reserva["id_sucursal"],
-                    "id_variante": item["id_variante"],
-                    "cantidad": item["cantidad"],
-                    "id_usuario": data["id_usuario"],
-                    "origen_tipo": "reserva",
-                    "origen_id": data["id_reserva"],
-                    "nota": "Cancelación de reserva",
-                },
+                data["id_reserva"],
+                sena_perdida=data.get("sena_perdida", False),
             )
 
-        # =====================================================
-        # 4. UPDATE RESERVA
-        # =====================================================
-        reserva_repo.update_reserva_cancelacion(
-            conn,
-            data["id_reserva"],
-            sena_perdida=data.get("sena_perdida", False),
-        )
-
-        # =====================================================
-        # 5. EVENTO
-        # =====================================================
-        reserva_repo.insert_reserva_evento(
-            conn,
-            data["id_reserva"],
-            "cancelada",
-            data.get("motivo", "Cancelación manual"),
-            data["id_usuario"],
-        )
-
-        conn.commit()
+            # =====================================================
+            # 5. EVENTO
+            # =====================================================
+            reserva_repo.insert_reserva_evento(
+                conn,
+                data["id_reserva"],
+                "cancelada",
+                data.get("motivo", "Cancelación manual"),
+                data["id_usuario"],
+            )
 
         return {
             "ok": True,
@@ -219,13 +332,8 @@ def cancelar_reserva(data: dict):
             "estado": "cancelada",
         }
 
-    except Exception as e:
-        conn.rollback()
-        raise e
-
     finally:
         conn.close()
-
 
 # =========================================================
 # CONSULTAS
@@ -260,38 +368,74 @@ def marcar_reserva_vencida(reserva_id: int, data):
     conn = get_connection()
 
     try:
-        reserva = reserva_repo.get_reserva_by_id_for_update(conn, reserva_id)
+        with conn.transaction():
+            reserva = reserva_repo.get_reserva_by_id_for_update(conn, reserva_id)
 
-        if not reserva:
-            raise HTTPException(status_code=404, detail="Reserva no encontrada")
+            if not reserva:
+                raise HTTPException(status_code=404, detail="Reserva no encontrada")
 
-        if reserva["estado"] != "activa":
-            raise HTTPException(
-                status_code=400,
-                detail=f"Solo se puede vencer una reserva activa. Estado actual: {reserva['estado']}",
+            if reserva["estado"] != "activa":
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Solo se puede vencer una reserva activa. "
+                        f"Estado actual: {reserva['estado']}"
+                    ),
+                )
+
+            items = reserva_repo.get_reserva_items(conn, reserva_id)
+
+            for item in items:
+                bicicleta_id = item.get("id_bicicleta_serializada")
+
+                if bicicleta_id is not None:
+                    bicicleta = get_bicicleta_serializada_for_update(conn, bicicleta_id)
+
+                    if bicicleta is None:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"No existe la bicicleta serializada {bicicleta_id}",
+                        )
+
+                    if bicicleta["estado"] != "reservada":
+                        raise HTTPException(
+                            status_code=400,
+                            detail=(
+                                f"La bicicleta serializada {bicicleta_id} "
+                                f"debe estar en estado reservada para vencer la reserva"
+                            ),
+                        )
+
+                    update_bicicleta_serializada_estado(conn, bicicleta_id, "disponible")
+
+                stock_service.liberar_stock_reservado(
+                    conn,
+                    {
+                        "id_sucursal": reserva["id_sucursal"],
+                        "id_variante": item["id_variante"],
+                        "cantidad": item["cantidad"],
+                        "id_usuario": data.id_usuario,
+                        "origen_tipo": "reserva",
+                        "origen_id": reserva_id,
+                        "nota": "Reserva vencida",
+                    },
+                )
+
+            reserva_repo.update_reserva_estado(conn, reserva_id, "vencida")
+
+            reserva_repo.insert_reserva_evento(
+                conn,
+                reserva_id,
+                "vencida",
+                getattr(data, "detalle", None),
+                data.id_usuario,
             )
 
-        reserva_repo.update_reserva_estado(conn, reserva_id, "vencida")
-
-        reserva_repo.insert_reserva_evento(
-            conn,
-            reserva_id,
-            "vencida",
-            getattr(data, "detalle", None),
-            data.id_usuario,
-        )
-
-        conn.commit()
-
         return {
-                "ok": True,
-                "reserva_id": reserva_id,
-                "estado": "vencida",
-            }
-
-    except Exception as e:
-        conn.rollback()
-        raise e
+            "ok": True,
+            "reserva_id": reserva_id,
+            "estado": "vencida",
+        }
 
     finally:
         conn.close()
@@ -301,7 +445,6 @@ def convertir_reserva_en_venta(reserva_id: int, data):
 
     try:
         with conn.transaction():
-
             # =====================================================
             # 1. LOCK RESERVA
             # =====================================================
@@ -335,7 +478,20 @@ def convertir_reserva_en_venta(reserva_id: int, data):
             total = sena + saldo
 
             # =====================================================
-            # 3. CREAR VENTA
+            # 3. VALIDAR SERIALIZADAS RESERVADAS
+            # =====================================================
+            for item in items:
+                bicicleta_id = item.get("id_bicicleta_serializada")
+                if bicicleta_id is not None:
+                    _validar_y_bloquear_bicicleta_serializada_reservada_para_conversion(
+                        conn,
+                        id_bicicleta_serializada=bicicleta_id,
+                        id_variante=item["id_variante"],
+                        id_sucursal=reserva["id_sucursal"],
+                    )
+
+            # =====================================================
+            # 4. CREAR VENTA
             # =====================================================
             estado_venta = "pagada_parcial" if saldo > Decimal("0") else "pagada_total"
 
@@ -357,7 +513,7 @@ def convertir_reserva_en_venta(reserva_id: int, data):
             )
 
             # =====================================================
-            # 4. ITEMS + STOCK
+            # 5. ITEMS + SERIALIZADAS + STOCK
             # =====================================================
             for item in items:
                 precio_estimado = Decimal(str(item["precio_estimado"]))
@@ -379,7 +535,14 @@ def convertir_reserva_en_venta(reserva_id: int, data):
                     },
                 )
 
-                # mover stock reservado -> vendido pendiente
+                bicicleta_id = item.get("id_bicicleta_serializada")
+                if bicicleta_id is not None:
+                    update_bicicleta_serializada_estado(
+                        conn,
+                        bicicleta_id,
+                        "vendida_pendiente_entrega",
+                    )
+
                 stock_service.marcar_stock_pendiente_entrega(
                     conn,
                     {
@@ -395,7 +558,7 @@ def convertir_reserva_en_venta(reserva_id: int, data):
                 )
 
             # =====================================================
-            # 5. ACTUALIZAR RESERVA
+            # 6. ACTUALIZAR RESERVA
             # =====================================================
             reserva_repo.update_reserva_estado(conn, reserva_id, "convertida_en_venta")
 

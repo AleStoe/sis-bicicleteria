@@ -113,3 +113,22 @@ ORIGEN_DEUDA_CLIENTE = "deuda_cliente"
 AUDITORIA_ENTIDAD_DEUDA = "deuda"
 AUDITORIA_ACCION_DEUDA_GENERADA = "deuda_generada"
 AUDITORIA_ACCION_DEUDA_PAGO_REGISTRADO = "deuda_pago_registrado"
+
+# STOCK - MOVIMIENTOS
+STOCK_MOVIMIENTO_INGRESO = "ingreso"
+STOCK_MOVIMIENTO_VENTA = "venta"
+STOCK_MOVIMIENTO_ENTREGA = "entrega"
+STOCK_MOVIMIENTO_RESERVA = "reserva"
+# IMPORTANTE:
+# - devolucion_venta: solo para devoluciones de ventas entregadas
+# - devolucion: uso interno (taller, ajustes, etc)
+# NO USAR 'devolucion' para ventas
+STOCK_MOVIMIENTO_DEVOLUCION = "devolucion"
+STOCK_MOVIMIENTO_DEVOLUCION_VENTA = "devolucion_venta"
+STOCK_MOVIMIENTO_AJUSTE_MANUAL = "ajuste_manual"
+
+# STOCK - ORIGENES
+ORIGEN_RESERVA = "reserva"
+ORIGEN_ORDEN_TALLER = "orden_taller"
+ORIGEN_AJUSTE_MANUAL = "ajuste_manual"
+

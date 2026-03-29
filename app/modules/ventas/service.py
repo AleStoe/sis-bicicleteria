@@ -10,7 +10,7 @@ from app.modules.pagos.repository import get_total_pagado_confirmado_por_venta
 from app.modules.serializadas.repository import (
     get_bicicleta_serializada_for_update,
     update_bicicleta_serializada_estado,
-    insert_bicicleta_cliente,
+    insert_bicicleta_cliente,    
 )
 from .repository import (
     get_cliente_by_id,
@@ -26,6 +26,8 @@ from .repository import (
     update_venta_estado,
     update_venta_saldo_y_estado,
     insert_venta_anulacion,
+    insert_venta_devolucion,
+    get_venta_devolucion_by_venta_item_id,
 )
 from app.shared.constants import (
     AUDITORIA_ENTIDAD_VENTA,
@@ -319,6 +321,87 @@ def _validar_y_bloquear_bicicleta_serializada_para_anulacion(
 
     return bicicleta
 
+def _validar_y_bloquear_bicicleta_serializada_para_devolucion(
+    conn,
+    *,
+    item: dict,
+    venta_id: int,
+):
+    bicicleta_id = item.get("id_bicicleta_serializada")
+    if not bicicleta_id:
+        raise HTTPException(
+            status_code=400,
+            detail="El item indicado no tiene bicicleta serializada",
+        )
+
+    bicicleta = get_bicicleta_serializada_for_update(conn, bicicleta_id)
+
+    if bicicleta is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No existe la bicicleta serializada {bicicleta_id}",
+        )
+
+    if bicicleta["id_variante"] != item["id_variante"]:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"La bicicleta serializada {bicicleta_id} "
+                f"no coincide con la variante del item de la venta {venta_id}"
+            ),
+        )
+
+    if bicicleta["estado"] != "entregada":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"La bicicleta serializada {bicicleta_id} "
+                f"no está en estado entregada"
+            ),
+        )
+
+    return bicicleta
+
+def _validar_y_bloquear_bicicleta_serializada_para_devolucion(
+    conn,
+    *,
+    item: dict,
+    venta_id: int,
+):
+    bicicleta_id = item.get("id_bicicleta_serializada")
+    if not bicicleta_id:
+        raise HTTPException(
+            status_code=400,
+            detail="El item indicado no tiene bicicleta serializada",
+        )
+
+    bicicleta = get_bicicleta_serializada_for_update(conn, bicicleta_id)
+
+    if bicicleta is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No existe la bicicleta serializada {bicicleta_id}",
+        )
+
+    if bicicleta["id_variante"] != item["id_variante"]:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"La bicicleta serializada {bicicleta_id} "
+                f"no coincide con la variante del item de la venta {venta_id}"
+            ),
+        )
+
+    if bicicleta["estado"] != "entregada":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"La bicicleta serializada {bicicleta_id} "
+                f"no está en estado entregada"
+            ),
+        )
+
+    return bicicleta
 
 def crear_venta(data):
     conn = get_connection()
@@ -725,3 +808,233 @@ def _ordenar_items_stockeables_por_variante(items: list[dict]) -> list[dict]:
         [item for item in items if item.get("stockeable", True)],
         key=lambda item: item["id_variante"],
     )
+
+def devolver_item_serializado_entregado(venta_id: int, data):
+    conn = get_connection()
+
+    try:
+        with conn.transaction():
+            venta = get_venta_for_update(conn, venta_id)
+
+            if venta is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No existe la venta {venta_id}",
+                )
+
+            if venta["estado"] != VENTA_ESTADO_ENTREGADA:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"La venta {venta_id} no está entregada. "
+                        f"Estado actual: {venta['estado']}"
+                    ),
+                )
+
+            items = get_venta_items_detallados_by_venta_id(conn, venta_id)
+
+            if not items:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"La venta {venta_id} no tiene items",
+                )
+
+            item_objetivo = None
+            for item in items:
+                if item.get("id_bicicleta_serializada") == data.id_bicicleta_serializada:
+                    item_objetivo = item
+                    break
+
+            if item_objetivo is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"La bicicleta serializada {data.id_bicicleta_serializada} "
+                        f"no pertenece a la venta {venta_id}"
+                    ),
+                )
+
+            bicicleta = _validar_y_bloquear_bicicleta_serializada_para_devolucion(
+                conn,
+                item=item_objetivo,
+                venta_id=venta_id,
+            )
+
+            update_bicicleta_serializada_estado(
+                conn,
+                bicicleta["id"],
+                "disponible",
+            )
+
+            stock_service.registrar_ingreso_por_devolucion_venta(
+                conn,
+                {
+                    "id_sucursal": venta["id_sucursal"],
+                    "id_variante": item_objetivo["id_variante"],
+                    "cantidad": 1,
+                    "id_usuario": data.id_usuario,
+                    "origen_tipo": "venta",
+                    "origen_id": venta_id,
+                    "id_bicicleta_serializada": bicicleta["id"],
+                    "nota": (
+                        f"Devolución de bicicleta serializada "
+                        f"desde venta #{venta_id}. "
+                        f"Motivo: {data.motivo}"
+                    ),
+                },
+            )
+
+            auditoria_service.registrar_evento(
+                conn,
+                id_usuario=data.id_usuario,
+                id_sucursal=venta["id_sucursal"],
+                entidad="bicicleta_serializada",
+                entidad_id=bicicleta["id"],
+                accion="bicicleta_serializada_devuelta",
+                detalle=(
+                    f"Devolución de bicicleta serializada. "
+                    f"venta_id={venta_id}, "
+                    f"id_variante={item_objetivo['id_variante']}, "
+                    f"numero_cuadro={bicicleta['numero_cuadro']}, "
+                    f"motivo={data.motivo}"
+                ),
+            )
+
+        return {
+            "ok": True,
+            "venta_id": venta_id,
+            "id_bicicleta_serializada": bicicleta["id"],
+            "estado_bicicleta": "disponible",
+        }
+
+    finally:
+        conn.close()
+
+def devolver_item_serializado_entregado(venta_id: int, data):
+    conn = get_connection()
+
+    try:
+        with conn.transaction():
+            venta = get_venta_for_update(conn, venta_id)
+
+            if venta is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No existe la venta {venta_id}",
+                )
+
+            if venta["estado"] != VENTA_ESTADO_ENTREGADA:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"La venta {venta_id} no está entregada. "
+                        f"Estado actual: {venta['estado']}"
+                    ),
+                )
+
+            items = get_venta_items_detallados_by_venta_id(conn, venta_id)
+
+            if not items:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"La venta {venta_id} no tiene items",
+                )
+
+            item_objetivo = None
+            for item in items:
+                if item.get("id_bicicleta_serializada") == data.id_bicicleta_serializada:
+                    item_objetivo = item
+                    break
+
+            if item_objetivo is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"La bicicleta serializada {data.id_bicicleta_serializada} "
+                        f"no pertenece a la venta {venta_id}"
+                    ),
+                )
+
+            devolucion_existente = get_venta_devolucion_by_venta_item_id(
+                conn,
+                item_objetivo["id"],
+            )
+            if devolucion_existente is not None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"El item {item_objetivo['id']} de la venta {venta_id} "
+                        f"ya fue devuelto"
+                    ),
+                )
+
+            bicicleta = _validar_y_bloquear_bicicleta_serializada_para_devolucion(
+                conn,
+                item=item_objetivo,
+                venta_id=venta_id,
+            )
+
+            devolucion_id = insert_venta_devolucion(
+                conn,
+                {
+                    "id_venta": venta_id,
+                    "id_venta_item": item_objetivo["id"],
+                    "id_bicicleta_serializada": bicicleta["id"],
+                    "id_sucursal_reingreso": venta["id_sucursal"],
+                    "motivo": data.motivo,
+                    "id_usuario": data.id_usuario,
+                },
+            )
+
+            update_bicicleta_serializada_estado(
+                conn,
+                bicicleta["id"],
+                "disponible",
+            )
+
+            stock_service.registrar_devolucion_stock(
+                conn,
+                {
+                    "id_sucursal": venta["id_sucursal"],
+                    "id_variante": item_objetivo["id_variante"],
+                    "cantidad": 1,
+                    "id_usuario": data.id_usuario,
+                    "origen_tipo": "venta",
+                    "origen_id": venta_id,
+                    "id_bicicleta_serializada": bicicleta["id"],  # ← AGREGAR
+                    "nota": (
+                        f"Devolución de bicicleta serializada "
+                        f"desde venta #{venta_id}. "
+                        f"devolucion_id={devolucion_id}. "
+                        f"motivo={data.motivo}"
+                    ),
+                },
+            )
+
+            auditoria_service.registrar_evento(
+                conn,
+                id_usuario=data.id_usuario,
+                id_sucursal=venta["id_sucursal"],
+                entidad="venta_devolucion",
+                entidad_id=devolucion_id,
+                accion="venta_devolucion_creada",
+                detalle=(
+                    f"Devolución de bicicleta serializada. "
+                    f"venta_id={venta_id}, "
+                    f"venta_item_id={item_objetivo['id']}, "
+                    f"id_bicicleta_serializada={bicicleta['id']}, "
+                    f"numero_cuadro={bicicleta['numero_cuadro']}, "
+                    f"motivo={data.motivo}"
+                ),
+            )
+
+        return {
+            "ok": True,
+            "venta_id": venta_id,
+            "devolucion_id": devolucion_id,
+            "id_bicicleta_serializada": bicicleta["id"],
+            "estado_bicicleta": "disponible",
+        }
+
+    finally:
+        conn.close()

@@ -354,3 +354,49 @@ def get_venta_for_update(conn, venta_id: int):
             (venta_id,),
         )
         return cur.fetchone()
+
+def insert_venta_devolucion(conn, data: dict):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            INSERT INTO venta_devoluciones (
+                id_venta,
+                id_venta_item,
+                id_bicicleta_serializada,
+                id_sucursal_reingreso,
+                motivo,
+                id_usuario
+            )
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING id
+            """,
+            (
+                data["id_venta"],
+                data["id_venta_item"],
+                data["id_bicicleta_serializada"],
+                data["id_sucursal_reingreso"],
+                data["motivo"],
+                data["id_usuario"],
+            ),
+        )
+        return cur.fetchone()["id"]
+
+def get_venta_devolucion_by_venta_item_id(conn, id_venta_item: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT
+                id,
+                id_venta,
+                id_venta_item,
+                id_bicicleta_serializada,
+                id_sucursal_reingreso,
+                fecha,
+                motivo,
+                id_usuario
+            FROM venta_devoluciones
+            WHERE id_venta_item = %s
+            """,
+            (id_venta_item,),
+        )
+        return cur.fetchone()

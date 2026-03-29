@@ -15,6 +15,14 @@ class ReservaItemCreateInput(BaseModel):
     cantidad: Decimal = Field(gt=0)
     precio_estimado: Decimal = Field(ge=0)
 
+    @model_validator(mode="after")
+    def validar_serializada(self):
+        if self.id_bicicleta_serializada is not None and self.cantidad != Decimal("1"):
+            raise ValueError(
+                "Un item con bicicleta serializada debe tener cantidad = 1"
+            )
+        return self
+
 
 class ReservaPagoInicialInput(BaseModel):
     registrar: bool = False
