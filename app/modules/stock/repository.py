@@ -895,3 +895,34 @@ def registrar_salida_por_serializacion(
         id_bicicleta_serializada=id_bicicleta_serializada,
         nota=nota,
     )
+
+def registrar_ajuste_manual_stock(
+    conn,
+    *,
+    id_sucursal: int,
+    id_variante: int,
+    cantidad: float,
+    id_usuario: int,
+    origen_tipo: str | None = "ajuste_manual",
+    origen_id: int | None = None,
+    nota: str | None = None,
+):
+    if cantidad == 0:
+        raise ValueError("La cantidad del ajuste no puede ser 0")
+
+    if origen_id is None:
+        origen_id = 0
+
+    return _aplicar_operacion_stock(
+        conn,
+        id_sucursal=id_sucursal,
+        id_variante=id_variante,
+        id_usuario=id_usuario,
+        tipo_movimiento="ajuste",
+        cantidad=abs(cantidad),
+        delta_fisico=cantidad,
+        origen_tipo=origen_tipo,
+        origen_id=origen_id,
+        nota=nota,
+        validar_stock_disponible=True,
+    )

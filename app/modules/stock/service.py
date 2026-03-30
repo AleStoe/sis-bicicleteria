@@ -214,3 +214,42 @@ def registrar_salida_por_serializacion(conn, data: dict):
         id_bicicleta_serializada=data.get("id_bicicleta_serializada"),
         nota=data.get("nota"),
     )
+
+def crear_ingreso_stock(data: dict):
+    conn = get_connection()
+    try:
+        with conn.transaction():
+            return repository.crear_ingreso_stock(conn, data)
+    finally:
+        conn.close()
+
+
+def crear_ajuste_stock(data: dict):
+    conn = get_connection()
+    try:
+        with conn.transaction():
+            cantidad = float(data["cantidad"])
+
+            if cantidad == 0:
+                raise ValueError("La cantidad del ajuste no puede ser 0")
+
+            nota = data.get("nota")
+            if not nota or not str(nota).strip():
+                raise ValueError("El ajuste manual requiere motivo")
+
+            origen_id = data.get("origen_id")
+            if origen_id is None:
+                origen_id = 0
+
+            return repository.registrar_ajuste_manual_stock(
+                conn,
+                id_sucursal=data["id_sucursal"],
+                id_variante=data["id_variante"],
+                cantidad=cantidad,
+                id_usuario=data["id_usuario"],
+                origen_tipo=data.get("origen_tipo", "ajuste_manual"),
+                origen_id=origen_id,
+                nota=nota,
+            )
+    finally:
+        conn.close()

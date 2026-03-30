@@ -38,3 +38,28 @@ class IngresoStockResponse(BaseModel):
     stock_nuevo: float
     costo_promedio_anterior: float
     costo_promedio_nuevo: float
+
+class AjusteStockCreate(BaseModel):
+    id_sucursal: int
+    id_variante: int
+    cantidad: float
+    nota: str
+    id_usuario: int
+    origen_tipo: str = "ajuste_manual"
+    origen_id: int | None = None
+
+
+class AjusteStockResponse(BaseModel):
+    ok: bool
+    movimiento_id: int
+    id_sucursal: int
+    id_variante: int
+    tipo_movimiento: str
+    cantidad: float
+    stock_fisico_anterior: float
+    stock_reservado_anterior: float
+    stock_vendido_pendiente_entrega_anterior: float
+    stock_fisico_nuevo: float
+    stock_reservado_nuevo: float
+    stock_vendido_pendiente_entrega_nuevo: float
+    stock_disponible_nuevo: float
