@@ -659,4 +659,3 @@ def asignar_rol_usuario(db_conn, id_usuario: int, nombre_rol: str):
             """,
             (id_usuario, rol_id),
         )
- 

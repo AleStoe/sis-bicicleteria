@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 from fastapi import HTTPException
-from app.modules.authz.service import exigir_rol_admin
+from app.modules.authz.service import exigir_permiso_revertir_pago
 from app.db.connection import get_connection
 from app.modules.auditoria import service as auditoria_service
 from app.modules.caja.repository import (
@@ -285,7 +285,7 @@ def revertir_pago(pago_id: int, data):
 
     try:
         with conn.transaction():
-            exigir_rol_admin(conn, data.id_usuario)
+            exigir_permiso_revertir_pago(conn, data.id_usuario)
             pago_original = get_pago_by_id_for_update(conn, pago_id)
             if pago_original is None:
                 raise HTTPException(status_code=404, detail=f"No existe el pago {pago_id}")
