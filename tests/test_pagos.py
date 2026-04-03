@@ -1,6 +1,11 @@
 from tests.conftest import get_venta
-from tests.conftest import get_auditoria_by_entidad
 
+from tests.conftest import (
+    get_auditoria_by_entidad,
+    get_caja_movimientos,
+    get_deudas_by_cliente,
+    get_venta,
+)
 def _abrir_caja(client, sucursal_id: int, usuario_id: int):
     return client.post(
         "/cajas/abrir",
@@ -602,3 +607,130 @@ def test_pago_crea_auditoria(client, db_conn, seed_venta_basica):
 
     assert len(eventos) == 1
     assert eventos[0]["accion"] == "pago_registrado"
+
+def test_rechaza_pago_directo_a_venta_entregada_con_deuda(client, db_conn, seed_venta_basica):
+    crear = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 1,
+                }
+            ],
+        },
+    )
+    assert crear.status_code == 200
+    venta_id = crear.json()["venta_id"]
+
+    abrir_caja = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+    assert abrir_caja.status_code == 200
+
+    pago_parcial = client.post(
+        "/pagos/",
+        json=_payload_pago(
+            venta_id,
+            "efectivo",
+            10000,
+            seed_venta_basica["usuario_id"],
+            "Pago parcial antes de entregar",
+        ),
+    )
+    assert pago_parcial.status_code == 200
+
+    entrega = client.post(
+        f"/ventas/{venta_id}/entregar",
+        json={"id_usuario": seed_venta_basica["usuario_id"]},
+    )
+    assert entrega.status_code == 200
+
+    pago_despues = client.post(
+        "/pagos/",
+        json=_payload_pago(
+            venta_id,
+            "efectivo",
+            2000,
+            seed_venta_basica["usuario_id"],
+            "Intento de pago directo a venta ya entregada",
+        ),
+    )
+
+    assert pago_despues.status_code == 400
+    assert "registrá el pago sobre la deuda correspondiente" in pago_despues.json()["detail"]
+
+def test_pago_de_deuda_no_modifica_saldo_de_venta(client, db_conn, seed_venta_basica):
+    # crear venta
+    crear = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 1,
+                }
+            ],
+        },
+    )
+    assert crear.status_code == 200
+    venta_id = crear.json()["venta_id"]
+
+    # abrir caja
+    abrir = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+    assert abrir.status_code == 200
+
+    # pago parcial
+    pago = client.post(
+        "/pagos/",
+        json=_payload_pago(
+            venta_id,
+            "efectivo",
+            10000,
+            seed_venta_basica["usuario_id"],
+            "Pago parcial",
+        ),
+    )
+    assert pago.status_code == 200
+
+    # entregar → genera deuda
+    entrega = client.post(
+        f"/ventas/{venta_id}/entregar",
+        json={"id_usuario": seed_venta_basica["usuario_id"]},
+    )
+    assert entrega.status_code == 200
+
+    venta_antes = get_venta(db_conn, venta_id)
+
+    # obtener deuda
+    deudas = get_deudas_by_cliente(db_conn, seed_venta_basica["cliente_id"])
+    deuda_id = deudas[0]["id"]
+
+    # pagar deuda
+    pago_deuda = client.post(
+        f"/deudas/{deuda_id}/pagos",
+        json={
+            "monto": 2000,
+            "medio_pago": "efectivo",
+            "nota": "Pago deuda",
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert pago_deuda.status_code == 200
+
+    venta_despues = get_venta(db_conn, venta_id)
+
+    # 🔴 ESTA ES LA VALIDACIÓN IMPORTANTE
+    assert venta_antes["saldo_pendiente"] == venta_despues["saldo_pendiente"]

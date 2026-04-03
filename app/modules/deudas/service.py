@@ -74,56 +74,14 @@ def crear_deuda_por_venta(data):
     try:
         with conn.transaction():
             exigir_rol_admin(conn, data.id_usuario)
-            monto_inicial = Decimal(str(data.monto_inicial))
 
-            if monto_inicial <= Decimal("0"):
-                raise HTTPException(
-                    status_code=400,
-                    detail="El monto inicial de la deuda debe ser mayor a 0",
-                )
-
-            _validar_cliente(conn, data.id_cliente)
-            venta = _validar_venta_para_deuda(conn, data.id_venta, data.id_cliente)
-
-            deuda = repository.insert_deuda_cliente(
+            deuda = crear_deuda_desde_venta_entregada(
                 conn,
-                {
-                    "id_cliente": data.id_cliente,
-                    "origen_tipo": ORIGEN_VENTA,
-                    "origen_id": data.id_venta,
-                    "saldo_actual": monto_inicial,
-                    "genera_recargo": False,
-                    "tasa_recargo": None,
-                    "proximo_vencimiento": None,
-                    "estado": DEUDA_ESTADO_ABIERTA,
-                    "observacion": data.observacion,
-                },
-            )
-
-            repository.insert_deuda_movimiento(
-                conn,
-                {
-                    "id_deuda": deuda["id"],
-                    "tipo_movimiento": DEUDA_MOVIMIENTO_CARGO,
-                    "monto": monto_inicial,
-                    "origen_tipo": ORIGEN_VENTA,
-                    "origen_id": data.id_venta,
-                    "nota": f"Deuda generada desde venta #{data.id_venta}",
-                    "id_usuario": data.id_usuario,
-                },
-            )
-
-            auditoria_service.registrar_evento(
-                conn,
+                id_cliente=data.id_cliente,
+                id_venta=data.id_venta,
+                monto_inicial=data.monto_inicial,
                 id_usuario=data.id_usuario,
-                id_sucursal=venta["id_sucursal"],
-                entidad=AUDITORIA_ENTIDAD_DEUDA,
-                entidad_id=deuda["id"],
-                accion=AUDITORIA_ACCION_DEUDA_GENERADA,
-                detalle=(
-                    f"Deuda generada desde venta. "
-                    f"venta_id={data.id_venta}, cliente={data.id_cliente}, monto={monto_inicial}"
-                ),
+                observacion=data.observacion,
             )
 
         return {
@@ -276,3 +234,66 @@ def registrar_pago_deuda(deuda_id: int, data):
         }
     finally:
         conn.close()
+
+def crear_deuda_desde_venta_entregada(
+    conn,
+    *,
+    id_cliente: int,
+    id_venta: int,
+    monto_inicial,
+    id_usuario: int,
+    observacion: str | None = None,
+):
+    monto_inicial = Decimal(str(monto_inicial))
+
+    if monto_inicial <= Decimal("0"):
+        raise HTTPException(
+            status_code=400,
+            detail="El monto inicial de la deuda debe ser mayor a 0",
+        )
+
+    _validar_cliente(conn, id_cliente)
+    venta = _validar_venta_para_deuda(conn, id_venta, id_cliente)
+
+    deuda = repository.insert_deuda_cliente(
+        conn,
+        {
+            "id_cliente": id_cliente,
+            "origen_tipo": ORIGEN_VENTA,
+            "origen_id": id_venta,
+            "saldo_actual": monto_inicial,
+            "genera_recargo": False,
+            "tasa_recargo": None,
+            "proximo_vencimiento": None,
+            "estado": DEUDA_ESTADO_ABIERTA,
+            "observacion": observacion,
+        },
+    )
+
+    repository.insert_deuda_movimiento(
+        conn,
+        {
+            "id_deuda": deuda["id"],
+            "tipo_movimiento": DEUDA_MOVIMIENTO_CARGO,
+            "monto": monto_inicial,
+            "origen_tipo": ORIGEN_VENTA,
+            "origen_id": id_venta,
+            "nota": f"Deuda generada desde venta #{id_venta}",
+            "id_usuario": id_usuario,
+        },
+    )
+
+    auditoria_service.registrar_evento(
+        conn,
+        id_usuario=id_usuario,
+        id_sucursal=venta["id_sucursal"],
+        entidad=AUDITORIA_ENTIDAD_DEUDA,
+        entidad_id=deuda["id"],
+        accion=AUDITORIA_ACCION_DEUDA_GENERADA,
+        detalle=(
+            f"Deuda generada desde venta. "
+            f"venta_id={id_venta}, cliente={id_cliente}, monto={monto_inicial}"
+        ),
+    )
+
+    return deuda

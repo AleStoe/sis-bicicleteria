@@ -43,7 +43,7 @@ from app.shared.constants import (
     AUDITORIA_ENTIDAD_VENTA_DEVOLUCION,
     AUDITORIA_ACCION_VENTA_DEVOLUCION_CREADA,
 )
-
+from app.modules.deudas import service as deudas_service
 
 def _consolidar_items(items):
     consolidados = {}
@@ -649,7 +649,15 @@ def entregar_venta(venta_id: int, data):
                 )
 
             update_venta_estado(conn, venta_id, VENTA_ESTADO_ENTREGADA)
-
+            if entrega_con_deuda:
+                deudas_service.crear_deuda_desde_venta_entregada(
+                    conn,
+                    id_cliente=venta["id_cliente"],
+                    id_venta=venta_id,
+                    monto_inicial=saldo_pendiente,
+                    id_usuario=data.id_usuario,
+                    observacion=f"Deuda creada automáticamente al entregar venta #{venta_id}",
+                )
             accion_auditoria = (
                 AUDITORIA_ACCION_VENTA_ENTREGA_CON_DEUDA
                 if entrega_con_deuda

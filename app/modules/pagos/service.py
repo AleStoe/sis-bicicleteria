@@ -115,7 +115,10 @@ def registrar_pago(conn, data: dict):
         if venta["estado"] == VENTA_ESTADO_ENTREGADA:
             raise HTTPException(
                 status_code=400,
-                detail=f"La venta {venta['id']} ya fue entregada y no admite nuevos pagos",
+                detail=(
+                    f"La venta {venta['id']} ya fue entregada. "
+                    "Si tiene saldo pendiente, registrá el pago sobre la deuda correspondiente"
+                ),
             )
 
         if Decimal(str(venta["saldo_pendiente"])) <= 0:
