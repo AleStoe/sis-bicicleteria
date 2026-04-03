@@ -5,6 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 from psycopg.rows import dict_row
 
+
 # Forzar .env.test antes de importar la app/config
 os.environ["DB_HOST"] = "localhost"
 os.environ["DB_PORT"] = "5432"
@@ -658,3 +659,4 @@ def asignar_rol_usuario(db_conn, id_usuario: int, nombre_rol: str):
             """,
             (id_usuario, rol_id),
         )
+ 
