@@ -17,6 +17,10 @@ from .repository import (
     insert_caja,
     insert_caja_movimiento,
 )
+from app.shared.business_rules import (
+    LIMITE_AJUSTE_CAJA,
+    LIMITE_EGRESO_CAJA,
+)
 from app.shared.constants import (
     AUDITORIA_ENTIDAD_CAJA,
     AUDITORIA_ACCION_CAJA_EGRESO,
@@ -29,7 +33,7 @@ from app.shared.constants import (
     CAJA_ORIGEN_EGRESO_MANUAL,
     CAJA_ORIGEN_AJUSTE_MANUAL,
 )
-
+LIMITE_AJUSTE_CAJA = Decimal("500000")
 SUBMEDIOS = ("efectivo", "transferencia", "mercadopago", "tarjeta")
 
 
@@ -143,6 +147,15 @@ def registrar_egreso(caja_id: int, data: CajaEgresoInput):
             if caja["estado"] != CAJA_ESTADO_ABIERTA:
                 raise HTTPException(status_code=400, detail="La caja no está abierta")
 
+            if data.monto > LIMITE_EGRESO_CAJA:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"El egreso supera el límite permitido de "
+                        f"{LIMITE_EGRESO_CAJA}"
+                    ),
+                )
+
             movimiento_id = insert_caja_movimiento(
                 conn,
                 id_caja=caja_id,
@@ -237,6 +250,15 @@ def registrar_ajuste(caja_id: int, data: CajaAjusteInput):
 
             if caja["estado"] != CAJA_ESTADO_ABIERTA:
                 raise HTTPException(status_code=400, detail="La caja no está abierta")
+
+            if data.monto > LIMITE_EGRESO_CAJA:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"El egreso supera el límite permitido de "
+                        f"{LIMITE_EGRESO_CAJA}"
+                    ),
+                )
 
             movimiento_id = insert_caja_movimiento(
                 conn,
