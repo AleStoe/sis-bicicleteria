@@ -265,3 +265,81 @@ def test_rechaza_sobrepago_de_deuda(client, db_conn, seed_venta_basica):
     movimientos = get_deuda_movimientos(db_conn, deuda_id)
     assert len(movimientos) == 1
     assert movimientos[0]["tipo_movimiento"] == "cargo"
+
+def test_listar_deudas_sin_filtros(client, db_conn, seed_venta_basica):
+    venta_id = _crear_venta_basica(client, seed_venta_basica)
+
+    client.post(
+        "/deudas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_venta": venta_id,
+            "monto_inicial": 5000,
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+
+    response = client.get("/deudas/")
+    assert response.status_code == 200
+
+    data = response.json()
+    assert isinstance(data, list)
+    assert len(data) >= 1
+
+def test_listar_deudas_por_cliente(client, db_conn, seed_venta_basica):
+    venta_id = _crear_venta_basica(client, seed_venta_basica)
+
+    client.post(
+        "/deudas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_venta": venta_id,
+            "monto_inicial": 5000,
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+
+    response = client.get(f"/deudas?id_cliente={seed_venta_basica['cliente_id']}")
+    assert response.status_code == 200
+
+    data = response.json()
+    assert all(d["id_cliente"] == seed_venta_basica["cliente_id"] for d in data)
+
+def test_listar_deudas_por_estado(client, db_conn, seed_venta_basica):
+    venta_id = _crear_venta_basica(client, seed_venta_basica)
+
+    client.post(
+        "/deudas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_venta": venta_id,
+            "monto_inicial": 5000,
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+
+    response = client.get("/deudas?estado=abierta")
+    assert response.status_code == 200
+
+    data = response.json()
+    assert all(d["estado"] == "abierta" for d in data)
+
+def test_listar_deudas_por_origen_venta(client, db_conn, seed_venta_basica):
+    venta_id = _crear_venta_basica(client, seed_venta_basica)
+
+    client.post(
+        "/deudas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_venta": venta_id,
+            "monto_inicial": 5000,
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+
+    response = client.get(f"/deudas?origen_tipo=venta&origen_id={venta_id}")
+    assert response.status_code == 200
+
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["origen_id"] == venta_id

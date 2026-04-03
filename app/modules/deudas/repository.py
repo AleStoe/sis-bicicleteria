@@ -180,3 +180,44 @@ def update_deuda_saldo_y_estado(conn, deuda_id: int, saldo_actual, estado: str):
             """,
             (saldo_actual, estado, deuda_id),
         )
+    
+def get_deudas_filtradas(
+    conn,
+    *,
+    id_cliente: int | None = None,
+    estado: str | None = None,
+    origen_tipo: str | None = None,
+    origen_id: int | None = None,
+):
+    sql = """
+        SELECT
+            d.*,
+            c.nombre AS cliente_nombre
+        FROM deudas_cliente d
+        INNER JOIN clientes c
+            ON c.id = d.id_cliente
+        WHERE 1=1
+    """
+    params = []
+
+    if id_cliente is not None:
+        sql += " AND d.id_cliente = %s"
+        params.append(id_cliente)
+
+    if estado is not None:
+        sql += " AND d.estado = %s"
+        params.append(estado)
+
+    if origen_tipo is not None:
+        sql += " AND d.origen_tipo = %s"
+        params.append(origen_tipo)
+
+    if origen_id is not None:
+        sql += " AND d.origen_id = %s"
+        params.append(origen_id)
+
+    sql += " ORDER BY d.id DESC"
+
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(sql, tuple(params))
+        return cur.fetchall()

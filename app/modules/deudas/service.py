@@ -94,10 +94,22 @@ def crear_deuda_por_venta(data):
         conn.close()
 
 
-def listar_deudas():
+def listar_deudas(
+    *,
+    id_cliente: int | None = None,
+    estado: str | None = None,
+    origen_tipo: str | None = None,
+    origen_id: int | None = None,
+):
     conn = get_connection()
     try:
-        return repository.get_deudas(conn)
+        return repository.get_deudas_filtradas(
+            conn,
+            id_cliente=id_cliente,
+            estado=estado,
+            origen_tipo=origen_tipo,
+            origen_id=origen_id,
+        )
     finally:
         conn.close()
 
@@ -297,3 +309,6 @@ def crear_deuda_desde_venta_entregada(
     )
 
     return deuda
+
+def obtener_deuda_abierta_por_origen(conn, *, origen_tipo: str, origen_id: int):
+    return repository.get_deuda_abierta_by_origen(conn, origen_tipo, origen_id)

@@ -49,16 +49,10 @@ def entregar_venta_route(venta_id: int, data: VentaEntregaInput):
 def anular_venta_route(venta_id: int, data: VentaAnulacionInput):
     return anular_venta(venta_id, data)
 
-@router.post("/{venta_id}/devolver-serializada")
-def devolver_serializada_route(venta_id: int, data: VentaDevolucionSerializadaInput):
-    return devolver_item_serializado_entregado(venta_id, data)
-
 @router.post(
     "/{venta_id}/devolver-serializada",
     response_model=VentaDevolucionSerializadaOutput,
 )
-def devolver_serializada_route(
-    venta_id: int,
-    data: VentaDevolucionSerializadaInput,
-):
+def devolver_serializada_route(venta_id: int, data: VentaDevolucionSerializadaInput):
     return devolver_item_serializado_entregado(venta_id, data)
+

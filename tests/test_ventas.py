@@ -935,3 +935,65 @@ def test_entregar_venta_con_deuda_registra_auditoria_especial_y_deuda(client, db
     ultima = auditorias_venta[-1]
     assert ultima["accion"] == AUDITORIA_ACCION_VENTA_ENTREGA_CON_DEUDA
     assert "saldo_pendiente=14440" in (ultima["detalle"] or "")
+
+def test_obtener_venta_pagada_total_no_devuelve_deuda_abierta(
+    client, db_conn, seed_venta_basica
+):
+    crear_response = _crear_venta_basica(client, seed_venta_basica)
+    assert crear_response.status_code == 200
+    venta_id = crear_response.json()["venta_id"]
+
+    abrir_caja = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+    assert abrir_caja.status_code == 200
+
+    pago_total = _pagar_venta_basica_total(client, venta_id, seed_venta_basica)
+    assert pago_total.status_code == 200
+
+    entrega = client.post(
+        f"/ventas/{venta_id}/entregar",
+        json={"id_usuario": seed_venta_basica["usuario_id"]},
+    )
+    assert entrega.status_code == 200
+
+    response = client.get(f"/ventas/{venta_id}")
+    assert response.status_code == 200, response.text
+
+    data = response.json()
+    assert data["venta"]["id"] == venta_id
+    assert data["situacion_financiera"]["tiene_deuda"] is False
+    assert data["situacion_financiera"]["deuda_abierta"] is None
+
+def test_obtener_venta_pagada_total_no_devuelve_deuda_abierta(
+    client, db_conn, seed_venta_basica
+):
+    crear_response = _crear_venta_basica(client, seed_venta_basica)
+    assert crear_response.status_code == 200
+    venta_id = crear_response.json()["venta_id"]
+
+    abrir_caja = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+    assert abrir_caja.status_code == 200
+
+    pago_total = _pagar_venta_basica_total(client, venta_id, seed_venta_basica)
+    assert pago_total.status_code == 200
+
+    entrega = client.post(
+        f"/ventas/{venta_id}/entregar",
+        json={"id_usuario": seed_venta_basica["usuario_id"]},
+    )
+    assert entrega.status_code == 200
+
+    response = client.get(f"/ventas/{venta_id}")
+    assert response.status_code == 200, response.text
+
+    data = response.json()
+    assert data["venta"]["id"] == venta_id
+    assert data["situacion_financiera"]["tiene_deuda"] is False
+    assert data["situacion_financiera"]["deuda_abierta"] is None

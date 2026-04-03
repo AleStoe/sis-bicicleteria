@@ -137,41 +137,6 @@ def insert_venta_item(conn, data: dict):
         return cur.fetchone()["id"]
 
 
-def update_venta_totales_y_estado(
-    conn,
-    venta_id: int,
-    subtotal_base,
-    total_final,
-    saldo_pendiente,
-    estado: str,
-    descuento_total=0,
-    recargo_total=0,
-):
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            UPDATE ventas
-            SET
-                subtotal_base = %s,
-                descuento_total = %s,
-                recargo_total = %s,
-                total_final = %s,
-                saldo_pendiente = %s,
-                estado = %s,
-                updated_at = NOW()
-            WHERE id = %s
-            """,
-            (
-                subtotal_base,
-                descuento_total,
-                recargo_total,
-                total_final,
-                saldo_pendiente,
-                estado,
-                venta_id,
-            ),
-        )
-
 
 def update_venta_estado(conn, venta_id: int, nuevo_estado: str):
     with conn.cursor() as cur:

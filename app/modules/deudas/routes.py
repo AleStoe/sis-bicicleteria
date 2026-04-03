@@ -1,5 +1,5 @@
-from fastapi import APIRouter
-
+from fastapi import APIRouter, Query
+from typing import Optional
 from .schema import DeudaCrearInput, DeudaPagoInput
 from .service import (
     crear_deuda_por_venta,
@@ -17,8 +17,18 @@ def crear_deuda(data: DeudaCrearInput):
 
 
 @router.get("/")
-def listar():
-    return listar_deudas()
+def listar(
+    id_cliente: Optional[int] = Query(default=None),
+    estado: Optional[str] = Query(default=None),
+    origen_tipo: Optional[str] = Query(default=None),
+    origen_id: Optional[int] = Query(default=None),
+):
+    return listar_deudas(
+        id_cliente=id_cliente,
+        estado=estado,
+        origen_tipo=origen_tipo,
+        origen_id=origen_id,
+    )
 
 
 @router.get("/{deuda_id}")

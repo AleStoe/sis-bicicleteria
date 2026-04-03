@@ -40,8 +40,8 @@ from app.shared.constants import (
     VENTA_ESTADO_ANULADA,
     VENTA_ESTADO_ENTREGADA,
     AUDITORIA_ACCION_VENTA_ENTREGA_CON_DEUDA,
-    AUDITORIA_ENTIDAD_VENTA_DEVOLUCION,
     AUDITORIA_ACCION_VENTA_DEVOLUCION_CREADA,
+    ORIGEN_VENTA,
 )
 from app.modules.deudas import service as deudas_service
 
@@ -566,7 +566,6 @@ def listar_ventas():
     finally:
         conn.close()
 
-
 def obtener_venta(venta_id: int):
     conn = get_connection()
     try:
@@ -580,13 +579,35 @@ def obtener_venta(venta_id: int):
 
         items = get_venta_items_by_venta_id(conn, venta_id)
 
+        deuda_abierta = deudas_service.obtener_deuda_abierta_por_origen(
+            conn,
+            origen_tipo=ORIGEN_VENTA,
+            origen_id=venta_id,
+        )
+
+        situacion_financiera = {
+            "tiene_deuda": deuda_abierta is not None,
+            "deuda_abierta": (
+                {
+                    "id": deuda_abierta["id"],
+                    "saldo_actual": deuda_abierta["saldo_actual"],
+                    "estado": deuda_abierta["estado"],
+                    "origen_tipo": deuda_abierta["origen_tipo"],
+                    "origen_id": deuda_abierta["origen_id"],
+                }
+                if deuda_abierta is not None
+                else None
+            ),
+        }
+
         return {
             "venta": venta,
             "items": items,
+            "situacion_financiera": situacion_financiera,
         }
+
     finally:
         conn.close()
-
 
 def entregar_venta(venta_id: int, data):
     conn = get_connection()
