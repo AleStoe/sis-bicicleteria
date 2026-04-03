@@ -1,4 +1,4 @@
-from tests.conftest import get_stock_row
+from tests.conftest import get_stock_row, get_auditoria_by_entidad
 
 
 def _payload_ajuste(
@@ -140,3 +140,29 @@ def test_ajuste_stock_no_permite_cantidad_cero(client, seed_venta_basica):
     )
 
     assert response.status_code in (400, 422)
+
+def test_ajuste_stock_crea_auditoria(client, db_conn, seed_venta_basica):
+    response = client.post(
+        "/stock/ajustes",
+        json=_payload_ajuste(
+            id_sucursal=seed_venta_basica["sucursal_id"],
+            id_variante=seed_venta_basica["variante_id"],
+            cantidad=2,
+            id_usuario=seed_venta_basica["usuario_id"],
+            nota="ajuste con auditoria",
+        ),
+    )
+
+    assert response.status_code == 200, response.text
+
+    eventos = get_auditoria_by_entidad(
+        db_conn,
+        "stock",
+        seed_venta_basica["variante_id"],
+    )
+
+    assert len(eventos) == 1
+    assert eventos[0]["accion"] == "ajuste_stock"
+    assert eventos[0]["id_usuario"] == seed_venta_basica["usuario_id"]
+    assert eventos[0]["id_sucursal"] == seed_venta_basica["sucursal_id"]
+    assert "ajuste con auditoria" in eventos[0]["detalle"]

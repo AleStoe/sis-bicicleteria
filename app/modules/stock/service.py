@@ -1,6 +1,6 @@
 from app.db.connection import get_connection
 from app.modules.stock import repository
-
+from app.modules.auditoria import service as auditoria_service
 
 # =========================================================
 # HELPERS
@@ -241,7 +241,7 @@ def crear_ajuste_stock(data: dict):
             if origen_id is None:
                 origen_id = 0
 
-            return repository.registrar_ajuste_manual_stock(
+            resultado = repository.registrar_ajuste_manual_stock(
                 conn,
                 id_sucursal=data["id_sucursal"],
                 id_variante=data["id_variante"],
@@ -251,5 +251,22 @@ def crear_ajuste_stock(data: dict):
                 origen_id=origen_id,
                 nota=nota,
             )
+
+            auditoria_service.registrar_evento(
+                conn,
+                id_usuario=data["id_usuario"],
+                id_sucursal=data["id_sucursal"],
+                entidad="stock",
+                entidad_id=data["id_variante"],
+                accion="ajuste_stock",
+                detalle=(
+                    f"Ajuste manual de stock. "
+                    f"movimiento_id={resultado['movimiento_id']}, "
+                    f"cantidad={cantidad}, "
+                    f"motivo={nota}"
+                ),
+            )
+
+            return resultado
     finally:
         conn.close()
