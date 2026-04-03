@@ -10,7 +10,7 @@ def registrar_evento(
     entidad_id: int,
     accion: str,
     detalle: str | None = None,
-):
+) -> int:
     return insert_auditoria_evento(
         conn,
         {

@@ -1,7 +1,10 @@
 from decimal import Decimal
 
 from fastapi import HTTPException
-from app.modules.authz.service import exigir_rol_admin
+from app.modules.authz.service import (
+    exigir_permiso_anular_venta,
+    exigir_permiso_entregar_con_deuda,
+)
 from app.db.connection import get_connection
 from app.modules.stock import service as stock_service
 from app.modules.creditos import service as creditos_service
@@ -36,6 +39,9 @@ from app.shared.constants import (
     AUDITORIA_ACCION_VENTA_ANULADA,
     VENTA_ESTADO_ANULADA,
     VENTA_ESTADO_ENTREGADA,
+    AUDITORIA_ACCION_VENTA_ENTREGA_CON_DEUDA,
+    AUDITORIA_ENTIDAD_VENTA_DEVOLUCION,
+    AUDITORIA_ACCION_VENTA_DEVOLUCION_CREADA,
 )
 
 
@@ -167,12 +173,6 @@ def _validar_venta_entregable(venta, venta_id: int):
         raise HTTPException(
             status_code=400,
             detail=f"La venta {venta_id} ya fue entregada",
-        )
-
-    if Decimal(str(venta["saldo_pendiente"])) > 0:
-        raise HTTPException(
-            status_code=400,
-            detail=f"La venta {venta_id} tiene saldo pendiente y no se puede entregar",
         )
 
 
@@ -321,46 +321,7 @@ def _validar_y_bloquear_bicicleta_serializada_para_anulacion(
 
     return bicicleta
 
-def _validar_y_bloquear_bicicleta_serializada_para_devolucion(
-    conn,
-    *,
-    item: dict,
-    venta_id: int,
-):
-    bicicleta_id = item.get("id_bicicleta_serializada")
-    if not bicicleta_id:
-        raise HTTPException(
-            status_code=400,
-            detail="El item indicado no tiene bicicleta serializada",
-        )
 
-    bicicleta = get_bicicleta_serializada_for_update(conn, bicicleta_id)
-
-    if bicicleta is None:
-        raise HTTPException(
-            status_code=400,
-            detail=f"No existe la bicicleta serializada {bicicleta_id}",
-        )
-
-    if bicicleta["id_variante"] != item["id_variante"]:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"La bicicleta serializada {bicicleta_id} "
-                f"no coincide con la variante del item de la venta {venta_id}"
-            ),
-        )
-
-    if bicicleta["estado"] != "entregada":
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"La bicicleta serializada {bicicleta_id} "
-                f"no está en estado entregada"
-            ),
-        )
-
-    return bicicleta
 
 def _validar_y_bloquear_bicicleta_serializada_para_devolucion(
     conn,
@@ -635,6 +596,12 @@ def entregar_venta(venta_id: int, data):
             venta = get_venta_for_update(conn, venta_id)
             _validar_venta_entregable(venta, venta_id)
 
+            saldo_pendiente = Decimal(str(venta["saldo_pendiente"]))
+            entrega_con_deuda = saldo_pendiente > 0
+
+            if entrega_con_deuda:
+                exigir_permiso_entregar_con_deuda(conn, data.id_usuario)
+
             items = get_venta_items_detallados_by_venta_id(conn, venta_id)
 
             if not items:
@@ -683,14 +650,26 @@ def entregar_venta(venta_id: int, data):
 
             update_venta_estado(conn, venta_id, VENTA_ESTADO_ENTREGADA)
 
+            accion_auditoria = (
+                AUDITORIA_ACCION_VENTA_ENTREGA_CON_DEUDA
+                if entrega_con_deuda
+                else AUDITORIA_ACCION_VENTA_ENTREGADA
+            )
+
+            detalle_auditoria = (
+                f"Venta entregada con deuda. saldo_pendiente={saldo_pendiente}"
+                if entrega_con_deuda
+                else "Venta entregada. estado_final=entregada"
+            )
+
             auditoria_service.registrar_evento(
                 conn,
                 id_usuario=data.id_usuario,
                 id_sucursal=venta["id_sucursal"],
                 entidad=AUDITORIA_ENTIDAD_VENTA,
                 entidad_id=venta_id,
-                accion=AUDITORIA_ACCION_VENTA_ENTREGADA,
-                detalle="Venta entregada. estado_final=entregada",
+                accion=accion_auditoria,
+                detalle=detalle_auditoria,
             )
 
         return {
@@ -708,7 +687,7 @@ def anular_venta(venta_id: int, data):
 
     try:
         with conn.transaction():
-            exigir_rol_admin(conn, data.id_usuario)
+            exigir_permiso_anular_venta(conn, data.id_usuario)
             venta = get_venta_for_update(conn, venta_id)
             _validar_venta_anulable(venta, venta_id)
 
@@ -809,106 +788,7 @@ def _ordenar_items_stockeables_por_variante(items: list[dict]) -> list[dict]:
         key=lambda item: item["id_variante"],
     )
 
-def devolver_item_serializado_entregado(venta_id: int, data):
-    conn = get_connection()
 
-    try:
-        with conn.transaction():
-            venta = get_venta_for_update(conn, venta_id)
-
-            if venta is None:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"No existe la venta {venta_id}",
-                )
-
-            if venta["estado"] != VENTA_ESTADO_ENTREGADA:
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        f"La venta {venta_id} no está entregada. "
-                        f"Estado actual: {venta['estado']}"
-                    ),
-                )
-
-            items = get_venta_items_detallados_by_venta_id(conn, venta_id)
-
-            if not items:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"La venta {venta_id} no tiene items",
-                )
-
-            item_objetivo = None
-            for item in items:
-                if item.get("id_bicicleta_serializada") == data.id_bicicleta_serializada:
-                    item_objetivo = item
-                    break
-
-            if item_objetivo is None:
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        f"La bicicleta serializada {data.id_bicicleta_serializada} "
-                        f"no pertenece a la venta {venta_id}"
-                    ),
-                )
-
-            bicicleta = _validar_y_bloquear_bicicleta_serializada_para_devolucion(
-                conn,
-                item=item_objetivo,
-                venta_id=venta_id,
-            )
-
-            update_bicicleta_serializada_estado(
-                conn,
-                bicicleta["id"],
-                "disponible",
-            )
-
-            stock_service.registrar_ingreso_por_devolucion_venta(
-                conn,
-                {
-                    "id_sucursal": venta["id_sucursal"],
-                    "id_variante": item_objetivo["id_variante"],
-                    "cantidad": 1,
-                    "id_usuario": data.id_usuario,
-                    "origen_tipo": "venta",
-                    "origen_id": venta_id,
-                    "id_bicicleta_serializada": bicicleta["id"],
-                    "nota": (
-                        f"Devolución de bicicleta serializada "
-                        f"desde venta #{venta_id}. "
-                        f"Motivo: {data.motivo}"
-                    ),
-                },
-            )
-
-            auditoria_service.registrar_evento(
-                conn,
-                id_usuario=data.id_usuario,
-                id_sucursal=venta["id_sucursal"],
-                entidad="bicicleta_serializada",
-                entidad_id=bicicleta["id"],
-                accion="bicicleta_serializada_devuelta",
-                detalle=(
-                    f"Devolución de bicicleta serializada. "
-                    f"venta_id={venta_id}, "
-                    f"id_variante={item_objetivo['id_variante']}, "
-                    f"numero_cuadro={bicicleta['numero_cuadro']}, "
-                    f"motivo={data.motivo}"
-                ),
-            )
-
-        return {
-            "ok": True,
-            "venta_id": venta_id,
-            "id_bicicleta_serializada": bicicleta["id"],
-            "estado_bicicleta": "disponible",
-        }
-
-    finally:
-        conn.close()
 
 def devolver_item_serializado_entregado(venta_id: int, data):
     conn = get_connection()
@@ -1015,12 +895,13 @@ def devolver_item_serializado_entregado(venta_id: int, data):
                 conn,
                 id_usuario=data.id_usuario,
                 id_sucursal=venta["id_sucursal"],
-                entidad="venta_devolucion",
-                entidad_id=devolucion_id,
-                accion="venta_devolucion_creada",
+                entidad=AUDITORIA_ENTIDAD_VENTA,
+                entidad_id=venta_id,
+                accion=AUDITORIA_ACCION_VENTA_DEVOLUCION_CREADA,
                 detalle=(
                     f"Devolución de bicicleta serializada. "
                     f"venta_id={venta_id}, "
+                    f"devolucion_id={devolucion_id}, "
                     f"venta_item_id={item_objetivo['id']}, "
                     f"id_bicicleta_serializada={bicicleta['id']}, "
                     f"numero_cuadro={bicicleta['numero_cuadro']}, "

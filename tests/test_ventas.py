@@ -1,5 +1,4 @@
 from decimal import Decimal
-from tests.conftest import get_auditoria_by_entidad
 from tests.conftest import (
     get_caja_movimientos,
     get_creditos_by_cliente,
@@ -7,8 +6,13 @@ from tests.conftest import (
     get_movimientos_by_venta,
     get_stock_row,
     get_venta,
+    asignar_rol_usuario,
+    get_auditoria_by_entidad,
 )
-
+from app.shared.constants import (
+    AUDITORIA_ENTIDAD_VENTA,
+    AUDITORIA_ACCION_VENTA_ENTREGA_CON_DEUDA,
+    )
 
 def _to_decimal(value) -> Decimal:
     return Decimal(str(value))
@@ -702,3 +706,105 @@ def test_crear_venta_sin_usar_credito_no_lo_consume(client, db_conn, seed_venta_
 
     assert "credito_generado" in acciones
     assert "credito_aplicado" not in acciones
+
+def _crear_usuario_sin_permiso(db_conn, username: str = "operador_sin_permiso"):
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO usuarios (nombre, username, password_hash, activo)
+            VALUES (%s, %s, %s, TRUE)
+            RETURNING id
+            """,
+            ("Operador Test", username, "hash_dummy"),
+        )
+        usuario_id = cur.fetchone()["id"]
+
+    # Le damos un rol distinto de administrador para probar el 403
+    asignar_rol_usuario(db_conn, usuario_id, "operador")
+    db_conn.commit()
+    return usuario_id
+
+
+
+def test_entregar_venta_con_deuda_sin_permiso_devuelve_403(client, db_conn, seed_venta_basica):
+    crear_response = _crear_venta_basica(client, seed_venta_basica)
+    assert crear_response.status_code == 200
+
+    venta_id = crear_response.json()["venta_id"]
+
+    usuario_sin_permiso_id = _crear_usuario_sin_permiso(
+        db_conn,
+        "operador_entrega_deuda",
+    )
+
+    response = client.post(
+        f"/ventas/{venta_id}/entregar",
+        json={
+            "id_usuario": usuario_sin_permiso_id,
+        },
+    )
+
+    assert response.status_code == 403, response.text
+
+    venta = get_venta(db_conn, venta_id)
+    assert venta["estado"] != "entregada"
+
+    auditorias = get_auditoria_by_entidad(db_conn, AUDITORIA_ENTIDAD_VENTA, venta_id)
+    acciones = [a["accion"] for a in auditorias]
+    assert AUDITORIA_ACCION_VENTA_ENTREGA_CON_DEUDA not in acciones
+
+
+def test_entregar_venta_con_deuda_con_permiso_registra_auditoria_especial(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    crear_response = _crear_venta_basica(client, seed_venta_basica)
+    assert crear_response.status_code == 200
+
+    venta_id = crear_response.json()["venta_id"]
+
+    response = client.post(
+        f"/ventas/{venta_id}/entregar",
+        json={
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+
+    assert response.status_code == 200, response.text
+
+    data = response.json()
+    assert data["ok"] is True
+    assert data["estado"] == "entregada"
+
+    venta = get_venta(db_conn, venta_id)
+    assert venta["estado"] == "entregada"
+
+    auditorias = get_auditoria_by_entidad(db_conn, AUDITORIA_ENTIDAD_VENTA, venta_id)
+    assert auditorias, "No se registró auditoría"
+
+    ultima = auditorias[-1]
+    assert ultima["accion"] == AUDITORIA_ACCION_VENTA_ENTREGA_CON_DEUDA
+    assert "saldo_pendiente=" in (ultima["detalle"] or "")
+
+
+def test_anular_venta_sin_permiso_devuelve_403(client, db_conn, seed_venta_basica):
+    crear_response = _crear_venta_basica(client, seed_venta_basica)
+    assert crear_response.status_code == 200
+
+    venta_id = crear_response.json()["venta_id"]
+
+    usuario_sin_permiso_id = _crear_usuario_sin_permiso(db_conn, "operador_anular")
+
+    response = client.post(
+        f"/ventas/{venta_id}/anular",
+        json={
+            "id_usuario": usuario_sin_permiso_id,
+            "motivo": "Intento sin permiso",
+        },
+    )
+
+    assert response.status_code == 403, response.text
+
+    venta = get_venta(db_conn, venta_id)
+    assert venta["estado"] != "anulada"

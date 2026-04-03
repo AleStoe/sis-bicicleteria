@@ -468,7 +468,9 @@ def test_lista_pagos_de_una_venta_con_dos_medios(client, seed_venta_basica):
     assert medios == ["efectivo", "transferencia"]
 
 
-def test_no_permite_entregar_venta_con_saldo_pendiente(client, seed_venta_basica):
+def test_permite_entregar_venta_con_saldo_pendiente_si_usuario_tiene_permiso(
+    client, db_conn, seed_venta_basica
+):
     venta_id = crear_venta_base(client, seed_venta_basica)
 
     abrir_caja = _abrir_caja(
@@ -485,7 +487,7 @@ def test_no_permite_entregar_venta_con_saldo_pendiente(client, seed_venta_basica
             "efectivo",
             10000,
             seed_venta_basica["usuario_id"],
-            "Pago parcial entrega bloqueada",
+            "Pago parcial entrega permitida",
         ),
     )
     assert pago_parcial.status_code == 200
@@ -495,8 +497,7 @@ def test_no_permite_entregar_venta_con_saldo_pendiente(client, seed_venta_basica
         json={"id_usuario": seed_venta_basica["usuario_id"]},
     )
 
-    assert entrega.status_code == 400
-    assert "saldo pendiente" in entrega.json()["detail"]
+    assert entrega.status_code == 200, entrega.text
 
 
 def test_flujo_completo_venta_pago_y_entrega(client, db_conn, seed_venta_basica):
