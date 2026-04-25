@@ -707,8 +707,8 @@ def registrar_salida_taller(
     id_variante: int,
     cantidad: float,
     id_usuario: int,
-    origen_tipo: str | None = "taller",
-    origen_id: int | None = None,
+    origen_id: int,
+    origen_tipo: str = "orden_taller",
     nota: str | None = None,
 ):
     """

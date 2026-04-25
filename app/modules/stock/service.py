@@ -191,30 +191,35 @@ def registrar_devolucion_stock(conn, data: dict):
 
 
 def registrar_salida_taller(conn, data: dict):
+    if "origen_id" not in data or data["origen_id"] is None:
+        raise ValueError("origen_id es obligatorio para salida de taller")
+
     return repository.registrar_salida_taller(
         conn,
         id_sucursal=data["id_sucursal"],
         id_variante=data["id_variante"],
         cantidad=data["cantidad"],
         id_usuario=data["id_usuario"],
-        origen_tipo=data.get("origen_tipo", "taller"),
-        origen_id=data.get("origen_id"),
+        origen_tipo="orden_taller",
+        origen_id=data["origen_id"],
         nota=data.get("nota"),
     )
 
 def registrar_salida_por_serializacion(conn, data: dict):
+    if "origen_id" not in data or data["origen_id"] is None:
+        raise ValueError("origen_id es obligatorio para salida por serialización")
+
     return repository.registrar_salida_por_serializacion(
         conn,
         id_sucursal=data["id_sucursal"],
         id_variante=data["id_variante"],
         cantidad=data["cantidad"],
         id_usuario=data["id_usuario"],
-        origen_tipo=data.get("origen_tipo"),
-        origen_id=data.get("origen_id"),
+        origen_tipo="bicicleta_serializada",
+        origen_id=data["origen_id"],
         id_bicicleta_serializada=data.get("id_bicicleta_serializada"),
         nota=data.get("nota"),
     )
-
 def crear_ingreso_stock(data: dict):
     conn = get_connection()
     try:
