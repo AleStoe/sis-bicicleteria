@@ -4,8 +4,14 @@ import pytest
 from fastapi import HTTPException
 
 from app.modules.creditos import service as creditos_service
-from tests.conftest import get_creditos_by_cliente, get_credito_movimientos, get_venta,get_caja_movimientos, get_creditos_by_cliente, get_credito_movimientos
-
+from tests.conftest import (
+    get_creditos_by_cliente,
+    get_credito_movimientos,
+    get_venta,
+    get_caja_movimientos,
+    get_auditoria_by_entidad,
+    asignar_rol_usuario,
+)
 
 def _to_decimal(value) -> Decimal:
     return Decimal(str(value))
@@ -21,6 +27,21 @@ def _abrir_caja(client, sucursal_id: int, usuario_id: int):
         },
     )
 
+def _crear_usuario_sin_permiso(db_conn, username: str = "operador_sin_permiso_credito"):
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO usuarios (nombre, username, password_hash, activo)
+            VALUES (%s, %s, %s, TRUE)
+            RETURNING id
+            """,
+            ("Operador Credito", username, "hash_dummy"),
+        )
+        usuario_id = cur.fetchone()["id"]
+
+    asignar_rol_usuario(db_conn, usuario_id, "operador")
+    db_conn.commit()
+    return usuario_id 
 
 def _crear_venta_basica(client, seed_venta_basica):
     payload = {
@@ -370,3 +391,128 @@ def test_rechaza_reintegro_mayor_al_saldo(client, db_conn, seed_venta_basica):
     )
 
     assert response.status_code == 400
+
+def test_reintegro_credito_genera_egreso_caja_movimiento_y_auditoria(client, db_conn, seed_venta_basica):
+    crear = _crear_venta_basica(client, seed_venta_basica)
+    assert crear.status_code == 200
+    venta_id = crear.json()["venta_id"]
+
+    abrir = _abrir_caja(client, seed_venta_basica["sucursal_id"], seed_venta_basica["usuario_id"])
+    assert abrir.status_code == 200
+    caja_id = abrir.json()["caja_id"]
+
+    pago = _pagar_venta(client, venta_id, seed_venta_basica, 10000)
+    assert pago.status_code == 200
+
+    anular = client.post(
+        f"/ventas/{venta_id}/anular",
+        json={"motivo": "genera credito para reintegro", "id_usuario": seed_venta_basica["usuario_id"]},
+    )
+    assert anular.status_code == 200
+
+    credito = get_creditos_by_cliente(db_conn, seed_venta_basica["cliente_id"])[0]
+
+    response = client.post(
+        f"/creditos/{credito['id']}/reintegrar",
+        json={
+            "monto": 5000,
+            "medio_pago": "efectivo",
+            "motivo": "reintegro auditado",
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert response.status_code == 200, response.text
+
+    movimientos_credito = get_credito_movimientos(db_conn, credito["id"])
+    assert [m["tipo_movimiento"] for m in movimientos_credito] == [
+        "credito_generado",
+        "reintegro",
+    ]
+    assert _to_decimal(movimientos_credito[1]["monto"]) == Decimal("5000")
+
+    movimientos_caja = get_caja_movimientos(db_conn, caja_id)
+    assert movimientos_caja[-1]["tipo_movimiento"] == "egreso"
+    assert movimientos_caja[-1]["submedio"] == "efectivo"
+    assert _to_decimal(movimientos_caja[-1]["monto"]) == Decimal("5000")
+
+    auditoria = get_auditoria_by_entidad(db_conn, "credito", credito["id"])
+    acciones = [a["accion"] for a in auditoria]
+    assert "credito_reintegrado" in acciones
+
+
+def test_rechaza_reintegro_credito_sin_caja_abierta(client, db_conn, seed_venta_basica):
+    crear = _crear_venta_basica(client, seed_venta_basica)
+    assert crear.status_code == 200
+    venta_id = crear.json()["venta_id"]
+
+    abrir = _abrir_caja(client, seed_venta_basica["sucursal_id"], seed_venta_basica["usuario_id"])
+    assert abrir.status_code == 200
+
+    pago = _pagar_venta(client, venta_id, seed_venta_basica, 10000)
+    assert pago.status_code == 200
+
+    anular = client.post(
+        f"/ventas/{venta_id}/anular",
+        json={"motivo": "credito sin caja", "id_usuario": seed_venta_basica["usuario_id"]},
+    )
+    assert anular.status_code == 200
+
+    credito = get_creditos_by_cliente(db_conn, seed_venta_basica["cliente_id"])[0]
+
+    cerrar = client.post(
+        f"/cajas/{abrir.json()['caja_id']}/cerrar",
+        json={
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "monto_cierre_real": 10000,
+        },
+    )
+    assert cerrar.status_code == 200
+
+    response = client.post(
+        f"/creditos/{credito['id']}/reintegrar",
+        json={
+            "monto": 5000,
+            "medio_pago": "efectivo",
+            "motivo": "sin caja abierta",
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+
+    assert response.status_code == 400
+    assert "No hay caja abierta" in response.json()["detail"]
+
+
+def test_rechaza_reintegro_credito_sin_permiso(client, db_conn, seed_venta_basica):
+    crear = _crear_venta_basica(client, seed_venta_basica)
+    assert crear.status_code == 200
+    venta_id = crear.json()["venta_id"]
+
+    abrir = _abrir_caja(client, seed_venta_basica["sucursal_id"], seed_venta_basica["usuario_id"])
+    assert abrir.status_code == 200
+
+    pago = _pagar_venta(client, venta_id, seed_venta_basica, 10000)
+    assert pago.status_code == 200
+
+    anular = client.post(
+        f"/ventas/{venta_id}/anular",
+        json={"motivo": "credito sin permiso", "id_usuario": seed_venta_basica["usuario_id"]},
+    )
+    assert anular.status_code == 200
+
+    credito = get_creditos_by_cliente(db_conn, seed_venta_basica["cliente_id"])[0]
+    usuario_sin_permiso = _crear_usuario_sin_permiso(db_conn)
+
+    response = client.post(
+        f"/creditos/{credito['id']}/reintegrar",
+        json={
+            "monto": 5000,
+            "medio_pago": "efectivo",
+            "motivo": "sin permiso",
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": usuario_sin_permiso,
+        },
+    )
+
+    assert response.status_code == 403
