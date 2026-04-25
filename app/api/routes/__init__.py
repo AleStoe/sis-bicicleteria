@@ -9,6 +9,7 @@ from app.modules.reservas.routes import router as reservas_router
 from app.modules.taller.routes import router as taller_router
 from app.modules.deudas.routes import router as deudas_router
 from app.modules.serializadas.routes import router as serializadas_router
+from app.modules.creditos.routes import router as creditos_router
 router = APIRouter()
 
 router.include_router(catalogo_router, prefix="/catalogo", tags=["Catalogo"])
@@ -21,3 +22,4 @@ router.include_router(reservas_router, prefix="/reservas", tags=["Reservas"])
 router.include_router(taller_router, tags=["Taller"])
 router.include_router(deudas_router, prefix="/deudas", tags=["Deudas"])
 router.include_router(serializadas_router,prefix="/bicicletas_serializadas", tags=["Bicicletas Serializadas"],)
+router.include_router(creditos_router, prefix="/creditos", tags=["Creditos"])

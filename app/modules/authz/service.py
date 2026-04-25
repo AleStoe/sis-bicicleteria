@@ -1,11 +1,14 @@
 from fastapi import HTTPException
 
 from app.shared.constants import (
+    PERMISO_AJUSTAR_CAJA,
     PERMISO_AJUSTAR_STOCK,
     PERMISO_ANULAR_VENTA,
     PERMISO_CANCELAR_RESERVA,
     PERMISO_CERRAR_CAJA,
     PERMISO_ENTREGAR_CON_DEUDA,
+    PERMISO_GENERAR_DEUDA,
+    PERMISO_REINTEGRAR_CREDITO,
     PERMISO_REVERTIR_PAGO,
     ROL_ADMINISTRADOR,
 )
@@ -38,6 +41,7 @@ def exigir_permiso(conn, id_usuario: int, permiso: str):
     """
     if usuario_tiene_rol(conn, id_usuario, ROL_ADMINISTRADOR):
         return
+
     _forbidden(permiso)
 
 
@@ -61,5 +65,17 @@ def exigir_permiso_cerrar_caja(conn, id_usuario: int):
     exigir_permiso(conn, id_usuario, PERMISO_CERRAR_CAJA)
 
 
+def exigir_permiso_ajustar_caja(conn, id_usuario: int):
+    exigir_permiso(conn, id_usuario, PERMISO_AJUSTAR_CAJA)
+
+
 def exigir_permiso_cancelar_reserva(conn, id_usuario: int):
     exigir_permiso(conn, id_usuario, PERMISO_CANCELAR_RESERVA)
+
+
+def exigir_permiso_generar_deuda(conn, id_usuario: int):
+    exigir_permiso(conn, id_usuario, PERMISO_GENERAR_DEUDA)
+
+
+def exigir_permiso_reintegrar_credito(conn, id_usuario: int):
+    exigir_permiso(conn, id_usuario, PERMISO_REINTEGRAR_CREDITO)

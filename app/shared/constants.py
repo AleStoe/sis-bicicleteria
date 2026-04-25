@@ -160,3 +160,11 @@ PERMISO_CANCELAR_RESERVA = "cancelar_reserva"
 
 AUDITORIA_ENTIDAD_VENTA_DEVOLUCION = "venta_devolucion"
 AUDITORIA_ACCION_VENTA_DEVOLUCION_CREADA = "venta_devolucion_creada"
+
+PERMISO_AJUSTAR_CAJA = "ajustar_caja"
+PERMISO_GENERAR_DEUDA = "generar_deuda"
+PERMISO_REINTEGRAR_CREDITO = "reintegrar_credito"
+
+CREDITO_MOVIMIENTO_REINTEGRO = "reintegro"
+
+AUDITORIA_ACCION_CREDITO_REINTEGRADO = "credito_reintegrado"

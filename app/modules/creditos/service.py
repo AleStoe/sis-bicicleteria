@@ -12,9 +12,19 @@ from app.shared.constants import (
     AUDITORIA_ENTIDAD_CREDITO,
     AUDITORIA_ACCION_CREDITO_GENERADO,
     AUDITORIA_ACCION_CREDITO_APLICADO,
+    CREDITO_ESTADO_ABIERTO,
+    CREDITO_MOVIMIENTO_REINTEGRO,
+    AUDITORIA_ACCION_CREDITO_REINTEGRADO,
+    CAJA_MOVIMIENTO_EGRESO,
+    CAJA_ORIGEN_EGRESO_MANUAL,
 )
 from . import repository
 
+from app.modules.authz.service import exigir_permiso_reintegrar_credito
+from app.modules.caja.repository import (
+    get_caja_abierta_hoy_by_sucursal_for_update,
+    insert_caja_movimiento,
+)
 
 def crear_credito_por_anulacion_venta(
     conn,
@@ -220,3 +230,103 @@ def aplicar_credito_a_venta(
         "credito_aplicado_total": monto_objetivo,
         "movimientos": movimientos,
     }
+
+def reintegrar_credito(conn, credito_id: int, data):
+    exigir_permiso_reintegrar_credito(conn, data.id_usuario)
+
+    credito = repository.get_credito_by_id_for_update(conn, credito_id)
+    if not credito:
+        raise HTTPException(status_code=404, detail="Crédito no encontrado")
+
+    if credito["estado"] not in (CREDITO_ESTADO_ABIERTO, CREDITO_ESTADO_APLICADO_PARCIAL):
+        raise HTTPException(
+            status_code=400,
+            detail=f"El crédito {credito_id} no tiene saldo disponible para reintegrar",
+        )
+
+    monto = Decimal(str(data.monto))
+    saldo_actual = Decimal(str(credito["saldo_actual"]))
+
+    if monto <= Decimal("0"):
+        raise HTTPException(status_code=400, detail="El monto debe ser mayor a 0")
+
+    if monto > saldo_actual:
+        raise HTTPException(
+            status_code=400,
+            detail="El monto del reintegro supera el saldo del crédito",
+        )
+
+    caja = get_caja_abierta_hoy_by_sucursal_for_update(conn, data.id_sucursal)
+    if caja is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No hay caja abierta para la sucursal {data.id_sucursal}",
+        )
+
+    nuevo_saldo = saldo_actual - monto
+    nuevo_estado = (
+        CREDITO_ESTADO_APLICADO_TOTAL
+        if nuevo_saldo == Decimal("0")
+        else CREDITO_ESTADO_APLICADO_PARCIAL
+    )
+
+    credito_actualizado = repository.update_credito_saldo_y_estado(
+        conn,
+        credito_id=credito_id,
+        saldo_actual=nuevo_saldo,
+        estado=nuevo_estado,
+    )
+
+    repository.insert_credito_movimiento(
+        conn,
+        id_credito=credito_id,
+        tipo_movimiento=CREDITO_MOVIMIENTO_REINTEGRO,
+        monto=monto,
+        origen_tipo="credito",
+        origen_id=credito_id,
+        nota=data.motivo,
+        id_usuario=data.id_usuario,
+    )
+
+    insert_caja_movimiento(
+        conn,
+        id_caja=caja["id"],
+        tipo_movimiento=CAJA_MOVIMIENTO_EGRESO,
+        submedio=data.medio_pago,
+        monto=monto,
+        origen_tipo=CAJA_ORIGEN_EGRESO_MANUAL,
+        origen_id=credito_id,
+        nota=f"Reintegro de crédito #{credito_id}. Motivo: {data.motivo}",
+        id_usuario=data.id_usuario,
+    )
+
+    auditoria_service.registrar_evento(
+        conn,
+        id_usuario=data.id_usuario,
+        id_sucursal=data.id_sucursal,
+        entidad=AUDITORIA_ENTIDAD_CREDITO,
+        entidad_id=credito_id,
+        accion=AUDITORIA_ACCION_CREDITO_REINTEGRADO,
+        detalle=(
+            f"Crédito reintegrado. monto={monto}, "
+            f"saldo_nuevo={nuevo_saldo}, estado_nuevo={nuevo_estado}, "
+            f"motivo={data.motivo}"
+        ),
+    )
+
+    return {
+        "ok": True,
+        "credito_id": credito_id,
+        "saldo_actual": credito_actualizado["saldo_actual"],
+        "estado": credito_actualizado["estado"],
+    }
+
+def reintegrar_credito_endpoint(credito_id: int, data):
+    from app.db.connection import get_connection
+
+    conn = get_connection()
+    try:
+        with conn.transaction():
+            return reintegrar_credito(conn, credito_id, data)
+    finally:
+        conn.close()

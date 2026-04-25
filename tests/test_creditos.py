@@ -280,3 +280,93 @@ def test_anular_venta_con_pago_no_toca_caja(client, db_conn, seed_venta_basica):
     assert len(movimientos_credito) == 1
     assert movimientos_credito[0]["tipo_movimiento"] == "credito_generado"
     assert Decimal(str(movimientos_credito[0]["monto"])) == monto_pagado
+
+def test_reintegro_parcial_credito(client, db_conn, seed_venta_basica):
+    crear = _crear_venta_basica(client, seed_venta_basica)
+    venta_id = crear.json()["venta_id"]
+
+    _abrir_caja(client, seed_venta_basica["sucursal_id"], seed_venta_basica["usuario_id"])
+
+    _pagar_venta(client, venta_id, seed_venta_basica, 10000)
+
+    client.post(f"/ventas/{venta_id}/anular", json={
+        "motivo": "genera credito",
+        "id_usuario": seed_venta_basica["usuario_id"],
+    })
+
+    credito = get_creditos_by_cliente(db_conn, seed_venta_basica["cliente_id"])[0]
+
+    response = client.post(
+        f"/creditos/{credito['id']}/reintegrar",
+        json={
+            "monto": 5000,
+            "medio_pago": "efectivo",
+            "motivo": "reintegro parcial",
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+
+    assert response.status_code == 200
+
+    credito_actualizado = get_creditos_by_cliente(db_conn, seed_venta_basica["cliente_id"])[0]
+    assert Decimal(str(credito_actualizado["saldo_actual"])) == Decimal("5000")
+
+def test_reintegro_total_credito(client, db_conn, seed_venta_basica):
+    crear = _crear_venta_basica(client, seed_venta_basica)
+    venta_id = crear.json()["venta_id"]
+
+    _abrir_caja(client, seed_venta_basica["sucursal_id"], seed_venta_basica["usuario_id"])
+
+    _pagar_venta(client, venta_id, seed_venta_basica, 10000)
+
+    client.post(f"/ventas/{venta_id}/anular", json={
+        "motivo": "credito total",
+        "id_usuario": seed_venta_basica["usuario_id"],
+    })
+
+    credito = get_creditos_by_cliente(db_conn, seed_venta_basica["cliente_id"])[0]
+
+    response = client.post(
+        f"/creditos/{credito['id']}/reintegrar",
+        json={
+            "monto": 10000,
+            "medio_pago": "efectivo",
+            "motivo": "reintegro total",
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+
+    assert response.status_code == 200
+
+    credito_actualizado = get_creditos_by_cliente(db_conn, seed_venta_basica["cliente_id"])[0]
+    assert Decimal(str(credito_actualizado["saldo_actual"])) == Decimal("0")
+
+def test_rechaza_reintegro_mayor_al_saldo(client, db_conn, seed_venta_basica):
+    crear = _crear_venta_basica(client, seed_venta_basica)
+    venta_id = crear.json()["venta_id"]
+
+    _abrir_caja(client, seed_venta_basica["sucursal_id"], seed_venta_basica["usuario_id"])
+
+    _pagar_venta(client, venta_id, seed_venta_basica, 10000)
+
+    client.post(f"/ventas/{venta_id}/anular", json={
+        "motivo": "credito",
+        "id_usuario": seed_venta_basica["usuario_id"],
+    })
+
+    credito = get_creditos_by_cliente(db_conn, seed_venta_basica["cliente_id"])[0]
+
+    response = client.post(
+        f"/creditos/{credito['id']}/reintegrar",
+        json={
+            "monto": 20000,
+            "medio_pago": "efectivo",
+            "motivo": "exceso",
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+
+    assert response.status_code == 400

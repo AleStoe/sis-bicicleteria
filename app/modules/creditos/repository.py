@@ -200,3 +200,16 @@ def get_creditos_disponibles_cliente_for_update(conn, id_cliente: int):
             (id_cliente,),
         )
         return cur.fetchall()
+
+def get_credito_by_id_for_update(conn, credito_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT *
+            FROM creditos_cliente
+            WHERE id = %s
+            FOR UPDATE
+            """,
+            (credito_id,),
+        )
+        return cur.fetchone()
