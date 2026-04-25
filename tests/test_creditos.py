@@ -516,3 +516,75 @@ def test_rechaza_reintegro_credito_sin_permiso(client, db_conn, seed_venta_basic
     )
 
     assert response.status_code == 403
+
+def test_listar_creditos_por_cliente(client, db_conn, seed_venta_basica):
+    crear = _crear_venta_basica(client, seed_venta_basica)
+    assert crear.status_code == 200
+    venta_id = crear.json()["venta_id"]
+
+    abrir = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+    assert abrir.status_code == 200
+
+    pago = _pagar_venta(client, venta_id, seed_venta_basica, 10000)
+    assert pago.status_code == 200
+
+    anular = client.post(
+        f"/ventas/{venta_id}/anular",
+        json={
+            "motivo": "genera credito para listado",
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert anular.status_code == 200
+
+    response = client.get(f"/creditos/cliente/{seed_venta_basica['cliente_id']}")
+    assert response.status_code == 200, response.text
+
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["id_cliente"] == seed_venta_basica["cliente_id"]
+    assert data[0]["origen_tipo"] == "venta"
+    assert data[0]["origen_id"] == venta_id
+    assert Decimal(str(data[0]["saldo_actual"])) == Decimal("10000")
+    assert data[0]["estado"] == "abierto"
+
+def test_listar_creditos_disponibles_cliente(client, db_conn, seed_venta_basica):
+    crear = _crear_venta_basica(client, seed_venta_basica)
+    venta_id = crear.json()["venta_id"]
+
+    _abrir_caja(client, seed_venta_basica["sucursal_id"], seed_venta_basica["usuario_id"])
+    _pagar_venta(client, venta_id, seed_venta_basica, 10000)
+
+    client.post(f"/ventas/{venta_id}/anular", json={
+        "motivo": "credito disponible",
+        "id_usuario": seed_venta_basica["usuario_id"],
+    })
+
+    credito = get_creditos_by_cliente(db_conn, seed_venta_basica["cliente_id"])[0]
+
+    # consumir parcialmente
+    client.post(
+        f"/creditos/{credito['id']}/reintegrar",
+        json={
+            "monto": 5000,
+            "medio_pago": "efectivo",
+            "motivo": "consumo parcial",
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+
+    response = client.get(
+        f"/creditos/cliente/{seed_venta_basica['cliente_id']}/disponibles"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+    assert len(data) == 1
+    assert Decimal(str(data[0]["saldo_actual"])) == Decimal("5000")
+    assert data[0]["estado"] == "aplicado_parcial"

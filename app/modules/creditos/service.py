@@ -330,3 +330,6 @@ def reintegrar_credito_endpoint(credito_id: int, data):
             return reintegrar_credito(conn, credito_id, data)
     finally:
         conn.close()
+        
+def listar_creditos_disponibles_cliente(conn, id_cliente: int):
+    return repository.get_creditos_disponibles_cliente(conn, id_cliente)
