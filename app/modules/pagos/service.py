@@ -75,6 +75,10 @@ def registrar_pago(conn, data: dict):
     
     medio_pago = data["medio_pago"]
     origen_tipo = data["origen_tipo"]
+
+    if not isinstance(data["monto"], Decimal):
+        raise ValueError("monto debe ser Decimal")
+
     monto = redondear_monto(data["monto"])
 
     if medio_pago not in MEDIOS_PAGO_VALIDOS:
@@ -122,20 +126,22 @@ def registrar_pago(conn, data: dict):
                 ),
             )
 
-        if Decimal(str(venta["saldo_pendiente"])) <= 0:
+        saldo_pendiente = redondear_monto(venta["saldo_pendiente"])
+
+        if saldo_pendiente <= 0:
             raise HTTPException(
                 status_code=400,
                 detail=f"La venta {venta['id']} no tiene saldo pendiente",
             )
 
-        if monto > Decimal(str(venta["saldo_pendiente"])):
+        if monto > saldo_pendiente:
             raise HTTPException(
                 status_code=400,
                 detail="El monto del pago supera el saldo pendiente",
             )
 
         caja = _obtener_caja_abierta_obligatoria(conn, venta["id_sucursal"])
-        saldo_restante = Decimal(str(venta["saldo_pendiente"])) - monto
+        saldo_restante = redondear_monto(saldo_pendiente - monto)
         nuevo_estado = (
             VENTA_ESTADO_PAGADA_TOTAL
             if saldo_restante == 0

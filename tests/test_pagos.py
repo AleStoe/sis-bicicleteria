@@ -1,5 +1,5 @@
 from tests.conftest import get_venta
-
+from decimal import Decimal
 from tests.conftest import (
     get_auditoria_by_entidad,
     get_caja_movimientos,
@@ -18,7 +18,7 @@ def _abrir_caja(client, sucursal_id: int, usuario_id: int):
     )
 
 
-def _payload_pago(venta_id: int, medio_pago: str, monto: float, id_usuario: int, nota: str = ""):
+def _payload_pago(venta_id: int, medio_pago: str, monto: Decimal, id_usuario: int, nota: str = ""):
     return {
         "origen_tipo": "venta",
         "origen_id": venta_id,
