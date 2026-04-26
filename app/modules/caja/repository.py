@@ -149,7 +149,8 @@ def close_caja(
                 monto_cierre_teorico = %s,
                 monto_cierre_real = %s,
                 diferencia = %s,
-                id_usuario_cierre = %s
+                id_usuario_cierre = %s,
+                updated_at = NOW()
             WHERE id = %s
             """,
             (

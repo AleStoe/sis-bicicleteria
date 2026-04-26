@@ -175,7 +175,8 @@ def update_deuda_saldo_y_estado(conn, deuda_id: int, saldo_actual, estado: str):
             UPDATE deudas_cliente
             SET
                 saldo_actual = %s,
-                estado = %s
+                estado = %s,
+                updated_at = NOW()
             WHERE id = %s
             """,
             (saldo_actual, estado, deuda_id),
