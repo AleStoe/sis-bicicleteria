@@ -5,15 +5,13 @@ class PagoCreateInput(BaseModel):
     origen_tipo: str
     origen_id: int
     medio_pago: str
-    monto: float
+    monto: Decimal
     id_usuario: int
     nota: str | None = None
-
 
 class PagoReversionInput(BaseModel):
     motivo: str = Field(min_length=3, max_length=500)
     id_usuario: int = Field(gt=0)
-
 
 class PagoCreateOutput(BaseModel):
     ok: bool
@@ -21,7 +19,6 @@ class PagoCreateOutput(BaseModel):
     venta_id: int
     estado_venta: str
     saldo_restante: Decimal
-
 
 class PagoReversionOutput(BaseModel):
     ok: bool
@@ -31,7 +28,6 @@ class PagoReversionOutput(BaseModel):
     estado_venta: str
     saldo_restante: Decimal
     reversion_id: int
-
 
 class PagoResumenOutput(BaseModel):
     model_config = ConfigDict(from_attributes=True)

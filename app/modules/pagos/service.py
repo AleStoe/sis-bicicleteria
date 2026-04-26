@@ -1,5 +1,5 @@
 from decimal import Decimal
-
+from app.shared.money import redondear_monto
 from fastapi import HTTPException
 from app.modules.authz.service import exigir_permiso_revertir_pago
 from app.db.connection import get_connection
@@ -72,9 +72,10 @@ def registrar_pago(conn, data: dict):
         "id_usuario": int
     }
     """
+    
     medio_pago = data["medio_pago"]
     origen_tipo = data["origen_tipo"]
-    monto = Decimal(str(data["monto"]))
+    monto = redondear_monto(data["monto"])
 
     if medio_pago not in MEDIOS_PAGO_VALIDOS:
         raise HTTPException(
@@ -193,7 +194,7 @@ def registrar_pago(conn, data: dict):
             "pago_id": pago_id,
             "venta_id": venta["id"],
             "estado_venta": nuevo_estado,
-            "saldo_restante": float(saldo_restante),
+            "saldo_restante": saldo_restante,
         }
 
     # =====================================================
