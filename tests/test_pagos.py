@@ -1,4 +1,3 @@
-from tests.conftest import get_venta
 from decimal import Decimal
 from tests.conftest import (
     get_auditoria_by_entidad,
@@ -736,59 +735,6 @@ def test_pago_de_deuda_no_modifica_saldo_de_venta(client, db_conn, seed_venta_ba
     # 🔴 ESTA ES LA VALIDACIÓN IMPORTANTE
     assert venta_antes["saldo_pendiente"] == venta_despues["saldo_pendiente"]
 
-def _crear_usuario_sin_permiso(db_conn, username: str = "operador_sin_permiso_pago"):
-    with db_conn.cursor() as cur:
-        cur.execute(
-            """
-            INSERT INTO usuarios (nombre, username, password_hash, activo)
-            VALUES (%s, %s, %s, TRUE)
-            RETURNING id
-            """,
-            ("Operador Pago", username, "hash_dummy"),
-        )
-        usuario_id = cur.fetchone()["id"]
-
-    asignar_rol_usuario(db_conn, usuario_id, "operador")
-    db_conn.commit()
-    return usuario_id
-
-def test_rechaza_reversion_pago_sin_permiso(client, db_conn, seed_venta_basica):
-    venta_id = crear_venta_base(client, seed_venta_basica)
-
-    abrir = _abrir_caja(
-        client,
-        seed_venta_basica["sucursal_id"],
-        seed_venta_basica["usuario_id"],
-    )
-    assert abrir.status_code == 200
-
-    pago = client.post(
-        "/pagos/",
-        json=_payload_pago(
-            venta_id,
-            "efectivo",
-            10000,
-            seed_venta_basica["usuario_id"],
-            "Pago test reversion",
-        ),
-    )
-    assert pago.status_code == 200
-    pago_id = pago.json()["pago_id"]
-
-    usuario_sin_permiso_id = _crear_usuario_sin_permiso(
-        db_conn,
-        "operador_reversion_pago",
-    )
-
-    response = client.post(
-        f"/pagos/{pago_id}/revertir",
-        json={
-            "motivo": "Intento sin permiso",
-            "id_usuario": usuario_sin_permiso_id,
-        },
-    )
-
-    assert response.status_code == 403, response.text
 
 def _crear_usuario_sin_permiso(db_conn, username: str = "operador_sin_permiso_pago"):
     with db_conn.cursor() as cur:
@@ -962,3 +908,50 @@ def test_flujo_pago_reversion_nuevo_pago_y_entrega(client, db_conn, seed_venta_b
     venta = get_venta(db_conn, venta_id)
     assert venta["estado"] == "entregada"
     assert Decimal(str(venta["saldo_pendiente"])) == Decimal("0.00")
+
+def test_no_permite_revertir_pago_de_venta_entregada(client, seed_venta_basica):
+    venta_id = crear_venta_base(client, seed_venta_basica)
+
+    abrir_caja = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+    assert abrir_caja.status_code == 200
+
+    pago = client.post(
+        "/pagos/",
+        json=_payload_pago(
+            venta_id,
+            "efectivo",
+            24440,
+            seed_venta_basica["usuario_id"],
+            "Pago total antes de entrega",
+        ),
+    )
+    assert pago.status_code == 200
+    pago_id = pago.json()["pago_id"]
+
+    entrega = client.post(
+        f"/ventas/{venta_id}/entregar",
+        json={"id_usuario": seed_venta_basica["usuario_id"]},
+    )
+    assert entrega.status_code == 200, entrega.text
+    
+    reversion = client.post(
+        f"/pagos/{pago_id}/revertir",
+        json={
+            "motivo": "Intento de revertir venta entregada",
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+    reversion = client.post(
+        f"/pagos/{pago_id}/revertir",
+        json={
+            "motivo": "Intento de revertir venta entregada",
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+
+    assert reversion.status_code == 400
+    assert "venta ya entregada" in reversion.json()["detail"]
