@@ -896,3 +896,69 @@ def test_pagos_acumulados_cierran_saldo_exacto(client, db_conn, seed_venta_basic
 
     venta = get_venta(db_conn, venta_id)
     assert Decimal(str(venta["saldo_pendiente"])) == Decimal("0.00")
+
+def test_flujo_pago_reversion_nuevo_pago_y_entrega(client, db_conn, seed_venta_basica):
+    venta_id = crear_venta_base(client, seed_venta_basica)
+
+    abrir_caja = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+    assert abrir_caja.status_code == 200
+
+    pago_parcial = client.post(
+        "/pagos/",
+        json=_payload_pago(
+            venta_id,
+            "efectivo",
+            10000,
+            seed_venta_basica["usuario_id"],
+            "Pago parcial antes de reversión",
+        ),
+    )
+    assert pago_parcial.status_code == 200
+    pago_id = pago_parcial.json()["pago_id"]
+
+    venta = get_venta(db_conn, venta_id)
+    assert venta["estado"] == "pagada_parcial"
+    assert Decimal(str(venta["saldo_pendiente"])) == Decimal("14440.00")
+
+    reversion = client.post(
+        f"/pagos/{pago_id}/revertir",
+        json={
+            "motivo": "Reversión test flujo completo",
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert reversion.status_code == 200, reversion.text
+
+    venta = get_venta(db_conn, venta_id)
+    assert venta["estado"] == "creada"
+    assert Decimal(str(venta["saldo_pendiente"])) == Decimal("24440.00")
+
+    nuevo_pago = client.post(
+        "/pagos/",
+        json=_payload_pago(
+            venta_id,
+            "transferencia",
+            24440,
+            seed_venta_basica["usuario_id"],
+            "Pago total después de reversión",
+        ),
+    )
+    assert nuevo_pago.status_code == 200, nuevo_pago.text
+
+    venta = get_venta(db_conn, venta_id)
+    assert venta["estado"] == "pagada_total"
+    assert Decimal(str(venta["saldo_pendiente"])) == Decimal("0.00")
+
+    entrega = client.post(
+        f"/ventas/{venta_id}/entregar",
+        json={"id_usuario": seed_venta_basica["usuario_id"]},
+    )
+    assert entrega.status_code == 200, entrega.text
+
+    venta = get_venta(db_conn, venta_id)
+    assert venta["estado"] == "entregada"
+    assert Decimal(str(venta["saldo_pendiente"])) == Decimal("0.00")

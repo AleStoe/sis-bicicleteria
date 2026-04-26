@@ -996,4 +996,4 @@ def test_obtener_venta_pagada_total_no_devuelve_deuda_abierta(
     data = response.json()
     assert data["venta"]["id"] == venta_id
     assert data["situacion_financiera"]["tiene_deuda"] is False
-    assert data["situacion_financiera"]["deuda_abierta"] is None
+    assert data["situacion_financiera"]["deuda_abierta"] is None    
