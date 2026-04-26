@@ -15,6 +15,7 @@ from app.modules.serializadas.repository import (
     update_bicicleta_serializada_estado,
     insert_bicicleta_cliente,    
 )
+from app.shared.money import redondear_monto
 from .repository import (
     get_cliente_by_id,
     get_sucursal_by_id,
@@ -396,9 +397,10 @@ def crear_venta(data):
 
             for item in items_consolidados:
                 variante = variantes_map[item["id_variante"]]
-                precio_minorista = Decimal(str(variante["precio_minorista"]))
-                subtotal = precio_minorista * item["cantidad"]
-                subtotal_total += subtotal
+                precio_minorista = redondear_monto(variante["precio_minorista"])
+                cantidad = Decimal(str(item["cantidad"]))
+                subtotal = redondear_monto(precio_minorista * cantidad)
+                subtotal_total = redondear_monto(subtotal_total + subtotal)
 
                 if item["id_bicicleta_serializada"] is not None:
                     _validar_y_bloquear_bicicleta_serializada_para_venta(
@@ -412,11 +414,12 @@ def crear_venta(data):
                     {
                         "item": item,
                         "variante": variante,
+                        "cantidad": cantidad,
                         "subtotal": subtotal,
                     }
                 )
 
-            total_final = subtotal_total
+            total_final = redondear_monto(subtotal_total)
             saldo_pendiente = total_final
             estado_venta = "creada"
             credito_aplicado = Decimal("0")
@@ -441,10 +444,11 @@ def crear_venta(data):
             for fila in venta_items:
                 item = fila["item"]
                 variante = fila["variante"]
+                cantidad = fila["cantidad"]
                 subtotal = fila["subtotal"]
 
-                precio_minorista = Decimal(str(variante["precio_minorista"]))
-                costo_promedio = Decimal(str(variante["costo_promedio_vigente"] or 0))
+                precio_minorista = redondear_monto(variante["precio_minorista"])
+                costo_promedio = redondear_monto(variante["costo_promedio_vigente"] or 0)
 
                 insert_venta_item(
                     conn,
@@ -453,7 +457,7 @@ def crear_venta(data):
                         "id_variante": variante["id"],
                         "id_bicicleta_serializada": item["id_bicicleta_serializada"],
                         "descripcion_snapshot": f"{variante['producto_nombre']} - {variante['nombre_variante']}",
-                        "cantidad": item["cantidad"],
+                        "cantidad": cantidad,
                         "precio_lista": precio_minorista,
                         "precio_final": precio_minorista,
                         "costo_unitario_aplicado": costo_promedio,
@@ -512,11 +516,9 @@ def crear_venta(data):
                     monto_credito_a_aplicar=monto_credito_a_aplicar,
                     id_usuario=data.id_usuario,
                 )
-                credito_aplicado = Decimal(
-                    str(resultado_credito["credito_aplicado_total"])
-                )
+                credito_aplicado = redondear_monto(resultado_credito["credito_aplicado_total"])
 
-            saldo_pendiente = total_final - credito_aplicado
+            saldo_pendiente = redondear_monto(total_final - credito_aplicado)
 
             if saldo_pendiente == Decimal("0"):
                 estado_venta = "pagada_total"

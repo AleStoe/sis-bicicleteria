@@ -18,7 +18,7 @@ def _abrir_caja(client, sucursal_id: int, usuario_id: int):
     )
 
 
-def _payload_pago(venta_id: int, medio_pago: str, monto: Decimal, id_usuario: int, nota: str = ""):
+def _payload_pago(venta_id: int, medio_pago: str, monto: int | float, id_usuario: int, nota: str = ""):
     return {
         "origen_tipo": "venta",
         "origen_id": venta_id,
@@ -844,3 +844,55 @@ def test_rechaza_reversion_pago_sin_permiso(client, db_conn, seed_venta_basica):
     )
 
     assert response.status_code == 403, response.text
+
+def test_pagos_acumulados_cierran_saldo_exacto(client, db_conn, seed_venta_basica):
+    venta_id = crear_venta_base(client, seed_venta_basica)
+
+    abrir_caja = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+    assert abrir_caja.status_code == 200
+
+    pago_1 = client.post(
+        "/pagos/",
+        json=_payload_pago(
+            venta_id,
+            "efectivo",
+            333.33,
+            seed_venta_basica["usuario_id"],
+            "Pago acumulado 1",
+        ),
+    )
+    assert pago_1.status_code == 200
+
+    pago_2 = client.post(
+        "/pagos/",
+        json=_payload_pago(
+            venta_id,
+            "transferencia",
+            333.33,
+            seed_venta_basica["usuario_id"],
+            "Pago acumulado 2",
+        ),
+    )
+    assert pago_2.status_code == 200
+
+    pago_3 = client.post(
+        "/pagos/",
+        json=_payload_pago(
+            venta_id,
+            "mercadopago",
+            23773.34,
+            seed_venta_basica["usuario_id"],
+            "Pago acumulado final",
+        ),
+    )
+    assert pago_3.status_code == 200
+
+    data = pago_3.json()
+    assert Decimal(str(data["saldo_restante"])) == Decimal("0.00")
+
+    venta = get_venta(db_conn, venta_id)
+    assert Decimal(str(venta["saldo_pendiente"])) == Decimal("0.00")
