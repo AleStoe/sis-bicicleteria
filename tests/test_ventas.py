@@ -997,3 +997,144 @@ def test_obtener_venta_pagada_total_no_devuelve_deuda_abierta(
     assert data["venta"]["id"] == venta_id
     assert data["situacion_financiera"]["tiene_deuda"] is False
     assert data["situacion_financiera"]["deuda_abierta"] is None    
+
+def test_venta_creada_crea_evento_auditoria(client, db_conn, seed_venta_basica):
+    venta = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 2,
+                    "id_bicicleta_serializada": None,
+                }
+            ],
+        },
+    )
+    assert venta.status_code == 200
+    venta_id = venta.json()["venta_id"]
+
+    eventos = get_auditoria_by_entidad(db_conn, "venta", venta_id)
+
+    assert len(eventos) >= 1
+
+    acciones = [e["accion"] for e in eventos]
+
+    assert "venta_creada" in acciones
+
+def test_venta_entregada_crea_evento_auditoria(client, db_conn, seed_venta_basica):
+    venta = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 2,
+                    "id_bicicleta_serializada": None,
+                }
+            ],
+        },
+    )
+    assert venta.status_code == 200
+    venta_id = venta.json()["venta_id"]
+
+    entrega = client.post(
+        f"/ventas/{venta_id}/entregar",
+        json={"id_usuario": seed_venta_basica["usuario_id"]},
+    )
+    assert entrega.status_code == 200, entrega.text
+
+    eventos = get_auditoria_by_entidad(db_conn, "venta", venta_id)
+    acciones = [e["accion"] for e in eventos]
+
+    assert "entrega_venta_con_deuda" in acciones
+
+def test_venta_entregada_sin_deuda_crea_evento_correcto(client, db_conn, seed_venta_basica):
+    venta = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 1,
+                    "id_bicicleta_serializada": None,
+                }
+            ],
+        },
+    )
+    assert venta.status_code == 200
+    venta_id = venta.json()["venta_id"]
+
+    # PAGAR TODO
+    abrir = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+    assert abrir.status_code == 200
+
+    pago = client.post(
+        "/pagos/",
+        json={
+            "origen_tipo": "venta",
+            "origen_id": venta_id,
+            "medio_pago": "efectivo",
+            "monto": seed_venta_basica["precio_venta"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "nota": "Pago total",
+        },
+    )
+    assert pago.status_code == 200, pago.text
+
+    entrega = client.post(
+        f"/ventas/{venta_id}/entregar",
+        json={"id_usuario": seed_venta_basica["usuario_id"]},
+    )
+    assert entrega.status_code == 200
+
+    eventos = get_auditoria_by_entidad(db_conn, "venta", venta_id)
+    acciones = [e["accion"] for e in eventos]
+
+    assert "venta_entregada" in acciones
+
+def test_anulacion_venta_crea_evento_auditoria(client, db_conn, seed_venta_basica):
+    venta = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 2,
+                    "id_bicicleta_serializada": None,
+                }
+            ],
+        },
+    )
+    assert venta.status_code == 200
+    venta_id = venta.json()["venta_id"]
+
+    anulacion = client.post(
+        f"/ventas/{venta_id}/anular",
+        json={
+            "motivo": "Auditoría anulación venta",
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert anulacion.status_code == 200, anulacion.text
+
+    eventos = get_auditoria_by_entidad(db_conn, "venta", venta_id)
+    acciones = [e["accion"] for e in eventos]
+
+    assert "anular_venta" in acciones

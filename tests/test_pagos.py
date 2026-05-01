@@ -1137,3 +1137,43 @@ def test_reversion_de_un_pago_en_escenario_multiples_pagos(client, db_conn, seed
 
     assert saldo == total - Decimal("5000")
     assert venta_final["estado"] == "pagada_parcial"
+
+def test_reversion_pago_crea_auditoria(client, db_conn, seed_venta_basica):
+    venta_id = crear_venta_base(client, seed_venta_basica)
+
+    abrir = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+    assert abrir.status_code == 200
+
+    pago = client.post(
+        "/pagos/",
+        json=_payload_pago(
+            venta_id,
+            "efectivo",
+            10000,
+            seed_venta_basica["usuario_id"],
+            "Pago para auditar reversión",
+        ),
+    )
+    assert pago.status_code == 200
+    pago_id = pago.json()["pago_id"]
+
+    reversion = client.post(
+        f"/pagos/{pago_id}/revertir",
+        json={
+            "motivo": "Auditar reversión",
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert reversion.status_code == 200
+
+    eventos = get_auditoria_by_entidad(db_conn, "pago", pago_id)
+
+    acciones = [e["accion"] for e in eventos]
+
+    assert "pago_registrado" in acciones
+    assert "revertir_pago" in acciones
+

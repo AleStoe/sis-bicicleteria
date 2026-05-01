@@ -362,3 +362,99 @@ def test_anulacion_crea_movimiento_stock_cancelacion_venta(client, db_conn, seed
     cancelaciones = [m for m in movimientos if m["tipo_movimiento"] == "cancelacion_venta"]
     assert len(cancelaciones) == 1
     assert float(cancelaciones[0]["cantidad"]) == 3.0
+
+def test_entrega_venta_mueve_stock_de_pendiente_a_fisico(client, db_conn, seed_venta_basica):
+    # Ajustar stock a 10
+    ajuste = client.post(
+        "/stock/ajustes",
+        json=_payload_ajuste(
+            id_sucursal=seed_venta_basica["sucursal_id"],
+            id_variante=seed_venta_basica["variante_id"],
+            cantidad=4,  # 6 → 10
+            id_usuario=seed_venta_basica["usuario_id"],
+            nota="ajuste inicial test entrega",
+        ),
+    )
+    assert ajuste.status_code == 200
+
+    # Crear venta (queda pendiente entrega)
+    venta = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 5,
+                    "id_bicicleta_serializada": None,
+                }
+            ],
+        },
+    )
+    assert venta.status_code == 200
+    venta_id = venta.json()["venta_id"]
+
+    stock_post_venta = get_stock_row(
+        db_conn,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["variante_id"],
+    )
+
+    assert float(stock_post_venta["stock_fisico"]) == 10.0
+    assert float(stock_post_venta["stock_vendido_pendiente_entrega"]) == 5.0
+
+    # 👉 ENTREGA
+    entrega = client.post(
+        f"/ventas/{venta_id}/entregar",
+        json={
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert entrega.status_code == 200, entrega.text
+
+    stock_post_entrega = get_stock_row(
+        db_conn,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["variante_id"],
+    )
+
+    assert float(stock_post_entrega["stock_fisico"]) == 5.0
+    assert float(stock_post_entrega["stock_vendido_pendiente_entrega"]) == 0.0
+
+def test_entrega_crea_movimiento_stock_tipo_entrega(client, db_conn, seed_venta_basica):
+    venta = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 4,
+                    "id_bicicleta_serializada": None,
+                }
+            ],
+        },
+    )
+    assert venta.status_code == 200
+    venta_id = venta.json()["venta_id"]
+
+    entrega = client.post(
+        f"/ventas/{venta_id}/entregar",
+        json={"id_usuario": seed_venta_basica["usuario_id"]},
+    )
+    assert entrega.status_code == 200
+
+    movimientos = get_movimientos_by_venta(db_conn, venta_id)
+
+    tipos = {m["tipo_movimiento"] for m in movimientos}
+
+    assert "venta" in tipos
+    assert "entrega" in tipos
+
+    entregas = [m for m in movimientos if m["tipo_movimiento"] == "entrega"]
+    assert len(entregas) == 1
+    assert float(entregas[0]["cantidad"]) == 4.0
