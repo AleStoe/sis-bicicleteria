@@ -326,15 +326,25 @@ def revertir_pago(pago_id: int, data):
                     detail="No se puede revertir un pago de una venta ya entregada",
                 )
 
-            caja = _obtener_caja_abierta_obligatoria(conn, venta["id_sucursal"])
-            saldo_restante = Decimal(str(venta["saldo_pendiente"])) + Decimal(
-                str(pago_original["monto_total_cobrado"])
-            )
+            saldo_pendiente = redondear_monto(venta["saldo_pendiente"])
+            monto_original = redondear_monto(pago_original["monto_total_cobrado"])
+            total_final = redondear_monto(venta["total_final"])
+
+            saldo_restante = redondear_monto(saldo_pendiente + monto_original)
+
+            if saldo_restante > total_final:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Inconsistencia en cálculo de saldo tras reversión",
+                )
+
             nuevo_estado = (
                 VENTA_ESTADO_CREADA
-                if saldo_restante == Decimal(str(venta["total_final"]))
+                if saldo_restante == total_final
                 else VENTA_ESTADO_PAGADA_PARCIAL
             )
+
+            caja = _obtener_caja_abierta_obligatoria(conn, venta["id_sucursal"])
 
             pago_reversion_id = insert_pago(
                 conn,
