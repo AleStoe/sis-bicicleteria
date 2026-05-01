@@ -6,6 +6,7 @@ from tests.conftest import (
     get_deuda,
     get_deudas_by_cliente,
     get_deuda_movimientos,
+    get_venta,  # 👈 agregar esto
 )
 
 
@@ -343,3 +344,230 @@ def test_listar_deudas_por_origen_venta(client, db_conn, seed_venta_basica):
     data = response.json()
     assert len(data) == 1
     assert data[0]["origen_id"] == venta_id
+
+def test_flujo_real_venta_parcial_entrega_con_deuda_y_pago_deuda(
+    client, db_conn, seed_venta_basica
+):
+    # 1. Crear venta
+    venta = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 1,
+                    "id_bicicleta_serializada": None,
+                }
+            ],
+        },
+    )
+    assert venta.status_code == 200, venta.text
+    venta_id = venta.json()["venta_id"]
+
+    # 2. Abrir caja
+    abrir = client.post(
+        "/cajas/abrir",
+        json={
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "monto_apertura": 0,
+        },
+    )
+    assert abrir.status_code == 200, abrir.text
+
+    # 3. Pago parcial
+    pago = client.post(
+        "/pagos/",
+        json={
+            "origen_tipo": "venta",
+            "origen_id": venta_id,
+            "medio_pago": "efectivo",
+            "monto": 10000,
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "nota": "Seña inicial",
+        },
+    )
+    assert pago.status_code == 200, pago.text
+
+    # 4. Entregar con deuda
+    entrega = client.post(
+        f"/ventas/{venta_id}/entregar",
+        json={"id_usuario": seed_venta_basica["usuario_id"]},
+    )
+    assert entrega.status_code == 200, entrega.text
+
+    venta_db = get_venta(db_conn, venta_id)
+    assert venta_db["estado"] == "entregada"
+
+    # 5. Buscar deuda generada
+    deudas = get_deudas_by_cliente(db_conn, seed_venta_basica["cliente_id"])
+    deuda = next(d for d in deudas if d["origen_tipo"] == "venta" and d["origen_id"] == venta_id)
+
+    assert deuda["estado"] == "abierta"
+    assert Decimal(str(deuda["saldo_actual"])) == Decimal("14440.00")
+
+    # 6. Pagar deuda completa
+    pago_deuda = client.post(
+        f"/deudas/{deuda['id']}/pagos",
+        json={
+            "monto": 14440,
+            "medio_pago": "efectivo",
+            "nota": "Cancela deuda",
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert pago_deuda.status_code == 200, pago_deuda.text
+
+    deudas_despues = get_deudas_by_cliente(db_conn, seed_venta_basica["cliente_id"])
+    deuda_final = next(d for d in deudas_despues if d["id"] == deuda["id"])
+
+    assert deuda_final["estado"] == "cerrada"
+    assert Decimal(str(deuda_final["saldo_actual"])) == Decimal("0.00")
+    # 7. La venta sigue entregada (validación DB)
+    venta_final = get_venta(db_conn, venta_id)
+    assert venta_final["estado"] == "entregada"
+
+    # 8. Validación por API (no confiar solo en DB)
+    response = client.get(f"/ventas/{venta_id}")
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["venta"]["estado"] == "entregada"
+
+def test_pago_parcial_reversion_y_entrega_generan_saldo_correcto(
+    client, db_conn, seed_venta_basica
+):
+    # Crear venta (1 unidad)
+    venta = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 1,
+                    "id_bicicleta_serializada": None,
+                }
+            ],
+        },
+    )
+    assert venta.status_code == 200
+    venta_id = venta.json()["venta_id"]
+
+    # Abrir caja
+    abrir = client.post(
+        "/cajas/abrir",
+        json={
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "monto_apertura": 0,
+        },
+    )
+    assert abrir.status_code == 200
+
+    # Pago parcial
+    pago = client.post(
+        "/pagos/",
+        json={
+            "origen_tipo": "venta",
+            "origen_id": venta_id,
+            "medio_pago": "efectivo",
+            "monto": 10000,
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "nota": "Pago parcial",
+        },
+    )
+    assert pago.status_code == 200
+    pago_id = pago.json()["pago_id"]
+
+    # Revertir pago
+    rev = client.post(
+        f"/pagos/{pago_id}/revertir",
+        json={
+            "motivo": "Test reversión",
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert rev.status_code == 200
+
+    # Entregar
+    entrega = client.post(
+        f"/ventas/{venta_id}/entregar",
+        json={"id_usuario": seed_venta_basica["usuario_id"]},
+    )
+    assert entrega.status_code == 200
+
+    # Validar deuda completa
+    deudas = get_deudas_by_cliente(db_conn, seed_venta_basica["cliente_id"])
+    deuda = next(d for d in deudas if d["origen_id"] == venta_id)
+
+    total = Decimal(str(seed_venta_basica["precio_venta"]))
+
+    assert Decimal(str(deuda["saldo_actual"])) == total
+
+def test_pago_parcial_de_deuda_no_cierra_deuda(
+    client, db_conn, seed_venta_basica
+):
+    # Crear venta
+    venta = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 1,
+                    "id_bicicleta_serializada": None,
+                }
+            ],
+        },
+    )
+    venta_id = venta.json()["venta_id"]
+
+    # Abrir caja
+    client.post(
+        "/cajas/abrir",
+        json={
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "monto_apertura": 0,
+        },
+    )
+
+    # Entregar SIN pagar → genera deuda completa
+    client.post(
+        f"/ventas/{venta_id}/entregar",
+        json={"id_usuario": seed_venta_basica["usuario_id"]},
+    )
+
+    # Buscar deuda
+    deudas = get_deudas_by_cliente(db_conn, seed_venta_basica["cliente_id"])
+    deuda = next(d for d in deudas if d["origen_id"] == venta_id)
+
+    total = Decimal(str(deuda["saldo_actual"]))
+
+    # Pago parcial
+    pago = client.post(
+        f"/deudas/{deuda['id']}/pagos",
+        json={
+            "monto": float(total) / 2,
+            "medio_pago": "efectivo",
+            "nota": "Pago parcial deuda",
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert pago.status_code == 200
+
+    # Validar que NO cerró
+    deudas_despues = get_deudas_by_cliente(db_conn, seed_venta_basica["cliente_id"])
+    deuda_final = next(d for d in deudas_despues if d["id"] == deuda["id"])
+
+    assert deuda_final["estado"] == "abierta"
+    assert Decimal(str(deuda_final["saldo_actual"])) == total / 2
