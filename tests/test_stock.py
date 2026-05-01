@@ -1,4 +1,4 @@
-from tests.conftest import get_stock_row, get_auditoria_by_entidad
+from tests.conftest import get_stock_row, get_auditoria_by_entidad, get_movimientos_by_venta
 
 
 def _payload_ajuste(
@@ -294,3 +294,71 @@ def test_anulacion_venta_libera_stock_pendiente_y_perm_mite_nueva_venta(client, 
         },
     )
     assert venta_2.status_code == 200, venta_2.text
+
+def test_venta_crea_movimiento_stock_tipo_venta(client, db_conn, seed_venta_basica):
+    venta = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 2,
+                    "id_bicicleta_serializada": None,
+                }
+            ],
+        },
+    )
+    assert venta.status_code == 200, venta.text
+    venta_id = venta.json()["venta_id"]
+
+    movimientos = get_movimientos_by_venta(db_conn, venta_id)
+
+    assert len(movimientos) == 1
+    assert movimientos[0]["tipo_movimiento"] == "venta"
+    assert movimientos[0]["origen_tipo"] == "venta"
+    assert movimientos[0]["origen_id"] == venta_id
+    assert float(movimientos[0]["cantidad"]) == 2.0
+
+def test_anulacion_crea_movimiento_stock_cancelacion_venta(client, db_conn, seed_venta_basica):
+    # Venta
+    venta = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 3,
+                    "id_bicicleta_serializada": None,
+                }
+            ],
+        },
+    )
+    assert venta.status_code == 200, venta.text
+    venta_id = venta.json()["venta_id"]
+
+    # Anulación
+    anulacion = client.post(
+        f"/ventas/{venta_id}/anular",
+        json={
+            "motivo": "test cancelacion stock",
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert anulacion.status_code == 200, anulacion.text
+
+    movimientos = get_movimientos_by_venta(db_conn, venta_id)
+
+    tipos = {m["tipo_movimiento"] for m in movimientos}
+
+    assert "venta" in tipos
+    assert "cancelacion_venta" in tipos
+
+    cancelaciones = [m for m in movimientos if m["tipo_movimiento"] == "cancelacion_venta"]
+    assert len(cancelaciones) == 1
+    assert float(cancelaciones[0]["cantidad"]) == 3.0
