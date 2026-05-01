@@ -178,8 +178,6 @@ def cambiar_estado_orden_taller(orden_id: int, data):
 
             update_orden_taller_estado(conn, orden_id, data.nuevo_estado)
 
-            update_orden_taller_estado(conn, orden_id, data.nuevo_estado)
-
             insert_orden_taller_evento(
                 conn,
                 id_orden_taller=orden_id,
