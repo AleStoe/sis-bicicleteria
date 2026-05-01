@@ -955,3 +955,87 @@ def test_no_permite_revertir_pago_de_venta_entregada(client, seed_venta_basica):
 
     assert reversion.status_code == 400
     assert "venta ya entregada" in reversion.json()["detail"]
+
+
+def test_pago_y_caja_siempre_consistentes(client, db_conn, seed_venta_basica):
+    venta_id = crear_venta_base(client, seed_venta_basica)
+
+    abrir = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+    assert abrir.status_code == 200
+    caja_id = abrir.json()["caja_id"]
+
+    pago = client.post(
+        "/pagos/",
+        json=_payload_pago(
+            venta_id,
+            "efectivo",
+            10000,
+            seed_venta_basica["usuario_id"],
+            "Test consistencia",
+        ),
+    )
+
+    assert pago.status_code == 200
+    pago_id = pago.json()["pago_id"]
+
+    movimientos = get_caja_movimientos(db_conn, caja_id)
+
+    assert any(
+    m["origen_tipo"] == "pago"
+    and m["origen_id"] == pago_id
+    and m["monto"] == Decimal("10000")
+    and m["tipo_movimiento"] == "ingreso"
+    for m in movimientos
+)
+
+def test_reversion_pago_genera_egreso_en_caja(client, db_conn, seed_venta_basica):
+    venta_id = crear_venta_base(client, seed_venta_basica)
+
+    abrir = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+    assert abrir.status_code == 200
+    caja_id = abrir.json()["caja_id"]
+
+    # 1. Pago
+    pago = client.post(
+        "/pagos/",
+        json=_payload_pago(
+            venta_id,
+            "efectivo",
+            10000,
+            seed_venta_basica["usuario_id"],
+            "Pago para revertir",
+        ),
+    )
+    assert pago.status_code == 200
+    pago_id = pago.json()["pago_id"]
+
+    # 2. Reversión
+    reversion = client.post(
+        f"/pagos/{pago_id}/revertir",
+        json={
+            "motivo": "Test reversión caja",
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert reversion.status_code == 200
+
+    # 3. Movimientos de caja
+    movimientos = get_caja_movimientos(db_conn, caja_id)
+
+    # 4. Validación fuerte
+    egresos = [
+    m for m in movimientos
+    if m["origen_tipo"] == "pago_reversion"
+    and m["tipo_movimiento"] == "egreso"
+]
+
+    assert len(egresos) == 1
+    assert egresos[0]["monto"] == Decimal("10000")
