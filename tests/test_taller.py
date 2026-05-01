@@ -212,3 +212,105 @@ def test_variante_inexistente(client, seed_taller_basico):
     )
 
     assert response.status_code == 404
+
+def test_no_permite_salto_invalido_de_ingresada_a_terminada(client, seed_taller_basico):
+    crear = client.post(
+        "/ordenes_taller/",
+        json={
+            "id_sucursal": seed_taller_basico["sucursal_id"],
+            "id_cliente": seed_taller_basico["cliente_id"],
+            "id_bicicleta_cliente": seed_taller_basico["bicicleta_cliente_id"],
+            "problema_reportado": "Test salto inválido",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert crear.status_code == 201
+    orden_id = crear.json()["id"]
+
+    response = client.post(
+        f"/ordenes_taller/{orden_id}/estado",
+        json={
+            "nuevo_estado": "terminada",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+
+    assert response.status_code == 400
+    assert "Transición inválida" in response.json()["detail"]
+
+
+def test_flujo_valido_hasta_retirada(client, seed_taller_basico):
+    crear = client.post(
+        "/ordenes_taller/",
+        json={
+            "id_sucursal": seed_taller_basico["sucursal_id"],
+            "id_cliente": seed_taller_basico["cliente_id"],
+            "id_bicicleta_cliente": seed_taller_basico["bicicleta_cliente_id"],
+            "problema_reportado": "Service completo",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert crear.status_code == 201
+    orden_id = crear.json()["id"]
+
+    flujo = [
+        "presupuestada",
+        "en_reparacion",
+        "terminada",
+        "lista_para_retirar",
+        "retirada",
+    ]
+
+    for estado in flujo:
+        response = client.post(
+            f"/ordenes_taller/{orden_id}/estado",
+            json={
+                "nuevo_estado": estado,
+                "id_usuario": seed_taller_basico["usuario_id"],
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.json()["estado"] == estado
+
+
+def test_no_permite_mover_orden_retirada(client, seed_taller_basico):
+    crear = client.post(
+        "/ordenes_taller/",
+        json={
+            "id_sucursal": seed_taller_basico["sucursal_id"],
+            "id_cliente": seed_taller_basico["cliente_id"],
+            "id_bicicleta_cliente": seed_taller_basico["bicicleta_cliente_id"],
+            "problema_reportado": "Orden terminal",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert crear.status_code == 201
+    orden_id = crear.json()["id"]
+
+    for estado in [
+        "presupuestada",
+        "en_reparacion",
+        "terminada",
+        "lista_para_retirar",
+        "retirada",
+    ]:
+        response = client.post(
+            f"/ordenes_taller/{orden_id}/estado",
+            json={
+                "nuevo_estado": estado,
+                "id_usuario": seed_taller_basico["usuario_id"],
+            },
+        )
+        assert response.status_code == 200
+
+    response = client.post(
+        f"/ordenes_taller/{orden_id}/estado",
+        json={
+            "nuevo_estado": "en_reparacion",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+
+    assert response.status_code == 400
+    assert "Transición inválida" in response.json()["detail"]

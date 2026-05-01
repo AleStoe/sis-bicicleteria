@@ -9,7 +9,31 @@ from app.shared.constants import (
     ORDEN_TALLER_EVENTO_CAMBIO_ESTADO,
     ORDEN_TALLER_EVENTO_AGREGADO_ITEM,
 )
+TRANSICIONES_VALIDAS_TALLER = {
+    "ingresada": {"presupuestada", "cancelada"},
+    "presupuestada": {"esperando_aprobacion", "en_reparacion", "cancelada"},
+    "esperando_aprobacion": {"en_reparacion", "cancelada"},
+    "esperando_repuestos": {"en_reparacion", "cancelada"},
+    "en_reparacion": {"esperando_repuestos", "terminada", "cancelada"},
+    "terminada": {"lista_para_retirar"},
+    "lista_para_retirar": {"retirada"},
+    "retirada": set(),
+    "cancelada": set(),
+}
 
+
+def _validar_transicion_estado_taller(estado_actual: str, nuevo_estado: str) -> None:
+    estados_permitidos = TRANSICIONES_VALIDAS_TALLER.get(estado_actual, set())
+
+    if nuevo_estado not in estados_permitidos:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Transición inválida de taller: "
+                f"{estado_actual} -> {nuevo_estado}"
+            ),
+        )
+    
 from .repository import (
     validar_sucursal_activa,
     validar_usuario_activo,
@@ -146,6 +170,13 @@ def cambiar_estado_orden_taller(orden_id: int, data):
                     status_code=400,
                     detail=f"La orden {orden_id} ya está en estado {data.nuevo_estado}",
                 )
+
+            _validar_transicion_estado_taller(
+                estado_actual=orden["estado"],
+                nuevo_estado=data.nuevo_estado,
+            )
+
+            update_orden_taller_estado(conn, orden_id, data.nuevo_estado)
 
             update_orden_taller_estado(conn, orden_id, data.nuevo_estado)
 

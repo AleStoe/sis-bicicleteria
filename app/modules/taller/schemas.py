@@ -8,8 +8,13 @@ from pydantic import BaseModel, Field
 ESTADOS_TALLER_BASE = Literal[
     "ingresada",
     "presupuestada",
+    "esperando_aprobacion",
+    "esperando_repuestos",
     "en_reparacion",
     "terminada",
+    "lista_para_retirar",
+    "retirada",
+    "cancelada",
 ]
 
 
