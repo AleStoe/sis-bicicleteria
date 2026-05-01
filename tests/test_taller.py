@@ -314,3 +314,133 @@ def test_no_permite_mover_orden_retirada(client, seed_taller_basico):
 
     assert response.status_code == 400
     assert "Transición inválida" in response.json()["detail"]
+
+
+def test_aprobar_item_taller(client, seed_taller_basico, seed_venta_basica):
+    crear = client.post(
+        "/ordenes_taller/",
+        json={
+            "id_sucursal": seed_taller_basico["sucursal_id"],
+            "id_cliente": seed_taller_basico["cliente_id"],
+            "id_bicicleta_cliente": seed_taller_basico["bicicleta_cliente_id"],
+            "problema_reportado": "Cambio de cámara",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    orden_id = crear.json()["id"]
+
+    item_response = client.post(
+        f"/ordenes_taller/{orden_id}/items",
+        json={
+            "id_variante": seed_venta_basica["variante_id"],
+            "cantidad": 1,
+            "precio_unitario": 1000,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    item_id = item_response.json()["id"]
+
+    aprobar = client.post(
+        f"/ordenes_taller/{orden_id}/items/{item_id}/aprobacion",
+        json={
+            "aprobado": True,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+
+    assert aprobar.status_code == 200
+    item = aprobar.json()
+    assert item["aprobado"] is True
+    assert item["etapa"] == "agregado"
+
+
+def test_no_permite_aprobar_dos_veces_mismo_item(client, seed_taller_basico, seed_venta_basica):
+    crear = client.post(
+        "/ordenes_taller/",
+        json={
+            "id_sucursal": seed_taller_basico["sucursal_id"],
+            "id_cliente": seed_taller_basico["cliente_id"],
+            "id_bicicleta_cliente": seed_taller_basico["bicicleta_cliente_id"],
+            "problema_reportado": "Cambio de cubierta",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    orden_id = crear.json()["id"]
+
+    item_response = client.post(
+        f"/ordenes_taller/{orden_id}/items",
+        json={
+            "id_variante": seed_venta_basica["variante_id"],
+            "cantidad": 1,
+            "precio_unitario": 1000,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    item_id = item_response.json()["id"]
+
+    primera = client.post(
+        f"/ordenes_taller/{orden_id}/items/{item_id}/aprobacion",
+        json={
+            "aprobado": True,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert primera.status_code == 200
+
+    segunda = client.post(
+        f"/ordenes_taller/{orden_id}/items/{item_id}/aprobacion",
+        json={
+            "aprobado": True,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+
+    assert segunda.status_code == 400
+    assert "ya tiene ese estado" in segunda.json()["detail"]
+
+def test_no_permite_aprobar_item_de_otra_orden(client, seed_taller_basico, seed_venta_basica):
+    crear_1 = client.post(
+        "/ordenes_taller/",
+        json={
+            "id_sucursal": seed_taller_basico["sucursal_id"],
+            "id_cliente": seed_taller_basico["cliente_id"],
+            "id_bicicleta_cliente": seed_taller_basico["bicicleta_cliente_id"],
+            "problema_reportado": "Orden 1",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    orden_1_id = crear_1.json()["id"]
+
+    item_response = client.post(
+        f"/ordenes_taller/{orden_1_id}/items",
+        json={
+            "id_variante": seed_venta_basica["variante_id"],
+            "cantidad": 1,
+            "precio_unitario": 1000,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    item_id = item_response.json()["id"]
+
+    crear_2 = client.post(
+        "/ordenes_taller/",
+        json={
+            "id_sucursal": seed_taller_basico["sucursal_id"],
+            "id_cliente": seed_taller_basico["cliente_id"],
+            "id_bicicleta_cliente": seed_taller_basico["bicicleta_cliente_id"],
+            "problema_reportado": "Orden 2",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    orden_2_id = crear_2.json()["id"]
+
+    response = client.post(
+        f"/ordenes_taller/{orden_2_id}/items/{item_id}/aprobacion",
+        json={
+            "aprobado": True,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+
+    assert response.status_code == 400
+    assert "no pertenece" in response.json()["detail"]

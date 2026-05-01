@@ -248,7 +248,11 @@ def insert_orden_taller_item(conn, data: dict):
                 cantidad,
                 precio_unitario,
                 subtotal,
-                created_at
+                created_at,
+                etapa,
+                costo_unitario_aplicado,
+                aprobado,
+                updated_at
             """,
             (
                 data["id_orden_taller"],
@@ -274,7 +278,11 @@ def get_items_orden_taller(conn, orden_id: int):
                 cantidad,
                 precio_unitario,
                 subtotal,
-                created_at
+                created_at,
+                etapa,
+                costo_unitario_aplicado,
+                aprobado,
+                updated_at
             FROM ordenes_taller_items
             WHERE id_orden_taller = %s
             ORDER BY id
@@ -354,3 +362,59 @@ def get_eventos_orden_taller(conn, orden_id: int):
             (orden_id,),
         )
         return cur.fetchall()
+
+def get_item_orden_taller_by_id_for_update(conn, item_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT
+                id,
+                id_orden_taller,
+                id_variante,
+                etapa,
+                descripcion_snapshot,
+                cantidad,
+                precio_unitario,
+                costo_unitario_aplicado,
+                aprobado,
+                subtotal,
+                created_at,
+                updated_at
+            FROM ordenes_taller_items
+            WHERE id = %s
+            FOR UPDATE
+            """,
+            (item_id,),
+        )
+        return cur.fetchone()
+
+
+def update_orden_taller_item_aprobacion(conn, item_id: int, aprobado: bool):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            UPDATE ordenes_taller_items
+            SET aprobado = %s,
+                etapa = CASE
+                    WHEN %s = TRUE THEN 'agregado'
+                    ELSE 'presupuestado'
+                END,
+                updated_at = NOW()
+            WHERE id = %s
+            RETURNING
+                id,
+                id_orden_taller,
+                id_variante,
+                etapa,
+                descripcion_snapshot,
+                cantidad,
+                precio_unitario,
+                costo_unitario_aplicado,
+                aprobado,
+                subtotal,
+                created_at,
+                updated_at
+            """,
+            (aprobado, aprobado, item_id),
+        )
+        return cur.fetchone()

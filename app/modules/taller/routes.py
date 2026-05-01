@@ -7,6 +7,8 @@ from .schemas import (
     OrdenTallerResponse,
     OrdenTallerDetalleResponse,
     OrdenTallerItemResponse,
+    OrdenTallerItemAprobacionUpdate,
+    
 )
 from .service import (
     crear_orden_taller,
@@ -14,6 +16,7 @@ from .service import (
     obtener_orden_taller,
     cambiar_estado_orden_taller,
     agregar_item_orden_taller,
+    aprobar_item_orden_taller,
 )
 
 router = APIRouter(prefix="/ordenes_taller", tags=["Taller"])
@@ -42,3 +45,14 @@ def cambiar_estado(orden_id: int, payload: OrdenTallerEstadoUpdate):
 @router.post("/{orden_id}/items", response_model=OrdenTallerItemResponse, status_code=201)
 def agregar_item(orden_id: int, payload: OrdenTallerItemCreate):
     return agregar_item_orden_taller(orden_id, payload)
+
+@router.post(
+    "/{orden_id}/items/{item_id}/aprobacion",
+    response_model=OrdenTallerItemResponse,
+)
+def aprobar_item(
+    orden_id: int,
+    item_id: int,
+    payload: OrdenTallerItemAprobacionUpdate,
+):
+    return aprobar_item_orden_taller(orden_id, item_id, payload)

@@ -50,6 +50,8 @@ from .repository import (
     recalcular_total_orden_taller,
     insert_orden_taller_evento,
     get_eventos_orden_taller,
+    get_item_orden_taller_by_id_for_update,
+    update_orden_taller_item_aprobacion,
 )
 
 
@@ -241,5 +243,77 @@ def agregar_item_orden_taller(orden_id: int, data):
             )
 
             return item
+    finally:
+        conn.close()
+    
+
+def aprobar_item_orden_taller(orden_id: int, item_id: int, data):
+    conn = get_connection()
+    try:
+        with conn.transaction():
+            try:
+                validar_usuario_activo(conn, data.id_usuario)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+
+            orden = get_orden_taller_by_id_for_update(conn, orden_id)
+            if orden is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No existe la orden de taller {orden_id}",
+                )
+
+            if orden["estado"] in {"retirada", "cancelada"}:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"No se pueden modificar items de una orden en estado {orden['estado']}",
+                )
+
+            item = get_item_orden_taller_by_id_for_update(conn, item_id)
+            if item is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No existe el item de taller {item_id}",
+                )
+
+            if item["id_orden_taller"] != orden_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="El item no pertenece a la orden informada",
+                )
+
+            if item["etapa"] == "ejecutado":
+                raise HTTPException(
+                    status_code=400,
+                    detail="No se puede cambiar la aprobación de un item ejecutado",
+                )
+
+            if item["aprobado"] == data.aprobado:
+                raise HTTPException(
+                    status_code=400,
+                    detail="El item ya tiene ese estado de aprobación",
+                )
+
+            item_actualizado = update_orden_taller_item_aprobacion(
+                conn,
+                item_id=item_id,
+                aprobado=data.aprobado,
+            )
+
+            detalle_evento = (
+                f"Item aprobado: {item['descripcion_snapshot']}"
+                if data.aprobado
+                else f"Item desaprobado: {item['descripcion_snapshot']}"
+            )
+
+            insert_orden_taller_evento(
+                conn,
+                id_orden_taller=orden_id,
+                tipo_evento="aprobacion_cliente",
+                detalle=detalle_evento,
+                id_usuario=data.id_usuario,
+            )
+
+            return item_actualizado
     finally:
         conn.close()

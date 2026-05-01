@@ -69,13 +69,21 @@ class OrdenTallerItemResponse(BaseModel):
     id: int
     id_orden_taller: int
     id_variante: int
+    etapa: str
     descripcion_snapshot: str
     cantidad: Decimal
     precio_unitario: Decimal
+    costo_unitario_aplicado: Decimal | None = None
+    aprobado: bool
     subtotal: Decimal
     created_at: datetime
+    updated_at: datetime
 
 
 class OrdenTallerDetalleResponse(OrdenTallerResponse):
     eventos: list[OrdenTallerEventoResponse] = Field(default_factory=list)
     items: list[OrdenTallerItemResponse] = Field(default_factory=list)
+
+class OrdenTallerItemAprobacionUpdate(BaseModel):
+    aprobado: bool
+    id_usuario: int = Field(gt=0)
