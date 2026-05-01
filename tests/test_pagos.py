@@ -956,7 +956,6 @@ def test_no_permite_revertir_pago_de_venta_entregada(client, seed_venta_basica):
     assert reversion.status_code == 400
     assert "venta ya entregada" in reversion.json()["detail"]
 
-
 def test_pago_y_caja_siempre_consistentes(client, db_conn, seed_venta_basica):
     venta_id = crear_venta_base(client, seed_venta_basica)
 
@@ -1039,3 +1038,102 @@ def test_reversion_pago_genera_egreso_en_caja(client, db_conn, seed_venta_basica
 
     assert len(egresos) == 1
     assert egresos[0]["monto"] == Decimal("10000")
+
+def test_reversion_de_pago_parcial_restaura_saldo_correcto(client, db_conn, seed_venta_basica):
+    venta_id = crear_venta_base(client, seed_venta_basica)
+
+    abrir = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+    assert abrir.status_code == 200
+
+    # 1. Pago parcial
+    pago = client.post(
+        "/pagos/",
+        json=_payload_pago(
+            venta_id,
+            "efectivo",
+            10000,
+            seed_venta_basica["usuario_id"],
+            "Pago parcial",
+        ),
+    )
+    assert pago.status_code == 200
+    pago_id = pago.json()["pago_id"]
+
+    # Validar saldo después del pago
+    venta = get_venta(db_conn, venta_id)
+    saldo_despues_pago = Decimal(str(venta["saldo_pendiente"]))
+    assert saldo_despues_pago == Decimal(str(venta["total_final"])) - Decimal("10000")
+
+    # 2. Reversión
+    reversion = client.post(
+        f"/pagos/{pago_id}/revertir",
+        json={
+            "motivo": "Reversión parcial",
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert reversion.status_code == 200
+
+    # 3. Validar saldo restaurado
+    venta_final = get_venta(db_conn, venta_id)
+
+    assert Decimal(str(venta_final["saldo_pendiente"])) == Decimal(str(venta_final["total_final"]))
+    assert venta_final["estado"] == "creada"
+
+def test_reversion_de_un_pago_en_escenario_multiples_pagos(client, db_conn, seed_venta_basica):
+    venta_id = crear_venta_base(client, seed_venta_basica)
+
+    _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+
+    # Pago 1
+    pago1 = client.post(
+        "/pagos/",
+        json=_payload_pago(
+            venta_id,
+            "efectivo",
+            10000,
+            seed_venta_basica["usuario_id"],
+            "Pago 1",
+        ),
+    )
+    assert pago1.status_code == 200
+    pago1_id = pago1.json()["pago_id"]
+
+    # Pago 2
+    pago2 = client.post(
+        "/pagos/",
+        json=_payload_pago(
+            venta_id,
+            "transferencia",
+            5000,
+            seed_venta_basica["usuario_id"],
+            "Pago 2",
+        ),
+    )
+    assert pago2.status_code == 200
+
+    # Revertir solo pago 1
+    reversion = client.post(
+        f"/pagos/{pago1_id}/revertir",
+        json={
+            "motivo": "Reversión selectiva",
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert reversion.status_code == 200
+
+    venta_final = get_venta(db_conn, venta_id)
+
+    total = Decimal(str(venta_final["total_final"]))
+    saldo = Decimal(str(venta_final["saldo_pendiente"]))
+
+    assert saldo == total - Decimal("5000")
+    assert venta_final["estado"] == "pagada_parcial"
