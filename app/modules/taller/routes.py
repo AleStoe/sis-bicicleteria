@@ -8,6 +8,7 @@ from .schemas import (
     OrdenTallerDetalleResponse,
     OrdenTallerItemResponse,
     OrdenTallerItemAprobacionUpdate,
+    OrdenTallerItemReversionEjecucionInput,
     
 )
 from .service import (
@@ -18,6 +19,7 @@ from .service import (
     agregar_item_orden_taller,
     aprobar_item_orden_taller,
     ejecutar_item_orden_taller,
+    revertir_ejecucion_item_orden_taller,
 )
 
 router = APIRouter(prefix="/ordenes_taller", tags=["Taller"])
@@ -64,3 +66,14 @@ def aprobar_item(
 )
 def ejecutar_item(orden_id: int, item_id: int, id_usuario: int):
     return ejecutar_item_orden_taller(orden_id, item_id, id_usuario)
+
+@router.post(
+    "/{orden_id}/items/{item_id}/revertir-ejecucion",
+    response_model=OrdenTallerItemResponse,
+)
+def revertir_ejecucion_item(
+    orden_id: int,
+    item_id: int,
+    payload: OrdenTallerItemReversionEjecucionInput,
+):
+    return revertir_ejecucion_item_orden_taller(orden_id, item_id, payload)

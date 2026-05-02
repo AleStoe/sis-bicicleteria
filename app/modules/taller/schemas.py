@@ -87,3 +87,7 @@ class OrdenTallerDetalleResponse(OrdenTallerResponse):
 class OrdenTallerItemAprobacionUpdate(BaseModel):
     aprobado: bool
     id_usuario: int = Field(gt=0)
+
+class OrdenTallerItemReversionEjecucionInput(BaseModel):
+    id_usuario: int = Field(gt=0)
+    motivo: str = Field(min_length=1)

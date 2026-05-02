@@ -9,7 +9,11 @@ from app.shared.constants import (
     ORDEN_TALLER_EVENTO_CREADA,
     ORDEN_TALLER_EVENTO_CAMBIO_ESTADO,
     ORDEN_TALLER_EVENTO_AGREGADO_ITEM,
+    TIPO_MOVIMIENTO_USO_TALLER,
+    TIPO_MOVIMIENTO_REVERSION_USO_TALLER,
+    ORDEN_TALLER_EVENTO_ITEM_EJECUCION_REVERTIDA,
 )
+
 TRANSICIONES_VALIDAS_TALLER = {
     "ingresada": {"presupuestada", "cancelada"},
     "presupuestada": {"esperando_aprobacion", "en_reparacion", "cancelada"},
@@ -39,6 +43,7 @@ from app.modules.stock.repository import (
     obtener_stock_disponible_variante,
     registrar_movimiento_stock,
     descontar_stock_fisico,
+    incrementar_stock_fisico,
 )
 
 from .repository import (
@@ -60,6 +65,7 @@ from .repository import (
     get_item_orden_taller_by_id_for_update,
     update_orden_taller_item_aprobacion,
     update_orden_taller_item_ejecutado, 
+    update_orden_taller_item_agregado,
 )
 
 
@@ -351,7 +357,10 @@ def ejecutar_item_orden_taller(orden_id: int, item_id: int, id_usuario: int):
                 raise HTTPException(400, "Item no aprobado")
 
             if item["etapa"] == "ejecutado":
-                raise HTTPException(400, "Item ya ejecutado")
+                raise HTTPException(
+                    status_code=400,
+                    detail="El item ya fue ejecutado",
+                )
 
             # SOLO si es producto (no servicio)
         
@@ -408,5 +417,88 @@ def ejecutar_item_orden_taller(orden_id: int, item_id: int, id_usuario: int):
 
             return item_actualizado
 
+    finally:
+        conn.close()
+
+def revertir_ejecucion_item_orden_taller(orden_id: int, item_id: int, data):
+    conn = get_connection()
+    try:
+        with conn.transaction():
+            try:
+                validar_usuario_activo(conn, data.id_usuario)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+
+            motivo = data.motivo.strip()
+            if not motivo:
+                raise HTTPException(
+                    status_code=400,
+                    detail="El motivo de reversión es obligatorio",
+                )
+
+            orden = get_orden_taller_by_id_for_update(conn, orden_id)
+            if orden is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No existe la orden de taller {orden_id}",
+                )
+
+            if orden["estado"] in {"retirada", "cancelada"}:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"No se puede revertir ejecución en una orden {orden['estado']}",
+                )
+
+            item = get_item_orden_taller_by_id_for_update(conn, item_id)
+            if item is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No existe el item de taller {item_id}",
+                )
+
+            if item["id_orden_taller"] != orden_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="El item no pertenece a la orden informada",
+                )
+
+            if item["etapa"] != "ejecutado":
+                raise HTTPException(
+                    status_code=400,
+                    detail="Solo se puede revertir un item ejecutado",
+                )
+
+            if item["id_variante"]:
+                registrar_movimiento_stock(
+                    conn,
+                    id_sucursal=orden["id_sucursal"],
+                    id_variante=item["id_variante"],
+                    tipo_movimiento=TIPO_MOVIMIENTO_REVERSION_USO_TALLER,
+                    cantidad=item["cantidad"],
+                    id_usuario=data.id_usuario,
+                    costo_unitario_aplicado=item["costo_unitario_aplicado"],
+                    origen_tipo="orden_taller",
+                    origen_id=orden_id,
+                    nota=f"Reversión de uso en orden de taller #{orden_id}. Motivo: {motivo}",
+                )
+
+                incrementar_stock_fisico(
+                    conn,
+                    id_sucursal=orden["id_sucursal"],
+                    id_variante=item["id_variante"],
+                    cantidad=item["cantidad"],
+                )
+
+            item_actualizado = update_orden_taller_item_agregado(conn, item_id)
+
+            insert_orden_taller_evento(
+                conn,
+                id_orden_taller=orden_id,
+                tipo_evento=ORDEN_TALLER_EVENTO_ITEM_EJECUCION_REVERTIDA,
+                detalle=f"Ejecución revertida: {item['descripcion_snapshot']}. Motivo: {motivo}",
+                id_usuario=data.id_usuario,
+            )
+
+            return item_actualizado
     finally:
         conn.close()

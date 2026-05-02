@@ -961,3 +961,16 @@ def descontar_stock_fisico(conn, *, id_sucursal: int, id_variante: int, cantidad
             """,
             (cantidad, id_sucursal, id_variante),
         )
+
+def incrementar_stock_fisico(conn, *, id_sucursal: int, id_variante: int, cantidad):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE stock_sucursal
+            SET stock_fisico = stock_fisico + %s,
+                updated_at = NOW()
+            WHERE id_sucursal = %s
+              AND id_variante = %s
+            """,
+            (cantidad, id_sucursal, id_variante),
+        )

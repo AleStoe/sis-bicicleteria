@@ -620,3 +620,464 @@ def test_ejecutar_item_descuenta_stock_y_registra_movimiento(
     assert movimiento["cantidad"] == 1
     assert movimiento["origen_tipo"] == "orden_taller"
     assert movimiento["origen_id"] == orden_id
+
+def test_no_permite_ejecutar_item_dos_veces(
+    client, db_conn, seed_taller_basico, seed_venta_basica
+):
+    crear = client.post(
+        "/ordenes_taller/",
+        json={
+            "id_sucursal": seed_taller_basico["sucursal_id"],
+            "id_cliente": seed_taller_basico["cliente_id"],
+            "id_bicicleta_cliente": seed_taller_basico["bicicleta_cliente_id"],
+            "problema_reportado": "Cambio de cámara",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert crear.status_code == 201
+    orden_id = crear.json()["id"]
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO stock_sucursal (
+                id_sucursal,
+                id_variante,
+                stock_fisico,
+                stock_reservado,
+                stock_vendido_pendiente_entrega
+            )
+            VALUES (%s, %s, %s, 0, 0)
+            ON CONFLICT (id_sucursal, id_variante)
+            DO UPDATE SET
+                stock_fisico = EXCLUDED.stock_fisico,
+                stock_reservado = 0,
+                stock_vendido_pendiente_entrega = 0
+            """,
+            (
+                seed_taller_basico["sucursal_id"],
+                seed_venta_basica["variante_id"],
+                10,
+            ),
+        )
+    db_conn.commit()
+
+    item_response = client.post(
+        f"/ordenes_taller/{orden_id}/items",
+        json={
+            "id_variante": seed_venta_basica["variante_id"],
+            "cantidad": 1,
+            "precio_unitario": 1000,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert item_response.status_code == 201
+    item_id = item_response.json()["id"]
+
+    aprobar = client.post(
+        f"/ordenes_taller/{orden_id}/items/{item_id}/aprobacion",
+        json={
+            "aprobado": True,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert aprobar.status_code == 200
+
+    primera = client.post(
+        f"/ordenes_taller/{orden_id}/items/{item_id}/ejecutar",
+        params={"id_usuario": seed_taller_basico["usuario_id"]},
+    )
+    assert primera.status_code == 200
+    assert primera.json()["etapa"] == "ejecutado"
+
+    segunda = client.post(
+        f"/ordenes_taller/{orden_id}/items/{item_id}/ejecutar",
+        params={"id_usuario": seed_taller_basico["usuario_id"]},
+    )
+
+    assert segunda.status_code == 400
+    assert "ejecutado" in segunda.json()["detail"]
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT stock_fisico
+            FROM stock_sucursal
+            WHERE id_sucursal = %s
+              AND id_variante = %s
+            """,
+            (
+                seed_taller_basico["sucursal_id"],
+                seed_venta_basica["variante_id"],
+            ),
+        )
+        stock_row = cur.fetchone()
+
+        cur.execute(
+            """
+            SELECT COUNT(*) AS cantidad_movimientos
+            FROM movimientos_stock
+            WHERE tipo_movimiento = 'uso_taller'
+              AND origen_tipo = 'orden_taller'
+              AND origen_id = %s
+              AND id_variante = %s
+            """,
+            (
+                orden_id,
+                seed_venta_basica["variante_id"],
+            ),
+        )
+        movimientos_row = cur.fetchone()
+
+    assert stock_row["stock_fisico"] == 9
+    assert movimientos_row["cantidad_movimientos"] == 1
+
+def test_revertir_ejecucion_item_devuelve_stock_y_registra_movimiento(
+    client, db_conn, seed_taller_basico, seed_venta_basica
+):
+    crear = client.post(
+        "/ordenes_taller/",
+        json={
+            "id_sucursal": seed_taller_basico["sucursal_id"],
+            "id_cliente": seed_taller_basico["cliente_id"],
+            "id_bicicleta_cliente": seed_taller_basico["bicicleta_cliente_id"],
+            "problema_reportado": "Cambio de cámara",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert crear.status_code == 201
+    orden_id = crear.json()["id"]
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO stock_sucursal (
+                id_sucursal,
+                id_variante,
+                stock_fisico,
+                stock_reservado,
+                stock_vendido_pendiente_entrega
+            )
+            VALUES (%s, %s, %s, 0, 0)
+            ON CONFLICT (id_sucursal, id_variante)
+            DO UPDATE SET
+                stock_fisico = EXCLUDED.stock_fisico,
+                stock_reservado = 0,
+                stock_vendido_pendiente_entrega = 0
+            """,
+            (
+                seed_taller_basico["sucursal_id"],
+                seed_venta_basica["variante_id"],
+                10,
+            ),
+        )
+    db_conn.commit()
+
+    item_response = client.post(
+        f"/ordenes_taller/{orden_id}/items",
+        json={
+            "id_variante": seed_venta_basica["variante_id"],
+            "cantidad": 1,
+            "precio_unitario": 1000,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert item_response.status_code == 201
+    item_id = item_response.json()["id"]
+
+    aprobar = client.post(
+        f"/ordenes_taller/{orden_id}/items/{item_id}/aprobacion",
+        json={
+            "aprobado": True,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert aprobar.status_code == 200
+
+    ejecutar = client.post(
+        f"/ordenes_taller/{orden_id}/items/{item_id}/ejecutar",
+        params={"id_usuario": seed_taller_basico["usuario_id"]},
+    )
+    assert ejecutar.status_code == 200
+    assert ejecutar.json()["etapa"] == "ejecutado"
+
+    revertir = client.post(
+        f"/ordenes_taller/{orden_id}/items/{item_id}/revertir-ejecucion",
+        json={
+            "id_usuario": seed_taller_basico["usuario_id"],
+            "motivo": "Carga por error",
+        },
+    )
+
+    assert revertir.status_code == 200
+    assert revertir.json()["etapa"] == "agregado"
+    assert revertir.json()["aprobado"] is True
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT stock_fisico
+            FROM stock_sucursal
+            WHERE id_sucursal = %s
+              AND id_variante = %s
+            """,
+            (
+                seed_taller_basico["sucursal_id"],
+                seed_venta_basica["variante_id"],
+            ),
+        )
+        stock_row = cur.fetchone()
+
+        cur.execute(
+            """
+            SELECT tipo_movimiento, cantidad, origen_tipo, origen_id
+            FROM movimientos_stock
+            WHERE tipo_movimiento = 'reversion_uso_taller'
+              AND origen_tipo = 'orden_taller'
+              AND origen_id = %s
+              AND id_variante = %s
+            """,
+            (
+                orden_id,
+                seed_venta_basica["variante_id"],
+            ),
+        )
+        movimiento = cur.fetchone()
+
+        cur.execute(
+            """
+            SELECT tipo_evento, detalle
+            FROM ordenes_taller_eventos
+            WHERE id_orden_taller = %s
+              AND tipo_evento = 'item_ejecucion_revertida'
+            """,
+            (orden_id,),
+        )
+        evento = cur.fetchone()
+
+    assert stock_row["stock_fisico"] == 10
+
+    assert movimiento is not None
+    assert movimiento["tipo_movimiento"] == "reversion_uso_taller"
+    assert movimiento["cantidad"] == 1
+    assert movimiento["origen_tipo"] == "orden_taller"
+    assert movimiento["origen_id"] == orden_id
+
+    assert evento is not None
+    assert evento["tipo_evento"] == "item_ejecucion_revertida"
+    assert "Carga por error" in evento["detalle"]
+
+
+def test_no_permite_revertir_item_no_ejecutado(
+    client, db_conn, seed_taller_basico, seed_venta_basica
+):
+    crear = client.post(
+        "/ordenes_taller/",
+        json={
+            "id_sucursal": seed_taller_basico["sucursal_id"],
+            "id_cliente": seed_taller_basico["cliente_id"],
+            "id_bicicleta_cliente": seed_taller_basico["bicicleta_cliente_id"],
+            "problema_reportado": "Cambio de cámara",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert crear.status_code == 201
+    orden_id = crear.json()["id"]
+
+    item_response = client.post(
+        f"/ordenes_taller/{orden_id}/items",
+        json={
+            "id_variante": seed_venta_basica["variante_id"],
+            "cantidad": 1,
+            "precio_unitario": 1000,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert item_response.status_code == 201
+    item_id = item_response.json()["id"]
+
+    response = client.post(
+        f"/ordenes_taller/{orden_id}/items/{item_id}/revertir-ejecucion",
+        json={
+            "id_usuario": seed_taller_basico["usuario_id"],
+            "motivo": "Intento inválido",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "ejecutado" in response.json()["detail"]
+
+
+def test_no_permite_revertir_ejecucion_sin_motivo(
+    client, db_conn, seed_taller_basico, seed_venta_basica
+):
+    crear = client.post(
+        "/ordenes_taller/",
+        json={
+            "id_sucursal": seed_taller_basico["sucursal_id"],
+            "id_cliente": seed_taller_basico["cliente_id"],
+            "id_bicicleta_cliente": seed_taller_basico["bicicleta_cliente_id"],
+            "problema_reportado": "Cambio de cámara",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert crear.status_code == 201
+    orden_id = crear.json()["id"]
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO stock_sucursal (
+                id_sucursal,
+                id_variante,
+                stock_fisico,
+                stock_reservado,
+                stock_vendido_pendiente_entrega
+            )
+            VALUES (%s, %s, %s, 0, 0)
+            ON CONFLICT (id_sucursal, id_variante)
+            DO UPDATE SET
+                stock_fisico = EXCLUDED.stock_fisico,
+                stock_reservado = 0,
+                stock_vendido_pendiente_entrega = 0
+            """,
+            (
+                seed_taller_basico["sucursal_id"],
+                seed_venta_basica["variante_id"],
+                10,
+            ),
+        )
+    db_conn.commit()
+
+    item_response = client.post(
+        f"/ordenes_taller/{orden_id}/items",
+        json={
+            "id_variante": seed_venta_basica["variante_id"],
+            "cantidad": 1,
+            "precio_unitario": 1000,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert item_response.status_code == 201
+    item_id = item_response.json()["id"]
+
+    aprobar = client.post(
+        f"/ordenes_taller/{orden_id}/items/{item_id}/aprobacion",
+        json={
+            "aprobado": True,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert aprobar.status_code == 200
+
+    ejecutar = client.post(
+        f"/ordenes_taller/{orden_id}/items/{item_id}/ejecutar",
+        params={"id_usuario": seed_taller_basico["usuario_id"]},
+    )
+    assert ejecutar.status_code == 200
+
+    response = client.post(
+        f"/ordenes_taller/{orden_id}/items/{item_id}/revertir-ejecucion",
+        json={
+            "id_usuario": seed_taller_basico["usuario_id"],
+            "motivo": "   ",
+        },
+    )
+
+    assert response.status_code in (400, 422)
+
+
+def test_no_permite_revertir_ejecucion_en_orden_retirada(
+    client, db_conn, seed_taller_basico, seed_venta_basica
+):
+    crear = client.post(
+        "/ordenes_taller/",
+        json={
+            "id_sucursal": seed_taller_basico["sucursal_id"],
+            "id_cliente": seed_taller_basico["cliente_id"],
+            "id_bicicleta_cliente": seed_taller_basico["bicicleta_cliente_id"],
+            "problema_reportado": "Cambio de cámara",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert crear.status_code == 201
+    orden_id = crear.json()["id"]
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO stock_sucursal (
+                id_sucursal,
+                id_variante,
+                stock_fisico,
+                stock_reservado,
+                stock_vendido_pendiente_entrega
+            )
+            VALUES (%s, %s, %s, 0, 0)
+            ON CONFLICT (id_sucursal, id_variante)
+            DO UPDATE SET
+                stock_fisico = EXCLUDED.stock_fisico,
+                stock_reservado = 0,
+                stock_vendido_pendiente_entrega = 0
+            """,
+            (
+                seed_taller_basico["sucursal_id"],
+                seed_venta_basica["variante_id"],
+                10,
+            ),
+        )
+    db_conn.commit()
+
+    item_response = client.post(
+        f"/ordenes_taller/{orden_id}/items",
+        json={
+            "id_variante": seed_venta_basica["variante_id"],
+            "cantidad": 1,
+            "precio_unitario": 1000,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert item_response.status_code == 201
+    item_id = item_response.json()["id"]
+
+    aprobar = client.post(
+        f"/ordenes_taller/{orden_id}/items/{item_id}/aprobacion",
+        json={
+            "aprobado": True,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert aprobar.status_code == 200
+
+    ejecutar = client.post(
+        f"/ordenes_taller/{orden_id}/items/{item_id}/ejecutar",
+        params={"id_usuario": seed_taller_basico["usuario_id"]},
+    )
+    assert ejecutar.status_code == 200
+
+    for estado in [
+        "presupuestada",
+        "en_reparacion",
+        "terminada",
+        "lista_para_retirar",
+        "retirada",
+    ]:
+        cambiar = client.post(
+            f"/ordenes_taller/{orden_id}/estado",
+            json={
+                "nuevo_estado": estado,
+                "id_usuario": seed_taller_basico["usuario_id"],
+            },
+        )
+        assert cambiar.status_code == 200
+
+    response = client.post(
+        f"/ordenes_taller/{orden_id}/items/{item_id}/revertir-ejecucion",
+        json={
+            "id_usuario": seed_taller_basico["usuario_id"],
+            "motivo": "No debería permitirse",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "retirada" in response.json()["detail"]
