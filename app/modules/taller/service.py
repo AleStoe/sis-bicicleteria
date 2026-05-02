@@ -1,5 +1,6 @@
 from decimal import Decimal
-
+from app.modules.stock.repository import registrar_movimiento_stock
+from app.shared.constants import TIPO_MOVIMIENTO_USO_TALLER
 from fastapi import HTTPException
 
 from app.db.connection import get_connection
@@ -33,7 +34,13 @@ def _validar_transicion_estado_taller(estado_actual: str, nuevo_estado: str) -> 
                 f"{estado_actual} -> {nuevo_estado}"
             ),
         )
-    
+
+from app.modules.stock.repository import (
+    obtener_stock_disponible_variante,
+    registrar_movimiento_stock,
+    descontar_stock_fisico,
+)
+
 from .repository import (
     validar_sucursal_activa,
     validar_usuario_activo,
@@ -52,6 +59,7 @@ from .repository import (
     get_eventos_orden_taller,
     get_item_orden_taller_by_id_for_update,
     update_orden_taller_item_aprobacion,
+    update_orden_taller_item_ejecutado, 
 )
 
 
@@ -315,5 +323,90 @@ def aprobar_item_orden_taller(orden_id: int, item_id: int, data):
             )
 
             return item_actualizado
+    finally:
+        conn.close()
+
+def ejecutar_item_orden_taller(orden_id: int, item_id: int, id_usuario: int):
+    conn = get_connection()
+    try:
+        with conn.transaction():
+
+            validar_usuario_activo(conn, id_usuario)
+
+            orden = get_orden_taller_by_id_for_update(conn, orden_id)
+            if not orden:
+                raise HTTPException(404, "Orden no existe")
+
+            if orden["estado"] in {"cancelada", "retirada"}:
+                raise HTTPException(400, "Orden cerrada")
+
+            item = get_item_orden_taller_by_id_for_update(conn, item_id)
+            if not item:
+                raise HTTPException(404, "Item no existe")
+
+            if item["id_orden_taller"] != orden_id:
+                raise HTTPException(400, "Item no pertenece a la orden")
+
+            if not item["aprobado"]:
+                raise HTTPException(400, "Item no aprobado")
+
+            if item["etapa"] == "ejecutado":
+                raise HTTPException(400, "Item ya ejecutado")
+
+            # SOLO si es producto (no servicio)
+        
+            if item["id_variante"]:
+
+                stock_row = obtener_stock_disponible_variante(
+                    conn,
+                    id_sucursal=orden["id_sucursal"],
+                    id_variante=item["id_variante"],
+                )
+
+                if stock_row is None:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="No existe stock para la variante en la sucursal",
+                    )
+
+                if stock_row["stock_disponible"] < item["cantidad"]:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Stock insuficiente. Disponible: {stock_row['stock_disponible']}",
+                    )
+
+                registrar_movimiento_stock(
+                    conn,
+                    id_sucursal=orden["id_sucursal"],
+                    id_variante=item["id_variante"],
+                    tipo_movimiento="uso_taller",
+                    cantidad=item["cantidad"],
+                    id_usuario=id_usuario,
+                    costo_unitario_aplicado=item["costo_unitario_aplicado"],
+                    origen_tipo="orden_taller",
+                    origen_id=orden_id,
+                    nota=f"Uso en orden de taller #{orden_id}",
+                )
+                descontar_stock_fisico(
+                    conn,
+                    id_sucursal=orden["id_sucursal"],
+                    id_variante=item["id_variante"],
+                    cantidad=item["cantidad"],
+                )
+
+            item_actualizado = update_orden_taller_item_ejecutado(
+                conn, item_id
+            )
+
+            insert_orden_taller_evento(
+                conn,
+                id_orden_taller=orden_id,
+                tipo_evento="item_ejecutado",
+                detalle=f"Item ejecutado: {item['descripcion_snapshot']}",
+                id_usuario=id_usuario,
+            )
+
+            return item_actualizado
+
     finally:
         conn.close()

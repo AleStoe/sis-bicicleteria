@@ -1,5 +1,5 @@
 from app.db.connection import get_connection
-
+from psycopg.rows import dict_row
 
 # =========================================================
 # CONSULTAS
@@ -926,3 +926,38 @@ def registrar_ajuste_manual_stock(
         nota=nota,
         validar_stock_disponible=True,
     )
+
+def obtener_stock_disponible_variante(conn, *, id_sucursal: int, id_variante: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT
+                stock_fisico,
+                stock_reservado,
+                stock_vendido_pendiente_entrega,
+                (
+                    stock_fisico
+                    - stock_reservado
+                    - stock_vendido_pendiente_entrega
+                ) AS stock_disponible
+            FROM stock_sucursal
+            WHERE id_sucursal = %s
+              AND id_variante = %s
+            FOR UPDATE
+            """,
+            (id_sucursal, id_variante),
+        )
+        return cur.fetchone()
+
+def descontar_stock_fisico(conn, *, id_sucursal: int, id_variante: int, cantidad):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE stock_sucursal
+            SET stock_fisico = stock_fisico - %s,
+                updated_at = NOW()
+            WHERE id_sucursal = %s
+              AND id_variante = %s
+            """,
+            (cantidad, id_sucursal, id_variante),
+        )

@@ -17,6 +17,7 @@ from .service import (
     cambiar_estado_orden_taller,
     agregar_item_orden_taller,
     aprobar_item_orden_taller,
+    ejecutar_item_orden_taller,
 )
 
 router = APIRouter(prefix="/ordenes_taller", tags=["Taller"])
@@ -56,3 +57,10 @@ def aprobar_item(
     payload: OrdenTallerItemAprobacionUpdate,
 ):
     return aprobar_item_orden_taller(orden_id, item_id, payload)
+
+@router.post(
+    "/{orden_id}/items/{item_id}/ejecutar",
+    response_model=OrdenTallerItemResponse,
+)
+def ejecutar_item(orden_id: int, item_id: int, id_usuario: int):
+    return ejecutar_item_orden_taller(orden_id, item_id, id_usuario)

@@ -444,3 +444,179 @@ def test_no_permite_aprobar_item_de_otra_orden(client, seed_taller_basico, seed_
 
     assert response.status_code == 400
     assert "no pertenece" in response.json()["detail"]
+def test_ejecutar_item_consumo_stock(client, db_conn, seed_taller_basico, seed_venta_basica):
+    crear = client.post(
+        "/ordenes_taller/",
+        json={
+            "id_sucursal": seed_taller_basico["sucursal_id"],
+            "id_cliente": seed_taller_basico["cliente_id"],
+            "id_bicicleta_cliente": seed_taller_basico["bicicleta_cliente_id"],
+            "problema_reportado": "Cambio de cámara",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert crear.status_code == 201
+    orden_id = crear.json()["id"]
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO stock_sucursal (
+                id_sucursal,
+                id_variante,
+                stock_fisico,
+                stock_reservado,
+                stock_vendido_pendiente_entrega
+            )
+            VALUES (%s, %s, %s, 0, 0)
+            ON CONFLICT (id_sucursal, id_variante)
+            DO UPDATE SET
+                stock_fisico = EXCLUDED.stock_fisico,
+                stock_reservado = 0,
+                stock_vendido_pendiente_entrega = 0
+            """,
+            (
+                seed_taller_basico["sucursal_id"],
+                seed_venta_basica["variante_id"],
+                10,
+            ),
+        )
+    db_conn.commit()
+
+    item_response = client.post(
+        f"/ordenes_taller/{orden_id}/items",
+        json={
+            "id_variante": seed_venta_basica["variante_id"],
+            "cantidad": 1,
+            "precio_unitario": 1000,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert item_response.status_code == 201
+    item_id = item_response.json()["id"]
+
+    aprobar = client.post(
+        f"/ordenes_taller/{orden_id}/items/{item_id}/aprobacion",
+        json={
+            "aprobado": True,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert aprobar.status_code == 200
+
+    ejecutar = client.post(
+        f"/ordenes_taller/{orden_id}/items/{item_id}/ejecutar",
+        params={"id_usuario": seed_taller_basico["usuario_id"]},
+    )
+
+    assert ejecutar.status_code == 200
+    assert ejecutar.json()["etapa"] == "ejecutado"
+
+def test_ejecutar_item_descuenta_stock_y_registra_movimiento(
+    client, db_conn, seed_taller_basico, seed_venta_basica
+):
+    crear = client.post(
+        "/ordenes_taller/",
+        json={
+            "id_sucursal": seed_taller_basico["sucursal_id"],
+            "id_cliente": seed_taller_basico["cliente_id"],
+            "id_bicicleta_cliente": seed_taller_basico["bicicleta_cliente_id"],
+            "problema_reportado": "Cambio de cámara",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert crear.status_code == 201
+    orden_id = crear.json()["id"]
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO stock_sucursal (
+                id_sucursal,
+                id_variante,
+                stock_fisico,
+                stock_reservado,
+                stock_vendido_pendiente_entrega
+            )
+            VALUES (%s, %s, %s, 0, 0)
+            ON CONFLICT (id_sucursal, id_variante)
+            DO UPDATE SET
+                stock_fisico = EXCLUDED.stock_fisico,
+                stock_reservado = 0,
+                stock_vendido_pendiente_entrega = 0
+            """,
+            (
+                seed_taller_basico["sucursal_id"],
+                seed_venta_basica["variante_id"],
+                10,
+            ),
+        )
+    db_conn.commit()
+
+    item_response = client.post(
+        f"/ordenes_taller/{orden_id}/items",
+        json={
+            "id_variante": seed_venta_basica["variante_id"],
+            "cantidad": 1,
+            "precio_unitario": 1000,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert item_response.status_code == 201
+    item_id = item_response.json()["id"]
+
+    aprobar = client.post(
+        f"/ordenes_taller/{orden_id}/items/{item_id}/aprobacion",
+        json={
+            "aprobado": True,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert aprobar.status_code == 200
+
+    ejecutar = client.post(
+        f"/ordenes_taller/{orden_id}/items/{item_id}/ejecutar",
+        params={"id_usuario": seed_taller_basico["usuario_id"]},
+    )
+
+    assert ejecutar.status_code == 200
+    assert ejecutar.json()["etapa"] == "ejecutado"
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT stock_fisico
+            FROM stock_sucursal
+            WHERE id_sucursal = %s
+              AND id_variante = %s
+            """,
+            (
+                seed_taller_basico["sucursal_id"],
+                seed_venta_basica["variante_id"],
+            ),
+        )
+        stock_row = cur.fetchone()
+
+        cur.execute(
+            """
+            SELECT tipo_movimiento, cantidad, origen_tipo, origen_id
+            FROM movimientos_stock
+            WHERE tipo_movimiento = 'uso_taller'
+              AND origen_tipo = 'orden_taller'
+              AND origen_id = %s
+              AND id_variante = %s
+            """,
+            (
+                orden_id,
+                seed_venta_basica["variante_id"],
+            ),
+        )
+        movimiento = cur.fetchone()
+
+    assert stock_row["stock_fisico"] == 9
+
+    assert movimiento is not None
+    assert movimiento["tipo_movimiento"] == "uso_taller"
+    assert movimiento["cantidad"] == 1
+    assert movimiento["origen_tipo"] == "orden_taller"
+    assert movimiento["origen_id"] == orden_id
