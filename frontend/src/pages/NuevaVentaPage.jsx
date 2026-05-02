@@ -1,30 +1,30 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { listarVariantes } from "../services/catalogoService";
 import { listarStock } from "../services/stockService";
-import { crearVenta, crearPago, entregarVenta } from "../services/ventasService";
-import { Link } from "react-router-dom";
 import { listarClientes } from "../services/clientesService";
-
-const MEDIOS_PAGO = [
-  { value: "efectivo", label: "Efectivo" },
-  { value: "transferencia", label: "Transferencia" },
-  { value: "mercadopago", label: "Mercado Pago" },
-  { value: "tarjeta", label: "Tarjeta" },
-];
+import { crearVenta } from "../services/ventasService";
+import { formatMoney } from "./VentasListPage";
 
 export default function NuevaVentaPage() {
+  const navigate = useNavigate();
   const [variantes, setVariantes] = useState([]);
   const [stock, setStock] = useState([]);
+  const [clientes, setClientes] = useState([]);
   const [busqueda, setBusqueda] = useState("");
   const [items, setItems] = useState([]);
-  const [pagos, setPagos] = useState([{ medio_pago: "efectivo", monto: "" }]);
-  const [modoMixto, setModoMixto] = useState(false);
+  const [clienteSeleccionadoId, setClienteSeleccionadoId] = useState(1);
+  const [observaciones, setObservaciones] = useState("");
+  const [usarCredito, setUsarCredito] = useState(true);
+  const [montoCredito, setMontoCredito] = useState("");
   const [loading, setLoading] = useState(true);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
-  const [clientes, setClientes] = useState([]);
-  const [clienteSeleccionadoId, setClienteSeleccionadoId] = useState(1);
+
+  useEffect(() => {
+    cargarDatos();
+  }, []);
 
   async function cargarDatos() {
     try {
@@ -37,68 +37,74 @@ export default function NuevaVentaPage() {
         listarClientes({ solo_activos: true }),
       ]);
 
-      setVariantes(variantesData);
-      setStock(stockData);
-      setClientes(clientesData);
+      setVariantes(variantesData || []);
+      setStock(stockData || []);
+      setClientes(clientesData || []);
 
-      const existeConsumidorFinal = clientesData.some((c) => c.id === 1);
-      if (existeConsumidorFinal) {
+      const consumidorFinal = (clientesData || []).find((c) => Number(c.id) === 1);
+      if (consumidorFinal) {
         setClienteSeleccionadoId(1);
-      } else if (clientesData.length > 0) {
+      } else if ((clientesData || []).length > 0) {
         setClienteSeleccionadoId(clientesData[0].id);
       }
     } catch (err) {
-      setError(err.message || "Error al cargar datos");
+      setError(err.message || "Error al cargar datos para venta");
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => {
-    cargarDatos();
-  }, []);
-
   const stockMap = useMemo(() => {
     const map = {};
-
-    for (const fila of stock) {
-      map[fila.variante_id] = Number(fila.stock_disponible ?? 0);
+    for (const fila of stock || []) {
+      const varianteId = fila.variante_id ?? fila.id_variante ?? fila.id;
+      map[varianteId] = Number(fila.stock_disponible ?? fila.stock_fisico ?? 0);
     }
-
     return map;
   }, [stock]);
 
   const resultados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
 
-    const base = variantes.map((v) => ({
+    const base = (variantes || []).map((v) => ({
       ...v,
       stock_disponible: Number(stockMap[v.id] ?? 0),
     }));
 
-    if (!q) return base;
+    const filtrados = q
+      ? base.filter((v) =>
+          [v.id, v.producto_nombre, v.nombre_variante, v.sku, v.codigo_proveedor]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase()
+            .includes(q)
+        )
+      : base;
 
-    return base.filter((v) => {
-      const texto = [v.producto_nombre, v.nombre_variante, v.sku]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-
-      return texto.includes(q);
-    });
+    return filtrados.slice(0, 100);
   }, [busqueda, variantes, stockMap]);
 
+  const total = useMemo(() => {
+    return items.reduce((acc, item) => acc + Number(item.precio || 0) * Number(item.cantidad || 0), 0);
+  }, [items]);
+
   function cantidadEnCarrito(idVariante) {
-    const item = items.find((i) => i.id_variante === idVariante);
-    return item ? item.cantidad : 0;
+    return items
+      .filter((i) => Number(i.id_variante) === Number(idVariante) && !i.id_bicicleta_serializada)
+      .reduce((acc, item) => acc + Number(item.cantidad || 0), 0);
   }
 
   function agregarAlCarrito(variante) {
     const stockDisponible = Number(variante.stock_disponible ?? 0);
     const yaEnCarrito = cantidadEnCarrito(variante.id);
 
+    if (stockDisponible <= 0) {
+      setError(`No hay stock disponible para ${variante.producto_nombre || variante.nombre_variante}`);
+      return;
+    }
+
     if (yaEnCarrito >= stockDisponible) {
-      setError(`No hay más stock disponible para ${variante.nombre_variante}`);
+      setError(`No hay más stock disponible para ${variante.producto_nombre || variante.nombre_variante}`);
       return;
     }
 
@@ -106,12 +112,14 @@ export default function NuevaVentaPage() {
     setMensaje("");
 
     setItems((prev) => {
-      const existente = prev.find((item) => item.id_variante === variante.id);
+      const existente = prev.find(
+        (item) => Number(item.id_variante) === Number(variante.id) && !item.id_bicicleta_serializada
+      );
 
       if (existente) {
         return prev.map((item) =>
-          item.id_variante === variante.id
-            ? { ...item, cantidad: item.cantidad + 1 }
+          Number(item.id_variante) === Number(variante.id) && !item.id_bicicleta_serializada
+            ? { ...item, cantidad: Number(item.cantidad) + 1 }
             : item
         );
       }
@@ -123,178 +131,133 @@ export default function NuevaVentaPage() {
           producto_nombre: variante.producto_nombre,
           nombre_variante: variante.nombre_variante,
           sku: variante.sku,
-          precio: Number(variante.precio_minorista),
+          precio: Number(variante.precio_minorista || 0),
           cantidad: 1,
+          id_bicicleta_serializada: "",
         },
       ];
     });
   }
 
-  function cambiarCantidad(idVariante, nuevaCantidad) {
+  function cambiarCantidad(index, nuevaCantidad) {
     if (!Number.isFinite(nuevaCantidad) || nuevaCantidad < 1) return;
 
-    const stockDisponible = Number(stockMap[idVariante] ?? 0);
+    const item = items[index];
+    const stockDisponible = Number(stockMap[item.id_variante] ?? 0);
 
-    if (nuevaCantidad > stockDisponible) {
-      setError(`La cantidad supera el stock disponible de la variante ${idVariante}`);
+    if (item.id_bicicleta_serializada && nuevaCantidad !== 1) {
+      setError("Un item serializado debe tener cantidad 1");
+      return;
+    }
+
+    const otrasCantidades = items.reduce((acc, actual, i) => {
+      if (i === index) return acc;
+      if (Number(actual.id_variante) !== Number(item.id_variante)) return acc;
+      if (actual.id_bicicleta_serializada) return acc;
+      return acc + Number(actual.cantidad || 0);
+    }, 0);
+
+    if (nuevaCantidad + otrasCantidades > stockDisponible) {
+      setError(`La cantidad supera el stock disponible de la variante ${item.id_variante}`);
       return;
     }
 
     setError("");
     setMensaje("");
+    setItems((prev) => prev.map((it, i) => (i === index ? { ...it, cantidad: nuevaCantidad } : it)));
+  }
 
+  function cambiarSerializada(index, valor) {
+    setError("");
+    setMensaje("");
     setItems((prev) =>
-      prev.map((item) =>
-        item.id_variante === idVariante
-          ? { ...item, cantidad: nuevaCantidad }
+      prev.map((item, i) =>
+        i === index
+          ? {
+              ...item,
+              id_bicicleta_serializada: valor,
+              cantidad: valor ? 1 : item.cantidad,
+            }
           : item
       )
     );
   }
 
-  function quitarItem(idVariante) {
-    setItems((prev) => prev.filter((item) => item.id_variante !== idVariante));
+  function quitarItem(index) {
+    setItems((prev) => prev.filter((_, i) => i !== index));
     setError("");
     setMensaje("");
   }
-
-  function agregarPago() {
-    setPagos((prev) => [...prev, { medio_pago: "efectivo", monto: "" }]);
-  }
-
-  function cambiarPago(index, campo, valor) {
-    setPagos((prev) =>
-      prev.map((pago, i) =>
-        i === index ? { ...pago, [campo]: valor } : pago
-      )
-    );
-  }
-
-  function quitarPago(index) {
-    setPagos((prev) => prev.filter((_, i) => i !== index));
-  }
-
-  const total = useMemo(() => {
-    return items.reduce((acc, item) => acc + item.precio * item.cantidad, 0);
-  }, [items]);
-
-  const totalPagado = useMemo(() => {
-    return pagos.reduce((acc, pago) => acc + Number(pago.monto || 0), 0);
-  }, [pagos]);
-
-  const restante = useMemo(() => {
-    return total - totalPagado;
-  }, [total, totalPagado]);
 
   function resetVenta() {
     setItems([]);
     setBusqueda("");
-    setPagos([{ medio_pago: "efectivo", monto: "" }]);
-    setModoMixto(false);
-    setClienteSeleccionadoId(1);
+    setObservaciones("");
+    setUsarCredito(true);
+    setMontoCredito("");
+    setClienteSeleccionadoId(clientes.some((c) => Number(c.id) === 1) ? 1 : clientes[0]?.id || "");
     setError("");
     setMensaje("");
   }
 
-  async function ejecutarVentaConPagos(pagosFinales) {
-    if (!clienteSeleccionadoId) {
-      throw new Error("Seleccioná un cliente antes de continuar");
+  function validarVenta() {
+    if (!clienteSeleccionadoId) return "Seleccioná un cliente";
+    if (items.length === 0) return "Agregá al menos un item";
+
+    const serializadas = new Set();
+    for (const item of items) {
+      if (Number(item.cantidad) <= 0) return "Todas las cantidades deben ser mayores a cero";
+      if (item.id_bicicleta_serializada) {
+        if (Number(item.cantidad) !== 1) return "Los items serializados deben tener cantidad 1";
+        if (serializadas.has(String(item.id_bicicleta_serializada))) {
+          return "La misma bicicleta serializada no puede repetirse en la venta";
+        }
+        serializadas.add(String(item.id_bicicleta_serializada));
+      }
     }
 
-    const totalPagadoFinal = pagosFinales.reduce(
-      (acc, pago) => acc + Number(pago.monto || 0),
-      0
-    );
+    if (montoCredito && Number(montoCredito) < 0) return "El monto de crédito no puede ser negativo";
+    return null;
+  }
 
-    const restanteFinal = total - totalPagadoFinal;
-
-    if (restanteFinal > 0 && Number(clienteSeleccionadoId) === 1) {
-      throw new Error(
-        "Para ventas con saldo pendiente debés seleccionar un cliente real"
-      );
+  async function confirmarVenta() {
+    const errorValidacion = validarVenta();
+    if (errorValidacion) {
+      setError(errorValidacion);
+      return;
     }
 
-    const payloadVenta = {
+    const payload = {
       id_cliente: Number(clienteSeleccionadoId),
       id_sucursal: 1,
       id_usuario: 1,
       items: items.map((item) => ({
-        id_variante: item.id_variante,
-        cantidad: item.cantidad,
+        id_variante: Number(item.id_variante),
+        cantidad: Number(item.cantidad),
+        ...(item.id_bicicleta_serializada
+          ? { id_bicicleta_serializada: Number(item.id_bicicleta_serializada) }
+          : {}),
       })),
+      observaciones: observaciones.trim() || null,
+      usar_credito: Boolean(usarCredito),
+      monto_credito_a_aplicar: montoCredito === "" ? null : Number(montoCredito),
     };
 
-    const venta = await crearVenta(payloadVenta);
-
-    for (const pago of pagosFinales) {
-      await crearPago({
-        venta_id: venta.venta_id,
-        medio_pago: pago.medio_pago,
-        monto: Number(pago.monto),
-        id_usuario: 1,
-      });
-    }
-
-    await entregarVenta(venta.venta_id, {
-      id_usuario: 1,
-    });
-
-    setMensaje(`Venta cobrada y entregada correctamente. ID: ${venta.venta_id}`);
-    resetVenta();
-    await cargarDatos();
-  }
-
-  async function cobrarRapido(medioPago) {
-    setError("");
-    setMensaje("");
-
-    if (items.length === 0) {
-      setError("Agregá al menos un producto al carrito");
-      return;
-    }
-
     try {
       setGuardando(true);
+      setError("");
+      setMensaje("");
 
-      await ejecutarVentaConPagos([
-        {
-          medio_pago: medioPago,
-          monto: total,
-        },
-      ]);
+      const venta = await crearVenta(payload);
+
+      setMensaje(
+        `Venta creada correctamente. ID: ${venta.venta_id}. Estado: ${venta.estado}. Saldo: ${formatMoney(venta.saldo_pendiente)}`
+      );
+
+      resetVenta();
+      navigate(`/ventas/${venta.venta_id}?pagar=1`);
     } catch (err) {
-      setError(err.message || "No se pudo completar la venta");
-    } finally {
-      setGuardando(false);
-    }
-  }
-
-  async function confirmarVentaMixta() {
-    setError("");
-    setMensaje("");
-
-    if (items.length === 0) {
-      setError("Agregá al menos un producto al carrito");
-      return;
-    }
-
-    const pagosValidos = pagos.filter((p) => Number(p.monto) > 0);
-
-    if (pagosValidos.length === 0) {
-      setError("Agregá al menos un pago");
-      return;
-    }
-
-    if (restante !== 0) {
-      setError("La suma de los pagos debe coincidir exactamente con el total");
-      return;
-    }
-
-    try {
-      setGuardando(true);
-      await ejecutarVentaConPagos(pagosValidos);
-    } catch (err) {
-      setError(err.message || "No se pudo completar la venta");
+      setError(err.message || "No se pudo crear la venta");
     } finally {
       setGuardando(false);
     }
@@ -302,117 +265,57 @@ export default function NuevaVentaPage() {
 
   useEffect(() => {
     function handleKeyDown(e) {
-      if (guardando || items.length === 0 || modoMixto) return;
-
-      if (e.key === "F1") {
+      if (guardando || items.length === 0) return;
+      if (e.key === "F8") {
         e.preventDefault();
-        cobrarRapido("efectivo");
-      }
-
-      if (e.key === "F2") {
-        e.preventDefault();
-        cobrarRapido("transferencia");
-      }
-
-      if (e.key === "F3") {
-        e.preventDefault();
-        cobrarRapido("mercadopago");
-      }
-
-      if (e.key === "F4") {
-        e.preventDefault();
-        cobrarRapido("tarjeta");
+        confirmarVenta();
       }
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [guardando, items, modoMixto, total]);
+  }, [guardando, items, clienteSeleccionadoId, observaciones, usarCredito, montoCredito]);
 
   if (loading) return <p style={{ padding: "24px" }}>Cargando datos...</p>;
 
   return (
-    <div style={{ padding: "16px", minHeight: "100vh", background: "#f6f7fb" }}>
-      <h1 style={{ marginBottom: "16px" }}>POS / Nueva Venta</h1>
-
-      {mensaje && (
-        <div
-          style={{
-            background: "#e8fff0",
-            color: "#146c2e",
-            padding: "12px",
-            borderRadius: "8px",
-            marginBottom: "12px",
-            border: "1px solid #b7ebc6",
-          }}
-        >
-          {mensaje}
+    <div style={pageStyle}>
+      <div style={headerStyle}>
+        <div>
+          <h1 style={{ margin: 0 }}>Nueva venta</h1>
+          <p style={mutedStyle}>Crea la venta. Los pagos se registran desde el módulo Pagos/Caja.</p>
         </div>
-      )}
-
-      {error && (
-        <div
-          style={{
-            background: "#fff1f0",
-            color: "#b42318",
-            padding: "12px",
-            borderRadius: "8px",
-            marginBottom: "12px",
-            border: "1px solid #f4c7c3",
-          }}
-        >
-          {error}
+        <div style={actionsStyle}>
+          <Link to="/ventas" style={linkBtnStyle}>Volver</Link>
         </div>
-      )}
+      </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1.2fr 1fr",
-          gap: "16px",
-          alignItems: "start",
-        }}
-      >
-        <section
-          style={{
-            background: "white",
-            borderRadius: "12px",
-            padding: "16px",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-          }}
-        >
-          <h2>Productos</h2>
+      {mensaje && <div style={successStyle}>{mensaje}</div>}
+      {error && <div style={alertStyle}>Error: {error}</div>}
 
+      <div style={gridStyle}>
+        <section style={cardStyle}>
+          <h2 style={cardTitleStyle}>Productos</h2>
           <input
             type="text"
-            placeholder="Buscar producto, variante o SKU"
+            placeholder="Buscar producto, variante, SKU o ID"
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
-            style={{
-              width: "100%",
-              padding: "12px",
-              marginBottom: "16px",
-              borderRadius: "8px",
-              border: "1px solid #ccc",
-              fontSize: "16px",
-            }}
+            style={inputStyle}
           />
 
-          <div style={{ maxHeight: "65vh", overflowY: "auto" }}>
-            <table border="1" cellPadding="6" style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
+          <div style={{ maxHeight: "65vh", overflowY: "auto", marginTop: "14px" }}>
+            <table cellPadding="8" style={tableStyle}>
+              <thead style={{ background: "#f9fafb" }}>
                 <tr>
-                  <th>ID</th>
-                  <th>Producto</th>
-                  <th>Variante</th>
-                  <th>SKU</th>
-                  <th>Precio</th>
-                  <th>Stock</th>
-                  <th>En carrito</th>
-                  <th>Acción</th>
+                  <th style={thStyle}>ID</th>
+                  <th style={thStyle}>Producto</th>
+                  <th style={thStyle}>Variante</th>
+                  <th style={thStyle}>Precio</th>
+                  <th style={thStyle}>Stock</th>
+                  <th style={thStyle}>Acción</th>
                 </tr>
               </thead>
-
               <tbody>
                 {resultados.map((v) => {
                   const stockDisponible = Number(v.stock_disponible ?? 0);
@@ -420,33 +323,17 @@ export default function NuevaVentaPage() {
                   const sinStock = stockDisponible <= 0 || yaEnCarrito >= stockDisponible;
 
                   return (
-                    <tr key={v.id}>
-                      <td>{v.id}</td>
-                      <td>{v.producto_nombre}</td>
-                      <td>{v.nombre_variante}</td>
-                      <td>{v.sku}</td>
-                      <td>${Number(v.precio_minorista).toLocaleString("es-AR")}</td>
-                      <td
-                        style={{
-                          color:
-                            stockDisponible === 0
-                              ? "red"
-                              : stockDisponible <= 2
-                              ? "darkorange"
-                              : "inherit",
-                          fontWeight: stockDisponible <= 2 ? "bold" : "normal",
-                        }}
-                      >
+                    <tr key={v.id} style={{ borderTop: "1px solid #eee" }}>
+                      <td style={tdStyle}>#{v.id}</td>
+                      <td style={tdStyle}>{v.producto_nombre}</td>
+                      <td style={tdStyle}>{v.nombre_variante || "-"}</td>
+                      <td style={tdStyle}>{formatMoney(v.precio_minorista)}</td>
+                      <td style={{ ...tdStyle, fontWeight: stockDisponible <= 2 ? "bold" : "normal", color: stockDisponible <= 0 ? "#b42318" : stockDisponible <= 2 ? "#b26a00" : "inherit" }}>
                         {stockDisponible.toLocaleString("es-AR")}
                       </td>
-                      <td>{yaEnCarrito}</td>
-                      <td>
-                        <button onClick={() => agregarAlCarrito(v)} disabled={sinStock}>
-                          {stockDisponible <= 0
-                            ? "Sin stock"
-                            : yaEnCarrito >= stockDisponible
-                            ? "Tope"
-                            : "Agregar"}
+                      <td style={tdStyle}>
+                        <button onClick={() => agregarAlCarrito(v)} disabled={guardando || sinStock}>
+                          {sinStock ? "Sin stock" : "Agregar"}
                         </button>
                       </td>
                     </tr>
@@ -457,96 +344,64 @@ export default function NuevaVentaPage() {
           </div>
         </section>
 
-        <section
-          style={{
-            background: "white",
-            borderRadius: "12px",
-            padding: "16px",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-            position: "sticky",
-            top: "12px",
-          }}
-        >
-          <h2>Carrito</h2>
-          <div
-            style={{
-              marginBottom: "16px",
-              display: "flex",
-              flexDirection: "column",
-              gap: "8px",
-            }}
-          >
-            <label style={{ fontWeight: "bold" }}>Cliente</label>
+        <aside style={cardStyle}>
+          <h2 style={cardTitleStyle}>Carrito</h2>
 
-            <select
-              value={clienteSeleccionadoId}
-              onChange={(e) => setClienteSeleccionadoId(Number(e.target.value))}
-              style={{
-                padding: "10px",
-                borderRadius: "8px",
-                border: "1px solid #ccc",
-                fontSize: "15px",
-              }}
-            >
+          <label style={fieldStyle}>
+            <span style={labelStyle}>Cliente</span>
+            <select value={clienteSeleccionadoId} onChange={(e) => setClienteSeleccionadoId(Number(e.target.value))} style={inputStyle}>
               {clientes.map((cliente) => (
                 <option key={cliente.id} value={cliente.id}>
-                  #{cliente.id} - {cliente.nombre}
-                  {cliente.telefono ? ` (${cliente.telefono})` : ""}
+                  #{cliente.id} - {cliente.nombre}{cliente.telefono ? ` (${cliente.telefono})` : ""}
                 </option>
               ))}
             </select>
-
-            <Link
-              to="/clientes/nuevo"
-              style={{
-                textDecoration: "none",
-                fontWeight: "bold",
-                color: "#1565c0",
-                fontSize: "14px",
-                width: "fit-content",
-              }}
-            >
-              + Nuevo cliente
-            </Link>
-          </div>
+            <Link to="/clientes/nuevo" style={{ width: "fit-content", textDecoration: "none", fontWeight: "bold" }}>+ Nuevo cliente</Link>
+          </label>
 
           {items.length === 0 ? (
-            <p>No hay productos cargados.</p>
+            <p style={mutedStyle}>No hay items cargados.</p>
           ) : (
-            <div style={{ maxHeight: "40vh", overflowY: "auto", marginBottom: "16px" }}>
-              <table border="1" cellPadding="6" style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
+            <div style={{ maxHeight: "38vh", overflowY: "auto", marginTop: "14px" }}>
+              <table cellPadding="8" style={{ ...tableStyle, minWidth: "720px" }}>
+                <thead style={{ background: "#f9fafb" }}>
                   <tr>
-                    <th>Producto</th>
-                    <th>Cant.</th>
-                    <th>Precio</th>
-                    <th>Subtotal</th>
-                    <th></th>
+                    <th style={thStyle}>Item</th>
+                    <th style={thStyle}>Cant.</th>
+                    <th style={thStyle}>Serializada ID</th>
+                    <th style={thStyle}>Subtotal</th>
+                    <th style={thStyle}></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((item) => (
-                    <tr key={item.id_variante}>
-                      <td>
-                        <div>{item.producto_nombre}</div>
-                        <small>{item.nombre_variante}</small>
+                  {items.map((item, index) => (
+                    <tr key={`${item.id_variante}-${index}`} style={{ borderTop: "1px solid #eee" }}>
+                      <td style={tdStyle}>
+                        <strong>{item.producto_nombre}</strong>
+                        <div style={mutedStyle}>{item.nombre_variante || `Variante #${item.id_variante}`}</div>
                       </td>
-                      <td>
+                      <td style={tdStyle}>
                         <input
                           type="number"
                           min="1"
+                          step="1"
                           value={item.cantidad}
-                          onChange={(e) =>
-                            cambiarCantidad(item.id_variante, Number(e.target.value))
-                          }
-                          style={{ width: "60px" }}
+                          onChange={(e) => cambiarCantidad(index, Number(e.target.value))}
+                          style={{ ...inputStyle, width: "80px" }}
                         />
                       </td>
-                      <td>${item.precio.toLocaleString("es-AR")}</td>
-                      <td>${(item.precio * item.cantidad).toLocaleString("es-AR")}</td>
-                      <td>
-                        <button onClick={() => quitarItem(item.id_variante)}>Quitar</button>
+                      <td style={tdStyle}>
+                        <input
+                          type="number"
+                          min="1"
+                          placeholder="Opcional"
+                          value={item.id_bicicleta_serializada}
+                          onChange={(e) => cambiarSerializada(index, e.target.value)}
+                          style={{ ...inputStyle, width: "130px" }}
+                        />
                       </td>
+                      <td style={tdStyle}>{formatMoney(Number(item.precio) * Number(item.cantidad))}</td>
+                      <td style={tdStyle}><button onClick={() => quitarItem(index)}>Quitar</button></td>
                     </tr>
                   ))}
                 </tbody>
@@ -554,196 +409,66 @@ export default function NuevaVentaPage() {
             </div>
           )}
 
-          <div
-            style={{
-              fontSize: "42px",
-              fontWeight: "bold",
-              marginTop: "12px",
-              background: "#111827",
-              color: "white",
-              padding: "20px",
-              textAlign: "center",
-              borderRadius: "12px",
-            }}
-          >
-            TOTAL ${total.toLocaleString("es-AR")}
+          <div style={totalStyle}>TOTAL {formatMoney(total)}</div>
+
+          <div style={{ display: "grid", gap: "10px", marginTop: "14px" }}>
+            <label style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <input type="checkbox" checked={usarCredito} onChange={(e) => setUsarCredito(e.target.checked)} />
+              Usar crédito disponible del cliente
+            </label>
+
+            <label style={fieldStyle}>
+              <span style={labelStyle}>Monto máximo de crédito a aplicar</span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={montoCredito}
+                onChange={(e) => setMontoCredito(e.target.value)}
+                placeholder="Vacío = usar disponible según backend"
+                disabled={!usarCredito}
+                style={inputStyle}
+              />
+            </label>
+
+            <label style={fieldStyle}>
+              <span style={labelStyle}>Observaciones</span>
+              <textarea value={observaciones} onChange={(e) => setObservaciones(e.target.value)} rows={3} style={inputStyle} />
+            </label>
           </div>
 
-          {!modoMixto && (
-            <>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: "10px",
-                  marginTop: "16px",
-                }}
-              >
-                <button
-                  onClick={() => cobrarRapido("efectivo")}
-                  disabled={guardando || items.length === 0}
-                  style={botonPagoStyle}
-                >
-                  EFECTIVO
-                  <small style={smallStyle}>F1</small>
-                </button>
-
-                <button
-                  onClick={() => cobrarRapido("transferencia")}
-                  disabled={guardando || items.length === 0}
-                  style={botonPagoStyle}
-                >
-                  TRANSFERENCIA
-                  <small style={smallStyle}>F2</small>
-                </button>
-
-                <button
-                  onClick={() => cobrarRapido("mercadopago")}
-                  disabled={guardando || items.length === 0}
-                  style={botonPagoStyle}
-                >
-                  MERCADO PAGO
-                  <small style={smallStyle}>F3</small>
-                </button>
-
-                <button
-                  onClick={() => cobrarRapido("tarjeta")}
-                  disabled={guardando || items.length === 0}
-                  style={botonPagoStyle}
-                >
-                  TARJETA
-                  <small style={smallStyle}>F4</small>
-                </button>
-              </div>
-
-              <div style={{ marginTop: "12px" }}>
-                <button
-                  onClick={() => setModoMixto(true)}
-                  disabled={guardando || items.length === 0}
-                  style={{
-                    width: "100%",
-                    padding: "14px",
-                    fontSize: "16px",
-                    fontWeight: "bold",
-                    borderRadius: "10px",
-                    cursor: "pointer",
-                  }}
-                >
-                  Pago mixto / parcial
-                </button>
-              </div>
-            </>
-          )}
-
-          {modoMixto && (
-            <div style={{ marginTop: "18px" }}>
-              <h3>Pagos mixtos / parciales</h3>
-
-              {pagos.map((pago, index) => (
-                <div
-                  key={index}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 120px 90px",
-                    gap: "8px",
-                    marginBottom: "8px",
-                    alignItems: "center",
-                  }}
-                >
-                  <select
-                    value={pago.medio_pago}
-                    onChange={(e) => cambiarPago(index, "medio_pago", e.target.value)}
-                    style={{ padding: "8px" }}
-                  >
-                    {MEDIOS_PAGO.map((medio) => (
-                      <option key={medio.value} value={medio.value}>
-                        {medio.label}
-                      </option>
-                    ))}
-                  </select>
-
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    placeholder="Monto"
-                    value={pago.monto}
-                    onChange={(e) => cambiarPago(index, "monto", e.target.value)}
-                    style={{ padding: "8px" }}
-                  />
-
-                  <button
-                    onClick={() => quitarPago(index)}
-                    disabled={pagos.length === 1}
-                  >
-                    Quitar
-                  </button>
-                </div>
-              ))}
-
-              <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
-                <button onClick={agregarPago}>Agregar pago</button>
-                <button onClick={() => setModoMixto(false)}>Volver a pago rápido</button>
-              </div>
-
-              <div style={{ marginTop: "12px" }}>
-                <p><strong>Pagado:</strong> ${totalPagado.toLocaleString("es-AR")}</p>
-                <p
-                  style={{
-                    color: restante === 0 ? "green" : "darkorange",
-                    fontWeight: "bold",
-                  }}
-                >
-                  <strong>Restante:</strong> ${restante.toLocaleString("es-AR")}
-                </p>
-              </div>
-
-              <button
-                onClick={confirmarVentaMixta}
-                disabled={guardando || items.length === 0}
-                style={{
-                  width: "100%",
-                  marginTop: "12px",
-                  padding: "16px",
-                  fontSize: "18px",
-                  fontWeight: "bold",
-                  borderRadius: "10px",
-                  cursor: "pointer",
-                }}
-              >
-                {guardando ? "Procesando..." : "Cobrar y entregar"}
-              </button>
-            </div>
-          )}
-
-          <div style={{ marginTop: "12px" }}>
-            <button
-              onClick={resetVenta}
-              disabled={guardando}
-              style={{ width: "100%", padding: "12px" }}
-            >
-              Limpiar venta
+          <div style={{ display: "grid", gap: "10px", marginTop: "14px" }}>
+            <button onClick={confirmarVenta} disabled={guardando || items.length === 0} style={primaryBtnStyle}>
+              {guardando ? "Creando..." : "Crear venta (F8)"}
             </button>
+            <button onClick={resetVenta} disabled={guardando}>Limpiar venta</button>
           </div>
-        </section>
+
+          <div style={noteStyle}>
+            Esta pantalla ya no crea pagos automáticamente. Eso evita mezclar ventas con caja/pagos y respeta la separación actual del backend.
+          </div>
+        </aside>
       </div>
     </div>
   );
 }
 
-const botonPagoStyle = {
-  padding: "18px",
-  fontSize: "16px",
-  fontWeight: "bold",
-  borderRadius: "10px",
-  cursor: "pointer",
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "center",
-  gap: "4px",
-};
-
-const smallStyle = {
-  fontSize: "12px",
-  opacity: 0.8,
-};
+const pageStyle = { padding: "24px", background: "#f6f7fb", minHeight: "100vh" };
+const headerStyle = { display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "center", marginBottom: "16px", flexWrap: "wrap" };
+const actionsStyle = { display: "flex", gap: "10px", flexWrap: "wrap" };
+const mutedStyle = { margin: "6px 0 0", color: "#667085" };
+const gridStyle = { display: "grid", gridTemplateColumns: "minmax(520px, 1.2fr) minmax(420px, 0.8fr)", gap: "16px", alignItems: "start" };
+const cardStyle = { background: "white", borderRadius: "14px", boxShadow: "0 2px 10px rgba(0,0,0,0.08)", padding: "16px", marginBottom: "16px" };
+const cardTitleStyle = { marginTop: 0, marginBottom: "14px", fontSize: "20px" };
+const inputStyle = { width: "100%", padding: "10px 12px", borderRadius: "10px", border: "1px solid #d0d5dd", fontSize: "15px", boxSizing: "border-box" };
+const fieldStyle = { display: "flex", flexDirection: "column", gap: "7px" };
+const labelStyle = { fontWeight: "bold", fontSize: "14px" };
+const linkBtnStyle = { textDecoration: "none", padding: "8px 12px", borderRadius: "10px", border: "1px solid #d0d5dd", color: "#111827", background: "white" };
+const alertStyle = { background: "#fff1f0", color: "#b42318", padding: "12px", borderRadius: "10px", border: "1px solid #f4c7c3", marginBottom: "16px" };
+const successStyle = { background: "#e8fff0", color: "#146c2e", padding: "12px", borderRadius: "10px", border: "1px solid #b7ebc6", marginBottom: "16px" };
+const noteStyle = { background: "#f9fafb", borderLeft: "4px solid #111827", padding: "12px", borderRadius: "8px", color: "#344054", marginTop: "14px" };
+const tableStyle = { width: "100%", borderCollapse: "collapse", minWidth: "760px" };
+const thStyle = { textAlign: "left", padding: "12px 10px", borderBottom: "1px solid #e5e7eb" };
+const tdStyle = { padding: "10px", verticalAlign: "top" };
+const totalStyle = { fontSize: "36px", fontWeight: "bold", marginTop: "14px", background: "#111827", color: "white", padding: "18px", textAlign: "center", borderRadius: "12px" };
+const primaryBtnStyle = { width: "100%", padding: "16px", fontSize: "18px", fontWeight: "bold", borderRadius: "10px", cursor: "pointer" };

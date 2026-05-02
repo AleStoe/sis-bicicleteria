@@ -11,6 +11,9 @@ import ClienteFormPage from "./pages/ClienteFormPage";
 import TallerListPage from "./pages/TallerListPage";
 import TallerNuevaOrdenPage from "./pages/TallerNuevaOrdenPage";
 import TallerDetallePage from "./pages/TallerDetallePage";
+import DeudasListPage from "./pages/DeudasListPage";
+import DeudaDetallePage from "./pages/DeudaDetallePage";
+import PagosPage from "./pages/PagosPage"
 
 export default function App() {
   return (
@@ -30,6 +33,9 @@ export default function App() {
           <Route path="/clientes/:clienteId" element={<ClienteDetallePage />} />
           <Route path="/clientes/nuevo" element={<ClienteFormPage />} />
           <Route path="/clientes/:clienteId/editar" element={<ClienteFormPage />} />
+          <Route path="/deudas" element={<DeudasListPage />} />
+          <Route path="/deudas/:deudaId" element={<DeudaDetallePage />} />
+          <Route path="/pagos" element={<PagosPage />} />  
         </Routes>
       </AppLayout>
     </BrowserRouter>

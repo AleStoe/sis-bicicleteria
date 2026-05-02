@@ -47,6 +47,12 @@ export default function Sidebar() {
         <NavLink to="/caja" style={navStyle}>
           Caja
         </NavLink>
+        <NavLink to="/deudas" style={navStyle}>
+          Deudas
+        </NavLink>
+        <NavLink to="/pagos" style={navStyle}>
+          Pagos
+        </NavLink>
       </nav>
     </aside>
   );

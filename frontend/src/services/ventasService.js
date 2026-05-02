@@ -29,13 +29,9 @@ export function anularVenta(ventaId, data) {
   });
 }
 
-export function crearPago(data) {
-  return apiRequest("/pagos/", {
+export function devolverVentaSerializada(ventaId, data) {
+  return apiRequest(`/ventas/${ventaId}/devolver-serializada`, {
     method: "POST",
     body: JSON.stringify(data),
   });
-}
-
-export function listarPagosDeVenta(ventaId) {
-  return apiRequest(`/pagos/ventas/${ventaId}/pagos`);
 }
