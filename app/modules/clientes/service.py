@@ -10,6 +10,8 @@ from .repository import (
     activar_cliente,
     get_resumen_ventas_cliente,
     get_ventas_cliente,
+    get_bicicletas_cliente,
+    insert_bicicleta_cliente,
 )
 
 
@@ -225,5 +227,37 @@ def activar_cliente_service(cliente_id: int):
             "cliente_id": cliente_id,
             "activo": True,
         }
+    finally:
+        conn.close()
+
+def listar_bicicletas_cliente_service(cliente_id: int):
+    conn = get_connection()
+    try:
+        _obtener_cliente_o_404(conn, cliente_id)
+        return get_bicicletas_cliente(conn, cliente_id)
+    finally:
+        conn.close()
+
+
+def crear_bicicleta_cliente_service(cliente_id: int, data):
+    conn = get_connection()
+    try:
+        with conn.transaction():
+            _obtener_cliente_o_404(conn, cliente_id)
+
+            data.marca = _limpiar_texto(data.marca)
+            data.modelo = _limpiar_texto(data.modelo)
+            data.rodado = _limpiar_texto(data.rodado)
+            data.color = _limpiar_texto(data.color)
+            data.numero_cuadro = _limpiar_texto(data.numero_cuadro)
+            data.notas = _limpiar_texto(data.notas)
+
+            if not data.marca:
+                raise HTTPException(status_code=400, detail="La marca es obligatoria")
+
+            if not data.modelo:
+                raise HTTPException(status_code=400, detail="El modelo es obligatorio")
+
+            return insert_bicicleta_cliente(conn, cliente_id, data)
     finally:
         conn.close()

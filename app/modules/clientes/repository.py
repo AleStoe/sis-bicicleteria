@@ -194,3 +194,61 @@ def activar_cliente(conn, cliente_id: int):
             """,
             (cliente_id,),
         )
+
+def get_bicicletas_cliente(conn, cliente_id: int):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT
+                id,
+                id_cliente,
+                marca,
+                modelo,
+                rodado,
+                color,
+                numero_cuadro,
+                notas
+            FROM bicicletas_clientes
+            WHERE id_cliente = %s
+            ORDER BY id DESC
+            """,
+            (cliente_id,),
+        )
+        return cur.fetchall()
+
+
+def insert_bicicleta_cliente(conn, cliente_id: int, data):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO bicicletas_clientes (
+                id_cliente,
+                marca,
+                modelo,
+                rodado,
+                color,
+                numero_cuadro,
+                notas
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            RETURNING
+                id,
+                id_cliente,
+                marca,
+                modelo,
+                rodado,
+                color,
+                numero_cuadro,
+                notas
+            """,
+            (
+                cliente_id,
+                data.marca,
+                data.modelo,
+                data.rodado,
+                data.color,
+                data.numero_cuadro,
+                data.notas,
+            ),
+        )
+        return cur.fetchone()

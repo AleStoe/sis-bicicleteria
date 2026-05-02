@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Query
 
-from .schema import ClienteCreateInput, ClienteUpdateInput
+from .schema import ClienteCreateInput, ClienteUpdateInput, BicicletaClienteCreateInput
 from .service import (
     listar_clientes_service,
     obtener_cliente_service,
@@ -8,6 +8,8 @@ from .service import (
     actualizar_cliente_service,
     desactivar_cliente_service,
     activar_cliente_service,
+    listar_bicicletas_cliente_service,
+    crear_bicicleta_cliente_service,
 )
 
 router = APIRouter()
@@ -43,3 +45,12 @@ def desactivar_cliente(cliente_id: int):
 @router.patch("/{cliente_id}/activar")
 def activar_cliente_route(cliente_id: int):
     return activar_cliente_service(cliente_id)
+
+@router.get("/{cliente_id}/bicicletas")
+def listar_bicicletas_cliente(cliente_id: int):
+    return listar_bicicletas_cliente_service(cliente_id)
+
+
+@router.post("/{cliente_id}/bicicletas", status_code=201)
+def crear_bicicleta_cliente(cliente_id: int, data: BicicletaClienteCreateInput):
+    return crear_bicicleta_cliente_service(cliente_id, data)
