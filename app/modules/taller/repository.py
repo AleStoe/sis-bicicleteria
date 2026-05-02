@@ -470,3 +470,30 @@ def update_orden_taller_item_agregado(conn, item_id: int):
             (item_id,),
         )
         return cur.fetchone()
+    
+def update_orden_taller_item_cancelado(conn, item_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            UPDATE ordenes_taller_items
+            SET etapa = 'cancelado',
+                aprobado = FALSE,
+                updated_at = NOW()
+            WHERE id = %s
+            RETURNING
+                id,
+                id_orden_taller,
+                id_variante,
+                etapa,
+                descripcion_snapshot,
+                cantidad,
+                precio_unitario,
+                costo_unitario_aplicado,
+                aprobado,
+                subtotal,
+                created_at,
+                updated_at
+            """,
+            (item_id,),
+        )
+        return cur.fetchone()

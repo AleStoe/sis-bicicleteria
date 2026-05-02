@@ -1081,3 +1081,41 @@ def test_no_permite_revertir_ejecucion_en_orden_retirada(
 
     assert response.status_code == 400
     assert "retirada" in response.json()["detail"]
+
+def test_cancelar_item_no_ejecutado(client, seed_taller_basico, seed_venta_basica):
+    crear = client.post(
+        "/ordenes_taller/",
+        json={
+            "id_sucursal": seed_taller_basico["sucursal_id"],
+            "id_cliente": seed_taller_basico["cliente_id"],
+            "id_bicicleta_cliente": seed_taller_basico["bicicleta_cliente_id"],
+            "problema_reportado": "Cambio de cámara",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert crear.status_code == 201
+    orden_id = crear.json()["id"]
+
+    item_response = client.post(
+        f"/ordenes_taller/{orden_id}/items",
+        json={
+            "id_variante": seed_venta_basica["variante_id"],
+            "cantidad": 1,
+            "precio_unitario": 1000,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert item_response.status_code == 201
+    item_id = item_response.json()["id"]
+
+    response = client.post(
+        f"/ordenes_taller/{orden_id}/items/{item_id}/cancelar",
+        json={
+            "id_usuario": seed_taller_basico["usuario_id"],
+            "motivo": "Cliente no aprueba el repuesto",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["etapa"] == "cancelado"
+    assert response.json()["aprobado"] is False

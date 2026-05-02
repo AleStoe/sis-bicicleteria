@@ -91,3 +91,7 @@ class OrdenTallerItemAprobacionUpdate(BaseModel):
 class OrdenTallerItemReversionEjecucionInput(BaseModel):
     id_usuario: int = Field(gt=0)
     motivo: str = Field(min_length=1)
+
+class OrdenTallerItemCancelarInput(BaseModel):
+    id_usuario: int = Field(gt=0)
+    motivo: str = Field(min_length=1)

@@ -12,6 +12,7 @@ from app.shared.constants import (
     TIPO_MOVIMIENTO_USO_TALLER,
     TIPO_MOVIMIENTO_REVERSION_USO_TALLER,
     ORDEN_TALLER_EVENTO_ITEM_EJECUCION_REVERTIDA,
+    ORDEN_TALLER_EVENTO_ITEM_CANCELADO,
 )
 
 TRANSICIONES_VALIDAS_TALLER = {
@@ -66,6 +67,7 @@ from .repository import (
     update_orden_taller_item_aprobacion,
     update_orden_taller_item_ejecutado, 
     update_orden_taller_item_agregado,
+    update_orden_taller_item_cancelado,
 )
 
 
@@ -496,6 +498,76 @@ def revertir_ejecucion_item_orden_taller(orden_id: int, item_id: int, data):
                 id_orden_taller=orden_id,
                 tipo_evento=ORDEN_TALLER_EVENTO_ITEM_EJECUCION_REVERTIDA,
                 detalle=f"Ejecución revertida: {item['descripcion_snapshot']}. Motivo: {motivo}",
+                id_usuario=data.id_usuario,
+            )
+
+            return item_actualizado
+    finally:
+        conn.close()
+    
+def cancelar_item_orden_taller(orden_id: int, item_id: int, data):
+    conn = get_connection()
+    try:
+        with conn.transaction():
+            try:
+                validar_usuario_activo(conn, data.id_usuario)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+
+            motivo = data.motivo.strip()
+            if not motivo:
+                raise HTTPException(
+                    status_code=400,
+                    detail="El motivo de cancelación es obligatorio",
+                )
+
+            orden = get_orden_taller_by_id_for_update(conn, orden_id)
+            if orden is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No existe la orden de taller {orden_id}",
+                )
+
+            if orden["estado"] in {"retirada", "cancelada"}:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"No se pueden cancelar items de una orden en estado {orden['estado']}",
+                )
+
+            item = get_item_orden_taller_by_id_for_update(conn, item_id)
+            if item is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No existe el item de taller {item_id}",
+                )
+
+            if item["id_orden_taller"] != orden_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="El item no pertenece a la orden informada",
+                )
+
+            if item["etapa"] == "cancelado":
+                raise HTTPException(
+                    status_code=400,
+                    detail="El item ya está cancelado",
+                )
+
+            if item["etapa"] == "ejecutado":
+                raise HTTPException(
+                    status_code=400,
+                    detail="No se puede cancelar un item ejecutado; primero debe revertirse la ejecución",
+                )
+
+            item_actualizado = update_orden_taller_item_cancelado(conn, item_id)
+
+            recalcular_total_orden_taller(conn, orden_id)
+
+            insert_orden_taller_evento(
+                conn,
+                id_orden_taller=orden_id,
+                tipo_evento=ORDEN_TALLER_EVENTO_ITEM_CANCELADO,
+                detalle=f"Item cancelado: {item['descripcion_snapshot']}. Motivo: {motivo}",
                 id_usuario=data.id_usuario,
             )
 
