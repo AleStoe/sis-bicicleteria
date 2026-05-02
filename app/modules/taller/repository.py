@@ -302,6 +302,7 @@ def recalcular_total_orden_taller(conn, orden_id: int) -> None:
                         SELECT SUM(subtotal)
                         FROM ordenes_taller_items
                         WHERE id_orden_taller = %s
+                        AND etapa <> 'cancelado'
                     ),
                     0
                 ),
