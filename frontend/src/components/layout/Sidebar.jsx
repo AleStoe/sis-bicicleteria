@@ -36,6 +36,10 @@ export default function Sidebar() {
           Clientes
         </NavLink>
 
+        <NavLink to="/taller" style={navStyle}>
+          Taller
+        </NavLink>
+
         <NavLink to="/stock" style={navStyle}>
           Stock
         </NavLink>

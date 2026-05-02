@@ -44,3 +44,14 @@ export function activarCliente(clienteId) {
     method: "PATCH",
   });
 }
+
+export function listarBicicletasCliente(clienteId) {
+  return apiRequest(`/clientes/${clienteId}/bicicletas`);
+}
+
+export function crearBicicletaCliente(clienteId, data) {
+  return apiRequest(`/clientes/${clienteId}/bicicletas`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}

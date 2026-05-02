@@ -8,6 +8,9 @@ import CajaPage from "./pages/CajaPage";
 import ClientesListPage from "./pages/ClientesListPage";
 import ClienteDetallePage from "./pages/ClienteDetallePage";
 import ClienteFormPage from "./pages/ClienteFormPage";
+import TallerListPage from "./pages/TallerListPage";
+import TallerNuevaOrdenPage from "./pages/TallerNuevaOrdenPage";
+import TallerDetallePage from "./pages/TallerDetallePage";
 
 export default function App() {
   return (
@@ -20,6 +23,9 @@ export default function App() {
           <Route path="/ventas/:ventaId" element={<VentaDetallePage />} />
           <Route path="/stock" element={<StockPage />} />
           <Route path="/caja" element={<CajaPage />} />
+          <Route path="/taller" element={<TallerListPage />} />
+          <Route path="/taller/nueva" element={<TallerNuevaOrdenPage />} />
+          <Route path="/taller/:ordenId" element={<TallerDetallePage />} />
           <Route path="/clientes" element={<ClientesListPage />} />
           <Route path="/clientes/:clienteId" element={<ClienteDetallePage />} />
           <Route path="/clientes/nuevo" element={<ClienteFormPage />} />
