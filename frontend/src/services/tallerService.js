@@ -55,3 +55,9 @@ export function revertirEjecucionItemOrdenTaller(ordenId, itemId, data) {
   );
 }
 
+export function cancelarItemOrdenTaller(ordenId, itemId, data) {
+  return apiRequest(`/ordenes_taller/${ordenId}/items/${itemId}/cancelar`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}

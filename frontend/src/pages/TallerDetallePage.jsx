@@ -8,6 +8,7 @@ import {
   ejecutarItemOrdenTaller,
   obtenerOrdenTaller,
   revertirEjecucionItemOrdenTaller,
+  cancelarItemOrdenTaller,
 } from "../services/tallerService";
 import { EstadoBadge, formatDate, formatMoney } from "./TallerListPage";
 
@@ -181,7 +182,29 @@ export default function TallerDetallePage() {
       setGuardando(false);
     }
   }
+  async function handleCancelarItem(item) {
+    const motivo = window.prompt("Motivo de cancelación");
 
+    if (!motivo || !motivo.trim()) return;
+
+    try {
+      setGuardando(true);
+      setError("");
+      setMensaje("");
+
+      await cancelarItemOrdenTaller(ordenId, item.id, {
+        id_usuario: 1,
+        motivo: motivo.trim(),
+      });
+
+      await refrescarOrden();
+      setMensaje("Item cancelado correctamente");
+    } catch (err) {
+      setError(err.message || "No se pudo cancelar el item");
+    } finally {
+      setGuardando(false);
+    }
+  }
   if (loading) return <p style={{ padding: "24px" }}>Cargando orden...</p>;
   if (!orden) return <p style={{ padding: "24px" }}>No se encontró la orden.</p>;
 
@@ -302,10 +325,48 @@ export default function TallerDetallePage() {
                     <td style={tdStyle}>{item.etapa}</td>
                     <td style={tdStyle}>
                       <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                        {!item.aprobado && <button disabled={guardando} onClick={() => aprobarItem(item, true)}>Aprobar</button>}
-                        {item.aprobado && <button disabled={guardando} onClick={() => aprobarItem(item, false)}>Desaprobar</button>}
-                        <button disabled={guardando || !item.aprobado} onClick={() => ejecutarItem(item)}>Ejecutar</button>
-                        <button disabled={guardando} onClick={() => revertirItem(item)}>Revertir</button>
+                        
+                        {item.etapa === "presupuestado" && (
+                          <>
+                            <button disabled={guardando} onClick={() => aprobarItem(item, true)}>
+                              Aprobar
+                            </button>
+
+                            <button disabled={guardando} onClick={() => handleCancelarItem(item)}>
+                              Cancelar
+                            </button>
+                          </>
+                        )}
+
+                        {item.etapa === "agregado" && (
+                          <>
+                            <button disabled={guardando} onClick={() => aprobarItem(item, false)}>
+                              Desaprobar
+                            </button>
+
+                            <button
+                              disabled={guardando}
+                              onClick={() => ejecutarItem(item)}
+                            >
+                              Ejecutar
+                            </button>
+
+                            <button disabled={guardando} onClick={() => handleCancelarItem(item)}>
+                              Cancelar
+                            </button>
+                          </>
+                        )}
+
+                        {item.etapa === "ejecutado" && (
+                          <button disabled={guardando} onClick={() => revertirItem(item)}>
+                            Revertir
+                          </button>
+                        )}
+
+                        {item.etapa === "cancelado" && (
+                          <span style={{ color: "#777" }}>Sin acciones</span>
+                        )}
+
                       </div>
                     </td>
                   </tr>
