@@ -659,3 +659,15 @@ def asignar_rol_usuario(db_conn, id_usuario: int, nombre_rol: str):
             """,
             (id_usuario, rol_id),
         )
+
+def get_reserva(conn, reserva_id: int):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT *
+            FROM reservas
+            WHERE id = %s
+            """,
+            (reserva_id,),
+        )
+        return cur.fetchone()
