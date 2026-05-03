@@ -179,6 +179,17 @@ def registrar_egreso(caja_id: int, data: CajaEgresoInput):
                     f"Egreso manual registrado. movimiento_id={movimiento_id}, "
                     f"monto={data.monto}, nota={data.nota}"
                 ),
+                metadata={
+                    "tipo": "caja_egreso",
+                    "caja_id": caja_id,
+                    "movimiento_id": movimiento_id,
+                    "monto": str(data.monto),
+                    "submedio": "efectivo",  # hoy está hardcodeado
+                    "origen": "manual",
+                    "nota": data.nota,
+                },
+                origen_tipo="caja_movimiento",
+                origen_id=movimiento_id,
             )
 
         return {"ok": True, "movimiento_id": movimiento_id, "caja_id": caja_id}
@@ -223,6 +234,16 @@ def cerrar_caja(caja_id: int, data: CajaCerrarInput):
                     f"Caja cerrada. teorico={efectivo_teorico}, "
                     f"real={data.monto_cierre_real}, diferencia={diferencia}"
                 ),
+                metadata={
+                    "tipo": "caja_cierre",
+                    "caja_id": caja_id,
+                    "monto_cierre_teorico": str(efectivo_teorico),
+                    "monto_cierre_real": str(data.monto_cierre_real),
+                    "diferencia": str(diferencia),
+                    "estado_final": CAJA_ESTADO_CERRADA,
+                },
+                origen_tipo="caja",
+                origen_id=caja_id,
             )
 
         return {
@@ -284,6 +305,18 @@ def registrar_ajuste(caja_id: int, data: CajaAjusteInput):
                     f"Ajuste de caja registrado. movimiento_id={movimiento_id}, "
                     f"direccion={data.direccion}, monto={data.monto}, nota={data.nota}"
                 ),
+                metadata={
+                    "tipo": "caja_ajuste",
+                    "caja_id": caja_id,
+                    "movimiento_id": movimiento_id,
+                    "direccion": data.direccion,  # "positivo" / "negativo"
+                    "monto": str(data.monto),
+                    "submedio": "efectivo",
+                    "origen": "manual",
+                    "nota": data.nota,
+                },
+                origen_tipo="caja_movimiento",
+                origen_id=movimiento_id,
             )
 
         return {

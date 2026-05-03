@@ -107,6 +107,16 @@ def armar_bicicleta_serializada(data):
                     f"numero_cuadro={numero_cuadro}, "
                     f"estado=disponible"
                 ),
+                metadata={
+                    "tipo": "bicicleta_serializada_armada",
+                    "bicicleta_id": bicicleta_id,
+                    "id_variante": data.id_variante,
+                    "numero_cuadro": numero_cuadro,
+                    "id_sucursal": data.id_sucursal_actual,
+                    "estado_final": "disponible",
+                },
+                origen_tipo="bicicleta_serializada",
+                origen_id=bicicleta_id,
             )
 
         return {

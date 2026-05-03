@@ -193,6 +193,18 @@ def registrar_pago(conn, data: dict):
                 f"saldo_restante={saldo_restante}, "
                 f"estado_venta={nuevo_estado}"
             ),
+            metadata={
+                "tipo": "pago_venta_registrado",
+                "pago_id": pago_id,
+                "venta_id": venta["id"],
+                "cliente_id": venta["id_cliente"],
+                "medio_pago": medio_pago,
+                "monto": str(monto),
+                "saldo_restante": str(saldo_restante),
+                "estado_venta": nuevo_estado,
+            },
+            origen_tipo="venta",
+            origen_id=venta["id"],
         )
 
         return {
@@ -251,6 +263,17 @@ def registrar_pago(conn, data: dict):
             f"Pago registrado. origen_tipo={origen_tipo}, "
             f"origen_id={data['origen_id']}, medio={medio_pago}, monto={monto}"
         ),
+        metadata={
+            "tipo": "pago_registrado",
+            "pago_id": pago_id,
+            "origen_tipo": origen_tipo,
+            "origen_id": data["origen_id"],
+            "id_cliente": data.get("id_cliente"),
+            "medio_pago": medio_pago,
+            "monto": str(monto),
+        },
+        origen_tipo=origen_tipo,
+        origen_id=data["origen_id"],
     )
 
     return {
@@ -400,6 +423,22 @@ def revertir_pago(pago_id: int, data):
                     f"pago_reversion={pago_reversion_id}, "
                     f"motivo={data.motivo}"
                 ),
+                metadata={
+                    "tipo": "pago_revertido",
+                    "pago_original_id": pago_original["id"],
+                    "pago_reversion_id": pago_reversion_id,
+                    "reversion_id": reversion_id,
+                    "venta_id": venta["id"],
+                    "cliente_id": venta["id_cliente"],
+                    "medio_pago": pago_original["medio_pago"],
+                    "monto": str(monto_original),
+                    "saldo_pendiente_anterior": str(saldo_pendiente),
+                    "saldo_pendiente_nuevo": str(saldo_restante),
+                    "estado_venta_nuevo": nuevo_estado,
+                    "motivo": data.motivo,
+                },
+                origen_tipo="venta",
+                origen_id=venta["id"],
             )
 
         return {

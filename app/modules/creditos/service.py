@@ -76,7 +76,7 @@ def crear_credito_por_anulacion_venta(
     auditoria_service.registrar_evento(
         conn,
         id_usuario=id_usuario,
-        id_sucursal=None,
+        id_sucursal=None,  # aceptable si no tenés venta cargada acá
         entidad=AUDITORIA_ENTIDAD_CREDITO,
         entidad_id=credito["id"],
         accion=AUDITORIA_ACCION_CREDITO_GENERADO,
@@ -84,6 +84,16 @@ def crear_credito_por_anulacion_venta(
             f"Crédito generado por anulación de venta. "
             f"cliente={id_cliente}, venta_id={id_venta}, monto={monto_credito}"
         ),
+        metadata={
+            "tipo": "credito_generado_por_anulacion",
+            "credito_id": credito["id"],
+            "venta_id": id_venta,
+            "cliente_id": id_cliente,
+            "monto_credito": str(monto_credito),
+            "origen": "anulacion_venta",
+        },
+        origen_tipo="venta",
+        origen_id=id_venta,
     )
 
     return credito
@@ -221,6 +231,18 @@ def aplicar_credito_a_venta(
                 f"venta_id={id_venta}, monto_aplicado={aplicado}, "
                 f"saldo_nuevo={nuevo_saldo}, estado_nuevo={nuevo_estado}"
             ),
+            metadata={
+                "tipo": "credito_aplicado_a_venta",
+                "credito_id": credito["id"],
+                "venta_id": id_venta,
+                "cliente_id": id_cliente,
+                "monto_aplicado": str(aplicado),
+                "saldo_anterior": str(saldo_actual),
+                "saldo_nuevo": str(nuevo_saldo),
+                "estado_nuevo": nuevo_estado,
+            },
+            origen_tipo="venta",
+            origen_id=id_venta,
         )
 
         movimientos.append(movimiento)
@@ -312,6 +334,19 @@ def reintegrar_credito(conn, credito_id: int, data):
             f"saldo_nuevo={nuevo_saldo}, estado_nuevo={nuevo_estado}, "
             f"motivo={data.motivo}"
         ),
+        metadata={
+            "tipo": "credito_reintegrado",
+            "credito_id": credito_id,
+            "monto_reintegrado": str(monto),
+            "saldo_anterior": str(saldo_actual),
+            "saldo_nuevo": str(nuevo_saldo),
+            "estado_nuevo": nuevo_estado,
+            "medio_pago": data.medio_pago,
+            "motivo": data.motivo,
+            "caja_id": caja["id"],
+        },
+        origen_tipo="credito",
+        origen_id=credito_id,
     )
 
     return {
@@ -392,6 +427,16 @@ def crear_credito_por_devolucion_venta(
             f"Crédito generado por devolución de venta. "
             f"cliente={id_cliente}, venta_id={id_venta}, monto={monto_credito}"
         ),
+        metadata={
+            "tipo": "credito_generado_por_devolucion",
+            "credito_id": credito["id"],
+            "venta_id": id_venta,
+            "cliente_id": id_cliente,
+            "monto_credito": str(monto_credito),
+            "origen": "devolucion_venta",
+        },
+        origen_tipo="venta",
+        origen_id=id_venta,
     )
 
     return credito

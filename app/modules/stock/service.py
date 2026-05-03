@@ -271,6 +271,18 @@ def crear_ajuste_stock(data: dict):
                     f"cantidad={cantidad}, "
                     f"motivo={nota}"
                 ),
+                metadata={
+                    "tipo": "stock_ajuste",
+                    "movimiento_id": resultado["movimiento_id"],
+                    "id_variante": data["id_variante"],
+                    "id_sucursal": data["id_sucursal"],
+                    "cantidad": str(cantidad),
+                    "motivo": nota,
+                    "origen_tipo": data.get("origen_tipo", "ajuste_manual"),
+                    "origen_id": data.get("origen_id") or 0,
+                },
+                origen_tipo="movimiento_stock",
+                origen_id=resultado["movimiento_id"],
             )
 
             return resultado

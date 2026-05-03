@@ -156,6 +156,7 @@ def registrar_pago_deuda(deuda_id: int, data):
 
             monto = Decimal(str(data.monto))
             saldo_actual = Decimal(str(deuda["saldo_actual"]))
+            saldo_anterior = saldo_actual
 
             if monto <= Decimal("0"):
                 raise HTTPException(
@@ -236,6 +237,18 @@ def registrar_pago_deuda(deuda_id: int, data):
                     f"Pago de deuda registrado. "
                     f"monto={monto}, saldo_nuevo={nuevo_saldo}, estado_nuevo={nuevo_estado}"
                 ),
+                metadata={
+                    "tipo": "deuda_pago",
+                    "deuda_id": deuda_id,
+                    "venta_id": venta["id"],
+                    "cliente_id": venta["id_cliente"],
+                    "monto_pagado": str(monto),
+                    "saldo_anterior": str(saldo_anterior),
+                    "saldo_nuevo": str(nuevo_saldo),
+                    "estado_nuevo": nuevo_estado,
+                },
+                origen_tipo="deuda",
+                origen_id=deuda_id,
             )
 
         return {
@@ -306,6 +319,17 @@ def crear_deuda_desde_venta_entregada(
             f"Deuda generada desde venta. "
             f"venta_id={id_venta}, cliente={id_cliente}, monto={monto_inicial}"
         ),
+        metadata={
+            "tipo": "deuda_generada",
+            "deuda_id": deuda["id"],
+            "venta_id": id_venta,
+            "cliente_id": id_cliente,
+            "monto_inicial": str(monto_inicial),
+            "saldo_actual": str(monto_inicial),
+            "origen": "venta",
+        },
+        origen_tipo="venta",
+        origen_id=id_venta,
     )
 
     return deuda
