@@ -2,6 +2,7 @@ from app.db.connection import get_connection
 from app.modules.stock import repository
 from app.modules.auditoria import service as auditoria_service
 
+from app.shared.money import to_decimal
 # =========================================================
 # HELPERS
 # =========================================================
@@ -36,7 +37,7 @@ def obtener_stock_disponible(id_sucursal: int, id_variante: int):
         return {
             "id_sucursal": id_sucursal,
             "id_variante": id_variante,
-            "stock_disponible": round(float(stock_disponible), 3),
+            "stock_disponible": to_decimal(stock_disponible),
         }
     finally:
         conn.close()
@@ -51,7 +52,7 @@ def obtener_stock_disponible_tx(conn, id_sucursal: int, id_variante: int):
     return {
         "id_sucursal": id_sucursal,
         "id_variante": id_variante,
-        "stock_disponible": round(float(stock["stock_disponible"]), 3),
+        "stock_disponible": to_decimal(stock["stock_disponible"]),
     }
 
 def obtener_stock_actual(id_sucursal: int, id_variante: int):
@@ -66,12 +67,12 @@ def obtener_stock_actual(id_sucursal: int, id_variante: int):
         return {
             "id_sucursal": stock["id_sucursal"],
             "id_variante": stock["id_variante"],
-            "stock_fisico": round(float(stock["stock_fisico"]), 3),
-            "stock_reservado": round(float(stock["stock_reservado"]), 3),
-            "stock_vendido_pendiente_entrega": round(
-                float(stock["stock_vendido_pendiente_entrega"]), 3
+            "stock_fisico": to_decimal(stock["stock_fisico"]),
+            "stock_reservado": to_decimal(stock["stock_reservado"]),
+            "stock_vendido_pendiente_entrega": to_decimal(
+                stock["stock_vendido_pendiente_entrega"]
             ),
-            "stock_disponible": round(float(stock["stock_disponible"]), 3),
+            "stock_disponible": to_decimal(stock["stock_disponible"]),
         }
     finally:
         conn.close()
@@ -233,7 +234,7 @@ def crear_ajuste_stock(data: dict):
     conn = get_connection()
     try:
         with conn.transaction():
-            cantidad = float(data["cantidad"])
+            cantidad = to_decimal(data["cantidad"])
 
             if cantidad == 0:
                 raise ValueError("La cantidad del ajuste no puede ser 0")
