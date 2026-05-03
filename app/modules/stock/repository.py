@@ -1,5 +1,8 @@
+from decimal import Decimal
+
 from app.db.connection import get_connection
 from psycopg.rows import dict_row
+from app.shared.money import to_decimal
 
 # =========================================================
 # CONSULTAS
@@ -37,9 +40,9 @@ def get_stock_sucursal(conn):
         return cur.fetchall()
 
 
-def obtener_stock_disponible(conn, id_sucursal: int, id_variante: int) -> float:
+def obtener_stock_disponible(conn, id_sucursal: int, id_variante: int) -> Decimal:
     stock = obtener_stock_actual(conn, id_sucursal, id_variante)
-    return float(stock["stock_disponible"])
+    return to_decimal(stock["stock_disponible"])
 
 
 def obtener_stock_actual(conn, id_sucursal: int, id_variante: int):
@@ -71,10 +74,10 @@ def obtener_stock_actual(conn, id_sucursal: int, id_variante: int):
     return {
         "id_sucursal": id_sucursal,
         "id_variante": id_variante,
-        "stock_fisico": 0.0,
-        "stock_reservado": 0.0,
-        "stock_vendido_pendiente_entrega": 0.0,
-        "stock_disponible": 0.0,
+        "stock_fisico": Decimal("0"),
+        "stock_reservado": Decimal("0"),
+        "stock_vendido_pendiente_entrega": Decimal("0"),
+        "stock_disponible": Decimal("0"),
     }
 
 
@@ -206,9 +209,9 @@ def actualizar_stock_sucursal(
     conn,
     id_sucursal: int,
     id_variante: int,
-    nuevo_stock_fisico: float,
-    nuevo_stock_reservado: float,
-    nuevo_stock_vendido_pendiente_entrega: float,
+    nuevo_stock_fisico: Decimal,
+    nuevo_stock_reservado: Decimal,
+    nuevo_stock_vendido_pendiente_entrega: Decimal,
 ):
     if nuevo_stock_fisico < 0:
         raise ValueError("stock_fisico no puede quedar negativo")
@@ -245,9 +248,9 @@ def registrar_movimiento_stock(
     id_sucursal: int,
     id_variante: int,
     tipo_movimiento: str,
-    cantidad: float,
+    cantidad: Decimal,
     id_usuario: int,
-    costo_unitario_aplicado: float | None = None,
+    costo_unitario_aplicado: Decimal | None = None,
     origen_tipo: str | None = None,
     origen_id: int | None = None,
     id_bicicleta_serializada: int | None = None,
@@ -293,16 +296,24 @@ def registrar_movimiento_stock(
 
 def _calcular_stock_nuevo(
     *,
-    stock_fisico_actual: float,
-    stock_reservado_actual: float,
-    stock_pendiente_actual: float,
-    delta_fisico: float = 0,
-    delta_reservado: float = 0,
-    delta_pendiente_entrega: float = 0,
+    stock_fisico_actual: Decimal,
+    stock_reservado_actual: Decimal,
+    stock_pendiente_actual: Decimal,
+    delta_fisico: Decimal = Decimal("0"),
+    delta_reservado: Decimal = Decimal("0"),
+    delta_pendiente_entrega: Decimal = Decimal("0"),
 ):
-    nuevo_stock_fisico = stock_fisico_actual + float(delta_fisico)
-    nuevo_stock_reservado = stock_reservado_actual + float(delta_reservado)
-    nuevo_stock_pendiente = stock_pendiente_actual + float(delta_pendiente_entrega)
+    stock_fisico_actual = to_decimal(stock_fisico_actual)
+    stock_reservado_actual = to_decimal(stock_reservado_actual)
+    stock_pendiente_actual = to_decimal(stock_pendiente_actual)
+
+    delta_fisico = to_decimal(delta_fisico)
+    delta_reservado = to_decimal(delta_reservado)
+    delta_pendiente_entrega = to_decimal(delta_pendiente_entrega)
+
+    nuevo_stock_fisico = stock_fisico_actual + delta_fisico
+    nuevo_stock_reservado = stock_reservado_actual + delta_reservado
+    nuevo_stock_pendiente = stock_pendiente_actual + delta_pendiente_entrega
 
     stock_disponible_nuevo = (
         nuevo_stock_fisico - nuevo_stock_reservado - nuevo_stock_pendiente
@@ -318,9 +329,9 @@ def _calcular_stock_nuevo(
 
 def _validar_saldos_no_negativos(
     *,
-    nuevo_stock_fisico: float,
-    nuevo_stock_reservado: float,
-    nuevo_stock_pendiente: float,
+    nuevo_stock_fisico: Decimal,
+    nuevo_stock_reservado: Decimal,
+    nuevo_stock_pendiente: Decimal,
 ):
     if nuevo_stock_fisico < 0:
         raise ValueError("No hay stock físico suficiente")
@@ -332,7 +343,7 @@ def _validar_saldos_no_negativos(
         raise ValueError("No hay stock pendiente de entrega suficiente")
 
 
-def _validar_stock_disponible_no_negativo(*, stock_disponible_nuevo: float):
+def _validar_stock_disponible_no_negativo(*, stock_disponible_nuevo: Decimal):
     if stock_disponible_nuevo < 0:
         raise ValueError("No hay stock disponible suficiente")
 
@@ -358,18 +369,26 @@ def _aplicar_operacion_stock(
     id_variante: int,
     id_usuario: int,
     tipo_movimiento: str,
-    cantidad: float,
-    delta_fisico: float = 0,
-    delta_reservado: float = 0,
-    delta_pendiente_entrega: float = 0,
+    cantidad: Decimal,
+    delta_fisico: Decimal = Decimal("0"),
+    delta_reservado: Decimal = Decimal("0"),
+    delta_pendiente_entrega: Decimal = Decimal("0"),
     origen_tipo: str | None = None,
     origen_id: int | None = None,
     id_bicicleta_serializada: int | None = None,
     nota: str | None = None,
-    costo_unitario_aplicado: float | None = None,
+    costo_unitario_aplicado: Decimal | None = None,
     validar_stock_disponible: bool = True,
 ):
-    if cantidad <= 0:
+    cantidad = to_decimal(cantidad)
+    delta_fisico = to_decimal(delta_fisico)
+    delta_reservado = to_decimal(delta_reservado)
+    delta_pendiente_entrega = to_decimal(delta_pendiente_entrega)
+
+    if costo_unitario_aplicado is not None:
+        costo_unitario_aplicado = to_decimal(costo_unitario_aplicado)
+
+    if cantidad <= Decimal("0"):
         raise ValueError("La cantidad debe ser mayor a 0")
     
     _validar_consistencia_tipo_y_origen_stock(
@@ -382,9 +401,9 @@ def _aplicar_operacion_stock(
 
     actual = asegurar_stock_sucursal_para_update(conn, id_sucursal, id_variante)
 
-    stock_fisico_actual = float(actual["stock_fisico"])
-    stock_reservado_actual = float(actual["stock_reservado"])
-    stock_pendiente_actual = float(actual["stock_vendido_pendiente_entrega"])
+    stock_fisico_actual = to_decimal(actual["stock_fisico"])
+    stock_reservado_actual = to_decimal(actual["stock_reservado"])
+    stock_pendiente_actual = to_decimal(actual["stock_vendido_pendiente_entrega"])
 
     calculo = _calcular_stock_nuevo(
         stock_fisico_actual=stock_fisico_actual,
@@ -440,14 +459,14 @@ def _aplicar_operacion_stock(
         "id_sucursal": id_sucursal,
         "id_variante": id_variante,
         "tipo_movimiento": tipo_movimiento,
-        "cantidad": round(float(cantidad), 3),
-        "stock_fisico_anterior": round(stock_fisico_actual, 3),
-        "stock_reservado_anterior": round(stock_reservado_actual, 3),
-        "stock_vendido_pendiente_entrega_anterior": round(stock_pendiente_actual, 3),
-        "stock_fisico_nuevo": round(nuevo_stock_fisico, 3),
-        "stock_reservado_nuevo": round(nuevo_stock_reservado, 3),
-        "stock_vendido_pendiente_entrega_nuevo": round(nuevo_stock_pendiente, 3),
-        "stock_disponible_nuevo": round(stock_disponible_nuevo, 3),
+        "cantidad": cantidad,
+        "stock_fisico_anterior": stock_fisico_actual,
+        "stock_reservado_anterior": stock_reservado_actual,
+        "stock_vendido_pendiente_entrega_anterior": stock_pendiente_actual,
+        "stock_fisico_nuevo": nuevo_stock_fisico,
+        "stock_reservado_nuevo": nuevo_stock_reservado,
+        "stock_vendido_pendiente_entrega_nuevo": nuevo_stock_pendiente,
+        "stock_disponible_nuevo": stock_disponible_nuevo,
     }
 # =========================================================
 # OPERACIONES CENTRALES DE STOCK
@@ -489,7 +508,7 @@ def liberar_stock_reservado(
     *,
     id_sucursal: int,
     id_variante: int,
-    cantidad: float,
+    cantidad: Decimal,
     id_usuario: int,
     origen_tipo: str | None = None,
     origen_id: int | None = None,
@@ -520,7 +539,7 @@ def marcar_stock_pendiente_entrega(
     *,
     id_sucursal: int,
     id_variante: int,
-    cantidad: float,
+    cantidad: Decimal,
     id_usuario: int,
     descontar_de_reservado: bool = False,
     origen_tipo: str | None = None,
@@ -563,7 +582,7 @@ def descontar_stock_por_venta(
     *,
     id_sucursal: int,
     id_variante: int,
-    cantidad: float,
+    cantidad: Decimal,
     id_usuario: int,
     descontar_de_reservado: bool = False,
     origen_tipo: str | None = None,
@@ -604,7 +623,7 @@ def registrar_entrega_stock(
     *,
     id_sucursal: int,
     id_variante: int,
-    cantidad: float,
+    cantidad: Decimal,
     id_usuario: int,
     origen_tipo: str | None = None,
     origen_id: int | None = None,
@@ -639,7 +658,7 @@ def devolver_stock_a_disponible_desde_pendiente(
     *,
     id_sucursal: int,
     id_variante: int,
-    cantidad: float,
+    cantidad: Decimal,
     id_usuario: int,
     origen_tipo: str | None = None,
     origen_id: int | None = None,
@@ -671,7 +690,7 @@ def registrar_devolucion_stock(
     *,
     id_sucursal: int,
     id_variante: int,
-    cantidad: float,
+    cantidad: Decimal,
     id_usuario: int,
     origen_tipo: str | None = None,
     origen_id: int | None = None,
@@ -705,7 +724,7 @@ def registrar_salida_taller(
     *,
     id_sucursal: int,
     id_variante: int,
-    cantidad: float,
+    cantidad: Decimal,
     id_usuario: int,
     origen_id: int,
     origen_tipo: str = "orden_taller",
@@ -875,7 +894,7 @@ def registrar_salida_por_serializacion(
     *,
     id_sucursal: int,
     id_variante: int,
-    cantidad: float,
+    cantidad: Decimal,
     id_usuario: int,
     origen_tipo: str | None = None,
     origen_id: int | None = None,
@@ -901,13 +920,15 @@ def registrar_ajuste_manual_stock(
     *,
     id_sucursal: int,
     id_variante: int,
-    cantidad: float,
+    cantidad: Decimal,
     id_usuario: int,
     origen_tipo: str | None = "ajuste_manual",
     origen_id: int | None = None,
     nota: str | None = None,
 ):
-    if cantidad == 0:
+    cantidad = to_decimal(cantidad)
+
+    if cantidad == Decimal("0"):
         raise ValueError("La cantidad del ajuste no puede ser 0")
 
     if origen_id is None:
