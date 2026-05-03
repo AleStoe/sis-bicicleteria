@@ -21,6 +21,11 @@ class VarianteOut(BaseModel):
     id: int
     id_producto: int
     producto_nombre: str
+    tipo_item: str
+    stockeable: bool
+    serializable: bool
+    categoria_id: int
+    categoria_nombre: str
     nombre_variante: str
     sku: str | None = None
     codigo_barras: str | None = None
@@ -33,3 +38,52 @@ class VarianteOut(BaseModel):
     permite_precio_libre: bool
     costo_promedio_vigente: float
     activo: bool
+    imagen_principal: str | None = None
+
+class CatalogoImagenCreate(BaseModel):
+    id_producto: int | None = None
+    id_variante: int | None = None
+    url: str
+    es_principal: bool = False
+    orden: int = 0
+
+
+class CatalogoImagenUpdate(BaseModel):
+    url: str | None = None
+    es_principal: bool | None = None
+    orden: int | None = None
+    activo: bool | None = None
+
+
+class CatalogoImagenOut(BaseModel):
+    id: int
+    id_producto: int | None = None
+    id_variante: int | None = None
+    url: str
+    es_principal: bool
+    orden: int
+    activo: bool
+
+class CatalogoPOSItemOut(BaseModel):
+    id_variante: int
+    id_producto: int
+    producto_nombre: str
+    nombre_variante: str
+    categoria_id: int
+    categoria_nombre: str
+    tipo_item: str
+    stockeable: bool
+    serializable: bool
+    precio_minorista: float
+    precio_mayorista: float
+    permite_precio_libre: bool
+    sku: str | None = None
+    codigo_barras: str | None = None
+    imagen_principal: str | None = None
+    activo: bool
+    stock_fisico: float = 0
+    stock_reservado: float = 0
+    stock_vendido_pendiente_entrega: float = 0
+    stock_disponible: float = 0
+    disponible_para_venta: bool
+    motivo_no_disponible: str | None = None
