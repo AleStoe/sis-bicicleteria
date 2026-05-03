@@ -1,7 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 from app.api.routes import router as api_router
 from app.db.connection import get_connection
+from app.modules.auditoria.routes import router as auditoria_router
 
 app = FastAPI(title="Sistema Bicicleteria Agus")
 
@@ -17,6 +19,7 @@ app.add_middleware(
 )
 
 app.include_router(api_router)
+app.include_router(auditoria_router, prefix="/auditoria", tags=["Auditoría"])
 
 
 @app.get("/health")

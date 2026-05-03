@@ -59,6 +59,9 @@ export default function Sidebar() {
         <NavLink to="/reservas" style={navStyle}>
           Reservas
         </NavLink>
+        <NavLink to="/auditoria" style={navStyle}>
+          Auditoría
+        </NavLink>
       </nav>
     </aside>
   );

@@ -19,7 +19,7 @@ import CreditoDetallePage from "./pages/CreditoDetallePage";
 import ReservasListPage from "./pages/ReservasListPage";
 import NuevaReservaPage from "./pages/NuevaReservaPage";
 import ReservaDetallePage from "./pages/ReservaDetallePage";
-
+import AuditoriaPage from "./pages/AuditoriaPage";
 export default function App() {
   return (
     <BrowserRouter>
@@ -45,7 +45,9 @@ export default function App() {
           <Route path="/creditos/:creditoId" element={<CreditoDetallePage />} />
           <Route path="/reservas" element={<ReservasListPage />} />
           <Route path="/reservas/nueva" element={<NuevaReservaPage />} />
-          <Route path="/reservas/:reservaId" element={<ReservaDetallePage />} />  
+          <Route path="/reservas/:reservaId" element={<ReservaDetallePage />} /> 
+          <Route path="/auditoria" element={<AuditoriaPage />} /> 
+          
         </Routes>
       </AppLayout>
     </BrowserRouter>

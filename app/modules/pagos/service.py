@@ -210,6 +210,8 @@ def registrar_pago(conn, data: dict):
         return {
             "ok": True,
             "pago_id": pago_id,
+            "origen_tipo": ORIGEN_VENTA,
+            "origen_id": venta["id"],
             "venta_id": venta["id"],
             "estado_venta": nuevo_estado,
             "saldo_restante": saldo_restante,

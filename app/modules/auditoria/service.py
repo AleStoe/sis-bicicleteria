@@ -1,5 +1,10 @@
-from .repository import insert_auditoria_evento
-
+from fastapi import HTTPException
+from app.db.connection import get_connection
+from .repository import (
+    insert_auditoria_evento,
+    get_auditoria_eventos,
+    get_auditoria_evento_by_id,
+)
 
 def registrar_evento(
     conn,
@@ -31,3 +36,32 @@ def registrar_evento(
             "origen_id": origen_id,
         },
     )
+
+def listar_eventos(limit: int = 100):
+    if limit <= 0 or limit > 500:
+        raise HTTPException(
+            status_code=400,
+            detail="El limit debe estar entre 1 y 500",
+        )
+
+    conn = get_connection()
+    try:
+        return get_auditoria_eventos(conn, limit)
+    finally:
+        conn.close()
+
+
+def obtener_evento(evento_id: int):
+    conn = get_connection()
+    try:
+        evento = get_auditoria_evento_by_id(conn, evento_id)
+
+        if evento is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No existe el evento de auditoría {evento_id}",
+            )
+
+        return evento
+    finally:
+        conn.close()
