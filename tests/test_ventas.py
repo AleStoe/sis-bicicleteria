@@ -1138,3 +1138,175 @@ def test_anulacion_venta_crea_evento_auditoria(client, db_conn, seed_venta_basic
     acciones = [e["accion"] for e in eventos]
 
     assert "anular_venta" in acciones
+
+def test_devolver_item_parcial_genera_credito_y_repone_stock(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    crear = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 2,
+                    "id_bicicleta_serializada": None,
+                }
+            ],
+        },
+    )
+    assert crear.status_code == 200
+    venta_id = crear.json()["venta_id"]
+
+    abrir = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+    assert abrir.status_code == 200
+
+    pago = client.post(
+        "/pagos/",
+        json={
+            "origen_tipo": "venta",
+            "origen_id": venta_id,
+            "medio_pago": "efectivo",
+            "monto": seed_venta_basica["precio_venta"] * 2,
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "nota": "Pago total para devolución parcial",
+        },
+    )
+    assert pago.status_code == 200, pago.text
+
+    entrega = client.post(
+        f"/ventas/{venta_id}/entregar",
+        json={"id_usuario": seed_venta_basica["usuario_id"]},
+    )
+    assert entrega.status_code == 200, entrega.text
+
+    items = db_conn.execute(
+        """
+        SELECT id, cantidad, subtotal
+        FROM venta_items
+        WHERE id_venta = %s
+        """,
+        (venta_id,),
+    ).fetchall()
+
+    assert len(items) == 1
+    venta_item_id = items[0]["id"]
+
+    devolucion = client.post(
+        f"/ventas/{venta_id}/devolver-items",
+        json={
+            "motivo": "devolución parcial test",
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "id_venta_item": venta_item_id,
+                    "cantidad": "1",
+                }
+            ],
+        },
+    )
+    assert devolucion.status_code == 200, devolucion.text
+
+    data = devolucion.json()
+    assert data["ok"] is True
+    assert data["venta_id"] == venta_id
+    assert _to_decimal(data["credito_generado"]) == _to_decimal(seed_venta_basica["precio_venta"])
+
+    venta = get_venta(db_conn, venta_id)
+    assert venta["estado"] == "devuelta_parcial"
+
+    stock = get_stock_row(
+        db_conn,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["variante_id"],
+    )
+
+    # Stock inicial 6.
+    # Venta de 2: pendiente +2.
+    # Entrega: físico baja a 4.
+    # Devolución de 1: físico sube a 5.
+    assert _to_decimal(stock["stock_fisico"]) == Decimal("5.000")
+    assert _to_decimal(stock["stock_vendido_pendiente_entrega"]) == Decimal("0.000")
+
+    movimientos = get_movimientos_by_venta(db_conn, venta_id)
+    tipos = [m["tipo_movimiento"] for m in movimientos]
+    assert tipos == ["venta", "entrega", "devolucion_venta"]
+
+    creditos = get_creditos_by_cliente(db_conn, seed_venta_basica["cliente_id"])
+    credito = creditos[0]
+    assert _to_decimal(credito["saldo_actual"]) == _to_decimal(seed_venta_basica["precio_venta"])
+    assert "devolución" in (credito["observacion"] or "").lower()
+
+    devoluciones = db_conn.execute(
+        """
+        SELECT *
+        FROM venta_item_devoluciones
+        WHERE id_venta = %s
+        """,
+        (venta_id,),
+    ).fetchall()
+
+    assert len(devoluciones) == 1
+    assert _to_decimal(devoluciones[0]["cantidad_devuelta"]) == Decimal("1.000")
+    assert _to_decimal(devoluciones[0]["monto_credito_generado"]) == _to_decimal(
+        seed_venta_basica["precio_venta"]
+    )
+
+def test_devolver_item_no_permite_devolver_mas_de_lo_vendido(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    crear = _crear_venta_basica(client, seed_venta_basica)
+    assert crear.status_code == 200
+    venta_id = crear.json()["venta_id"]
+
+    abrir = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+    assert abrir.status_code == 200
+
+    pago = _pagar_venta_basica_total(client, venta_id, seed_venta_basica)
+    assert pago.status_code == 200
+
+    entrega = client.post(
+        f"/ventas/{venta_id}/entregar",
+        json={"id_usuario": seed_venta_basica["usuario_id"]},
+    )
+    assert entrega.status_code == 200
+
+    item = db_conn.execute(
+        """
+        SELECT id
+        FROM venta_items
+        WHERE id_venta = %s
+        """,
+        (venta_id,),
+    ).fetchone()
+
+    response = client.post(
+        f"/ventas/{venta_id}/devolver-items",
+        json={
+            "motivo": "devolución inválida",
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "id_venta_item": item["id"],
+                    "cantidad": "2",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 400
+    assert "supera lo disponible" in response.json()["detail"]

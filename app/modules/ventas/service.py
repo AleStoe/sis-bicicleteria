@@ -33,6 +33,8 @@ from .repository import (
     insert_venta_anulacion,
     insert_venta_devolucion,
     get_venta_devolucion_by_venta_item_id,
+    insert_venta_item_devolucion,
+    get_total_devuelto_by_venta_item_id,
 )
 from app.shared.constants import (
     AUDITORIA_ENTIDAD_VENTA,
@@ -1073,77 +1075,177 @@ def devolver_items(venta_id: int, data):
             venta = get_venta_for_update(conn, venta_id)
 
             if not venta:
-                raise HTTPException(404, "Venta no encontrada")
+                raise HTTPException(status_code=404, detail="Venta no encontrada")
 
             if venta["estado"] != VENTA_ESTADO_ENTREGADA:
-                raise HTTPException(400, "Solo ventas entregadas")
+                raise HTTPException(
+                    status_code=400,
+                    detail="Solo se pueden devolver items de ventas entregadas",
+                )
+
+            if not data.items:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Debe informar al menos un item a devolver",
+                )
 
             items_db = get_venta_items_detallados_by_venta_id(conn, venta_id)
 
             if not items_db:
-                raise HTTPException(400, "Sin items")
+                raise HTTPException(
+                    status_code=400,
+                    detail="La venta no tiene items",
+                )
 
             items_map = {item["id"]: item for item in items_db}
-
             total_devolucion = Decimal("0")
+            devoluciones_ids = []
 
             for item_input in data.items:
                 item = items_map.get(item_input.id_venta_item)
 
                 if not item:
-                    raise HTTPException(400, "Item inválido")
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"El item {item_input.id_venta_item} no pertenece a la venta {venta_id}",
+                    )
 
-                cantidad_dev = to_decimal(item_input.cantidad)
+                cantidad_devuelta = to_decimal(item_input.cantidad)
                 cantidad_original = to_decimal(item["cantidad"])
+                cantidad_ya_devuelta = to_decimal(
+                    get_total_devuelto_by_venta_item_id(conn, item["id"])
+                )
 
-                if cantidad_dev > cantidad_original:
-                    raise HTTPException(400, "Cantidad excede lo vendido")
+                cantidad_disponible_para_devolver = cantidad_original - cantidad_ya_devuelta
 
-                # ⚠️ EVITAR doble devolución
-                if get_venta_devolucion_by_venta_item_id(conn, item["id"]):
-                    raise HTTPException(400, "Item ya devuelto")
+                if cantidad_devuelta <= Decimal("0"):
+                    raise HTTPException(
+                        status_code=400,
+                        detail="La cantidad a devolver debe ser mayor a 0",
+                    )
 
-                # registrar devolución
-                if item.get("id_bicicleta_serializada"):
+                if cantidad_devuelta > cantidad_disponible_para_devolver:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"La cantidad a devolver del item {item['id']} supera "
+                            f"lo disponible. vendido={cantidad_original}, "
+                            f"ya_devuelto={cantidad_ya_devuelta}, "
+                            f"disponible={cantidad_disponible_para_devolver}"
+                        ),
+                    )
+
+                if item.get("id_bicicleta_serializada") is not None:
+                    if cantidad_devuelta != Decimal("1"):
+                        raise HTTPException(
+                            status_code=400,
+                            detail="Un item serializado solo puede devolverse con cantidad 1",
+                        )
+
+                    bicicleta = _validar_y_bloquear_bicicleta_serializada_para_devolucion(
+                        conn,
+                        item=item,
+                        venta_id=venta_id,
+                    )
+
+                    update_bicicleta_serializada_estado(
+                        conn,
+                        bicicleta["id"],
+                        "disponible",
+                    )
+
+                    # Mantiene trazabilidad serializada existente.
                     insert_venta_devolucion(
                         conn,
                         {
                             "id_venta": venta_id,
                             "id_venta_item": item["id"],
-                            "id_bicicleta_serializada": item.get("id_bicicleta_serializada"),
+                            "id_bicicleta_serializada": bicicleta["id"],
                             "id_sucursal_reingreso": venta["id_sucursal"],
                             "motivo": data.motivo,
                             "id_usuario": data.id_usuario,
                         },
                     )
 
-                # stock
+                subtotal_item = to_decimal(item["subtotal"])
+                monto_item = redondear_monto(
+                    subtotal_item * cantidad_devuelta / cantidad_original
+                )
+
+                devolucion_id = insert_venta_item_devolucion(
+                    conn,
+                    {
+                        "id_venta": venta_id,
+                        "id_venta_item": item["id"],
+                        "id_variante": item["id_variante"],
+                        "cantidad_devuelta": cantidad_devuelta,
+                        "monto_credito_generado": monto_item,
+                        "motivo": data.motivo,
+                        "id_usuario": data.id_usuario,
+                    },
+                )
+                devoluciones_ids.append(devolucion_id)
+
                 if item["stockeable"]:
                     stock_service.registrar_devolucion_stock(
                         conn,
                         {
                             "id_sucursal": venta["id_sucursal"],
                             "id_variante": item["id_variante"],
-                            "cantidad": cantidad_dev,
+                            "cantidad": cantidad_devuelta,
                             "id_usuario": data.id_usuario,
                             "origen_tipo": "venta",
                             "origen_id": venta_id,
-                            "nota": f"Devolución parcial venta #{venta_id}",
+                            "id_bicicleta_serializada": item.get("id_bicicleta_serializada"),
+                            "nota": (
+                                f"Devolución parcial venta #{venta_id}. "
+                                f"venta_item_id={item['id']}. "
+                                f"devolucion_item_id={devolucion_id}. "
+                                f"motivo={data.motivo}"
+                            ),
                         },
                     )
 
-                # total proporcional
-                subtotal = to_decimal(item["subtotal"])
-                proporcion = cantidad_dev / cantidad_original
-                total_devolucion += subtotal * proporcion
+                total_devolucion = redondear_monto(total_devolucion + monto_item)
 
-            # crédito correcto
+            if total_devolucion <= Decimal("0"):
+                raise HTTPException(
+                    status_code=400,
+                    detail="El monto total de devolución debe ser mayor a 0",
+                )
+
             creditos_service.crear_credito_por_devolucion_venta(
                 conn,
                 id_cliente=venta["id_cliente"],
                 id_venta=venta_id,
                 monto_credito=total_devolucion,
                 id_usuario=data.id_usuario,
+            )
+
+            items_actualizados = get_venta_items_detallados_by_venta_id(conn, venta_id)
+
+            venta_totalmente_devuelta = True
+            for item in items_actualizados:
+                cantidad_original = to_decimal(item["cantidad"])
+                cantidad_devuelta_total = to_decimal(
+                    get_total_devuelto_by_venta_item_id(conn, item["id"])
+                )
+
+                if cantidad_devuelta_total < cantidad_original:
+                    venta_totalmente_devuelta = False
+                    break
+
+            nuevo_estado = (
+                "devuelta"
+                if venta_totalmente_devuelta
+                else "devuelta_parcial"
+            )
+
+            update_venta_saldo_y_estado(
+                conn,
+                venta_id,
+                Decimal("0"),
+                nuevo_estado,
             )
 
             auditoria_service.registrar_evento(
@@ -1153,7 +1255,14 @@ def devolver_items(venta_id: int, data):
                 entidad=AUDITORIA_ENTIDAD_VENTA,
                 entidad_id=venta_id,
                 accion=AUDITORIA_ACCION_VENTA_DEVOLUCION_CREADA,
-                detalle=f"Devolución parcial. monto={total_devolucion}",
+                detalle=(
+                    f"Devolución parcial registrada. "
+                    f"venta_id={venta_id}, "
+                    f"devoluciones_ids={devoluciones_ids}, "
+                    f"monto={total_devolucion}, "
+                    f"estado_final={nuevo_estado}, "
+                    f"motivo={data.motivo}"
+                ),
             )
 
         return {
