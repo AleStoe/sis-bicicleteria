@@ -35,3 +35,17 @@ export function devolverVentaSerializada(ventaId, data) {
     body: JSON.stringify(data),
   });
 }
+
+export function devolverVenta(ventaId, data) {
+  return apiRequest(`/ventas/${ventaId}/devolver`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function devolverItemsVenta(ventaId, data) {
+  return apiRequest(`/ventas/${ventaId}/devolver-items`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}

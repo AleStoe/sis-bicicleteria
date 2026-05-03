@@ -1,4 +1,4 @@
-const API_BASE_URL = "http://127.0.0.1:8000";
+import { API_BASE_URL } from "../config/appConfig";
 
 export async function apiRequest(path, options = {}) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -15,7 +15,13 @@ export async function apiRequest(path, options = {}) {
     : null;
 
   if (!response.ok) {
-    throw new Error(data?.detail || "Error en la API");
+    const detail = data?.detail;
+
+    if (Array.isArray(detail)) {
+      throw new Error(detail.map((e) => e.msg).join(" | "));
+    }
+
+    throw new Error(detail || data?.message || "Error en la API");
   }
 
   return data;

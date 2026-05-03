@@ -4,8 +4,10 @@ import { listarCatalogoPOS, listarCategorias } from "../services/catalogoService
 import { listarClientes } from "../services/clientesService";
 import { crearVenta } from "../services/ventasService";
 
-const ID_USUARIO = 1;
-const ID_SUCURSAL = 1;
+import { CURRENT_USER_ID, CURRENT_SUCURSAL_ID } from "../config/appConfig";
+
+const ID_USUARIO = CURRENT_USER_ID;
+const ID_SUCURSAL = CURRENT_SUCURSAL_ID;
 const DEFAULT_LIMIT = 80;
 
 const MEDIOS_SIMULADOS = [
