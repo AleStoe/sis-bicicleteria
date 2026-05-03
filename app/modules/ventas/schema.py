@@ -1,7 +1,10 @@
 from decimal import Decimal
-from typing import List, Optional
+from typing import List, Optional, Literal
 
 from pydantic import BaseModel, Field, ConfigDict
+
+
+MedioPagoVenta = Literal["efectivo", "transferencia", "mercadopago", "tarjeta"]
 
 
 class VentaItemCreateInput(BaseModel):
@@ -10,13 +13,19 @@ class VentaItemCreateInput(BaseModel):
     id_bicicleta_serializada: Optional[int] = Field(default=None, gt=0)
 
 
+class VentaPagoCreateInput(BaseModel):
+    medio_pago: MedioPagoVenta
+    monto: Decimal = Field(gt=0)
+    nota: Optional[str] = None
+
+
 class VentaCreateInput(BaseModel):
     id_cliente: int
     id_sucursal: int
     id_usuario: int
     items: List[VentaItemCreateInput]
+    pagos: List[VentaPagoCreateInput] = Field(default_factory=list)
     observaciones: Optional[str] = None
-
     usar_credito: bool = True
     monto_credito_a_aplicar: Optional[Decimal] = None
 
@@ -127,3 +136,29 @@ class VentaDevolucionSerializadaOutput(BaseModel):
     devolucion_id: int
     id_bicicleta_serializada: int
     estado_bicicleta: str
+
+class VentaDevolucionInput(BaseModel):
+    motivo: str
+    id_usuario: int
+
+
+class VentaDevolucionOutput(BaseModel):
+    ok: bool
+    venta_id: int
+    credito_generado: Decimal
+
+class VentaDevolucionItemInput(BaseModel):
+    id_venta_item: int
+    cantidad: Decimal = Field(gt=0)
+
+
+class VentaDevolucionParcialInput(BaseModel):
+    items: List[VentaDevolucionItemInput]
+    motivo: str
+    id_usuario: int
+
+
+class VentaDevolucionParcialOutput(BaseModel):
+    ok: bool
+    venta_id: int
+    credito_generado: Decimal

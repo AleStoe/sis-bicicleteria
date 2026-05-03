@@ -1,5 +1,6 @@
 from decimal import Decimal
-
+from app.modules.pagos import service as pagos_service
+from app.shared.money import to_decimal
 from fastapi import HTTPException
 from app.modules.authz.service import (
     exigir_permiso_anular_venta,
@@ -398,7 +399,7 @@ def crear_venta(data):
             for item in items_consolidados:
                 variante = variantes_map[item["id_variante"]]
                 precio_minorista = redondear_monto(variante["precio_minorista"])
-                cantidad = Decimal(str(item["cantidad"]))
+                cantidad = to_decimal(item["cantidad"])
                 subtotal = redondear_monto(precio_minorista * cantidad)
                 subtotal_total = redondear_monto(subtotal_total + subtotal)
 
@@ -420,8 +421,6 @@ def crear_venta(data):
                 )
 
             total_final = redondear_monto(subtotal_total)
-            saldo_pendiente = total_final
-            estado_venta = "creada"
             credito_aplicado = Decimal("0")
 
             venta_id = insert_venta(
@@ -434,7 +433,7 @@ def crear_venta(data):
                     "descuento_total": Decimal("0"),
                     "recargo_total": Decimal("0"),
                     "total_final": total_final,
-                    "saldo_pendiente": saldo_pendiente,
+                    "saldo_pendiente": total_final,
                     "id_usuario_creador": data.id_usuario,
                     "observaciones": getattr(data, "observaciones", None),
                     "id_reserva_origen": None,
@@ -473,11 +472,7 @@ def crear_venta(data):
                     )
 
             items_stock = sorted(
-                [
-                    fila
-                    for fila in venta_items
-                    if fila["variante"]["stockeable"]
-                ],
+                [fila for fila in venta_items if fila["variante"]["stockeable"]],
                 key=lambda fila: fila["variante"]["id"],
             )
 
@@ -491,7 +486,7 @@ def crear_venta(data):
                         {
                             "id_sucursal": data.id_sucursal,
                             "id_variante": variante["id"],
-                            "cantidad": float(item["cantidad"]),
+                            "cantidad": to_decimal(item["cantidad"]),
                             "id_usuario": data.id_usuario,
                             "descontar_de_reservado": False,
                             "origen_tipo": "venta",
@@ -517,12 +512,43 @@ def crear_venta(data):
                     id_usuario=data.id_usuario,
                 )
                 credito_aplicado = redondear_monto(resultado_credito["credito_aplicado_total"])
+                saldo_despues_credito = redondear_monto(total_final - credito_aplicado)
 
-            saldo_pendiente = redondear_monto(total_final - credito_aplicado)
+                if saldo_despues_credito == Decimal("0"):
+                    estado_venta = "pagada_total"
+                elif credito_aplicado > Decimal("0"):
+                    estado_venta = "pagada_parcial"
+                else:
+                    estado_venta = "creada"
+
+                update_venta_saldo_y_estado(
+                    conn,
+                    venta_id,
+                    saldo_despues_credito,
+                    estado_venta,
+                )
+            pagos = getattr(data, "pagos", []) or []
+
+            for pago in pagos:
+                pagos_service.registrar_pago(
+                    conn,
+                    {
+                        "id_cliente": data.id_cliente,
+                        "origen_tipo": "venta",
+                        "origen_id": venta_id,
+                        "medio_pago": pago.medio_pago,
+                        "monto": pago.monto,
+                        "nota": pago.nota,
+                        "id_usuario": data.id_usuario,
+                    },
+                )
+
+            venta_actualizada = get_venta_for_update(conn, venta_id)
+            saldo_pendiente = redondear_monto(venta_actualizada["saldo_pendiente"])
 
             if saldo_pendiente == Decimal("0"):
                 estado_venta = "pagada_total"
-            elif credito_aplicado > Decimal("0"):
+            elif saldo_pendiente < total_final:
                 estado_venta = "pagada_parcial"
             else:
                 estado_venta = "creada"
@@ -545,6 +571,7 @@ def crear_venta(data):
                     f"Venta creada. cliente={data.id_cliente}, "
                     f"total_final={total_final}, "
                     f"credito_aplicado={credito_aplicado}, "
+                    f"saldo_pendiente={saldo_pendiente}, "
                     f"estado={estado_venta}"
                 ),
             )
@@ -559,7 +586,6 @@ def crear_venta(data):
 
     finally:
         conn.close()
-
 
 def listar_ventas():
     conn = get_connection()
@@ -662,7 +688,7 @@ def entregar_venta(venta_id: int, data):
                     {
                         "id_sucursal": venta["id_sucursal"],
                         "id_variante": item["id_variante"],
-                        "cantidad": float(item["cantidad"]),
+                        "cantidad": to_decimal(item["cantidad"]),
                         "id_usuario": data.id_usuario,
                         "origen_tipo": "venta",
                         "origen_id": venta_id,
@@ -758,7 +784,7 @@ def anular_venta(venta_id: int, data):
                     {
                         "id_sucursal": venta["id_sucursal"],
                         "id_variante": item["id_variante"],
-                        "cantidad": float(item["cantidad"]),
+                        "cantidad": to_decimal(item["cantidad"]),
                         "id_usuario": data.id_usuario,
                         "origen_tipo": "venta",
                         "origen_id": venta_id,
@@ -946,6 +972,194 @@ def devolver_item_serializado_entregado(venta_id: int, data):
             "devolucion_id": devolucion_id,
             "id_bicicleta_serializada": bicicleta["id"],
             "estado_bicicleta": "disponible",
+        }
+
+    finally:
+        conn.close()
+
+def devolver_venta(venta_id: int, data):
+    conn = get_connection()
+
+    try:
+        with conn.transaction():
+            venta = get_venta_for_update(conn, venta_id)
+
+            if not venta:
+                raise HTTPException(status_code=404, detail="Venta no encontrada")
+
+            if venta["estado"] != "entregada":
+                raise HTTPException(
+                    status_code=400,
+                    detail="Solo se pueden devolver ventas entregadas",
+                )
+
+            items = get_venta_items_detallados_by_venta_id(conn, venta_id)
+
+            if not items:
+                raise HTTPException(
+                    status_code=400,
+                    detail="La venta no tiene items",
+                )
+
+            total_devolucion = Decimal("0")
+
+            for item in items:
+                cantidad = to_decimal(item["cantidad"])
+
+                if item["id_bicicleta_serializada"]:
+                    update_bicicleta_serializada_estado(
+                        conn,
+                        item["id_bicicleta_serializada"],
+                        "disponible",
+                    )
+
+                if item["stockeable"]:
+                    stock_service.registrar_devolucion_stock(
+                        conn,
+                        {
+                            "id_sucursal": venta["id_sucursal"],
+                            "id_variante": item["id_variante"],
+                            "cantidad": cantidad,
+                            "id_usuario": data.id_usuario,
+                            "origen_tipo": "venta",
+                            "origen_id": venta_id,
+                            "nota": f"Devolución venta #{venta_id}",
+                        },
+                    )
+
+                total_devolucion += to_decimal(item["subtotal"])
+
+            # generar crédito
+            creditos_service.crear_credito_por_anulacion_venta(
+                conn,
+                id_cliente=venta["id_cliente"],
+                id_venta=venta_id,
+                monto_credito=total_devolucion,
+                id_usuario=data.id_usuario,
+            )
+
+            # actualizar estado
+            update_venta_saldo_y_estado(
+                conn,
+                venta_id,
+                Decimal("0"),
+                "devuelta",
+            )
+
+            auditoria_service.registrar_evento(
+                conn,
+                id_usuario=data.id_usuario,
+                id_sucursal=venta["id_sucursal"],
+                entidad=AUDITORIA_ENTIDAD_VENTA,
+                entidad_id=venta_id,
+                accion="devolucion_venta",
+                detalle=f"Venta devuelta total. monto={total_devolucion}",
+            )
+
+        return {
+            "ok": True,
+            "venta_id": venta_id,
+            "credito_generado": total_devolucion,
+        }
+
+    finally:
+        conn.close()
+
+def devolver_items(venta_id: int, data):
+    conn = get_connection()
+
+    try:
+        with conn.transaction():
+            venta = get_venta_for_update(conn, venta_id)
+
+            if not venta:
+                raise HTTPException(404, "Venta no encontrada")
+
+            if venta["estado"] != VENTA_ESTADO_ENTREGADA:
+                raise HTTPException(400, "Solo ventas entregadas")
+
+            items_db = get_venta_items_detallados_by_venta_id(conn, venta_id)
+
+            if not items_db:
+                raise HTTPException(400, "Sin items")
+
+            items_map = {item["id"]: item for item in items_db}
+
+            total_devolucion = Decimal("0")
+
+            for item_input in data.items:
+                item = items_map.get(item_input.id_venta_item)
+
+                if not item:
+                    raise HTTPException(400, "Item inválido")
+
+                cantidad_dev = to_decimal(item_input.cantidad)
+                cantidad_original = to_decimal(item["cantidad"])
+
+                if cantidad_dev > cantidad_original:
+                    raise HTTPException(400, "Cantidad excede lo vendido")
+
+                # ⚠️ EVITAR doble devolución
+                if get_venta_devolucion_by_venta_item_id(conn, item["id"]):
+                    raise HTTPException(400, "Item ya devuelto")
+
+                # registrar devolución
+                if item.get("id_bicicleta_serializada"):
+                    insert_venta_devolucion(
+                        conn,
+                        {
+                            "id_venta": venta_id,
+                            "id_venta_item": item["id"],
+                            "id_bicicleta_serializada": item.get("id_bicicleta_serializada"),
+                            "id_sucursal_reingreso": venta["id_sucursal"],
+                            "motivo": data.motivo,
+                            "id_usuario": data.id_usuario,
+                        },
+                    )
+
+                # stock
+                if item["stockeable"]:
+                    stock_service.registrar_devolucion_stock(
+                        conn,
+                        {
+                            "id_sucursal": venta["id_sucursal"],
+                            "id_variante": item["id_variante"],
+                            "cantidad": cantidad_dev,
+                            "id_usuario": data.id_usuario,
+                            "origen_tipo": "venta",
+                            "origen_id": venta_id,
+                            "nota": f"Devolución parcial venta #{venta_id}",
+                        },
+                    )
+
+                # total proporcional
+                subtotal = to_decimal(item["subtotal"])
+                proporcion = cantidad_dev / cantidad_original
+                total_devolucion += subtotal * proporcion
+
+            # crédito correcto
+            creditos_service.crear_credito_por_devolucion_venta(
+                conn,
+                id_cliente=venta["id_cliente"],
+                id_venta=venta_id,
+                monto_credito=total_devolucion,
+                id_usuario=data.id_usuario,
+            )
+
+            auditoria_service.registrar_evento(
+                conn,
+                id_usuario=data.id_usuario,
+                id_sucursal=venta["id_sucursal"],
+                entidad=AUDITORIA_ENTIDAD_VENTA,
+                entidad_id=venta_id,
+                accion=AUDITORIA_ACCION_VENTA_DEVOLUCION_CREADA,
+                detalle=f"Devolución parcial. monto={total_devolucion}",
+            )
+
+        return {
+            "ok": True,
+            "venta_id": venta_id,
+            "credito_generado": total_devolucion,
         }
 
     finally:

@@ -296,8 +296,13 @@ export default function NuevaVentaPage() {
       id_usuario: ID_USUARIO,
       items: items.map((item) => ({
         id_variante: Number(item.id_variante),
-        cantidad: Number(item.cantidad),
+        cantidad: String(item.cantidad),
         id_bicicleta_serializada: null,
+      })),
+      pagos: pagosSimulados.map((pago) => ({
+        medio_pago: pago.medio_pago,
+        monto: String(pago.monto),
+        nota: null,
       })),
       observaciones: observaciones.trim() || null,
       usar_credito: usarCredito,

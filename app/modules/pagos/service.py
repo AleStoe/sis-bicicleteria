@@ -67,7 +67,7 @@ def registrar_pago(conn, data: dict):
         "origen_tipo": "venta" | "reserva" | "orden_taller" | "deuda_cliente",
         "origen_id": int,
         "medio_pago": str,
-        "monto": float | Decimal,
+        "monto": Decimal,
         "nota": str | None,
         "id_usuario": int
     }

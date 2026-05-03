@@ -333,3 +333,65 @@ def reintegrar_credito_endpoint(credito_id: int, data):
         
 def listar_creditos_disponibles_cliente(conn, id_cliente: int):
     return repository.get_creditos_disponibles_cliente(conn, id_cliente)
+
+def crear_credito_por_devolucion_venta(
+    conn,
+    *,
+    id_cliente: int,
+    id_venta: int,
+    monto_credito: Decimal,
+    id_usuario: int,
+):
+    monto_credito = Decimal(str(monto_credito))
+
+    if monto_credito <= Decimal("0"):
+        raise HTTPException(
+            status_code=400,
+            detail="El monto del crédito debe ser mayor a 0",
+        )
+
+    credito_existente = repository.get_credito_abierto_by_origen(
+        conn,
+        origen_tipo=ORIGEN_VENTA,
+        origen_id=id_venta,
+    )
+    if credito_existente:
+        raise HTTPException(
+            status_code=400,
+            detail=f"La venta {id_venta} ya tiene un crédito generado",
+        )
+
+    credito = repository.insert_credito_cliente(
+        conn,
+        id_cliente=id_cliente,
+        origen_tipo=ORIGEN_VENTA,
+        origen_id=id_venta,
+        saldo_actual=monto_credito,
+        observacion=f"Crédito generado por devolución de venta #{id_venta}",
+    )
+
+    repository.insert_credito_movimiento(
+        conn,
+        id_credito=credito["id"],
+        tipo_movimiento=CREDITO_MOVIMIENTO_GENERADO,
+        monto=monto_credito,
+        origen_tipo=ORIGEN_VENTA,
+        origen_id=id_venta,
+        nota=f"Crédito generado por devolución de venta #{id_venta}",
+        id_usuario=id_usuario,
+    )
+
+    auditoria_service.registrar_evento(
+        conn,
+        id_usuario=id_usuario,
+        id_sucursal=None,
+        entidad=AUDITORIA_ENTIDAD_CREDITO,
+        entidad_id=credito["id"],
+        accion=AUDITORIA_ACCION_CREDITO_GENERADO,
+        detalle=(
+            f"Crédito generado por devolución de venta. "
+            f"cliente={id_cliente}, venta_id={id_venta}, monto={monto_credito}"
+        ),
+    )
+
+    return credito
