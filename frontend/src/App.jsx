@@ -14,6 +14,11 @@ import TallerDetallePage from "./pages/TallerDetallePage";
 import DeudasListPage from "./pages/DeudasListPage";
 import DeudaDetallePage from "./pages/DeudaDetallePage";
 import PagosPage from "./pages/PagosPage"
+import CreditosListPage from "./pages/CreditosListPage";
+import CreditoDetallePage from "./pages/CreditoDetallePage";
+import ReservasListPage from "./pages/ReservasListPage";
+import NuevaReservaPage from "./pages/NuevaReservaPage";
+import ReservaDetallePage from "./pages/ReservaDetallePage";
 
 export default function App() {
   return (
@@ -36,6 +41,11 @@ export default function App() {
           <Route path="/deudas" element={<DeudasListPage />} />
           <Route path="/deudas/:deudaId" element={<DeudaDetallePage />} />
           <Route path="/pagos" element={<PagosPage />} />  
+          <Route path="/creditos" element={<CreditosListPage />} />
+          <Route path="/creditos/:creditoId" element={<CreditoDetallePage />} />
+          <Route path="/reservas" element={<ReservasListPage />} />
+          <Route path="/reservas/nueva" element={<NuevaReservaPage />} />
+          <Route path="/reservas/:reservaId" element={<ReservaDetallePage />} />  
         </Routes>
       </AppLayout>
     </BrowserRouter>

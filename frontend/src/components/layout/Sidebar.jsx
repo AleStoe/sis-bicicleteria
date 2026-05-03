@@ -53,6 +53,12 @@ export default function Sidebar() {
         <NavLink to="/pagos" style={navStyle}>
           Pagos
         </NavLink>
+        <NavLink to="/creditos" style={navStyle}>
+          Créditos
+        </NavLink>
+        <NavLink to="/reservas" style={navStyle}>
+          Reservas
+        </NavLink>
       </nav>
     </aside>
   );
