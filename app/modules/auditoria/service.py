@@ -10,7 +10,13 @@ def registrar_evento(
     entidad_id: int,
     accion: str,
     detalle: str | None = None,
+    metadata: dict | None = None,
+    origen_tipo: str | None = None,
+    origen_id: int | None = None,
 ) -> int:
+    if metadata is not None and not isinstance(metadata, dict):
+        raise ValueError("metadata debe ser dict")
+
     return insert_auditoria_evento(
         conn,
         {
@@ -20,5 +26,8 @@ def registrar_evento(
             "entidad_id": entidad_id,
             "accion": accion,
             "detalle": detalle,
+            "metadata": metadata,
+            "origen_tipo": origen_tipo,
+            "origen_id": origen_id,
         },
     )

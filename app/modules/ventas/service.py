@@ -576,7 +576,20 @@ def crear_venta(data):
                     f"saldo_pendiente={saldo_pendiente}, "
                     f"estado={estado_venta}"
                 ),
+                metadata={
+                    "tipo": "venta_creada",
+                    "venta_id": venta_id,
+                    "cliente_id": data.id_cliente,
+                    "sucursal_id": data.id_sucursal,
+                    "total_final": str(total_final),
+                    "credito_aplicado": str(credito_aplicado),
+                    "saldo_pendiente": str(saldo_pendiente),
+                    "estado": estado_venta,
+                },
+                origen_tipo="venta",
+                origen_id=venta_id,
             )
+                        
 
         return {
             "ok": True,
@@ -729,6 +742,15 @@ def entregar_venta(venta_id: int, data):
                 entidad_id=venta_id,
                 accion=accion_auditoria,
                 detalle=detalle_auditoria,
+                metadata={
+                    "tipo": "venta_entregada",
+                    "venta_id": venta_id,
+                    "entrega_con_deuda": entrega_con_deuda,
+                    "saldo_pendiente": str(saldo_pendiente),
+                    "estado_final": VENTA_ESTADO_ENTREGADA,
+                },
+                origen_tipo="venta",
+                origen_id=venta_id,
             )
 
         return {
@@ -826,6 +848,18 @@ def anular_venta(venta_id: int, data):
                     f"total_pagado={total_pagado}, "
                     f"credito_generado={'si' if total_pagado > 0 else 'no'}"
                 ),
+                metadata={
+                    "tipo": "venta_anulada",
+                    "venta_id": venta_id,
+                    "anulacion_id": anulacion_id,
+                    "motivo": data.motivo,
+                    "total_pagado": str(total_pagado),
+                    "credito_generado": total_pagado > 0,
+                    # si lo tenés en scope:
+                    "credito_monto": str(total_pagado) if total_pagado > 0 else "0.00",
+                },
+                origen_tipo="venta",
+                origen_id=venta_id,
             )
 
         return {
@@ -966,6 +1000,19 @@ def devolver_item_serializado_entregado(venta_id: int, data):
                     f"numero_cuadro={bicicleta['numero_cuadro']}, "
                     f"motivo={data.motivo}"
                 ),
+                metadata={
+                    "tipo": "venta_devolucion_serializada",
+                    "venta_id": venta_id,
+                    "devolucion_id": devolucion_id,
+                    "venta_item_id": item_objetivo["id"],
+                    "id_variante": item_objetivo["id_variante"],
+                    "id_bicicleta_serializada": bicicleta["id"],
+                    "numero_cuadro": bicicleta["numero_cuadro"],
+                    "motivo": data.motivo,
+                    "estado_bicicleta_final": "disponible",
+                },
+                origen_tipo="venta",
+                origen_id=venta_id,
             )
 
         return {
@@ -1056,6 +1103,15 @@ def devolver_venta(venta_id: int, data):
                 entidad_id=venta_id,
                 accion="devolucion_venta",
                 detalle=f"Venta devuelta total. monto={total_devolucion}",
+                metadata={
+                    "tipo": "venta_devolucion_total",
+                    "venta_id": venta_id,
+                    "monto_total_devuelto": str(total_devolucion),
+                    "estado_final": "devuelta",
+                    "motivo": data.motivo,
+                },
+                origen_tipo="venta",
+                origen_id=venta_id,
             )
 
         return {
@@ -1263,6 +1319,18 @@ def devolver_items(venta_id: int, data):
                     f"estado_final={nuevo_estado}, "
                     f"motivo={data.motivo}"
                 ),
+                metadata={
+                    "tipo": "venta_devolucion_parcial",
+                    "venta_id": venta_id,
+                    "devoluciones_ids": devoluciones_ids,
+                    "monto_total_devuelto": str(total_devolucion),
+                    "estado_final": nuevo_estado,
+                    "motivo": data.motivo,
+                    # 🔴 clave para análisis futuro
+                    "cantidad_items_afectados": len(devoluciones_ids),
+                },
+                origen_tipo="venta",
+                origen_id=venta_id,
             )
 
         return {
