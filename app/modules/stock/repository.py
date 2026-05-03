@@ -477,7 +477,7 @@ def reservar_stock(
     *,
     id_sucursal: int,
     id_variante: int,
-    cantidad: float,
+    cantidad: Decimal,
     id_usuario: int,
     origen_tipo: str | None = None,
     origen_id: int | None = None,
@@ -769,9 +769,9 @@ def crear_ingreso_stock(conn, data: dict):
     validar_proveedor_activo(conn, data["id_proveedor"])
     validar_usuario_activo(conn, data["id_usuario"])
 
-    cantidad_ingresada = float(data["cantidad_ingresada"])
-    costo_productos = float(data["costo_productos"])
-    gastos_adicionales = float(data.get("gastos_adicionales", 0) or 0)
+    cantidad_ingresada = to_decimal(data["cantidad_ingresada"])
+    costo_productos = to_decimal(data["costo_productos"])
+    gastos_adicionales = to_decimal(data.get("gastos_adicionales", 0) or 0)
 
     if cantidad_ingresada <= 0:
         raise ValueError("La cantidad ingresada debe ser mayor a 0")
@@ -823,9 +823,9 @@ def crear_ingreso_stock(conn, data: dict):
         data["id_variante"],
     )
 
-    stock_fisico_anterior = float(stock["stock_fisico"])
-    stock_reservado_actual = float(stock["stock_reservado"])
-    stock_pendiente_actual = float(stock["stock_vendido_pendiente_entrega"])
+    stock_fisico_anterior = to_decimal(stock["stock_fisico"])
+    stock_reservado_actual = to_decimal(stock["stock_reservado"])
+    stock_pendiente_actual = to_decimal(stock["stock_vendido_pendiente_entrega"])
 
     nuevo_stock_fisico = stock_fisico_anterior + cantidad_ingresada
 
@@ -839,7 +839,7 @@ def crear_ingreso_stock(conn, data: dict):
     )
 
     # 3. recalcular costo promedio vigente
-    costo_promedio_anterior = float(variante["costo_promedio_vigente"] or 0)
+    costo_promedio_anterior = to_decimal(variante["costo_promedio_vigente"] or 0)
     stock_anterior = stock_fisico_anterior
 
     if stock_anterior <= 0:
@@ -880,13 +880,13 @@ def crear_ingreso_stock(conn, data: dict):
         "ingreso_id": ingreso_id,
         "id_sucursal": data["id_sucursal"],
         "id_variante": data["id_variante"],
-        "cantidad_ingresada": round(cantidad_ingresada, 3),
-        "costo_total_lote": round(costo_total_lote, 2),
-        "costo_unitario_calculado": round(costo_unitario_calculado, 4),
-        "stock_anterior": round(stock_fisico_anterior, 3),
-        "stock_nuevo": round(nuevo_stock_fisico, 3),
-        "costo_promedio_anterior": round(costo_promedio_anterior, 4),
-        "costo_promedio_nuevo": round(nuevo_costo_promedio, 4),
+        "cantidad_ingresada": cantidad_ingresada,
+        "costo_total_lote": costo_total_lote,
+        "costo_unitario_calculado": costo_unitario_calculado,
+        "stock_anterior": stock_fisico_anterior,
+        "stock_nuevo": nuevo_stock_fisico,
+        "costo_promedio_anterior": costo_promedio_anterior,
+        "costo_promedio_nuevo": nuevo_costo_promedio,
     }
 
 def registrar_salida_por_serializacion(
