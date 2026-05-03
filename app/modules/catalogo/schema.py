@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from decimal import Decimal
 
 
 class CategoriaOut(BaseModel):
@@ -31,14 +32,18 @@ class VarianteOut(BaseModel):
     codigo_barras: str | None = None
     proveedor_preferido_id: int | None = None
     proveedor_preferido_nombre: str | None = None
-    alicuota_iva: float
+
+    # 🔴 CAMBIO CLAVE
+    alicuota_iva: Decimal
     gravado: bool
-    precio_minorista: float
-    precio_mayorista: float
+    precio_minorista: Decimal
+    precio_mayorista: Decimal
     permite_precio_libre: bool
-    costo_promedio_vigente: float
+    costo_promedio_vigente: Decimal
+
     activo: bool
     imagen_principal: str | None = None
+
 
 class CatalogoImagenCreate(BaseModel):
     id_producto: int | None = None
@@ -64,6 +69,7 @@ class CatalogoImagenOut(BaseModel):
     orden: int
     activo: bool
 
+
 class CatalogoPOSItemOut(BaseModel):
     id_variante: int
     id_producto: int
@@ -74,16 +80,20 @@ class CatalogoPOSItemOut(BaseModel):
     tipo_item: str
     stockeable: bool
     serializable: bool
-    precio_minorista: float
-    precio_mayorista: float
+    precio_minorista: Decimal
+    precio_mayorista: Decimal
+
     permite_precio_libre: bool
     sku: str | None = None
     codigo_barras: str | None = None
     imagen_principal: str | None = None
     activo: bool
-    stock_fisico: float = 0
-    stock_reservado: float = 0
-    stock_vendido_pendiente_entrega: float = 0
-    stock_disponible: float = 0
+
+    
+    stock_fisico: Decimal = Decimal("0")
+    stock_reservado: Decimal = Decimal("0")
+    stock_vendido_pendiente_entrega: Decimal = Decimal("0")
+    stock_disponible: Decimal = Decimal("0")
+
     disponible_para_venta: bool
     motivo_no_disponible: str | None = None
