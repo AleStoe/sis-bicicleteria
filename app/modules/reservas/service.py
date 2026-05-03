@@ -1,6 +1,6 @@
 from decimal import Decimal
 from fastapi import HTTPException
-
+from app.shared.money import to_decimal
 from app.db.connection import get_connection
 from app.modules.stock import service as stock_service
 from app.modules.reservas import repository as reserva_repo
@@ -121,7 +121,7 @@ def crear_reserva(data):
                     id_variante=item["id_variante"],
                 )
 
-                if Decimal(str(stock["stock_disponible"])) < Decimal(str(item["cantidad"])):
+                if to_decimal(stock["stock_disponible"]) < to_decimal(item["cantidad"]):
                     raise HTTPException(
                         status_code=400,
                         detail=f"Stock insuficiente para variante {item['id_variante']}",
@@ -129,7 +129,7 @@ def crear_reserva(data):
 
                 bicicleta_id = item.get("id_bicicleta_serializada")
                 if bicicleta_id is not None:
-                    if Decimal(str(item["cantidad"])) != Decimal("1"):
+                    if to_decimal(item["cantidad"]) != Decimal("1"):
                         raise HTTPException(
                             status_code=400,
                             detail="Un item con bicicleta serializada debe tener cantidad = 1",
@@ -151,7 +151,7 @@ def crear_reserva(data):
             # 3. ITEMS + SERIALIZADAS + STOCK
             # =====================================================
             for item in data["items"]:
-                subtotal = Decimal(str(item["cantidad"])) * Decimal(str(item["precio_estimado"]))
+                subtotal = to_decimal(item["cantidad"]) * to_decimal(item["precio_estimado"])
                 total_estimado += subtotal
 
                 reserva_repo.insert_reserva_item(
@@ -162,7 +162,7 @@ def crear_reserva(data):
                         "id_bicicleta_serializada": item.get("id_bicicleta_serializada"),
                         "cantidad": item["cantidad"],
                         "precio_estimado": item["precio_estimado"],
-                        "subtotal_estimado": float(subtotal),
+                        "subtotal_estimado": subtotal,
                     },
                 )
 
@@ -190,16 +190,16 @@ def crear_reserva(data):
             pago = data.get("pago_inicial")
 
             if pago and pago.get("registrar"):
-                sena = Decimal(str(pago["monto"]))
+                sena = to_decimal(pago["monto"])
 
             saldo = total_estimado - sena
 
             reserva_repo.actualizar_totales_reserva(
                 conn,
                 reserva_id,
-                float(total_estimado),
-                float(sena),
-                float(saldo),
+                total_estimado,
+                sena,
+                saldo,
             )
 
             # =====================================================
@@ -211,7 +211,7 @@ def crear_reserva(data):
                     {
                         "id_sucursal": data["id_sucursal"],
                         "id_cliente": data["id_cliente"],
-                        "monto": float(pago["monto"]),
+                        "monto": pago["monto"],
                         "medio_pago": pago["medio_pago"],
                         "origen_tipo": "reserva",
                         "origen_id": reserva_id,
@@ -235,9 +235,9 @@ def crear_reserva(data):
             "ok": True,
             "reserva_id": reserva_id,
             "estado": "activa",
-            "total_estimado": float(total_estimado),
-            "sena_total": float(sena),
-            "saldo_estimado": float(saldo),
+            "total_estimado": total_estimado,
+            "sena_total": sena,
+            "saldo_estimado": saldo,
         }
 
     finally:
@@ -473,8 +473,8 @@ def convertir_reserva_en_venta(reserva_id: int, data):
                     detail="La reserva no tiene items",
                 )
 
-            sena = Decimal(str(reserva["sena_total"] or 0))
-            saldo = Decimal(str(reserva["saldo_estimado"] or 0))
+            sena = to_decimal(reserva["sena_total"] or 0)
+            saldo = to_decimal(reserva["saldo_estimado"] or 0)
             total = sena + saldo
 
             # =====================================================
@@ -516,9 +516,9 @@ def convertir_reserva_en_venta(reserva_id: int, data):
             # 5. ITEMS + SERIALIZADAS + STOCK
             # =====================================================
             for item in items:
-                precio_estimado = Decimal(str(item["precio_estimado"]))
-                costo_promedio = Decimal(str(item["costo_promedio_vigente"] or 0))
-                subtotal_estimado = Decimal(str(item["subtotal_estimado"]))
+                precio_estimado = to_decimal(item["precio_estimado"])
+                costo_promedio = to_decimal(item["costo_promedio_vigente"] or 0)
+                subtotal_estimado = to_decimal(item["subtotal_estimado"])
 
                 ventas_repo.insert_venta_item(
                     conn,
@@ -548,7 +548,7 @@ def convertir_reserva_en_venta(reserva_id: int, data):
                     {
                         "id_sucursal": reserva["id_sucursal"],
                         "id_variante": item["id_variante"],
-                        "cantidad": float(item["cantidad"]),
+                        "cantidad": item["cantidad"],
                         "id_usuario": data.id_usuario,
                         "descontar_de_reservado": True,
                         "origen_tipo": "venta",

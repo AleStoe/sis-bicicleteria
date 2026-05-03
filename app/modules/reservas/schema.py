@@ -65,9 +65,9 @@ class ReservaCreateOutput(BaseModel):
     ok: bool
     reserva_id: int
     estado: str
-    total_estimado: float
-    sena_total: float
-    saldo_estimado: float
+    total_estimado: Decimal
+    sena_total: Decimal
+    saldo_estimado: Decimal
 
 
 class ReservaEstadoOutput(BaseModel):

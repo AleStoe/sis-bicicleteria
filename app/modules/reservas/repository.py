@@ -1,5 +1,5 @@
 from psycopg.rows import dict_row
-
+from decimal import Decimal
 
 def get_cliente_by_id(conn, cliente_id: int):
     with conn.cursor(row_factory=dict_row) as cur:
@@ -410,9 +410,9 @@ def list_reservas(
 def actualizar_totales_reserva(
     conn,
     reserva_id: int,
-    total_estimado: float,
-    sena_total: float,
-    saldo_estimado: float,
+    total_estimado: Decimal,
+    sena_total: Decimal,
+    saldo_estimado: Decimal,
 ):
     with conn.cursor() as cur:
         cur.execute(
