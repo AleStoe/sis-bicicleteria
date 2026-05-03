@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Link, useParams,useSearchParams } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import PagoVentaPanel from "../components/pagos/PagoVentaPanel";
 import {
   obtenerVenta,
@@ -7,34 +7,55 @@ import {
   entregarVenta,
   devolverVentaSerializada,
 } from "../services/ventasService";
+import { listarPagosDeVenta } from "../services/pagosService";
+import { CURRENT_USER_ID } from "../config/appConfig";
 import { EstadoVentaBadge, formatDate, formatMoney } from "./VentasListPage";
 
 export default function VentaDetallePage() {
   const { ventaId } = useParams();
   const [searchParams] = useSearchParams();
   const enfocarPagos = searchParams.get("pagar") === "1";
+
   const [data, setData] = useState(null);
+  const [pagos, setPagos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
   const [procesando, setProcesando] = useState(false);
 
   useEffect(() => {
-    cargarVenta();
+    cargarTodo();
   }, [ventaId]);
 
-  async function cargarVenta() {
+  async function cargarTodo() {
     try {
       setLoading(true);
       setError("");
       setMensaje("");
 
-      const res = await obtenerVenta(ventaId);
-      setData(res);
+      const [ventaData, pagosData] = await Promise.all([
+        obtenerVenta(ventaId),
+        listarPagosDeVenta(ventaId),
+      ]);
+
+      setData(ventaData);
+      setPagos(pagosData || []);
     } catch (err) {
       setError(err.message || "No se pudo cargar la venta");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function cargarVenta() {
+    try {
+      setError("");
+      const ventaData = await obtenerVenta(ventaId);
+      const pagosData = await listarPagosDeVenta(ventaId);
+      setData(ventaData);
+      setPagos(pagosData || []);
+    } catch (err) {
+      setError(err.message || "No se pudo refrescar la venta");
     }
   }
 
@@ -48,7 +69,8 @@ export default function VentaDetallePage() {
       setProcesando(true);
       setError("");
       setMensaje("");
-      await entregarVenta(ventaId, { id_usuario: 1 });
+
+      await entregarVenta(ventaId, { id_usuario: CURRENT_USER_ID });
       await cargarVenta();
       setMensaje("Venta entregada correctamente");
     } catch (err) {
@@ -60,19 +82,20 @@ export default function VentaDetallePage() {
 
   async function handleAnularVenta() {
     const motivo = window.prompt("Motivo de anulación de la venta:");
-    if (!motivo || motivo.trim().length < 3) {
-      return;
-    }
+    if (!motivo || motivo.trim().length < 3) return;
 
     try {
       setProcesando(true);
       setError("");
       setMensaje("");
+
       const result = await anularVenta(ventaId, {
         motivo: motivo.trim(),
-        id_usuario: 1,
+        id_usuario: CURRENT_USER_ID,
       });
+
       await cargarVenta();
+
       setMensaje(
         result.credito_generado
           ? `Venta anulada. Crédito generado: ${formatMoney(result.monto_credito)}`
@@ -89,19 +112,19 @@ export default function VentaDetallePage() {
     if (!item.id_bicicleta_serializada) return;
 
     const motivo = window.prompt("Motivo de devolución de bicicleta serializada:");
-    if (!motivo || motivo.trim().length < 3) {
-      return;
-    }
+    if (!motivo || motivo.trim().length < 3) return;
 
     try {
       setProcesando(true);
       setError("");
       setMensaje("");
+
       const result = await devolverVentaSerializada(ventaId, {
         id_bicicleta_serializada: Number(item.id_bicicleta_serializada),
         motivo: motivo.trim(),
-        id_usuario: 1,
+        id_usuario: CURRENT_USER_ID,
       });
+
       await cargarVenta();
       setMensaje(`Devolución registrada. ID devolución: ${result.devolucion_id}`);
     } catch (err) {
@@ -111,10 +134,21 @@ export default function VentaDetallePage() {
     }
   }
 
+  const totalPagadoReal = useMemo(() => {
+    return pagos
+      .filter((pago) => pago.estado === "confirmado")
+      .reduce((acc, pago) => acc + Number(pago.monto_total_cobrado || 0), 0);
+  }, [pagos]);
+
   if (loading) return <p style={{ padding: "24px" }}>Cargando detalle de venta...</p>;
   if (!data) return <p style={{ padding: "24px" }}>No se encontró la venta.</p>;
 
   const { venta, items = [], situacion_financiera } = data;
+
+  const totalFinal = Number(venta.total_final || 0);
+  const saldoPendiente = Number(venta.saldo_pendiente || 0);
+  const cubiertoNoPago = Math.max(totalFinal - totalPagadoReal - saldoPendiente, 0);
+
   const puedeAnular = ["creada", "pagada_parcial", "pagada_total"].includes(venta.estado);
   const puedeEntregar = !["entregada", "anulada"].includes(venta.estado);
   const tieneDeuda = situacion_financiera?.tiene_deuda;
@@ -122,85 +156,95 @@ export default function VentaDetallePage() {
 
   return (
     <div style={pageStyle}>
-      <div style={headerStyle}>
+      <header style={headerStyle}>
         <div>
           <h1 style={{ margin: 0 }}>Venta #{venta.id}</h1>
-          <p style={mutedStyle}>Fecha: {formatDate(venta.fecha)}</p>
+          <p style={mutedStyle}>
+            {formatDate(venta.fecha)} · {venta.cliente_nombre} · {venta.sucursal_nombre}
+          </p>
         </div>
 
         <div style={actionsStyle}>
-          <button onClick={cargarVenta}>Refrescar</button>
+          <button onClick={cargarVenta} disabled={procesando}>Refrescar</button>
           <Link to="/ventas" style={linkBtnStyle}>Volver</Link>
         </div>
-      </div>
+      </header>
 
       {mensaje && <div style={successStyle}>{mensaje}</div>}
       {error && <div style={alertStyle}>Error: {error}</div>}
 
-      <div style={gridStyle}>
-        <section style={cardStyle}>
-          <h2 style={cardTitleStyle}>Resumen</h2>
-          <div style={infoGridStyle}>
-            <Info label="Estado" value={<EstadoVentaBadge estado={venta.estado} />} />
-            <Info label="Cliente" value={`${venta.cliente_nombre} (#${venta.id_cliente})`} />
-            <Info label="Sucursal" value={`${venta.sucursal_nombre} (#${venta.id_sucursal})`} />
-            <Info label="Subtotal" value={formatMoney(venta.subtotal_base)} />
-            <Info label="Descuento" value={formatMoney(venta.descuento_total)} />
-            <Info label="Recargo" value={formatMoney(venta.recargo_total)} />
-            <Info label="Total final" value={formatMoney(venta.total_final)} />
-            <Info label="Saldo pendiente" value={formatMoney(venta.saldo_pendiente)} />
-          </div>
-        </section>
+      <section style={heroStyle}>
+        <HeroMetric label="Total venta" value={formatMoney(totalFinal)} />
+        <HeroMetric label="Pagado real" value={formatMoney(totalPagadoReal)} tone="ok" />
+        <HeroMetric label="Crédito / ajuste" value={formatMoney(cubiertoNoPago)} tone={cubiertoNoPago > 0 ? "warn" : ""} />
+        <HeroMetric label="Saldo pendiente" value={formatMoney(saldoPendiente)} tone={saldoPendiente > 0 ? "danger" : "ok"} />
+        <div style={estadoHeroStyle}>
+          <span>Estado</span>
+          <EstadoVentaBadge estado={venta.estado} />
+        </div>
+      </section>
 
-        <aside style={cardStyle}>
-          <h2 style={cardTitleStyle}>Acciones</h2>
-          <div style={{ display: "grid", gap: "10px" }}>
-            {puedeEntregar && (
-              <button onClick={handleEntregarVenta} disabled={procesando}>
-                Entregar venta
-              </button>
-            )}
+      {cubiertoNoPago > 0 && (
+        <div style={noteStyle}>
+          Esta venta tiene monto cubierto sin pago real registrado. Probablemente corresponde a crédito aplicado u otro ajuste financiero.
+        </div>
+      )}
 
-            {puedeAnular && (
-              <button onClick={handleAnularVenta} disabled={procesando}>
-                Anular venta
-              </button>
-            )}
+      <PagoVentaPanel
+        ventaId={venta.id}
+        saldoPendiente={venta.saldo_pendiente}
+        estadoVenta={venta.estado}
+        autoFocusPago={enfocarPagos}
+        onPagoCambiado={cargarVenta}
+      />
 
-            {!puedeEntregar && !puedeAnular && (
-              <span style={mutedStyle}>Sin acciones principales disponibles.</span>
-            )}
-          </div>
+      <section style={cardStyle}>
+        <h2 style={cardTitleStyle}>Acciones operativas</h2>
 
-          <div style={noteStyle}>
-            La entrega con saldo pendiente no se fuerza desde UI. El backend decide según permisos y genera deuda si corresponde.
-          </div>
-        </aside>
-      </div>
+        <div style={actionGridStyle}>
+          <button
+            onClick={handleEntregarVenta}
+            disabled={!puedeEntregar || procesando}
+            style={puedeEntregar ? primaryActionStyle : disabledActionStyle}
+          >
+            Entregar venta
+          </button>
+
+          <button
+            onClick={handleAnularVenta}
+            disabled={!puedeAnular || procesando}
+            style={puedeAnular ? dangerActionStyle : disabledActionStyle}
+          >
+            Anular venta
+          </button>
+        </div>
+
+        <div style={smallNoteStyle}>
+          La entrega con saldo pendiente queda bajo control del backend y permisos.
+        </div>
+      </section>
 
       <section style={cardStyle}>
         <h2 style={cardTitleStyle}>Situación financiera</h2>
+
         {tieneDeuda ? (
           <div style={warningStyle}>
             <strong>Venta con deuda abierta.</strong>
             <div>ID deuda: #{deuda.id}</div>
             <div>Saldo actual: {formatMoney(deuda.saldo_actual)}</div>
             <div>Estado: {deuda.estado}</div>
-            <Link to={`/deudas/${deuda.id}`} style={{ fontWeight: "bold" }}>Ver deuda</Link>
+            <Link to={`/deudas/${deuda.id}`} style={{ fontWeight: "bold" }}>
+              Ver deuda
+            </Link>
           </div>
         ) : (
           <div style={successSoftStyle}>No hay deuda abierta asociada a esta venta.</div>
         )}
       </section>
-      <PagoVentaPanel
-        ventaId={venta.id}
-        saldoPendiente={venta.saldo_pendiente}
-        estadoVenta={venta.estado}
-        autoFocusPago={enfocarPagos}
-      />
+
       <section style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
         <div style={{ padding: "16px 18px", borderBottom: "1px solid #eee" }}>
-          <h2 style={{ margin: 0, fontSize: "20px" }}>Items</h2>
+          <h2 style={{ margin: 0, fontSize: "20px" }}>Items vendidos</h2>
         </div>
 
         {items.length === 0 ? (
@@ -228,7 +272,9 @@ export default function VentaDetallePage() {
                   <tr key={item.id} style={{ borderTop: "1px solid #eee" }}>
                     <td style={tdStyle}>#{item.id}</td>
                     <td style={tdStyle}>#{item.id_variante}</td>
-                    <td style={tdStyle}>{item.id_bicicleta_serializada ? `#${item.id_bicicleta_serializada}` : "-"}</td>
+                    <td style={tdStyle}>
+                      {item.id_bicicleta_serializada ? `#${item.id_bicicleta_serializada}` : "-"}
+                    </td>
                     <td style={tdStyle}>{item.descripcion_snapshot}</td>
                     <td style={tdStyle}>{Number(item.cantidad).toLocaleString("es-AR")}</td>
                     <td style={tdStyle}>{formatMoney(item.precio_lista)}</td>
@@ -241,7 +287,7 @@ export default function VentaDetallePage() {
                           Devolver serializada
                         </button>
                       ) : (
-                        <span style={mutedStyle}>-</span>
+                        <span style={mutedInlineStyle}>-</span>
                       )}
                     </td>
                   </tr>
@@ -255,29 +301,223 @@ export default function VentaDetallePage() {
   );
 }
 
-function Info({ label, value }) {
+function HeroMetric({ label, value, tone }) {
+  const style =
+    tone === "ok"
+      ? heroMetricOkStyle
+      : tone === "danger"
+        ? heroMetricDangerStyle
+        : tone === "warn"
+          ? heroMetricWarnStyle
+          : heroMetricStyle;
+
   return (
-    <div style={{ background: "#f9fafb", border: "1px solid #eaecf0", borderRadius: "12px", padding: "12px" }}>
-      <div style={{ fontSize: "13px", color: "#667085", marginBottom: "6px" }}>{label}</div>
-      <div style={{ fontWeight: 600 }}>{value}</div>
+    <div style={style}>
+      <span>{label}</span>
+      <strong>{value}</strong>
     </div>
   );
 }
 
-const pageStyle = { padding: "24px", background: "#f6f7fb", minHeight: "100vh" };
-const headerStyle = { display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "center", marginBottom: "16px", flexWrap: "wrap" };
-const actionsStyle = { display: "flex", gap: "10px", flexWrap: "wrap" };
-const mutedStyle = { margin: "6px 0 0", color: "#667085" };
-const gridStyle = { display: "grid", gridTemplateColumns: "minmax(360px, 1.4fr) minmax(280px, 0.8fr)", gap: "16px", alignItems: "start" };
-const cardStyle = { background: "white", borderRadius: "14px", boxShadow: "0 2px 10px rgba(0,0,0,0.08)", padding: "16px", marginBottom: "16px" };
-const cardTitleStyle = { marginTop: 0, marginBottom: "14px", fontSize: "20px" };
-const infoGridStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "12px" };
-const linkBtnStyle = { textDecoration: "none", padding: "8px 12px", borderRadius: "10px", border: "1px solid #d0d5dd", color: "#111827", background: "white" };
-const alertStyle = { background: "#fff1f0", color: "#b42318", padding: "12px", borderRadius: "10px", border: "1px solid #f4c7c3", marginBottom: "16px" };
-const successStyle = { background: "#e8fff0", color: "#146c2e", padding: "12px", borderRadius: "10px", border: "1px solid #b7ebc6", marginBottom: "16px" };
-const successSoftStyle = { background: "#e8fff0", color: "#146c2e", padding: "12px", borderRadius: "10px", border: "1px solid #b7ebc6" };
-const warningStyle = { background: "#fff8e1", color: "#8a6d00", padding: "12px", borderRadius: "10px", border: "1px solid #f3dc97", display: "grid", gap: "6px" };
-const noteStyle = { background: "#f9fafb", borderLeft: "4px solid #111827", padding: "12px", borderRadius: "8px", color: "#344054", marginTop: "12px" };
-const tableStyle = { width: "100%", borderCollapse: "collapse", minWidth: "1180px" };
-const thStyle = { textAlign: "left", padding: "12px 10px", borderBottom: "1px solid #e5e7eb" };
-const tdStyle = { padding: "10px", verticalAlign: "top" };
+const pageStyle = {
+  padding: "24px",
+  background: "#f6f7fb",
+  minHeight: "100vh",
+};
+
+const headerStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "12px",
+  alignItems: "center",
+  marginBottom: "16px",
+  flexWrap: "wrap",
+};
+
+const actionsStyle = {
+  display: "flex",
+  gap: "10px",
+  flexWrap: "wrap",
+};
+
+const heroStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+  gap: "12px",
+  marginBottom: "16px",
+};
+
+const heroMetricStyle = {
+  background: "white",
+  border: "1px solid #eaecf0",
+  borderRadius: "14px",
+  padding: "16px",
+  boxShadow: "0 2px 10px rgba(0,0,0,0.06)",
+  display: "grid",
+  gap: "8px",
+  color: "#344054",
+};
+
+const heroMetricOkStyle = {
+  ...heroMetricStyle,
+  background: "#ecfdf3",
+  borderColor: "#abefc6",
+  color: "#067647",
+};
+
+const heroMetricDangerStyle = {
+  ...heroMetricStyle,
+  background: "#fff1f0",
+  borderColor: "#fecdca",
+  color: "#b42318",
+};
+
+const heroMetricWarnStyle = {
+  ...heroMetricStyle,
+  background: "#fff8e1",
+  borderColor: "#f3dc97",
+  color: "#8a6d00",
+};
+
+const estadoHeroStyle = {
+  ...heroMetricStyle,
+};
+
+const cardStyle = {
+  background: "white",
+  borderRadius: "14px",
+  boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
+  padding: "16px",
+  marginBottom: "16px",
+};
+
+const cardTitleStyle = {
+  marginTop: 0,
+  marginBottom: "14px",
+  fontSize: "20px",
+};
+
+const actionGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: "10px",
+};
+
+const primaryActionStyle = {
+  border: "none",
+  background: "#12a15f",
+  color: "white",
+  borderRadius: "10px",
+  padding: "12px",
+  fontWeight: 800,
+  cursor: "pointer",
+};
+
+const dangerActionStyle = {
+  border: "1px solid #fecdca",
+  background: "#fff1f0",
+  color: "#b42318",
+  borderRadius: "10px",
+  padding: "12px",
+  fontWeight: 800,
+  cursor: "pointer",
+};
+
+const disabledActionStyle = {
+  border: "1px solid #d0d5dd",
+  background: "#f2f4f7",
+  color: "#98a2b3",
+  borderRadius: "10px",
+  padding: "12px",
+  fontWeight: 800,
+  cursor: "not-allowed",
+};
+
+const mutedStyle = {
+  margin: "6px 0 0",
+  color: "#667085",
+};
+
+const mutedInlineStyle = {
+  color: "#667085",
+};
+
+const linkBtnStyle = {
+  textDecoration: "none",
+  padding: "8px 12px",
+  borderRadius: "10px",
+  border: "1px solid #d0d5dd",
+  color: "#111827",
+  background: "white",
+};
+
+const alertStyle = {
+  background: "#fff1f0",
+  color: "#b42318",
+  padding: "12px",
+  borderRadius: "10px",
+  border: "1px solid #f4c7c3",
+  marginBottom: "16px",
+};
+
+const successStyle = {
+  background: "#e8fff0",
+  color: "#146c2e",
+  padding: "12px",
+  borderRadius: "10px",
+  border: "1px solid #b7ebc6",
+  marginBottom: "16px",
+};
+
+const successSoftStyle = {
+  background: "#e8fff0",
+  color: "#146c2e",
+  padding: "12px",
+  borderRadius: "10px",
+  border: "1px solid #b7ebc6",
+};
+
+const warningStyle = {
+  background: "#fff8e1",
+  color: "#8a6d00",
+  padding: "12px",
+  borderRadius: "10px",
+  border: "1px solid #f3dc97",
+  display: "grid",
+  gap: "6px",
+};
+
+const noteStyle = {
+  background: "#fff8e1",
+  color: "#8a6d00",
+  padding: "12px",
+  borderRadius: "10px",
+  border: "1px solid #f3dc97",
+  marginBottom: "16px",
+};
+
+const smallNoteStyle = {
+  marginTop: "12px",
+  background: "#f9fafb",
+  borderLeft: "4px solid #111827",
+  padding: "12px",
+  borderRadius: "8px",
+  color: "#344054",
+};
+
+const tableStyle = {
+  width: "100%",
+  borderCollapse: "collapse",
+  minWidth: "1180px",
+};
+
+const thStyle = {
+  textAlign: "left",
+  padding: "12px 10px",
+  borderBottom: "1px solid #e5e7eb",
+};
+
+const tdStyle = {
+  padding: "10px",
+  verticalAlign: "top",
+};

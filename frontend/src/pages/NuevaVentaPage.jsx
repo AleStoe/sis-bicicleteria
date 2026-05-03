@@ -10,13 +10,6 @@ const ID_USUARIO = CURRENT_USER_ID;
 const ID_SUCURSAL = CURRENT_SUCURSAL_ID;
 const DEFAULT_LIMIT = 80;
 
-const MEDIOS_SIMULADOS = [
-  { value: "efectivo", label: "Efectivo" },
-  { value: "transferencia", label: "Transferencia" },
-  { value: "mercadopago", label: "MercadoPago" },
-  { value: "tarjeta", label: "Tarjeta" },
-];
-
 export default function NuevaVentaPage() {
   const navigate = useNavigate();
   const searchRef = useRef(null);
@@ -30,8 +23,6 @@ export default function NuevaVentaPage() {
   const [clienteId, setClienteId] = useState("1");
 
   const [items, setItems] = useState([]);
-  const [pagosSimulados, setPagosSimulados] = useState([]);
-  const [pagoForm, setPagoForm] = useState({ medio_pago: "efectivo", monto: "" });
 
   const [observaciones, setObservaciones] = useState("");
   const [usarCredito, setUsarCredito] = useState(true);
@@ -122,12 +113,6 @@ export default function NuevaVentaPage() {
       0
     );
   }, [items]);
-
-  const totalPagadoSimulado = useMemo(() => {
-    return pagosSimulados.reduce((acc, pago) => acc + Number(pago.monto || 0), 0);
-  }, [pagosSimulados]);
-
-  const saldoSimulado = Math.max(total - totalPagadoSimulado, 0);
 
   function getDescripcion(item) {
     return [item.producto_nombre, item.nombre_variante].filter(Boolean).join(" - ");
@@ -237,48 +222,13 @@ export default function NuevaVentaPage() {
 
   function quitarItem(idVariante) {
     setItems((actual) => actual.filter((item) => Number(item.id_variante) !== Number(idVariante)));
-    setPagosSimulados([]);
   }
 
   function vaciarVenta() {
     setItems([]);
-    setPagosSimulados([]);
     setObservaciones("");
-    setPagoForm({ medio_pago: "efectivo", monto: "" });
     setError("");
     setMensaje("");
-  }
-
-  function agregarPagoSimulado(e) {
-    e.preventDefault();
-
-    const monto = Number(pagoForm.monto);
-
-    if (!Number.isFinite(monto) || monto <= 0) {
-      setError("El monto del pago debe ser mayor a 0");
-      return;
-    }
-
-    if (monto > saldoSimulado) {
-      setError("El pago simulado supera el saldo de la venta");
-      return;
-    }
-
-    setPagosSimulados((actual) => [
-      ...actual,
-      {
-        id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
-        medio_pago: pagoForm.medio_pago,
-        monto,
-      },
-    ]);
-
-    setPagoForm((actual) => ({ ...actual, monto: "" }));
-    setError("");
-  }
-
-  function quitarPagoSimulado(id) {
-    setPagosSimulados((actual) => actual.filter((pago) => pago.id !== id));
   }
 
   async function cerrarVenta() {
@@ -301,11 +251,7 @@ export default function NuevaVentaPage() {
         cantidad: String(item.cantidad),
         id_bicicleta_serializada: null,
       })),
-      pagos: pagosSimulados.map((pago) => ({
-        medio_pago: pago.medio_pago,
-        monto: String(pago.monto),
-        nota: null,
-      })),
+      pagos: [],
       observaciones: observaciones.trim() || null,
       usar_credito: usarCredito,
       monto_credito_a_aplicar: null,
@@ -337,7 +283,7 @@ export default function NuevaVentaPage() {
           <span style={bikeStyle}>🚲</span>
           <div>
             <strong>Sistema de Ventas - Bicicletería</strong>
-            <div style={topSubtleStyle}>POS compatible con ventas + pagos + caja</div>
+            <div style={topSubtleStyle}>POS real: crear venta y cobrar desde detalle</div>
           </div>
         </div>
 
@@ -518,61 +464,26 @@ export default function NuevaVentaPage() {
 
           <section style={paymentsStyle}>
             <div style={paymentsHeaderStyle}>
-              <h3 style={{ margin: 0 }}>Pagos simulados</h3>
-              <span style={mutedStyle}>Se registran realmente después de cerrar venta</span>
+              <h3 style={{ margin: 0 }}>Cobro real</h3>
+              <span style={mutedStyle}>Se registra después de crear la venta</span>
             </div>
-
-            <form onSubmit={agregarPagoSimulado} style={paymentFormStyle}>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={pagoForm.monto}
-                onChange={(e) => setPagoForm((p) => ({ ...p, monto: e.target.value }))}
-                placeholder="Monto"
-                style={paymentInputStyle}
-              />
-
-              <select
-                value={pagoForm.medio_pago}
-                onChange={(e) => setPagoForm((p) => ({ ...p, medio_pago: e.target.value }))}
-                style={paymentSelectStyle}
-              >
-                {MEDIOS_SIMULADOS.map((medio) => (
-                  <option key={medio.value} value={medio.value}>
-                    {medio.label}
-                  </option>
-                ))}
-              </select>
-
-              <button type="submit" style={smallPrimaryBtnStyle} disabled={total <= 0 || saldoSimulado <= 0}>
-                Agregar
-              </button>
-            </form>
 
             <div style={paymentStatusGridStyle}>
               <div style={paidBoxStyle}>
-                <span>Pagado visual</span>
-                <strong>{formatMoney(totalPagadoSimulado)}</strong>
+                <span>Pago en esta pantalla</span>
+                <strong>{formatMoney(0)}</strong>
               </div>
 
               <div style={dueBoxStyle}>
-                <span>Pendiente</span>
-                <strong>{formatMoney(saldoSimulado)}</strong>
+                <span>Saldo inicial</span>
+                <strong>{formatMoney(total)}</strong>
               </div>
             </div>
 
-            {pagosSimulados.length > 0 && (
-              <div style={paymentListStyle}>
-                {pagosSimulados.map((pago) => (
-                  <div key={pago.id} style={paymentListItemStyle}>
-                    <span>{labelMedioPago(pago.medio_pago)}</span>
-                    <strong>{formatMoney(pago.monto)}</strong>
-                    <button onClick={() => quitarPagoSimulado(pago.id)} style={removeBtnStyle}>🗑</button>
-                  </div>
-                ))}
-              </div>
-            )}
+            <div style={noteStyle}>
+              Esta pantalla solo crea la venta y reserva el stock pendiente de entrega.
+              El cobro se hace en el detalle de venta usando el módulo real de pagos y caja.
+            </div>
           </section>
 
           <label style={fieldStyle}>
@@ -605,17 +516,13 @@ export default function NuevaVentaPage() {
               disabled={guardando || items.length === 0}
               style={primaryBtnStyle}
             >
-              {guardando ? "Cerrando..." : "Cerrar venta"}
+              {guardando ? "Creando..." : "Crear venta y cobrar"}
             </button>
           </div>
         </aside>
       </main>
     </div>
   );
-}
-
-function labelMedioPago(value) {
-  return MEDIOS_SIMULADOS.find((m) => m.value === value)?.label || value;
 }
 
 function formatMoney(value) {
@@ -927,33 +834,6 @@ const paymentsHeaderStyle = {
   marginBottom: "10px",
 };
 
-const paymentFormStyle = {
-  display: "grid",
-  gridTemplateColumns: "1fr 150px 90px",
-  gap: "8px",
-  marginBottom: "10px",
-};
-
-const paymentInputStyle = {
-  border: "1px solid #d0d5dd",
-  borderRadius: "10px",
-  padding: "10px",
-};
-
-const paymentSelectStyle = {
-  border: "1px solid #d0d5dd",
-  borderRadius: "10px",
-  padding: "10px",
-};
-
-const smallPrimaryBtnStyle = {
-  border: "none",
-  borderRadius: "10px",
-  background: "#0b5bd3",
-  color: "white",
-  fontWeight: 800,
-};
-
 const paymentStatusGridStyle = {
   display: "grid",
   gridTemplateColumns: "1fr 1fr",
@@ -981,17 +861,14 @@ const dueBoxStyle = {
   gap: "4px",
 };
 
-const paymentListStyle = {
-  borderTop: "1px solid #eaecf0",
-  paddingTop: "8px",
-  display: "grid",
-  gap: "6px",
-};
-
-const paymentListItemStyle = {
-  display: "grid",
-  gridTemplateColumns: "1fr 100px 32px",
-  alignItems: "center",
+const noteStyle = {
+  background: "#f9fafb",
+  border: "1px solid #eaecf0",
+  color: "#475467",
+  borderRadius: "10px",
+  padding: "10px",
+  fontSize: "13px",
+  lineHeight: 1.4,
 };
 
 const fieldStyle = { display: "grid", gap: "6px", marginBottom: "10px", fontWeight: 700 };

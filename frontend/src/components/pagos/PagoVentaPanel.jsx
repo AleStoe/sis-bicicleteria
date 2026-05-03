@@ -1,22 +1,34 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { crearPago, listarPagosDeVenta, revertirPago } from "../../services/pagosService";
+import { CURRENT_USER_ID } from "../../config/appConfig";
 
 const MEDIOS_PAGO = [
-  "efectivo",
-  "transferencia",
-  "mercadopago",
-  "tarjeta",
+  { value: "efectivo", label: "Efectivo" },
+  { value: "transferencia", label: "Transferencia" },
+  { value: "mercadopago", label: "MercadoPago" },
+  { value: "tarjeta", label: "Tarjeta" },
 ];
 
-const ID_USUARIO = 1;
+export default function PagoVentaPanel({
+  ventaId,
+  saldoPendiente = 0,
+  estadoVenta = "",
+  autoFocusPago = false,
+  onPagoCambiado,
+}) {
+  const panelRef = useRef(null);
+  const montoRef = useRef(null);
 
-export default function PagoVentaPanel({ ventaId, saldoPendiente = 0, estadoVenta = "" }) {
   const [pagos, setPagos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
-  const [form, setForm] = useState({ medio_pago: "efectivo", monto: "", nota: "" });
+  const [form, setForm] = useState({
+    medio_pago: "efectivo",
+    monto: "",
+    nota: "",
+  });
 
   const saldo = Number(saldoPendiente || 0);
   const ventaCerradaParaPago = ["entregada", "anulada"].includes(estadoVenta);
@@ -26,11 +38,25 @@ export default function PagoVentaPanel({ ventaId, saldoPendiente = 0, estadoVent
     if (ventaId) cargarPagos();
   }, [ventaId]);
 
-  const totalConfirmado = useMemo(() => {
-    return pagos
-      .filter((p) => p.estado === "confirmado")
-      .reduce((acc, p) => acc + Number(p.monto_total_cobrado || 0), 0);
+  useEffect(() => {
+    if (!autoFocusPago) return;
+
+    setTimeout(() => {
+      panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      montoRef.current?.focus();
+    }, 150);
+  }, [autoFocusPago]);
+
+  const pagosConfirmados = useMemo(() => {
+    return pagos.filter((pago) => pago.estado === "confirmado");
   }, [pagos]);
+
+  const totalConfirmado = useMemo(() => {
+    return pagosConfirmados.reduce(
+      (acc, pago) => acc + Number(pago.monto_total_cobrado || 0),
+      0
+    );
+  }, [pagosConfirmados]);
 
   async function cargarPagos() {
     try {
@@ -45,6 +71,13 @@ export default function PagoVentaPanel({ ventaId, saldoPendiente = 0, estadoVent
     }
   }
 
+  async function refrescarTodo() {
+    await cargarPagos();
+    if (onPagoCambiado) {
+      await onPagoCambiado();
+    }
+  }
+
   async function registrarPago(e) {
     e.preventDefault();
 
@@ -55,7 +88,7 @@ export default function PagoVentaPanel({ ventaId, saldoPendiente = 0, estadoVent
       return;
     }
 
-    if (!monto || monto <= 0) {
+    if (!Number.isFinite(monto) || monto <= 0) {
       setError("El monto del pago debe ser mayor a cero");
       return;
     }
@@ -70,18 +103,23 @@ export default function PagoVentaPanel({ ventaId, saldoPendiente = 0, estadoVent
       setError("");
       setMensaje("");
 
-      await crearPago({
+      const resultado = await crearPago({
         origen_tipo: "venta",
         origen_id: Number(ventaId),
         medio_pago: form.medio_pago,
-        monto,
-        id_usuario: ID_USUARIO,
+        monto: String(monto),
+        id_usuario: CURRENT_USER_ID,
         nota: form.nota?.trim() || null,
       });
 
       setForm({ medio_pago: "efectivo", monto: "", nota: "" });
-      await cargarPagos();
-      setMensaje("Pago registrado correctamente. Refrescá la venta para ver el saldo actualizado.");
+      await refrescarTodo();
+
+      setMensaje(
+        resultado?.saldo_restante === 0
+          ? "Pago registrado correctamente. La venta quedó pagada."
+          : `Pago registrado correctamente. Saldo restante: ${formatMoney(resultado?.saldo_restante ?? 0)}`
+      );
     } catch (err) {
       setError(err.message || "No se pudo registrar el pago. Verificá que la caja esté abierta.");
     } finally {
@@ -91,20 +129,23 @@ export default function PagoVentaPanel({ ventaId, saldoPendiente = 0, estadoVent
 
   async function handleRevertirPago(pago) {
     const motivo = window.prompt("Motivo de reversión del pago:");
-    if (!motivo || !motivo.trim()) return;
+    if (!motivo || motivo.trim().length < 3) return;
 
     try {
       setGuardando(true);
       setError("");
       setMensaje("");
 
-      await revertirPago(pago.id, {
+      const resultado = await revertirPago(pago.id, {
         motivo: motivo.trim(),
-        id_usuario: ID_USUARIO,
+        id_usuario: CURRENT_USER_ID,
       });
 
-      await cargarPagos();
-      setMensaje("Pago revertido correctamente. Refrescá la venta para ver el saldo actualizado.");
+      await refrescarTodo();
+
+      setMensaje(
+        `Pago revertido correctamente. Saldo actual: ${formatMoney(resultado?.saldo_restante ?? 0)}`
+      );
     } catch (err) {
       setError(err.message || "No se pudo revertir el pago");
     } finally {
@@ -112,14 +153,31 @@ export default function PagoVentaPanel({ ventaId, saldoPendiente = 0, estadoVent
     }
   }
 
+  function completarSaldo() {
+    if (!puedePagar) return;
+    setForm((actual) => ({ ...actual, monto: String(saldo) }));
+    montoRef.current?.focus();
+  }
+
   return (
-    <section style={cardStyle}>
+    <section ref={panelRef} style={cardStyle}>
       <div style={headerStyle}>
         <div>
-          <h2 style={titleStyle}>Pagos de la venta</h2>
-          <p style={mutedStyle}>Total confirmado: {formatMoney(totalConfirmado)} · Saldo actual: {formatMoney(saldo)}</p>
+          <h2 style={titleStyle}>Cobro de la venta</h2>
+          <p style={mutedStyle}>
+            Pagos reales registrados contra caja. Permite pago mixto cargando varios pagos.
+          </p>
         </div>
-        <button onClick={cargarPagos} disabled={loading || guardando}>Refrescar pagos</button>
+
+        <button onClick={cargarPagos} disabled={loading || guardando} style={secondaryBtnStyle}>
+          {loading ? "Cargando..." : "Refrescar"}
+        </button>
+      </div>
+
+      <div style={metricsGridStyle}>
+        <Metric label="Pagado real" value={formatMoney(totalConfirmado)} tone="ok" />
+        <Metric label="Saldo a cobrar" value={formatMoney(saldo)} tone={saldo > 0 ? "danger" : "ok"} />
+        <Metric label="Estado venta" value={estadoVenta || "-"} />
       </div>
 
       {mensaje && <div style={successStyle}>{mensaje}</div>}
@@ -128,14 +186,16 @@ export default function PagoVentaPanel({ ventaId, saldoPendiente = 0, estadoVent
       {!puedePagar && (
         <div style={noteStyle}>
           {ventaCerradaParaPago
-            ? "Esta venta no puede recibir pagos directos. Si fue entregada con deuda, el pago debe registrarse en el módulo Deudas."
-            : "Esta venta no tiene saldo pendiente para cobrar."}
+            ? "Esta venta no puede recibir pagos directos. Si fue entregada con deuda, el pago corresponde al módulo Deudas."
+            : pagosConfirmados.length === 0
+              ? "No hay saldo pendiente para cobrar. Si la venta figura pagada sin pagos reales, probablemente se cubrió con crédito."
+              : "Esta venta no tiene saldo pendiente para cobrar."}
         </div>
       )}
 
       <form onSubmit={registrarPago} style={formGridStyle}>
         <label style={fieldStyle}>
-          <span style={labelStyle}>Medio de pago</span>
+          <span style={labelStyle}>Medio</span>
           <select
             value={form.medio_pago}
             onChange={(e) => setForm((p) => ({ ...p, medio_pago: e.target.value }))}
@@ -143,7 +203,9 @@ export default function PagoVentaPanel({ ventaId, saldoPendiente = 0, estadoVent
             disabled={!puedePagar || guardando}
           >
             {MEDIOS_PAGO.map((medio) => (
-              <option key={medio} value={medio}>{medio}</option>
+              <option key={medio.value} value={medio.value}>
+                {medio.label}
+              </option>
             ))}
           </select>
         </label>
@@ -151,6 +213,7 @@ export default function PagoVentaPanel({ ventaId, saldoPendiente = 0, estadoVent
         <label style={fieldStyle}>
           <span style={labelStyle}>Monto</span>
           <input
+            ref={montoRef}
             type="number"
             min="0.01"
             step="0.01"
@@ -159,6 +222,7 @@ export default function PagoVentaPanel({ ventaId, saldoPendiente = 0, estadoVent
             onChange={(e) => setForm((p) => ({ ...p, monto: e.target.value }))}
             style={inputStyle}
             disabled={!puedePagar || guardando}
+            placeholder={puedePagar ? formatMoney(saldo) : ""}
           />
         </label>
 
@@ -173,10 +237,29 @@ export default function PagoVentaPanel({ ventaId, saldoPendiente = 0, estadoVent
           />
         </label>
 
-        <button type="submit" disabled={!puedePagar || guardando} style={{ alignSelf: "end" }}>
-          Registrar pago
-        </button>
+        <div style={buttonGroupStyle}>
+          <button
+            type="button"
+            disabled={!puedePagar || guardando}
+            onClick={completarSaldo}
+            style={secondaryBtnStyle}
+          >
+            Cobrar saldo
+          </button>
+
+          <button
+            type="submit"
+            disabled={!puedePagar || guardando}
+            style={primaryBtnStyle}
+          >
+            {guardando ? "Registrando..." : "Registrar pago"}
+          </button>
+        </div>
       </form>
+
+      <div style={hintStyle}>
+        Ejemplo pago mixto: cargá efectivo por una parte, luego tarjeta por el saldo restante.
+      </div>
 
       <div style={{ marginTop: "16px", overflowX: "auto" }}>
         <table style={tableStyle}>
@@ -191,25 +274,36 @@ export default function PagoVentaPanel({ ventaId, saldoPendiente = 0, estadoVent
               <th style={thStyle}>Acciones</th>
             </tr>
           </thead>
+
           <tbody>
             {pagos.length === 0 ? (
-              <tr><td colSpan="7" style={tdStyle}>No hay pagos registrados para esta venta.</td></tr>
+              <tr>
+                <td colSpan="7" style={tdStyle}>
+                  No hay pagos reales registrados para esta venta.
+                </td>
+              </tr>
             ) : (
               pagos.map((pago) => (
                 <tr key={pago.id}>
                   <td style={tdStyle}>#{pago.id}</td>
                   <td style={tdStyle}>{formatDate(pago.fecha)}</td>
-                  <td style={tdStyle}>{pago.medio_pago}</td>
+                  <td style={tdStyle}>{renderMedio(pago.medio_pago)}</td>
                   <td style={tdStyle}>{formatMoney(pago.monto_total_cobrado)}</td>
-                  <td style={tdStyle}>{pago.estado}</td>
+                  <td style={tdStyle}>
+                    <EstadoPago estado={pago.estado} />
+                  </td>
                   <td style={tdStyle}>{pago.nota || "-"}</td>
                   <td style={tdStyle}>
                     {pago.estado === "confirmado" ? (
-                      <button disabled={guardando} onClick={() => handleRevertirPago(pago)}>
+                      <button
+                        disabled={guardando}
+                        onClick={() => handleRevertirPago(pago)}
+                        style={dangerBtnStyle}
+                      >
                         Revertir
                       </button>
                     ) : (
-                      <span style={mutedStyle}>Sin acciones</span>
+                      <span style={mutedInlineStyle}>Sin acciones</span>
                     )}
                   </td>
                 </tr>
@@ -222,9 +316,49 @@ export default function PagoVentaPanel({ ventaId, saldoPendiente = 0, estadoVent
   );
 }
 
+function Metric({ label, value, tone }) {
+  const style =
+    tone === "ok"
+      ? metricOkStyle
+      : tone === "danger"
+        ? metricDangerStyle
+        : metricStyle;
+
+  return (
+    <div style={style}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function EstadoPago({ estado }) {
+  const esConfirmado = estado === "confirmado";
+  return (
+    <span style={esConfirmado ? estadoOkStyle : estadoMutedStyle}>
+      {estado}
+    </span>
+  );
+}
+
+function renderMedio(medio) {
+  const map = {
+    efectivo: "Efectivo",
+    transferencia: "Transferencia",
+    mercadopago: "MercadoPago",
+    tarjeta: "Tarjeta",
+  };
+
+  return map[medio] || medio;
+}
+
 function formatMoney(value) {
-  const n = Number(value || 0);
-  return n.toLocaleString("es-AR", { style: "currency", currency: "ARS" });
+  return Number(value || 0).toLocaleString("es-AR", {
+    style: "currency",
+    currency: "ARS",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
 function formatDate(value) {
@@ -232,17 +366,204 @@ function formatDate(value) {
   return new Date(value).toLocaleString("es-AR");
 }
 
-const cardStyle = { background: "white", borderRadius: "14px", boxShadow: "0 2px 10px rgba(0,0,0,0.08)", padding: "16px", marginBottom: "16px" };
-const headerStyle = { display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "center", flexWrap: "wrap", marginBottom: "12px" };
-const titleStyle = { margin: 0, fontSize: "20px" };
-const mutedStyle = { margin: "6px 0 0", color: "#667085" };
-const formGridStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px", alignItems: "end", marginTop: "12px" };
-const fieldStyle = { display: "flex", flexDirection: "column", gap: "7px" };
-const labelStyle = { fontWeight: "bold", fontSize: "14px" };
-const inputStyle = { width: "100%", padding: "10px 12px", borderRadius: "10px", border: "1px solid #d0d5dd", fontSize: "15px" };
-const alertStyle = { background: "#fff1f0", color: "#b42318", padding: "12px", borderRadius: "10px", border: "1px solid #f4c7c3", marginBottom: "12px" };
-const successStyle = { background: "#e8fff0", color: "#146c2e", padding: "12px", borderRadius: "10px", border: "1px solid #b7ebc6", marginBottom: "12px" };
-const noteStyle = { background: "#fff8e6", border: "1px solid #ffe3a3", padding: "12px", borderRadius: "10px", color: "#7a4b00", marginBottom: "12px" };
-const tableStyle = { width: "100%", borderCollapse: "collapse", minWidth: "850px" };
-const thStyle = { textAlign: "left", padding: "12px 10px", borderBottom: "1px solid #e5e7eb" };
-const tdStyle = { padding: "10px", borderTop: "1px solid #eee", verticalAlign: "top" };
+const cardStyle = {
+  background: "white",
+  borderRadius: "14px",
+  boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
+  padding: "16px",
+  marginBottom: "16px",
+};
+
+const headerStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: "12px",
+  marginBottom: "14px",
+};
+
+const titleStyle = {
+  margin: 0,
+  fontSize: "22px",
+};
+
+const mutedStyle = {
+  margin: "6px 0 0",
+  color: "#667085",
+  fontSize: "14px",
+};
+
+const mutedInlineStyle = {
+  color: "#667085",
+  fontSize: "13px",
+};
+
+const metricsGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+  gap: "10px",
+  marginBottom: "14px",
+};
+
+const metricStyle = {
+  border: "1px solid #eaecf0",
+  borderRadius: "12px",
+  padding: "12px",
+  display: "grid",
+  gap: "5px",
+  background: "#f9fafb",
+  color: "#344054",
+};
+
+const metricOkStyle = {
+  ...metricStyle,
+  background: "#ecfdf3",
+  borderColor: "#abefc6",
+  color: "#067647",
+};
+
+const metricDangerStyle = {
+  ...metricStyle,
+  background: "#fff1f0",
+  borderColor: "#fecdca",
+  color: "#b42318",
+};
+
+const formGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "180px 180px minmax(220px, 1fr) 270px",
+  gap: "12px",
+  alignItems: "end",
+  marginTop: "14px",
+};
+
+const fieldStyle = {
+  display: "grid",
+  gap: "6px",
+};
+
+const labelStyle = {
+  fontWeight: 700,
+  fontSize: "14px",
+};
+
+const inputStyle = {
+  width: "100%",
+  boxSizing: "border-box",
+  padding: "10px 12px",
+  border: "1px solid #d0d5dd",
+  borderRadius: "10px",
+  fontSize: "15px",
+};
+
+const buttonGroupStyle = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: "8px",
+};
+
+const primaryBtnStyle = {
+  border: "none",
+  background: "#12a15f",
+  color: "white",
+  borderRadius: "10px",
+  padding: "11px 12px",
+  fontWeight: 800,
+  cursor: "pointer",
+};
+
+const secondaryBtnStyle = {
+  border: "1px solid #d0d5dd",
+  background: "white",
+  color: "#111827",
+  borderRadius: "10px",
+  padding: "10px 12px",
+  fontWeight: 700,
+  cursor: "pointer",
+};
+
+const dangerBtnStyle = {
+  border: "1px solid #fecdca",
+  background: "#fff1f0",
+  color: "#b42318",
+  borderRadius: "8px",
+  padding: "7px 10px",
+  fontWeight: 700,
+  cursor: "pointer",
+};
+
+const successStyle = {
+  background: "#e8fff0",
+  color: "#146c2e",
+  padding: "12px",
+  borderRadius: "10px",
+  border: "1px solid #b7ebc6",
+  marginBottom: "12px",
+};
+
+const alertStyle = {
+  background: "#fff1f0",
+  color: "#b42318",
+  padding: "12px",
+  borderRadius: "10px",
+  border: "1px solid #f4c7c3",
+  marginBottom: "12px",
+};
+
+const noteStyle = {
+  background: "#fff8e1",
+  color: "#8a6d00",
+  padding: "12px",
+  borderRadius: "10px",
+  border: "1px solid #f3dc97",
+};
+
+const hintStyle = {
+  marginTop: "10px",
+  background: "#f9fafb",
+  color: "#475467",
+  border: "1px solid #eaecf0",
+  borderRadius: "10px",
+  padding: "10px",
+  fontSize: "13px",
+};
+
+const tableStyle = {
+  width: "100%",
+  borderCollapse: "collapse",
+  minWidth: "900px",
+};
+
+const thStyle = {
+  textAlign: "left",
+  padding: "12px 10px",
+  borderBottom: "1px solid #e5e7eb",
+};
+
+const tdStyle = {
+  padding: "10px",
+  borderTop: "1px solid #eee",
+  verticalAlign: "top",
+};
+
+const estadoOkStyle = {
+  display: "inline-block",
+  background: "#ecfdf3",
+  color: "#067647",
+  border: "1px solid #abefc6",
+  borderRadius: "999px",
+  padding: "4px 9px",
+  fontSize: "12px",
+  fontWeight: 800,
+};
+
+const estadoMutedStyle = {
+  display: "inline-block",
+  background: "#f2f4f7",
+  color: "#475467",
+  border: "1px solid #d0d5dd",
+  borderRadius: "999px",
+  padding: "4px 9px",
+  fontSize: "12px",
+  fontWeight: 800,
+};
