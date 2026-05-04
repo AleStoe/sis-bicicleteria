@@ -98,3 +98,47 @@ def insert_bicicleta_cliente(conn, data: dict):
             ),
         )
         return cur.fetchone()["id"]
+
+def get_bicicletas_serializadas(conn, *, id_variante=None, id_sucursal=None, estado=None):
+    filtros = []
+    params = {}
+
+    if id_variante is not None:
+        filtros.append("bs.id_variante = %(id_variante)s")
+        params["id_variante"] = id_variante
+
+    if id_sucursal is not None:
+        filtros.append("bs.id_sucursal_actual = %(id_sucursal)s")
+        params["id_sucursal"] = id_sucursal
+
+    if estado is not None:
+        filtros.append("bs.estado = %(estado)s")
+        params["estado"] = estado
+
+    where_sql = ""
+    if filtros:
+        where_sql = "WHERE " + " AND ".join(filtros)
+
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            f"""
+            SELECT
+                bs.id,
+                bs.id_variante,
+                bs.id_sucursal_actual,
+                s.nombre AS sucursal_nombre,
+                bs.numero_cuadro,
+                bs.estado,
+                bs.observaciones,
+                v.nombre_variante,
+                p.nombre AS producto_nombre
+            FROM bicicletas_serializadas bs
+            INNER JOIN variantes v ON v.id = bs.id_variante
+            INNER JOIN productos p ON p.id = v.id_producto
+            INNER JOIN sucursales s ON s.id = bs.id_sucursal_actual
+            {where_sql}
+            ORDER BY bs.id DESC
+            """,
+            params,
+        )
+        return cur.fetchall()

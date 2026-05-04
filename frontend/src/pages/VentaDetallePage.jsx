@@ -6,6 +6,8 @@ import {
   anularVenta,
   entregarVenta,
   devolverVentaSerializada,
+  devolverVenta,
+  devolverItemsVenta,
 } from "../services/ventasService";
 import { listarPagosDeVenta } from "../services/pagosService";
 import { CURRENT_USER_ID } from "../config/appConfig";
@@ -133,6 +135,101 @@ export default function VentaDetallePage() {
       setProcesando(false);
     }
   }
+async function handleDevolverVentaCompleta() {
+  const motivo = window.prompt(
+    "Motivo de devolución total de la venta. Se generará crédito al cliente, no devolución de efectivo:"
+  );
+
+  if (!motivo || motivo.trim().length < 3) return;
+
+  const confirmar = window.confirm(
+    "¿Confirmás la devolución TOTAL de esta venta? Se devolverá stock y se generará crédito al cliente."
+  );
+
+  if (!confirmar) return;
+
+  try {
+    setProcesando(true);
+    setError("");
+    setMensaje("");
+
+    const result = await devolverVenta(ventaId, {
+      motivo: motivo.trim(),
+      id_usuario: CURRENT_USER_ID,
+    });
+
+    await cargarVenta();
+
+    setMensaje(
+      `Venta devuelta correctamente. Crédito generado: ${formatMoney(result.credito_generado)}`
+    );
+  } catch (err) {
+    setError(err.message || "No se pudo devolver la venta");
+  } finally {
+    setProcesando(false);
+  }
+}
+
+async function handleDevolverItem(item) {
+  const cantidadMaxima = Number(item.cantidad || 0);
+
+  const cantidadRaw = window.prompt(
+    `Cantidad a devolver del item #${item.id}. Máximo: ${cantidadMaxima}`
+  );
+
+  if (!cantidadRaw) return;
+
+  const cantidad = Number(cantidadRaw);
+
+  if (!Number.isFinite(cantidad) || cantidad <= 0) {
+    setError("La cantidad a devolver debe ser mayor a 0");
+    return;
+  }
+
+  if (cantidad > cantidadMaxima) {
+    setError("La cantidad a devolver no puede superar la cantidad vendida");
+    return;
+  }
+
+  const motivo = window.prompt(
+    "Motivo de devolución parcial. Se generará crédito al cliente:"
+  );
+
+  if (!motivo || motivo.trim().length < 3) return;
+
+  const confirmar = window.confirm(
+    `¿Confirmás devolver ${cantidad} unidad(es) del item #${item.id}?`
+  );
+
+  if (!confirmar) return;
+
+  try {
+    setProcesando(true);
+    setError("");
+    setMensaje("");
+
+    const result = await devolverItemsVenta(ventaId, {
+      items: [
+        {
+          id_venta_item: Number(item.id),
+          cantidad: String(cantidad),
+        },
+      ],
+      motivo: motivo.trim(),
+      id_usuario: CURRENT_USER_ID,
+    });
+
+    await cargarVenta();
+
+    setMensaje(
+      `Devolución parcial registrada. Crédito generado: ${formatMoney(result.credito_generado)}`
+    );
+  } catch (err) {
+    setError(err.message || "No se pudo devolver el item");
+  } finally {
+    setProcesando(false);
+  }
+}
 
   const totalPagadoReal = useMemo(() => {
     return pagos
@@ -149,8 +246,10 @@ export default function VentaDetallePage() {
   const saldoPendiente = Number(venta.saldo_pendiente || 0);
   const cubiertoNoPago = Math.max(totalFinal - totalPagadoReal - saldoPendiente, 0);
 
+  const estadosFinales = ["anulada", "devuelta", "devuelta_parcial"];
   const puedeAnular = ["creada", "pagada_parcial", "pagada_total"].includes(venta.estado);
-  const puedeEntregar = !["entregada", "anulada"].includes(venta.estado);
+  const puedeEntregar = !["entregada", ...estadosFinales].includes(venta.estado);
+  const puedeDevolver = venta.estado === "entregada";
   const tieneDeuda = situacion_financiera?.tiene_deuda;
   const deuda = situacion_financiera?.deuda_abierta;
 
@@ -218,9 +317,15 @@ export default function VentaDetallePage() {
             Anular venta
           </button>
         </div>
-
+        <button
+          onClick={handleDevolverVentaCompleta}
+          disabled={!puedeDevolver || procesando}
+          style={puedeDevolver ? warnActionStyle : disabledActionStyle}
+        >
+          Devolver venta completa
+        </button>
         <div style={smallNoteStyle}>
-          La entrega con saldo pendiente queda bajo control del backend y permisos.
+          Las devoluciones no revierten pagos: devuelven stock y generan crédito al cliente.
         </div>
       </section>
 
@@ -282,10 +387,18 @@ export default function VentaDetallePage() {
                     <td style={tdStyle}>{formatMoney(item.costo_unitario_aplicado)}</td>
                     <td style={tdStyle}>{formatMoney(item.subtotal)}</td>
                     <td style={tdStyle}>
-                      {venta.estado === "entregada" && item.id_bicicleta_serializada ? (
-                        <button onClick={() => handleDevolverSerializada(item)} disabled={procesando}>
-                          Devolver serializada
-                        </button>
+                      {venta.estado === "entregada" ? (
+                        <div style={{ display: "grid", gap: "6px" }}>
+                          <button onClick={() => handleDevolverItem(item)} disabled={procesando}>
+                            Devolver item
+                          </button>
+
+                          {item.id_bicicleta_serializada && (
+                            <button onClick={() => handleDevolverSerializada(item)} disabled={procesando}>
+                              Devolver serializada
+                            </button>
+                          )}
+                        </div>
                       ) : (
                         <span style={mutedInlineStyle}>-</span>
                       )}
@@ -520,4 +633,14 @@ const thStyle = {
 const tdStyle = {
   padding: "10px",
   verticalAlign: "top",
+};
+
+const warnActionStyle = {
+  border: "1px solid #f3dc97",
+  background: "#fff8e1",
+  color: "#8a6d00",
+  borderRadius: "10px",
+  padding: "12px",
+  fontWeight: 800,
+  cursor: "pointer",
 };

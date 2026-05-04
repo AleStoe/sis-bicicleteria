@@ -7,6 +7,7 @@ from app.modules.ventas.repository import get_variantes_by_ids, get_sucursal_by_
 from .repository import (
     get_bicicleta_serializada_by_numero_cuadro,
     insert_bicicleta_serializada,
+    get_bicicletas_serializadas,
 )
 
 
@@ -143,3 +144,33 @@ def armar_bicicleta_serializada(data):
 
     finally:
         conn.close()
+    
+def listar_bicicletas_serializadas(
+    *,
+    id_variante: int | None = None,
+    id_sucursal: int | None = None,
+    estado: str | None = None,
+):
+    conn = get_connection()
+
+    try:
+        return get_bicicletas_serializadas(
+            conn,
+            id_variante=id_variante,
+            id_sucursal=id_sucursal,
+            estado=estado,
+        )
+    finally:
+        conn.close()
+
+
+def listar_bicicletas_serializadas_disponibles(
+    *,
+    id_variante: int | None = None,
+    id_sucursal: int | None = None,
+):
+    return listar_bicicletas_serializadas(
+        id_variante=id_variante,
+        id_sucursal=id_sucursal,
+        estado="disponible",
+    )

@@ -26,3 +26,16 @@ class BicicletaSerializadaOutput(BaseModel):
     numero_cuadro: str
     estado: str
     observaciones: Optional[str] = None
+
+class BicicletaSerializadaDetalleOutput(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    id_variante: int
+    id_sucursal_actual: int
+    sucursal_nombre: str
+    numero_cuadro: str
+    estado: str
+    observaciones: Optional[str] = None
+    nombre_variante: str
+    producto_nombre: str

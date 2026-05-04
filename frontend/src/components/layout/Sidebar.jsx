@@ -62,6 +62,9 @@ export default function Sidebar() {
         <NavLink to="/auditoria" style={navStyle}>
           Auditoría
         </NavLink>
+        <NavLink to="/serializadas" style={navStyle}>
+          Bicis serializadas
+        </NavLink>
       </nav>
     </aside>
   );

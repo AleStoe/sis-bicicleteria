@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { listarCatalogoPOS, listarCategorias } from "../services/catalogoService";
 import { listarClientes } from "../services/clientesService";
 import { crearVenta } from "../services/ventasService";
+import { listarSerializadasDisponibles } from "../services/serializadasService";
 
 import { CURRENT_USER_ID, CURRENT_SUCURSAL_ID } from "../config/appConfig";
 
@@ -23,6 +24,8 @@ export default function NuevaVentaPage() {
   const [clienteId, setClienteId] = useState("1");
 
   const [items, setItems] = useState([]);
+  const [serializadasPorVariante, setSerializadasPorVariante] = useState({});
+  const [cargandoSerializadas, setCargandoSerializadas] = useState({});
 
   const [observaciones, setObservaciones] = useState("");
   const [usarCredito, setUsarCredito] = useState(true);
@@ -107,6 +110,33 @@ export default function NuevaVentaPage() {
     }
   }
 
+  async function cargarSerializadasDisponibles(idVariante) {
+    const key = String(idVariante);
+
+    if (serializadasPorVariante[key]) return serializadasPorVariante[key];
+
+    try {
+      setCargandoSerializadas((p) => ({ ...p, [key]: true }));
+
+      const data = await listarSerializadasDisponibles({
+        id_variante: idVariante,
+        id_sucursal: ID_SUCURSAL,
+      });
+
+      setSerializadasPorVariante((p) => ({
+        ...p,
+        [key]: data || [],
+      }));
+
+      return data || [];
+    } catch (err) {
+      setError(err.message || "No se pudieron cargar las bicicletas serializadas disponibles");
+      return [];
+    } finally {
+      setCargandoSerializadas((p) => ({ ...p, [key]: false }));
+    }
+  }
+
   const total = useMemo(() => {
     return items.reduce(
       (acc, item) => acc + Number(item.precio_minorista || 0) * Number(item.cantidad || 0),
@@ -127,26 +157,28 @@ export default function NuevaVentaPage() {
   }
 
   function getMotivoBloqueo(item) {
-    if (item.motivo_no_disponible === "sin_stock") return "Sin stock";
+    if (item.motivo_no_disponible === "sin_stock" && !item.serializable) return "Sin stock";
     if (item.motivo_no_disponible === "precio_no_definido") return "Precio no definido";
-    if (item.stockeable && Number(item.stock_disponible || 0) <= 0) return "Sin stock";
+    if (!item.serializable && item.stockeable && Number(item.stock_disponible || 0) <= 0) return "Sin stock";
     if (getPrecio(item) <= 0) return "Precio no definido";
     return "No disponible";
   }
 
   function puedeAgregar(item) {
-    if (item.disponible_para_venta === false) return false;
+    if (item.disponible_para_venta === false && !item.serializable) return false;
 
-    // Backend actual de ventas NO recibe precio manual.
-    // Por eso no permitimos cerrar un producto con precio 0 aunque permita precio libre.
     if (getPrecio(item) <= 0) return false;
+
+    // Las serializadas no dependen de stock_sucursal disponible.
+    // Dependen de bicicletas_serializadas.estado = disponible.
+    if (item.serializable) return true;
 
     if (item.stockeable && Number(item.stock_disponible || 0) <= 0) return false;
 
     return true;
   }
 
-  function agregarItem(producto) {
+  async function agregarItem(producto) {
     if (!puedeAgregar(producto)) {
       setError(`No se puede agregar: ${getMotivoBloqueo(producto)}`);
       return;
@@ -155,8 +187,43 @@ export default function NuevaVentaPage() {
     setError("");
     setMensaje("");
 
+    if (producto.serializable) {
+      const disponibles = await cargarSerializadasDisponibles(producto.id_variante);
+
+      if (disponibles.length === 0) {
+        setError("No hay bicicletas serializadas disponibles para esta variante");
+        return;
+      }
+
+      setItems((actual) => [
+        ...actual,
+        {
+          id_variante: producto.id_variante,
+          id_producto: producto.id_producto,
+          descripcion: getDescripcion(producto),
+          codigo: getCodigo(producto),
+          categoria_nombre: producto.categoria_nombre,
+          tipo_item: producto.tipo_item,
+          stockeable: producto.stockeable,
+          serializable: true,
+          stock_disponible: Number(producto.stock_disponible || 0),
+          precio_minorista: getPrecio(producto),
+          cantidad: 1,
+          imagen_principal: producto.imagen_principal,
+          id_bicicleta_serializada: "",
+          numero_cuadro: "",
+        },
+      ]);
+
+      return;
+    }
+
     setItems((actual) => {
-      const existente = actual.find((item) => Number(item.id_variante) === Number(producto.id_variante));
+      const existente = actual.find(
+        (item) =>
+          Number(item.id_variante) === Number(producto.id_variante) &&
+          !item.id_bicicleta_serializada
+      );
 
       if (existente) {
         const nuevaCantidad = Number(existente.cantidad) + 1;
@@ -170,7 +237,8 @@ export default function NuevaVentaPage() {
         }
 
         return actual.map((item) =>
-          Number(item.id_variante) === Number(producto.id_variante)
+          Number(item.id_variante) === Number(producto.id_variante) &&
+          !item.id_bicicleta_serializada
             ? { ...item, cantidad: nuevaCantidad }
             : item
         );
@@ -191,24 +259,56 @@ export default function NuevaVentaPage() {
           precio_minorista: getPrecio(producto),
           cantidad: 1,
           imagen_principal: producto.imagen_principal,
+          id_bicicleta_serializada: null,
+          numero_cuadro: "",
         },
       ];
     });
   }
 
-  function cambiarCantidad(idVariante, nuevaCantidadRaw) {
+  function seleccionarSerializada(index, bicicletaIdRaw) {
+    const bicicletaId = bicicletaIdRaw ? Number(bicicletaIdRaw) : "";
+
+    setItems((actual) =>
+      actual.map((item, i) => {
+        if (i !== index) return item;
+
+        const disponibles = serializadasPorVariante[String(item.id_variante)] || [];
+        const bici = disponibles.find((b) => Number(b.id) === Number(bicicletaId));
+
+        return {
+          ...item,
+          id_bicicleta_serializada: bicicletaId || "",
+          numero_cuadro: bici?.numero_cuadro || "",
+          cantidad: 1,
+        };
+      })
+    );
+  }
+
+  function cambiarCantidad(idVariante, nuevaCantidadRaw, index = null) {
     const nuevaCantidad = Number(nuevaCantidadRaw);
 
     if (!Number.isFinite(nuevaCantidad)) return;
 
     if (nuevaCantidad <= 0) {
-      quitarItem(idVariante);
+      if (index !== null) {
+        quitarItem(idVariante, index);
+      } else {
+        quitarItem(idVariante);
+      }
       return;
     }
 
     setItems((actual) =>
-      actual.map((item) => {
-        if (Number(item.id_variante) !== Number(idVariante)) return item;
+      actual.map((item, i) => {
+        if (index !== null && i !== index) return item;
+        if (index === null && Number(item.id_variante) !== Number(idVariante)) return item;
+
+        if (item.serializable) {
+          setError("Las bicicletas serializadas siempre tienen cantidad 1");
+          return { ...item, cantidad: 1 };
+        }
 
         if (item.stockeable && nuevaCantidad > Number(item.stock_disponible || 0)) {
           setError("La cantidad supera el stock disponible");
@@ -220,8 +320,15 @@ export default function NuevaVentaPage() {
     );
   }
 
-  function quitarItem(idVariante) {
-    setItems((actual) => actual.filter((item) => Number(item.id_variante) !== Number(idVariante)));
+  function quitarItem(idVariante, index = null) {
+    if (index !== null) {
+      setItems((actual) => actual.filter((_, i) => i !== index));
+      return;
+    }
+
+    setItems((actual) =>
+      actual.filter((item) => Number(item.id_variante) !== Number(idVariante))
+    );
   }
 
   function vaciarVenta() {
@@ -242,6 +349,24 @@ export default function NuevaVentaPage() {
       return;
     }
 
+    const serializadaSinCuadro = items.find(
+      (item) => item.serializable && !item.id_bicicleta_serializada
+    );
+
+    if (serializadaSinCuadro) {
+      setError(`Seleccioná número de cuadro para: ${serializadaSinCuadro.descripcion}`);
+      return;
+    }
+
+    const serializadasElegidas = items
+      .filter((item) => item.id_bicicleta_serializada)
+      .map((item) => Number(item.id_bicicleta_serializada));
+
+    if (new Set(serializadasElegidas).size !== serializadasElegidas.length) {
+      setError("No podés vender dos veces la misma bicicleta serializada");
+      return;
+    }
+
     const payload = {
       id_cliente: Number(clienteId),
       id_sucursal: ID_SUCURSAL,
@@ -249,7 +374,9 @@ export default function NuevaVentaPage() {
       items: items.map((item) => ({
         id_variante: Number(item.id_variante),
         cantidad: String(item.cantidad),
-        id_bicicleta_serializada: null,
+        id_bicicleta_serializada: item.id_bicicleta_serializada
+          ? Number(item.id_bicicleta_serializada)
+          : null,
       })),
       pagos: [],
       observaciones: observaciones.trim() || null,
@@ -368,7 +495,9 @@ export default function NuevaVentaPage() {
                       <div style={mutedStyle}>{getCodigo(producto)}</div>
                       <div style={tagRowStyle}>
                         <span style={tagStyle}>{producto.categoria_nombre}</span>
-                        {producto.stockeable ? (
+                        {producto.serializable ? (
+                          <span style={serializableTagStyle}>Serializada</span>
+                        ) : producto.stockeable ? (
                           <span style={stockTagStyle}>
                             Stock: {Number(producto.stock_disponible || 0).toLocaleString("es-AR")}
                           </span>
@@ -417,31 +546,76 @@ export default function NuevaVentaPage() {
             {items.length === 0 ? (
               <div style={emptyCartStyle}>Agregá productos desde el listado.</div>
             ) : (
-              items.map((item) => (
-                <div key={item.id_variante} style={cartItemStyle}>
+              items.map((item, index) => (
+                <div key={`${item.id_variante}-${index}`} style={cartItemStyle}>
                   <div>
                     <strong>{item.descripcion}</strong>
                     <div style={mutedStyle}>{item.codigo}</div>
+
+                    {item.serializable && (
+                      <div style={serializadaBoxStyle}>
+                        <div style={serializadaTitleStyle}>Número de cuadro obligatorio</div>
+
+                        <select
+                          value={item.id_bicicleta_serializada || ""}
+                          onFocus={() => cargarSerializadasDisponibles(item.id_variante)}
+                          onChange={(e) => seleccionarSerializada(index, e.target.value)}
+                          style={serializadaSelectStyle}
+                          disabled={cargandoSerializadas[String(item.id_variante)]}
+                        >
+                          <option value="">
+                            {cargandoSerializadas[String(item.id_variante)]
+                              ? "Cargando cuadros..."
+                              : "Seleccionar cuadro"}
+                          </option>
+
+                          {(serializadasPorVariante[String(item.id_variante)] || []).map((bici) => {
+                            const usadaEnOtroItem = items.some(
+                              (otro, otroIndex) =>
+                                otroIndex !== index &&
+                                Number(otro.id_bicicleta_serializada) === Number(bici.id)
+                            );
+
+                            return (
+                              <option key={bici.id} value={bici.id} disabled={usadaEnOtroItem}>
+                                {bici.numero_cuadro} #{bici.id}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </div>
+                    )}
                   </div>
 
                   <div style={cartPriceStyle}>{formatMoney(item.precio_minorista)}</div>
 
                   <div style={qtyControlStyle}>
-                    <button onClick={() => cambiarCantidad(item.id_variante, Number(item.cantidad) - 1)}>-</button>
+                    <button
+                      onClick={() => cambiarCantidad(item.id_variante, Number(item.cantidad) - 1, index)}
+                      disabled={item.serializable}
+                    >
+                      -
+                    </button>
                     <input
                       value={item.cantidad}
                       type="number"
                       min="1"
                       step="1"
-                      onChange={(e) => cambiarCantidad(item.id_variante, e.target.value)}
+                      onChange={(e) => cambiarCantidad(item.id_variante, e.target.value, index)}
                       style={qtyInputStyle}
+                      disabled={item.serializable}
                     />
-                    <button onClick={() => cambiarCantidad(item.id_variante, Number(item.cantidad) + 1)}>+</button>
+                    <button
+                      onClick={() => cambiarCantidad(item.id_variante, Number(item.cantidad) + 1, index)}
+                      disabled={item.serializable}
+                    >
+                      +
+                    </button>
                   </div>
 
                   <div style={cartSubtotalStyle}>{formatMoney(Number(item.precio_minorista) * Number(item.cantidad))}</div>
 
-                  <button onClick={() => quitarItem(item.id_variante)} style={removeBtnStyle}>🗑</button>
+                  <button onClick={() => quitarItem(item.id_variante, index)} style={removeBtnStyle}>🗑</button>
                 </div>
               ))
             )}
@@ -481,8 +655,8 @@ export default function NuevaVentaPage() {
             </div>
 
             <div style={noteStyle}>
-              Esta pantalla solo crea la venta y reserva el stock pendiente de entrega.
-              El cobro se hace en el detalle de venta usando el módulo real de pagos y caja.
+              Esta pantalla solo crea la venta. Los productos comunes pasan a pendiente de entrega.
+              Las bicis serializadas se asignan por número de cuadro. El cobro se hace en el detalle de venta.
             </div>
           </section>
 
@@ -713,6 +887,7 @@ const mutedStyle = { color: "#667085", fontSize: "13px" };
 const tagRowStyle = { display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "2px" };
 const tagStyle = { background: "#eef4ff", color: "#175cd3", borderRadius: "999px", padding: "3px 8px", fontSize: "12px" };
 const stockTagStyle = { background: "#ecfdf3", color: "#067647", borderRadius: "999px", padding: "3px 8px", fontSize: "12px" };
+const serializableTagStyle = { background: "#fff8e1", color: "#8a6d00", borderRadius: "999px", padding: "3px 8px", fontSize: "12px" };
 const serviceTagStyle = { background: "#fef7c3", color: "#854a0e", borderRadius: "999px", padding: "3px 8px", fontSize: "12px" };
 const dangerTagStyle = { background: "#fee4e2", color: "#b42318", borderRadius: "999px", padding: "3px 8px", fontSize: "12px" };
 
@@ -928,4 +1103,28 @@ const emptyStyle = {
   padding: "40px",
   textAlign: "center",
   color: "#667085",
+};
+
+const serializadaBoxStyle = {
+  marginTop: "8px",
+  background: "#fff8e1",
+  border: "1px solid #f3dc97",
+  borderRadius: "10px",
+  padding: "8px",
+};
+
+const serializadaTitleStyle = {
+  fontSize: "12px",
+  fontWeight: 800,
+  color: "#8a6d00",
+  marginBottom: "6px",
+};
+
+const serializadaSelectStyle = {
+  width: "100%",
+  border: "1px solid #d0d5dd",
+  borderRadius: "8px",
+  padding: "8px",
+  fontSize: "14px",
+  boxSizing: "border-box",
 };

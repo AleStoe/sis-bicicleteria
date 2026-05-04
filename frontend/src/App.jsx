@@ -20,6 +20,8 @@ import ReservasListPage from "./pages/ReservasListPage";
 import NuevaReservaPage from "./pages/NuevaReservaPage";
 import ReservaDetallePage from "./pages/ReservaDetallePage";
 import AuditoriaPage from "./pages/AuditoriaPage";
+import BicicletasSerializadasPage from "./pages/BicicletasSerializadasPage";
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -47,6 +49,7 @@ export default function App() {
           <Route path="/reservas/nueva" element={<NuevaReservaPage />} />
           <Route path="/reservas/:reservaId" element={<ReservaDetallePage />} /> 
           <Route path="/auditoria" element={<AuditoriaPage />} /> 
+          <Route path="/serializadas" element={<BicicletasSerializadasPage />} />
           
         </Routes>
       </AppLayout>

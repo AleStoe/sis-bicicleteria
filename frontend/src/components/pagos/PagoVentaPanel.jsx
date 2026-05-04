@@ -20,6 +20,7 @@ export default function PagoVentaPanel({
   const montoRef = useRef(null);
 
   const [pagos, setPagos] = useState([]);
+  const [mostrarRevertidos, setMostrarRevertidos] = useState(false);
   const [loading, setLoading] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
@@ -49,6 +50,10 @@ export default function PagoVentaPanel({
 
   const pagosConfirmados = useMemo(() => {
     return pagos.filter((pago) => pago.estado === "confirmado");
+  }, [pagos]);
+
+  const pagosRevertidos = useMemo(() => {
+    return pagos.filter((pago) => pago.estado === "revertido");
   }, [pagos]);
 
   const totalConfirmado = useMemo(() => {
@@ -116,7 +121,7 @@ export default function PagoVentaPanel({
       await refrescarTodo();
 
       setMensaje(
-        resultado?.saldo_restante === 0
+        Number(resultado?.saldo_restante || 0) === 0
           ? "Pago registrado correctamente. La venta quedó pagada."
           : `Pago registrado correctamente. Saldo restante: ${formatMoney(resultado?.saldo_restante ?? 0)}`
       );
@@ -155,7 +160,13 @@ export default function PagoVentaPanel({
 
   function completarSaldo() {
     if (!puedePagar) return;
-    setForm((actual) => ({ ...actual, monto: String(saldo) }));
+
+    setError("");
+    setForm((actual) => ({
+      ...actual,
+      monto: String(Number(saldo || 0)),
+    }));
+
     montoRef.current?.focus();
   }
 
@@ -175,7 +186,7 @@ export default function PagoVentaPanel({
       </div>
 
       <div style={metricsGridStyle}>
-        <Metric label="Pagado real" value={formatMoney(totalConfirmado)} tone="ok" />
+        <Metric label="Pagado confirmado" value={formatMoney(totalConfirmado)} tone="ok" />
         <Metric label="Saldo a cobrar" value={formatMoney(saldo)} tone={saldo > 0 ? "danger" : "ok"} />
         <Metric label="Estado venta" value={estadoVenta || "-"} />
       </div>
@@ -190,6 +201,12 @@ export default function PagoVentaPanel({
             : pagosConfirmados.length === 0
               ? "No hay saldo pendiente para cobrar. Si la venta figura pagada sin pagos reales, probablemente se cubrió con crédito."
               : "Esta venta no tiene saldo pendiente para cobrar."}
+        </div>
+      )}
+
+      {pagosConfirmados.length === 0 && pagosRevertidos.length > 0 && (
+        <div style={warningInfoStyle}>
+          Todos los pagos registrados para esta venta fueron revertidos. Por eso no impactan el saldo actual.
         </div>
       )}
 
@@ -261,7 +278,63 @@ export default function PagoVentaPanel({
         Ejemplo pago mixto: cargá efectivo por una parte, luego tarjeta por el saldo restante.
       </div>
 
-      <div style={{ marginTop: "16px", overflowX: "auto" }}>
+      <PagoTabla
+        titulo="Pagos confirmados"
+        descripcion="Estos pagos impactan en el saldo de la venta."
+        pagos={pagosConfirmados}
+        guardando={guardando}
+        onRevertir={handleRevertirPago}
+        vacio="No hay pagos confirmados para esta venta."
+      />
+
+      {pagosRevertidos.length > 0 && (
+        <div style={{ marginTop: "14px" }}>
+          <button
+            type="button"
+            onClick={() => setMostrarRevertidos((v) => !v)}
+            style={secondaryBtnStyle}
+          >
+            {mostrarRevertidos
+              ? "Ocultar pagos revertidos"
+              : `Mostrar pagos revertidos (${pagosRevertidos.length})`}
+          </button>
+
+          {mostrarRevertidos && (
+            <PagoTabla
+              titulo="Historial de pagos revertidos"
+              descripcion="Estos pagos son históricos. No impactan el saldo vigente."
+              pagos={pagosRevertidos}
+              guardando={guardando}
+              onRevertir={handleRevertirPago}
+              vacio="No hay pagos revertidos."
+              soloHistorial
+            />
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function PagoTabla({
+  titulo,
+  descripcion,
+  pagos,
+  guardando,
+  onRevertir,
+  vacio,
+  soloHistorial = false,
+}) {
+  return (
+    <div style={{ marginTop: "16px" }}>
+      <div style={sectionHeaderStyle}>
+        <div>
+          <h3 style={sectionTitleStyle}>{titulo}</h3>
+          <p style={mutedStyle}>{descripcion}</p>
+        </div>
+      </div>
+
+      <div style={{ overflowX: "auto" }}>
         <table style={tableStyle}>
           <thead style={{ background: "#f9fafb" }}>
             <tr>
@@ -279,7 +352,7 @@ export default function PagoVentaPanel({
             {pagos.length === 0 ? (
               <tr>
                 <td colSpan="7" style={tdStyle}>
-                  No hay pagos reales registrados para esta venta.
+                  {vacio}
                 </td>
               </tr>
             ) : (
@@ -294,10 +367,10 @@ export default function PagoVentaPanel({
                   </td>
                   <td style={tdStyle}>{pago.nota || "-"}</td>
                   <td style={tdStyle}>
-                    {pago.estado === "confirmado" ? (
+                    {!soloHistorial && pago.estado === "confirmado" ? (
                       <button
                         disabled={guardando}
-                        onClick={() => handleRevertirPago(pago)}
+                        onClick={() => onRevertir(pago)}
                         style={dangerBtnStyle}
                       >
                         Revertir
@@ -312,7 +385,7 @@ export default function PagoVentaPanel({
           </tbody>
         </table>
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -385,6 +458,19 @@ const headerStyle = {
 const titleStyle = {
   margin: 0,
   fontSize: "22px",
+};
+
+const sectionHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: "12px",
+  marginBottom: "8px",
+};
+
+const sectionTitleStyle = {
+  margin: 0,
+  fontSize: "17px",
 };
 
 const mutedStyle = {
@@ -516,6 +602,15 @@ const noteStyle = {
   padding: "12px",
   borderRadius: "10px",
   border: "1px solid #f3dc97",
+};
+
+const warningInfoStyle = {
+  background: "#fff8e1",
+  color: "#8a6d00",
+  padding: "12px",
+  borderRadius: "10px",
+  border: "1px solid #f3dc97",
+  marginBottom: "12px",
 };
 
 const hintStyle = {
