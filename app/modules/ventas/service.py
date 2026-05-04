@@ -473,6 +473,20 @@ def crear_venta(data):
                         "vendida_pendiente_entrega",
                     )
 
+                    stock_service.registrar_movimiento_serializada_sin_stock(
+                        conn,
+                        {
+                            "id_sucursal": data.id_sucursal,
+                            "id_variante": variante["id"],
+                            "id_bicicleta_serializada": item["id_bicicleta_serializada"],
+                            "tipo_movimiento": "venta_serializada",
+                            "id_usuario": data.id_usuario,
+                            "origen_tipo": "venta",
+                            "origen_id": venta_id,
+                            "nota": f"Venta serializada #{venta_id}",
+                        },
+                    )
+
             items_stock = sorted(
                 [fila for fila in venta_items if fila["variante"]["stockeable"]],
                 key=lambda fila: fila["variante"]["id"],
@@ -481,7 +495,8 @@ def crear_venta(data):
             for fila in items_stock:
                 item = fila["item"]
                 variante = fila["variante"]
-
+                if item.get("id_bicicleta_serializada") is not None:
+                    continue
                 try:
                     stock_service.marcar_stock_pendiente_entrega(
                         conn,
@@ -686,6 +701,19 @@ def entregar_venta(venta_id: int, data):
                         bicicleta["id"],
                         "entregada",
                     )
+                    stock_service.registrar_movimiento_serializada_sin_stock(
+                        conn,
+                        {
+                            "id_sucursal": venta["id_sucursal"],
+                            "id_variante": item["id_variante"],
+                            "id_bicicleta_serializada": bicicleta["id"],
+                            "tipo_movimiento": "entrega_serializada",
+                            "id_usuario": data.id_usuario,
+                            "origen_tipo": "venta",
+                            "origen_id": venta_id,
+                            "nota": f"Entrega de bicicleta serializada en venta #{venta_id}",
+                        },
+                    )
                     insert_bicicleta_cliente(
                         conn,
                         {
@@ -698,6 +726,9 @@ def entregar_venta(venta_id: int, data):
             items_stock = _ordenar_items_stockeables_por_variante(items)
 
             for item in items_stock:
+                if item.get("id_bicicleta_serializada") is not None:
+                    continue
+
                 stock_service.registrar_entrega_stock(
                     conn,
                     {
@@ -707,7 +738,7 @@ def entregar_venta(venta_id: int, data):
                         "id_usuario": data.id_usuario,
                         "origen_tipo": "venta",
                         "origen_id": venta_id,
-                        "id_bicicleta_serializada": item.get("id_bicicleta_serializada"),
+                        "id_bicicleta_serializada": None,
                         "nota": f"Entrega de venta #{venta_id}",
                     },
                 )
@@ -792,6 +823,19 @@ def anular_venta(venta_id: int, data):
                         bicicleta["id"],
                         "disponible",
                     )
+                    stock_service.registrar_movimiento_serializada_sin_stock(
+                        conn,
+                        {
+                            "id_sucursal": venta["id_sucursal"],
+                            "id_variante": item["id_variante"],
+                            "id_bicicleta_serializada": bicicleta["id"],
+                            "tipo_movimiento": "anulacion_serializada",
+                            "id_usuario": data.id_usuario,
+                            "origen_tipo": "venta",
+                            "origen_id": venta_id,
+                            "nota": f"Anulación de bicicleta serializada en venta #{venta_id}",
+                        },
+                    )
 
             anulacion_id = insert_venta_anulacion(
                 conn,
@@ -803,6 +847,8 @@ def anular_venta(venta_id: int, data):
             items_stock = _ordenar_items_stockeables_por_variante(items)
 
             for item in items_stock:
+                if item.get("id_bicicleta_serializada") is not None:
+                    continue
                 stock_service.devolver_stock_a_disponible_desde_pendiente(
                     conn,
                     {

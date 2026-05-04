@@ -288,3 +288,16 @@ def crear_ajuste_stock(data: dict):
             return resultado
     finally:
         conn.close()
+
+def registrar_movimiento_serializada_sin_stock(conn, data: dict):
+    return repository.registrar_movimiento_serializada_sin_stock(
+        conn,
+        id_sucursal=data["id_sucursal"],
+        id_variante=data["id_variante"],
+        id_bicicleta_serializada=data["id_bicicleta_serializada"],
+        tipo_movimiento=data["tipo_movimiento"],
+        id_usuario=data["id_usuario"],
+        origen_tipo=data["origen_tipo"],
+        origen_id=data["origen_id"],
+        nota=data.get("nota"),
+    )

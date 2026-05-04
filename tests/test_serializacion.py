@@ -114,6 +114,21 @@ def _get_bicicletas_cliente_por_numero_cuadro(conn, numero_cuadro: str):
         return cur.fetchall()
 
 
+def _get_movimientos_serializacion(conn, bicicleta_id: int):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT *
+            FROM movimientos_stock
+            WHERE id_bicicleta_serializada = %s
+              AND tipo_movimiento = 'serializacion'
+            ORDER BY id
+            """,
+            (bicicleta_id,),
+        )
+        return cur.fetchall()
+
+
 @pytest.fixture()
 def seed_serializacion(db_conn, clean_db):
     with db_conn.cursor() as cur:
@@ -235,6 +250,20 @@ def test_crear_bicicleta_serializada_ok(client, db_conn, seed_serializacion):
     assert bicicleta["numero_cuadro"] == "CUADRO-OK-001"
     assert bicicleta["estado"] == "disponible"
 
+    stock = get_stock_row(
+        db_conn,
+        seed_serializacion["sucursal_id"],
+        seed_serializacion["variante_id"],
+    )
+    assert float(stock["stock_fisico"]) == 0.0
+    assert float(stock["stock_vendido_pendiente_entrega"]) == 0.0
+
+    movimientos = _get_movimientos_serializacion(db_conn, bicicleta_id)
+    assert len(movimientos) == 1
+    assert movimientos[0]["tipo_movimiento"] == "serializacion"
+    assert movimientos[0]["origen_tipo"] == "bicicleta_serializada"
+    assert movimientos[0]["origen_id"] == bicicleta_id
+
 
 def test_crear_bicicleta_serializada_duplicada_falla(client, seed_serializacion):
     r1 = _crear_bici_serializada(client, seed_serializacion, "CUADRO-DUP-001")
@@ -282,7 +311,6 @@ def test_venta_con_bici_serializada_ok_si_esta_disponible(client, db_conn, seed_
     assert data["ok"] is True
     assert data["estado"] == "creada"
 
-    venta_id = data["venta_id"]
     bicicleta = _get_bicicleta_serializada(db_conn, bicicleta_id)
     assert bicicleta["estado"] == "vendida_pendiente_entrega"
 
@@ -291,13 +319,12 @@ def test_venta_con_bici_serializada_ok_si_esta_disponible(client, db_conn, seed_
         seed_serializacion["sucursal_id"],
         seed_serializacion["variante_id"],
     )
-    assert float(stock["stock_fisico"]) == 1.0
-    assert float(stock["stock_vendido_pendiente_entrega"]) == 1.0
+    assert float(stock["stock_fisico"]) == 0.0
+    assert float(stock["stock_vendido_pendiente_entrega"]) == 0.0
 
-    movimientos = get_movimientos_by_venta(db_conn, venta_id)
-    assert len(movimientos) == 1
-    assert movimientos[0]["tipo_movimiento"] == "venta"
-    assert movimientos[0]["id_bicicleta_serializada"] == bicicleta_id
+    movimientos = get_movimientos_by_venta(db_conn, data["venta_id"])
+    tipos = [m["tipo_movimiento"] for m in movimientos]
+    assert tipos == ["venta_serializada"]
 
 
 def test_venta_con_bici_serializada_falla_si_ya_esta_comprometida(client, seed_serializacion):
@@ -353,8 +380,7 @@ def test_venta_con_bici_serializada_falla_si_no_coincide_con_la_variante(client,
             )
             VALUES (%s, 'R29 Roja', 'BICI-OTRA-R29-ROJA', 999999, 800000, 650000, TRUE)
             RETURNING id
-            """
-            ,
+            """,
             (producto_2_id,),
         )
         otra_variante_id = cur.fetchone()["id"]
@@ -463,7 +489,7 @@ def test_entregar_venta_serializada_la_pasa_a_entregada_y_crea_bicicleta_cliente
 
     movimientos = get_movimientos_by_venta(db_conn, venta_id)
     tipos = [m["tipo_movimiento"] for m in movimientos]
-    assert tipos == ["venta", "entrega"]
+    assert tipos == ["venta_serializada", "entrega_serializada"]
 
     bicis_cliente = _get_bicicletas_cliente_por_numero_cuadro(db_conn, "CUADRO-ENT-001")
     assert len(bicis_cliente) == 1
@@ -500,12 +526,12 @@ def test_anular_venta_serializada_devuelve_bici_a_disponible(client, db_conn, se
         seed_serializacion["sucursal_id"],
         seed_serializacion["variante_id"],
     )
-    assert float(stock["stock_fisico"]) == 1.0
+    assert float(stock["stock_fisico"]) == 0.0
     assert float(stock["stock_vendido_pendiente_entrega"]) == 0.0
 
     movimientos = get_movimientos_by_venta(db_conn, venta_id)
     tipos = [m["tipo_movimiento"] for m in movimientos]
-    assert tipos == ["venta", "cancelacion_venta"]
+    assert tipos == ["venta_serializada", "anulacion_serializada"]
 
 
 def test_concurrencia_dos_ventas_intentan_usar_la_misma_serie(seed_serializacion):
@@ -532,8 +558,6 @@ def test_concurrencia_dos_ventas_intentan_usar_la_misma_serie(seed_serializacion
 
     with get_test_conn() as conn:
         bicicleta = _get_bicicleta_serializada(conn, bicicleta_id)
-        movimientos = []
-
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -548,7 +572,8 @@ def test_concurrencia_dos_ventas_intentan_usar_la_misma_serie(seed_serializacion
             movimientos = cur.fetchall()
 
     assert bicicleta["estado"] == "vendida_pendiente_entrega"
-    assert len(movimientos) == 1
+    tipos = [m["tipo_movimiento"] for m in movimientos]
+    assert tipos == ["venta_serializada"]
 
 
 def test_auditoria_en_entrega_y_anulacion_serializada(client, db_conn, seed_serializacion):

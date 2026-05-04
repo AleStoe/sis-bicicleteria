@@ -294,6 +294,55 @@ def registrar_movimiento_stock(
 
     return row["id"]
 
+def registrar_movimiento_serializada_sin_stock(
+    conn,
+    *,
+    id_sucursal: int,
+    id_variante: int,
+    id_bicicleta_serializada: int,
+    tipo_movimiento: str,
+    id_usuario: int,
+    origen_tipo: str,
+    origen_id: int,
+    nota: str | None = None,
+):
+    tipos_validos = {
+        "venta_serializada",
+        "entrega_serializada",
+        "anulacion_serializada",
+        "devolucion_serializada",
+    }
+
+    if tipo_movimiento not in tipos_validos:
+        raise ValueError("Tipo de movimiento serializado inválido")
+
+    validar_sucursal_activa(conn, id_sucursal)
+    validar_variante_activa(conn, id_variante)
+    validar_usuario_activo(conn, id_usuario)
+
+    movimiento_id = registrar_movimiento_stock(
+        conn,
+        id_sucursal=id_sucursal,
+        id_variante=id_variante,
+        tipo_movimiento=tipo_movimiento,
+        cantidad=1,
+        costo_unitario_aplicado=None,
+        origen_tipo=origen_tipo,
+        origen_id=origen_id,
+        id_bicicleta_serializada=id_bicicleta_serializada,
+        nota=nota,
+        id_usuario=id_usuario,
+    )
+
+    return {
+        "ok": True,
+        "movimiento_id": movimiento_id,
+        "id_sucursal": id_sucursal,
+        "id_variante": id_variante,
+        "id_bicicleta_serializada": id_bicicleta_serializada,
+        "tipo_movimiento": tipo_movimiento,
+    }
+
 def _calcular_stock_nuevo(
     *,
     stock_fisico_actual: Decimal,

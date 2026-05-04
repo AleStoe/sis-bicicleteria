@@ -94,6 +94,22 @@ def armar_bicicleta_serializada(data):
                 },
             )
 
+            stock_service.registrar_salida_por_serializacion(
+                conn,
+                {
+                    "id_sucursal": data.id_sucursal_actual,
+                    "id_variante": data.id_variante,
+                    "cantidad": 1,
+                    "id_usuario": data.id_usuario,
+                    "origen_id": bicicleta_id,
+                    "id_bicicleta_serializada": bicicleta_id,
+                    "nota": (
+                        f"Salida de stock por armado de bicicleta serializada "
+                        f"#{bicicleta_id}. Número de cuadro: {numero_cuadro}"
+                    ),
+                },
+            )
+
             auditoria_service.registrar_evento(
                 conn,
                 id_usuario=data.id_usuario,
