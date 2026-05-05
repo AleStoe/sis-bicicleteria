@@ -326,15 +326,35 @@ def test_no_permite_devolver_venta_no_entregada(client, db_conn, seed_venta_devo
         seed_venta_devolucion_serializada["sucursal_id"],
         seed_venta_devolucion_serializada["variante_id"],
     )
-    assert float(stock["stock_fisico"]) == 1.0
+
+    # La serialización ya consumió el stock físico genérico.
+    # La venta serializada mueve el estado de la bicicleta, no el pendiente genérico.
+    assert float(stock["stock_fisico"]) == 0.0
     assert float(stock["stock_reservado"]) == 0.0
-    assert float(stock["stock_vendido_pendiente_entrega"]) == 1.0
+    assert float(stock["stock_vendido_pendiente_entrega"]) == 0.0
 
 
 def test_no_permite_devolver_serializada_que_no_pertenece_a_la_venta(client, db_conn, seed_venta_devolucion_serializada):
     bici_venta_response = _crear_bici_serializada(client, seed_venta_devolucion_serializada, "CUADRO-DEV-PROP-001")
     assert bici_venta_response.status_code == 200, bici_venta_response.text
     bicicleta_venta_id = bici_venta_response.json()["bicicleta_id"]
+
+    # Para crear una segunda serializada necesitamos reponer 1 unidad genérica.
+    # Si no, el test falla por falta de stock antes de probar la regla que interesa.
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE stock_sucursal
+            SET stock_fisico = stock_fisico + 1
+            WHERE id_sucursal = %s
+              AND id_variante = %s
+            """,
+            (
+                seed_venta_devolucion_serializada["sucursal_id"],
+                seed_venta_devolucion_serializada["variante_id"],
+            ),
+        )
+    db_conn.commit()
 
     bici_otra_response = _crear_bici_serializada(client, seed_venta_devolucion_serializada, "CUADRO-DEV-PROP-002")
     assert bici_otra_response.status_code == 200, bici_otra_response.text

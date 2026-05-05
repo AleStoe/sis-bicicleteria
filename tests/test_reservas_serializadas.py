@@ -159,7 +159,7 @@ def seed_reserva_serializada(db_conn, clean_db):
                 stock_reservado,
                 stock_vendido_pendiente_entrega
             )
-            VALUES (%s, %s, 1, 0, 0)
+            VALUES (%s, %s, 2, 0, 0)
             RETURNING id
             """,
             (sucursal_id, variante_id),
@@ -208,7 +208,7 @@ def test_crear_reserva_con_serializada_la_pasa_a_reservada(client, db_conn, seed
         seed_reserva_serializada["variante_id"],
     )
     assert float(stock["stock_fisico"]) == 1.0
-    assert float(stock["stock_reservado"]) == 1.0
+    assert float(stock["stock_reservado"]) == 0.0
     assert float(stock["stock_vendido_pendiente_entrega"]) == 0.0
 
 
@@ -355,4 +355,4 @@ def test_convertir_reserva_en_venta_pasa_serializada_a_vendida_pendiente(client,
     )
     assert float(stock["stock_fisico"]) == 1.0
     assert float(stock["stock_reservado"]) == 0.0
-    assert float(stock["stock_vendido_pendiente_entrega"]) == 1.0
+    assert float(stock["stock_vendido_pendiente_entrega"]) == 0.0

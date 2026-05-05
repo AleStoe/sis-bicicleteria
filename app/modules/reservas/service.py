@@ -115,19 +115,8 @@ def crear_reserva(data):
             # 1. VALIDAR STOCK Y SERIALIZADAS
             # =====================================================
             for item in data["items"]:
-                stock = stock_service.obtener_stock_disponible_tx(
-                    conn,
-                    id_sucursal=data["id_sucursal"],
-                    id_variante=item["id_variante"],
-                )
-
-                if to_decimal(stock["stock_disponible"]) < to_decimal(item["cantidad"]):
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Stock insuficiente para variante {item['id_variante']}",
-                    )
-
                 bicicleta_id = item.get("id_bicicleta_serializada")
+
                 if bicicleta_id is not None:
                     if to_decimal(item["cantidad"]) != Decimal("1"):
                         raise HTTPException(
@@ -141,6 +130,18 @@ def crear_reserva(data):
                         id_variante=item["id_variante"],
                         id_sucursal=data["id_sucursal"],
                     )
+                else:
+                    stock = stock_service.obtener_stock_disponible_tx(
+                        conn,
+                        id_sucursal=data["id_sucursal"],
+                        id_variante=item["id_variante"],
+                    )
+
+                    if to_decimal(stock["stock_disponible"]) < to_decimal(item["cantidad"]):
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Stock insuficiente para variante {item['id_variante']}",
+                        )
 
             # =====================================================
             # 2. CREAR RESERVA
@@ -167,21 +168,22 @@ def crear_reserva(data):
                 )
 
                 bicicleta_id = item.get("id_bicicleta_serializada")
+
                 if bicicleta_id is not None:
                     update_bicicleta_serializada_estado(conn, bicicleta_id, "reservada")
-
-                stock_service.reservar_stock(
-                    conn,
-                    {
-                        "id_sucursal": data["id_sucursal"],
-                        "id_variante": item["id_variante"],
-                        "cantidad": item["cantidad"],
-                        "id_usuario": data["id_usuario"],
-                        "origen_tipo": "reserva",
-                        "origen_id": reserva_id,
-                        "nota": "Reserva creada",
-                    },
-                )
+                else:
+                    stock_service.reservar_stock(
+                        conn,
+                        {
+                            "id_sucursal": data["id_sucursal"],
+                            "id_variante": item["id_variante"],
+                            "cantidad": item["cantidad"],
+                            "id_usuario": data["id_usuario"],
+                            "origen_tipo": "reserva",
+                            "origen_id": reserva_id,
+                            "nota": "Reserva creada",
+                        },
+                    )
 
             # =====================================================
             # 4. SEÑA Y SALDO
@@ -292,6 +294,7 @@ def cancelar_reserva(data: dict):
                         )
 
                     update_bicicleta_serializada_estado(conn, bicicleta_id, "disponible")
+                    continue
 
                 stock_service.liberar_stock_reservado(
                     conn,
@@ -407,6 +410,7 @@ def marcar_reserva_vencida(reserva_id: int, data):
                         )
 
                     update_bicicleta_serializada_estado(conn, bicicleta_id, "disponible")
+                    continue
 
                 stock_service.liberar_stock_reservado(
                     conn,
@@ -542,6 +546,7 @@ def convertir_reserva_en_venta(reserva_id: int, data):
                         bicicleta_id,
                         "vendida_pendiente_entrega",
                     )
+                    continue
 
                 stock_service.marcar_stock_pendiente_entrega(
                     conn,

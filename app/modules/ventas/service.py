@@ -16,6 +16,7 @@ from app.modules.serializadas.repository import (
     update_bicicleta_serializada_estado,
     insert_bicicleta_cliente,    
 )
+from app.modules.creditos.service import crear_credito_por_devolucion_venta
 from app.shared.money import redondear_monto
 from .repository import (
     get_cliente_by_id,
@@ -1029,7 +1030,13 @@ def devolver_item_serializado_entregado(venta_id: int, data):
                     ),
                 },
             )
-
+            crear_credito_por_devolucion_venta(
+                conn,
+                id_cliente=venta["id_cliente"],
+                id_venta=venta_id,
+                monto_credito=item_objetivo["precio_final"],
+                id_usuario=data.id_usuario,
+            )
             auditoria_service.registrar_evento(
                 conn,
                 id_usuario=data.id_usuario,
