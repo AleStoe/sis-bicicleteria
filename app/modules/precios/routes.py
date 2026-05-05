@@ -10,6 +10,7 @@ from .schema import (
     ReglaPrecioEstadoInput,
     PrecioSugeridoInput,
     PrecioSugeridoOutput,
+    PreciosDesfasadosResponse,
 )
 from .service import (
     obtener_precio_variante,
@@ -19,10 +20,24 @@ from .service import (
     listar_reglas_precio,
     desactivar_regla_precio,
     sugerir_precio_variante,
+    listar_precios_desfasados,
 )
 
 router = APIRouter()
 
+@router.get("/desfasados", response_model=PreciosDesfasadosResponse)
+def precios_desfasados_route(
+    tipo_cliente: str = "minorista",
+    id_proveedor: int | None = None,
+    id_categoria: int | None = None,
+    id_marca: int | None = None,
+):
+    return listar_precios_desfasados(
+        tipo_cliente=tipo_cliente,
+        id_proveedor=id_proveedor,
+        id_categoria=id_categoria,
+        id_marca=id_marca,
+    )
 
 @router.get("/variantes/{id_variante}", response_model=VariantePrecioOutput)
 def precio_variante_route(id_variante: int):

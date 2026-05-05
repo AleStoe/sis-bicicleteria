@@ -18,6 +18,7 @@ from .repository import (
     update_regla_precio_estado,
     get_variante_contexto_precio,
     buscar_regla_precio_aplicable,
+    get_variantes_contexto_precio,
 )
 
 
@@ -328,6 +329,91 @@ def sugerir_precio_variante(id_variante: int, data):
             "redondeo_base": redondeo_base,
             "regla_id": regla["id"],
             "regla_nombre": regla["nombre"],
+        }
+
+    finally:
+        conn.close()
+
+def listar_precios_desfasados(
+    *,
+    tipo_cliente: str,
+    id_proveedor: int | None = None,
+    id_categoria: int | None = None,
+    id_marca: int | None = None,
+):
+    conn = get_connection()
+
+    try:
+        variantes = get_variantes_contexto_precio(
+            conn,
+            {
+                "id_proveedor": id_proveedor,
+                "id_categoria": id_categoria,
+                "id_marca": id_marca,
+            },
+        )
+
+        items = []
+
+        for variante in variantes:
+            regla = buscar_regla_precio_aplicable(
+                conn,
+                {
+                    "id_categoria": variante["id_categoria"],
+                    "id_marca": variante["id_marca"],
+                    "tipo_cliente": tipo_cliente,
+                },
+            )
+
+            if regla is None:
+                continue
+
+            costo_base = _dec(variante["costo_promedio_vigente"])
+            margen_esperado = _dec(regla["margen_porcentaje"])
+            redondeo_base = _dec(regla["redondeo_base"])
+
+            precio_sin_redondear = costo_base * (Decimal("1") + margen_esperado)
+            precio_sugerido = _redondear_hacia_arriba(
+                precio_sin_redondear,
+                redondeo_base,
+            )
+
+            precio_actual = (
+                _dec(variante["precio_minorista"])
+                if tipo_cliente == "minorista"
+                else _dec(variante["precio_mayorista"])
+            )
+
+            if precio_actual == precio_sugerido:
+                continue
+
+            if costo_base > 0:
+                margen_real = (precio_actual / costo_base) - Decimal("1")
+            else:
+                margen_real = Decimal("0")
+
+            diferencia = precio_sugerido - precio_actual
+
+            items.append(
+                {
+                    "id_variante": variante["id"],
+                    "producto_nombre": variante["producto_nombre"],
+                    "nombre_variante": variante["nombre_variante"],
+                    "tipo_cliente": tipo_cliente,
+                    "costo_base": costo_base,
+                    "precio_actual": precio_actual,
+                    "precio_sugerido": precio_sugerido,
+                    "diferencia": diferencia,
+                    "margen_real": margen_real,
+                    "margen_esperado": margen_esperado,
+                    "regla_id": regla["id"],
+                    "regla_nombre": regla["nombre"],
+                }
+            )
+
+        return {
+            "total": len(items),
+            "items": items,
         }
 
     finally:

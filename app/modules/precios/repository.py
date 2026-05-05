@@ -325,3 +325,44 @@ def buscar_regla_precio_aplicable(conn, data: dict):
             data,
         )
         return cur.fetchone()
+    
+def get_variantes_contexto_precio(conn, filtros: dict):
+    with conn.cursor(row_factory=dict_row) as cur:
+        where = ["v.activo = TRUE", "p.activo = TRUE"]
+        params = {}
+
+        if filtros.get("id_proveedor") is not None:
+            where.append("v.proveedor_preferido_id = %(id_proveedor)s")
+            params["id_proveedor"] = filtros["id_proveedor"]
+
+        if filtros.get("id_categoria") is not None:
+            where.append("p.id_categoria = %(id_categoria)s")
+            params["id_categoria"] = filtros["id_categoria"]
+
+        if filtros.get("id_marca") is not None:
+            where.append("p.id_marca = %(id_marca)s")
+            params["id_marca"] = filtros["id_marca"]
+
+        where_sql = " AND ".join(where)
+
+        cur.execute(
+            f"""
+            SELECT
+                v.id,
+                v.id_producto,
+                p.nombre AS producto_nombre,
+                v.nombre_variante,
+                v.precio_minorista,
+                v.precio_mayorista,
+                v.costo_promedio_vigente,
+                v.proveedor_preferido_id,
+                p.id_categoria,
+                p.id_marca
+            FROM variantes v
+            INNER JOIN productos p ON p.id = v.id_producto
+            WHERE {where_sql}
+            ORDER BY p.nombre, v.nombre_variante
+            """,
+            params,
+        )
+        return cur.fetchall()

@@ -122,3 +122,22 @@ class PrecioSugeridoOutput(BaseModel):
     redondeo_base: Decimal
     regla_id: Optional[int] = None
     regla_nombre: Optional[str] = None
+
+class PrecioDesfasadoOutput(BaseModel):
+    id_variante: int
+    producto_nombre: str
+    nombre_variante: str
+    tipo_cliente: str
+    costo_base: Decimal
+    precio_actual: Decimal
+    precio_sugerido: Decimal
+    diferencia: Decimal
+    margen_real: Decimal
+    margen_esperado: Decimal
+    regla_id: int
+    regla_nombre: str
+
+
+class PreciosDesfasadosResponse(BaseModel):
+    total: int
+    items: List[PrecioDesfasadoOutput]
