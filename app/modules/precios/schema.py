@@ -141,3 +141,37 @@ class PrecioDesfasadoOutput(BaseModel):
 class PreciosDesfasadosResponse(BaseModel):
     total: int
     items: List[PrecioDesfasadoOutput]
+
+class RecalculoProveedorInput(BaseModel):
+    id_proveedor: int = Field(gt=0)
+    tipo_cliente: TipoClientePrecio
+    aplicar: bool = False
+    id_usuario: Optional[int] = Field(default=None, gt=0)
+    motivo: Optional[str] = Field(default=None, max_length=500)
+
+
+class RecalculoProveedorItemOutput(BaseModel):
+    id_variante: int
+    producto_nombre: str
+    nombre_variante: str
+    tipo_cliente: str
+    costo_base: Decimal
+    precio_actual: Decimal
+    precio_sugerido: Decimal
+    diferencia: Decimal
+    margen_real: Decimal
+    margen_esperado: Decimal
+    regla_id: int
+    regla_nombre: str
+    aplicado: bool
+    movimiento_id: Optional[int] = None
+
+
+class RecalculoProveedorOutput(BaseModel):
+    ok: bool
+    aplicado: bool
+    id_proveedor: int
+    tipo_cliente: str
+    total_detectados: int
+    total_aplicados: int
+    items: List[RecalculoProveedorItemOutput]

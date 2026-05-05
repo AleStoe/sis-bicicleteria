@@ -19,6 +19,8 @@ from .repository import (
     get_variante_contexto_precio,
     buscar_regla_precio_aplicable,
     get_variantes_contexto_precio,
+    get_variantes_contexto_precio_by_proveedor,
+    get_proveedor_by_id,
 )
 
 
@@ -415,6 +417,163 @@ def listar_precios_desfasados(
             "total": len(items),
             "items": items,
         }
+
+    finally:
+        conn.close()
+    
+def recalcular_precios_por_proveedor(data):
+    conn = get_connection()
+
+    try:
+        with conn.transaction():
+            proveedor = get_proveedor_by_id(conn, data.id_proveedor)
+
+            if proveedor is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No existe el proveedor {data.id_proveedor}",
+                )
+
+            if not proveedor["activo"]:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"El proveedor {data.id_proveedor} está inactivo",
+                )
+
+            if data.aplicar and data.id_usuario is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="id_usuario es obligatorio cuando aplicar=true",
+                )
+
+            variantes = get_variantes_contexto_precio_by_proveedor(
+                conn,
+                data.id_proveedor,
+            )
+
+            items = []
+            total_aplicados = 0
+
+            for variante in variantes:
+                if variante["permite_precio_libre"]:
+                    continue
+
+                regla = buscar_regla_precio_aplicable(
+                    conn,
+                    {
+                        "id_categoria": variante["id_categoria"],
+                        "id_marca": variante["id_marca"],
+                        "tipo_cliente": data.tipo_cliente,
+                    },
+                )
+
+                if regla is None:
+                    continue
+
+                costo_base = _dec(variante["costo_promedio_vigente"])
+                margen_esperado = _dec(regla["margen_porcentaje"])
+                redondeo_base = _dec(regla["redondeo_base"])
+
+                precio_sin_redondear = costo_base * (
+                    Decimal("1") + margen_esperado
+                )
+
+                precio_sugerido = _redondear_hacia_arriba(
+                    precio_sin_redondear,
+                    redondeo_base,
+                )
+
+                precio_minorista_actual = _dec(variante["precio_minorista"])
+                precio_mayorista_actual = _dec(variante["precio_mayorista"])
+
+                precio_actual = (
+                    precio_minorista_actual
+                    if data.tipo_cliente == "minorista"
+                    else precio_mayorista_actual
+                )
+
+                if precio_actual == precio_sugerido:
+                    continue
+
+                if costo_base > 0:
+                    margen_real = (precio_actual / costo_base) - Decimal("1")
+                else:
+                    margen_real = Decimal("0")
+
+                diferencia = precio_sugerido - precio_actual
+                movimiento_id = None
+                aplicado = False
+
+                if data.aplicar:
+                    if data.tipo_cliente == "minorista":
+                        precio_minorista_nuevo = precio_sugerido
+                        precio_mayorista_nuevo = precio_mayorista_actual
+                    else:
+                        precio_minorista_nuevo = precio_minorista_actual
+                        precio_mayorista_nuevo = precio_sugerido
+
+                    movimiento_id = insert_precio_movimiento(
+                        conn,
+                        {
+                            "id_variante": variante["id"],
+                            "precio_minorista_anterior": precio_minorista_actual,
+                            "precio_minorista_nuevo": precio_minorista_nuevo,
+                            "precio_mayorista_anterior": precio_mayorista_actual,
+                            "precio_mayorista_nuevo": precio_mayorista_nuevo,
+                            "costo_anterior": costo_base,
+                            "costo_nuevo": costo_base,
+                            "tipo_movimiento": "cambio_margen",
+                            "motivo": data.motivo
+                            or (
+                                f"Recalculo masivo por proveedor "
+                                f"{data.id_proveedor}. tipo_cliente={data.tipo_cliente}"
+                            ),
+                            "origen_tipo": "proveedor",
+                            "origen_id": data.id_proveedor,
+                            "id_usuario": data.id_usuario,
+                        },
+                    )
+
+                    update_variante_precios(
+                        conn,
+                        variante["id"],
+                        {
+                            "precio_minorista": precio_minorista_nuevo,
+                            "precio_mayorista": precio_mayorista_nuevo,
+                        },
+                    )
+
+                    aplicado = True
+                    total_aplicados += 1
+
+                items.append(
+                    {
+                        "id_variante": variante["id"],
+                        "producto_nombre": variante["producto_nombre"],
+                        "nombre_variante": variante["nombre_variante"],
+                        "tipo_cliente": data.tipo_cliente,
+                        "costo_base": costo_base,
+                        "precio_actual": precio_actual,
+                        "precio_sugerido": precio_sugerido,
+                        "diferencia": diferencia,
+                        "margen_real": margen_real,
+                        "margen_esperado": margen_esperado,
+                        "regla_id": regla["id"],
+                        "regla_nombre": regla["nombre"],
+                        "aplicado": aplicado,
+                        "movimiento_id": movimiento_id,
+                    }
+                )
+
+            return {
+                "ok": True,
+                "aplicado": data.aplicar,
+                "id_proveedor": data.id_proveedor,
+                "tipo_cliente": data.tipo_cliente,
+                "total_detectados": len(items),
+                "total_aplicados": total_aplicados,
+                "items": items,
+            }
 
     finally:
         conn.close()

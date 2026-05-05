@@ -366,3 +366,45 @@ def get_variantes_contexto_precio(conn, filtros: dict):
             params,
         )
         return cur.fetchall()
+    
+def get_variantes_contexto_precio_by_proveedor(conn, id_proveedor: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT
+                v.id,
+                v.id_producto,
+                p.nombre AS producto_nombre,
+                v.nombre_variante,
+                v.precio_minorista,
+                v.precio_mayorista,
+                v.costo_promedio_vigente,
+                v.permite_precio_libre,
+                v.proveedor_preferido_id,
+                v.activo,
+                p.id_categoria,
+                p.id_marca,
+                p.activo AS producto_activo
+            FROM variantes v
+            INNER JOIN productos p ON p.id = v.id_producto
+            WHERE v.proveedor_preferido_id = %s
+              AND v.activo = TRUE
+              AND p.activo = TRUE
+            ORDER BY p.nombre, v.nombre_variante
+            """,
+            (id_proveedor,),
+        )
+        return cur.fetchall()
+
+
+def get_proveedor_by_id(conn, id_proveedor: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT id, nombre, activo
+            FROM proveedores
+            WHERE id = %s
+            """,
+            (id_proveedor,),
+        )
+        return cur.fetchone()    

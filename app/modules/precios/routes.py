@@ -11,6 +11,8 @@ from .schema import (
     PrecioSugeridoInput,
     PrecioSugeridoOutput,
     PreciosDesfasadosResponse,
+    RecalculoProveedorInput,
+    RecalculoProveedorOutput,
 )
 from .service import (
     obtener_precio_variante,
@@ -21,6 +23,7 @@ from .service import (
     desactivar_regla_precio,
     sugerir_precio_variante,
     listar_precios_desfasados,
+    recalcular_precios_por_proveedor,
 )
 
 router = APIRouter()
@@ -89,3 +92,10 @@ def sugerir_precio_variante_route(
     data: PrecioSugeridoInput,
 ):
     return sugerir_precio_variante(id_variante, data)
+
+@router.post(
+    "/recalcular-proveedor",
+    response_model=RecalculoProveedorOutput,
+)
+def recalcular_precios_por_proveedor_route(data: RecalculoProveedorInput):
+    return recalcular_precios_por_proveedor(data)
