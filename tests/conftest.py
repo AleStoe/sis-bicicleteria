@@ -47,6 +47,11 @@ def clean_db(db_conn):
         cur.execute(
             """
             TRUNCATE TABLE
+                gastos_movimientos,
+                gastos_operativos,
+                gasto_categorias,
+                caja_movimientos,
+                cajas,
                 deuda_movimientos,
                 deudas_cliente,
                 auditoria_eventos,
