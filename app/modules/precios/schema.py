@@ -73,3 +73,52 @@ class PrecioActualizarOutput(BaseModel):
 class PrecioHistorialOutput(BaseModel):
     variante: VariantePrecioOutput
     movimientos: List[PrecioMovimientoOutput]
+
+
+TipoClientePrecio = Literal["minorista", "mayorista"]
+
+
+class ReglaPrecioCreateInput(BaseModel):
+    nombre: str = Field(min_length=3, max_length=100)
+    id_categoria: Optional[int] = Field(default=None, gt=0)
+    id_marca: Optional[int] = Field(default=None, gt=0)
+    tipo_cliente: TipoClientePrecio
+    margen_porcentaje: Decimal = Field(ge=0)
+    redondeo_base: Decimal = Field(default=Decimal("100"), gt=0)
+
+
+class ReglaPrecioOutput(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    nombre: str
+    id_categoria: Optional[int] = None
+    categoria_nombre: Optional[str] = None
+    id_marca: Optional[int] = None
+    marca_nombre: Optional[str] = None
+    tipo_cliente: str
+    margen_porcentaje: Decimal
+    redondeo_base: Decimal
+    activa: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class ReglaPrecioEstadoInput(BaseModel):
+    id_usuario: int = Field(gt=0)
+
+
+class PrecioSugeridoInput(BaseModel):
+    tipo_cliente: TipoClientePrecio
+
+
+class PrecioSugeridoOutput(BaseModel):
+    id_variante: int
+    tipo_cliente: str
+    costo_base: Decimal
+    precio_actual: Decimal
+    precio_sugerido: Decimal
+    margen_porcentaje: Decimal
+    redondeo_base: Decimal
+    regla_id: Optional[int] = None
+    regla_nombre: Optional[str] = None

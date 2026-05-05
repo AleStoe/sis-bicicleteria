@@ -128,3 +128,200 @@ def get_historial_precios_by_variante(conn, id_variante: int):
             (id_variante,),
         )
         return cur.fetchall()
+
+def get_categoria_by_id(conn, categoria_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT id, nombre, activo
+            FROM categorias
+            WHERE id = %s
+            """,
+            (categoria_id,),
+        )
+        return cur.fetchone()
+
+
+def get_marca_by_id(conn, marca_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT id, nombre, activa
+            FROM marcas
+            WHERE id = %s
+            """,
+            (marca_id,),
+        )
+        return cur.fetchone()
+
+
+def insert_regla_precio(conn, data: dict):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            INSERT INTO reglas_precio (
+                nombre,
+                id_categoria,
+                id_marca,
+                tipo_cliente,
+                margen_porcentaje,
+                redondeo_base,
+                activa
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, TRUE)
+            RETURNING id
+            """,
+            (
+                data["nombre"],
+                data.get("id_categoria"),
+                data.get("id_marca"),
+                data["tipo_cliente"],
+                data["margen_porcentaje"],
+                data["redondeo_base"],
+            ),
+        )
+        return cur.fetchone()["id"]
+
+
+def get_reglas_precio(conn, solo_activas: bool = True):
+    with conn.cursor(row_factory=dict_row) as cur:
+        filtros = []
+        params = []
+
+        if solo_activas:
+            filtros.append("rp.activa = TRUE")
+
+        where_sql = f"WHERE {' AND '.join(filtros)}" if filtros else ""
+
+        cur.execute(
+            f"""
+            SELECT
+                rp.id,
+                rp.nombre,
+                rp.id_categoria,
+                c.nombre AS categoria_nombre,
+                rp.id_marca,
+                m.nombre AS marca_nombre,
+                rp.tipo_cliente,
+                rp.margen_porcentaje,
+                rp.redondeo_base,
+                rp.activa,
+                rp.created_at,
+                rp.updated_at
+            FROM reglas_precio rp
+            LEFT JOIN categorias c ON c.id = rp.id_categoria
+            LEFT JOIN marcas m ON m.id = rp.id_marca
+            {where_sql}
+            ORDER BY rp.activa DESC, rp.id DESC
+            """,
+            params,
+        )
+        return cur.fetchall()
+
+
+def get_regla_precio_by_id(conn, regla_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT
+                rp.id,
+                rp.nombre,
+                rp.id_categoria,
+                c.nombre AS categoria_nombre,
+                rp.id_marca,
+                m.nombre AS marca_nombre,
+                rp.tipo_cliente,
+                rp.margen_porcentaje,
+                rp.redondeo_base,
+                rp.activa,
+                rp.created_at,
+                rp.updated_at
+            FROM reglas_precio rp
+            LEFT JOIN categorias c ON c.id = rp.id_categoria
+            LEFT JOIN marcas m ON m.id = rp.id_marca
+            WHERE rp.id = %s
+            """,
+            (regla_id,),
+        )
+        return cur.fetchone()
+
+
+def update_regla_precio_estado(conn, regla_id: int, activa: bool):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE reglas_precio
+            SET activa = %s,
+                updated_at = NOW()
+            WHERE id = %s
+            """,
+            (activa, regla_id),
+        )
+
+
+def get_variante_contexto_precio(conn, id_variante: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT
+                v.id,
+                v.id_producto,
+                v.nombre_variante,
+                v.precio_minorista,
+                v.precio_mayorista,
+                v.costo_promedio_vigente,
+                v.activo,
+                p.nombre AS producto_nombre,
+                p.id_categoria,
+                p.id_marca
+            FROM variantes v
+            INNER JOIN productos p ON p.id = v.id_producto
+            WHERE v.id = %s
+            """,
+            (id_variante,),
+        )
+        return cur.fetchone()
+
+
+def buscar_regla_precio_aplicable(conn, data: dict):
+    """
+    Prioridad:
+    1. categoría + marca
+    2. marca
+    3. categoría
+    4. global
+    """
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT
+                id,
+                nombre,
+                id_categoria,
+                id_marca,
+                tipo_cliente,
+                margen_porcentaje,
+                redondeo_base,
+                activa,
+                CASE
+                    WHEN id_categoria = %(id_categoria)s AND id_marca = %(id_marca)s THEN 4
+                    WHEN id_categoria IS NULL AND id_marca = %(id_marca)s THEN 3
+                    WHEN id_categoria = %(id_categoria)s AND id_marca IS NULL THEN 2
+                    WHEN id_categoria IS NULL AND id_marca IS NULL THEN 1
+                    ELSE 0
+                END AS prioridad
+            FROM reglas_precio
+            WHERE activa = TRUE
+              AND tipo_cliente = %(tipo_cliente)s
+              AND (
+                    (id_categoria = %(id_categoria)s AND id_marca = %(id_marca)s)
+                 OR (id_categoria IS NULL AND id_marca = %(id_marca)s)
+                 OR (id_categoria = %(id_categoria)s AND id_marca IS NULL)
+                 OR (id_categoria IS NULL AND id_marca IS NULL)
+              )
+            ORDER BY prioridad DESC, id DESC
+            LIMIT 1
+            """,
+            data,
+        )
+        return cur.fetchone()
