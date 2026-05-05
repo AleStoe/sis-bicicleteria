@@ -809,6 +809,7 @@ def crear_ingreso_stock(conn, data: dict):
     - sube stock_fisico
     - recalcula costo promedio
     - registra movimiento 'ingreso'
+    - registra historial de costo en precios_movimientos si cambia el costo
 
     NO hace commit.
     """
@@ -828,8 +829,8 @@ def crear_ingreso_stock(conn, data: dict):
     costo_total_lote = costo_productos + gastos_adicionales
     costo_unitario_calculado = costo_total_lote / cantidad_ingresada
 
+    # 1. insertar cabecera de ingreso
     with conn.cursor() as cur:
-        # 1. insertar cabecera de ingreso
         cur.execute(
             """
             INSERT INTO ingresos_stock (
@@ -899,6 +900,7 @@ def crear_ingreso_stock(conn, data: dict):
             + (cantidad_ingresada * costo_unitario_calculado)
         ) / (stock_anterior + cantidad_ingresada)
 
+    # 4. actualizar costo promedio en variante
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -910,7 +912,52 @@ def crear_ingreso_stock(conn, data: dict):
             (nuevo_costo_promedio, data["id_variante"]),
         )
 
-    # 4. movimiento
+    # 5. registrar historial de costo en precios_movimientos
+    if costo_promedio_anterior != nuevo_costo_promedio:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO precios_movimientos (
+                    id_variante,
+                    precio_minorista_anterior,
+                    precio_minorista_nuevo,
+                    precio_mayorista_anterior,
+                    precio_mayorista_nuevo,
+                    costo_anterior,
+                    costo_nuevo,
+                    tipo_movimiento,
+                    motivo,
+                    origen_tipo,
+                    origen_id,
+                    id_usuario
+                )
+                SELECT
+                    v.id,
+                    v.precio_minorista,
+                    v.precio_minorista,
+                    v.precio_mayorista,
+                    v.precio_mayorista,
+                    %s,
+                    %s,
+                    'actualizacion_por_ingreso_stock',
+                    %s,
+                    'ingreso_stock',
+                    %s,
+                    %s
+                FROM variantes v
+                WHERE v.id = %s
+                """,
+                (
+                    costo_promedio_anterior,
+                    nuevo_costo_promedio,
+                    f"Actualización de costo promedio por ingreso de stock #{ingreso_id}",
+                    ingreso_id,
+                    data["id_usuario"],
+                    data["id_variante"],
+                ),
+            )
+
+    # 6. registrar movimiento de stock
     registrar_movimiento_stock(
         conn,
         id_sucursal=data["id_sucursal"],
