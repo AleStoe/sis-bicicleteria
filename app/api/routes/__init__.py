@@ -10,6 +10,8 @@ from app.modules.taller.routes import router as taller_router
 from app.modules.deudas.routes import router as deudas_router
 from app.modules.serializadas.routes import router as serializadas_router
 from app.modules.creditos.routes import router as creditos_router
+from app.modules.gastos.routes import router as gastos_router
+from app.modules.precios.routes import router as precios_router
 router = APIRouter()
 
 router.include_router(catalogo_router, prefix="/catalogo", tags=["Catalogo"])
@@ -23,3 +25,5 @@ router.include_router(taller_router, tags=["Taller"])
 router.include_router(deudas_router, prefix="/deudas", tags=["Deudas"])
 router.include_router(serializadas_router,prefix="/bicicletas_serializadas", tags=["Bicicletas Serializadas"],)
 router.include_router(creditos_router, prefix="/creditos", tags=["Creditos"])
+router.include_router(gastos_router, prefix="/gastos", tags=["Gastos"])
+router.include_router(precios_router, prefix="/precios", tags=["Precios"])
