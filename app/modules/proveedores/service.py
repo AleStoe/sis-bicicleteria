@@ -1,0 +1,64 @@
+from fastapi import HTTPException
+from psycopg.errors import UniqueViolation
+
+from app.db.connection import get_connection
+
+from .repository import (
+    get_proveedores,
+    get_proveedor_by_id,
+    insert_proveedor,
+)
+
+
+def listar_proveedores(solo_activos: bool = True):
+    conn = get_connection()
+
+    try:
+        return get_proveedores(conn, solo_activos=solo_activos)
+    finally:
+        conn.close()
+
+
+def obtener_proveedor(proveedor_id: int):
+    conn = get_connection()
+
+    try:
+        proveedor = get_proveedor_by_id(conn, proveedor_id)
+
+        if proveedor is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No existe el proveedor {proveedor_id}",
+            )
+
+        return proveedor
+
+    finally:
+        conn.close()
+
+
+def crear_proveedor(data):
+    conn = get_connection()
+
+    try:
+        with conn.transaction():
+            try:
+                proveedor = insert_proveedor(
+                    conn,
+                    {
+                        "nombre": data.nombre.strip(),
+                        "telefono": data.telefono,
+                        "email": data.email,
+                        "notas": data.notas,
+                    },
+                )
+            except UniqueViolation:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Ya existe un proveedor con ese nombre",
+                )
+
+            return proveedor
+
+    finally:
+        conn.close()
