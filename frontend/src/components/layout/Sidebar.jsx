@@ -68,6 +68,9 @@ export default function Sidebar() {
         <NavLink to="/proveedores" style={navStyle}>
           Proveedores
         </NavLink>
+        <NavLink to="/precios" style={navStyle}>
+          Precios
+        </NavLink>
       </nav>
     </aside>
   );

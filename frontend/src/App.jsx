@@ -22,7 +22,7 @@ import ReservaDetallePage from "./pages/ReservaDetallePage";
 import AuditoriaPage from "./pages/AuditoriaPage";
 import BicicletasSerializadasPage from "./pages/BicicletasSerializadasPage";
 import ProveedoresPage from "./pages/ProveedoresPage";
-
+import PreciosPage from "./pages/PreciosPage";
 export default function App() {
   return (
     <BrowserRouter>
@@ -52,7 +52,7 @@ export default function App() {
           <Route path="/auditoria" element={<AuditoriaPage />} /> 
           <Route path="/serializadas" element={<BicicletasSerializadasPage />} />
           <Route path="/proveedores" element={<ProveedoresPage />} />
-          
+          <Route path="/precios" element={<PreciosPage />} />
         </Routes>
       </AppLayout>
     </BrowserRouter>
