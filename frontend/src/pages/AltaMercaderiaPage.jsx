@@ -163,9 +163,10 @@ export default function AltaMercaderiaPage() {
         id_sucursal: ID_SUCURSAL_DEFAULT,
         query: q,
         limit: 20,
+        offset: 0,
       });
 
-      const items = data || [];
+      const items = Array.isArray(data) ? data : data?.items || [];
       setResultados(items);
 
       if (items.length === 1) {

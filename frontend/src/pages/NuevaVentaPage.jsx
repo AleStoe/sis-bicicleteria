@@ -75,7 +75,7 @@ export default function NuevaVentaPage() {
 
       setCategorias(categoriasData || []);
       setClientes(clientesData || []);
-      setCatalogo(catalogoData || []);
+      setCatalogo(Array.isArray(catalogoData) ? catalogoData : catalogoData?.items || []);
 
       const consumidorFinal = (clientesData || []).find((c) => Number(c.id) === 1);
       if (consumidorFinal) {

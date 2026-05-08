@@ -48,7 +48,7 @@ export default function NuevaReservaPage() {
       ]);
 
       setClientes(clientesData || []);
-      setCatalogo(catalogoData || []);
+      setCatalogo(Array.isArray(catalogoData) ? catalogoData : catalogoData?.items || []);
 
       const primerClienteNoGenerico = (clientesData || []).find((c) => Number(c.id) !== 1);
       if (primerClienteNoGenerico) setClienteId(String(primerClienteNoGenerico.id));
