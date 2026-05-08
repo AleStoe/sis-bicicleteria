@@ -18,6 +18,8 @@ class ProductoOut(BaseModel):
     activo: bool
     categoria_id: int
     categoria_nombre: str
+    id_marca: int | None = None
+    marca_nombre: str | None = None
 
 
 class VarianteOut(BaseModel):
@@ -89,6 +91,8 @@ class CatalogoPOSItemOut(BaseModel):
     codigo_barras: str | None = None
     imagen_principal: str | None = None
     activo: bool
+    id_marca: int | None = None
+    marca_nombre: str | None = None
 
     
     stock_fisico: Decimal = Decimal("0")
@@ -99,11 +103,18 @@ class CatalogoPOSItemOut(BaseModel):
     disponible_para_venta: bool
     motivo_no_disponible: str | None = None
 
+    proveedor_preferido_id: int | None = None
+    proveedor_preferido_nombre: str | None = None
 
 
 TipoItemCatalogo = Literal["producto", "servicio"]
 
-
+class CatalogoPOSPaginatedOut(BaseModel):
+    total: int
+    limit: int
+    offset: int
+    items: list[CatalogoPOSItemOut]
+    
 class ProductoCreate(BaseModel):
     id_categoria: int = Field(gt=0)
     id_marca: int | None = Field(default=None, gt=0)
@@ -168,3 +179,32 @@ class MarcaOut(BaseModel):
 
 class MarcaCreate(BaseModel):
     nombre: str = Field(min_length=2, max_length=100)
+
+class ProductoUpdate(BaseModel):
+    id_categoria: int | None = Field(default=None, gt=0)
+    id_marca: int | None = Field(default=None, gt=0)
+    nombre: str | None = Field(default=None, min_length=2, max_length=150)
+    tipo_item: TipoItemCatalogo | None = None
+    stockeable: bool | None = None
+    serializable: bool | None = None
+
+
+class ProductoEstadoUpdate(BaseModel):
+    activo: bool
+    id_usuario: int = Field(gt=0)
+
+
+class VarianteUpdate(BaseModel):
+    nombre_variante: str | None = Field(default=None, min_length=1, max_length=150)
+    sku: str | None = Field(default=None, max_length=100)
+    codigo_barras: str | None = Field(default=None, max_length=100)
+    codigo_proveedor: str | None = Field(default=None, max_length=100)
+    proveedor_preferido_id: int | None = Field(default=None, gt=0)
+    alicuota_iva: Decimal | None = None
+    gravado: bool | None = None
+    permite_precio_libre: bool | None = None
+
+
+class VarianteEstadoUpdate(BaseModel):
+    activo: bool
+    id_usuario: int = Field(gt=0)

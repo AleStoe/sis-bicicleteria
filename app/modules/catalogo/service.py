@@ -20,6 +20,11 @@ from .repository import (
     crear_variante_catalogo,
     get_marcas,
     crear_marca_catalogo,
+    update_producto_catalogo,
+    update_producto_estado,
+    get_variante_by_id,
+    update_variante_catalogo,
+    update_variante_estado,
 )
 
 
@@ -159,12 +164,16 @@ def listar_catalogo_pos(
     query: str | None = None,
     categoria_id: int | None = None,
     limit: int = 50,
+    offset: int = 0,
 ):
     if limit < 1:
         raise HTTPException(status_code=400, detail="El límite debe ser mayor a 0")
 
     if limit > 100:
         raise HTTPException(status_code=400, detail="El límite máximo permitido es 100")
+
+    if offset < 0:
+        raise HTTPException(status_code=400, detail="El offset no puede ser negativo")
 
     conn = get_connection()
     try:
@@ -174,6 +183,7 @@ def listar_catalogo_pos(
             query=query,
             categoria_id=categoria_id,
             limit=limit,
+            offset=offset,
         )
     finally:
         conn.close()
@@ -330,5 +340,136 @@ def crear_marca(data):
                     status_code=400,
                     detail="Ya existe una marca con ese nombre",
                 )
+    finally:
+        conn.close()
+    
+def obtener_producto(producto_id: int):
+    conn = get_connection()
+
+    try:
+        producto = get_producto_by_id(conn, producto_id)
+
+        if producto is None:
+            raise HTTPException(status_code=404, detail="Producto no encontrado")
+
+        return producto
+    finally:
+        conn.close()
+
+
+def editar_producto(producto_id: int, data):
+    payload = data.model_dump(exclude_unset=True)
+
+    conn = get_connection()
+
+    try:
+        with conn.transaction():
+            producto = get_producto_by_id(conn, producto_id)
+
+            if producto is None:
+                raise HTTPException(status_code=404, detail="Producto no encontrado")
+
+            if "id_categoria" in payload:
+                _validar_categoria_activa(conn, payload["id_categoria"])
+
+            if "id_marca" in payload:
+                _validar_marca_activa(conn, payload["id_marca"])
+
+            stockeable = payload.get("stockeable", producto["stockeable"])
+            serializable = payload.get("serializable", producto["serializable"])
+
+            if serializable and not stockeable:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Un producto serializable debe ser stockeable",
+                )
+
+            if "nombre" in payload and payload["nombre"] is not None:
+                payload["nombre"] = payload["nombre"].strip()
+
+            return update_producto_catalogo(conn, producto_id, payload)
+
+    finally:
+        conn.close()
+
+
+def cambiar_estado_producto(producto_id: int, data):
+    conn = get_connection()
+
+    try:
+        with conn.transaction():
+            producto = get_producto_by_id(conn, producto_id)
+
+            if producto is None:
+                raise HTTPException(status_code=404, detail="Producto no encontrado")
+
+            return update_producto_estado(conn, producto_id, data.activo)
+
+    finally:
+        conn.close()
+
+
+def obtener_variante(variante_id: int):
+    conn = get_connection()
+
+    try:
+        variante = get_variante_by_id(conn, variante_id)
+
+        if variante is None:
+            raise HTTPException(status_code=404, detail="Variante no encontrada")
+
+        return variante
+    finally:
+        conn.close()
+
+
+def editar_variante(variante_id: int, data):
+    payload = data.model_dump(exclude_unset=True)
+
+    conn = get_connection()
+
+    try:
+        with conn.transaction():
+            variante = get_variante_by_id(conn, variante_id)
+
+            if variante is None:
+                raise HTTPException(status_code=404, detail="Variante no encontrada")
+
+            producto = get_producto_by_id(conn, variante["id_producto"])
+
+            if producto is None:
+                raise HTTPException(status_code=400, detail="Producto no encontrado")
+
+            if not producto["stockeable"] and payload.get("proveedor_preferido_id") is not None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Un servicio no debería tener proveedor preferido",
+                )
+
+            if "proveedor_preferido_id" in payload:
+                _validar_proveedor_activo(conn, payload["proveedor_preferido_id"])
+
+            for campo in ["nombre_variante", "sku", "codigo_barras", "codigo_proveedor"]:
+                if campo in payload and payload[campo] is not None:
+                    payload[campo] = payload[campo].strip()
+
+            return update_variante_catalogo(conn, variante_id, payload)
+
+    finally:
+        conn.close()
+
+
+def cambiar_estado_variante(variante_id: int, data):
+    conn = get_connection()
+
+    try:
+        with conn.transaction():
+            variante = get_variante_by_id(conn, variante_id)
+
+            if variante is None:
+                raise HTTPException(status_code=404, detail="Variante no encontrada")
+
+            return update_variante_estado(conn, variante_id, data.activo)
+
     finally:
         conn.close()

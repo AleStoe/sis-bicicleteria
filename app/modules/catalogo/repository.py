@@ -241,6 +241,7 @@ def get_catalogo_pos(
     query: str | None = None,
     categoria_id: int | None = None,
     limit: int = 50,
+    offset: int = 0,
 ):
     filtros = [
         "v.activo = TRUE",
@@ -251,6 +252,7 @@ def get_catalogo_pos(
     params = {
         "id_sucursal": id_sucursal,
         "limit": limit,
+        "offset": offset,
     }
 
     if categoria_id is not None:
@@ -265,6 +267,7 @@ def get_catalogo_pos(
                 OR v.sku ILIKE %(query)s
                 OR v.codigo_barras ILIKE %(query)s
                 OR v.codigo_proveedor ILIKE %(query)s
+                OR m.nombre ILIKE %(query)s
             )
         """)
         params["query"] = f"%{query.strip()}%"
@@ -274,6 +277,21 @@ def get_catalogo_pos(
 
     with conn.cursor() as cur:
         cur.execute(f"""
+            SELECT COUNT(*) AS total
+            FROM variantes v
+            INNER JOIN productos p
+                ON p.id = v.id_producto
+            INNER JOIN categorias c
+                ON c.id = p.id_categoria
+            LEFT JOIN marcas m
+                ON m.id = p.id_marca
+            WHERE {where_sql}
+        """, params)
+
+        total_row = cur.fetchone()
+        total = total_row["total"]
+
+        cur.execute(f"""
             SELECT
                 v.id AS id_variante,
                 v.id_producto,
@@ -281,6 +299,8 @@ def get_catalogo_pos(
                 v.nombre_variante,
                 c.id AS categoria_id,
                 c.nombre AS categoria_nombre,
+                m.id AS id_marca,
+                m.nombre AS marca_nombre,
                 p.tipo_item,
                 p.stockeable,
                 p.serializable,
@@ -290,6 +310,8 @@ def get_catalogo_pos(
                 v.sku,
                 v.codigo_barras,
                 v.codigo_proveedor,
+                v.proveedor_preferido_id,
+                pr.nombre AS proveedor_preferido_nombre,
 
                 COALESCE(img_var.url, img_prod.url) AS imagen_principal,
 
@@ -337,6 +359,10 @@ def get_catalogo_pos(
                 ON p.id = v.id_producto
             INNER JOIN categorias c
                 ON c.id = p.id_categoria
+            LEFT JOIN marcas m
+                ON m.id = p.id_marca
+            LEFT JOIN proveedores pr
+                ON pr.id = v.proveedor_preferido_id
 
             LEFT JOIN stock_sucursal ss
                 ON ss.id_variante = v.id
@@ -369,20 +395,29 @@ def get_catalogo_pos(
                     WHEN %(query_exacta)s <> ''
                          AND v.sku = %(query_exacta)s THEN 1
                     WHEN %(query_exacta)s <> ''
-                        AND v.codigo_proveedor = %(query_exacta)s THEN 2
+                         AND v.codigo_proveedor = %(query_exacta)s THEN 2
                     ELSE 3
                 END,
                 c.nombre,
+                m.nombre NULLS LAST,
                 p.nombre,
                 v.nombre_variante
 
             LIMIT %(limit)s
+            OFFSET %(offset)s
         """, {
             **params,
             "query_exacta": query_exacta,
         })
 
-        return cur.fetchall()
+        items = cur.fetchall()
+
+    return {
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "items": items,
+    }
 
 def get_categoria_by_id(conn, categoria_id: int):
     with conn.cursor() as cur:
@@ -556,3 +591,168 @@ def crear_marca_catalogo(conn, data: dict):
             (data["nombre"],),
         )
         return cur.fetchone()
+
+def update_producto_catalogo(conn, producto_id: int, data: dict):
+    campos = []
+    valores = {"producto_id": producto_id}
+
+    for campo in [
+        "id_categoria",
+        "id_marca",
+        "nombre",
+        "tipo_item",
+        "stockeable",
+        "serializable",
+    ]:
+        if campo in data:
+            campos.append(f"{campo} = %({campo})s")
+            valores[campo] = data[campo]
+
+    if not campos:
+        return get_producto_by_id(conn, producto_id)
+
+    with conn.cursor() as cur:
+        cur.execute(f"""
+            UPDATE productos
+            SET {", ".join(campos)},
+                updated_at = NOW()
+            WHERE id = %(producto_id)s
+            RETURNING
+                id,
+                id_categoria,
+                id_marca,
+                nombre,
+                tipo_item,
+                stockeable,
+                serializable,
+                activo
+        """, valores)
+
+        return cur.fetchone()
+
+
+def update_producto_estado(conn, producto_id: int, activo: bool):
+    with conn.cursor() as cur:
+        cur.execute("""
+            UPDATE productos
+            SET activo = %s,
+                updated_at = NOW()
+            WHERE id = %s
+            RETURNING
+                id,
+                id_categoria,
+                id_marca,
+                nombre,
+                tipo_item,
+                stockeable,
+                serializable,
+                activo
+        """, (activo, producto_id))
+
+        return cur.fetchone()
+
+
+def get_variante_by_id(conn, variante_id: int):
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT
+                v.id,
+                v.id_producto,
+                p.nombre AS producto_nombre,
+                p.tipo_item,
+                p.stockeable,
+                p.serializable,
+                c.id AS categoria_id,
+                c.nombre AS categoria_nombre,
+                v.nombre_variante,
+                v.sku,
+                v.codigo_barras,
+                v.codigo_proveedor,
+                v.proveedor_preferido_id,
+                pr.nombre AS proveedor_preferido_nombre,
+                v.alicuota_iva,
+                v.gravado,
+                v.precio_minorista,
+                v.precio_mayorista,
+                v.permite_precio_libre,
+                v.costo_promedio_vigente,
+                v.activo,
+                COALESCE(img_var.url, img_prod.url) AS imagen_principal
+            FROM variantes v
+            INNER JOIN productos p ON p.id = v.id_producto
+            INNER JOIN categorias c ON c.id = p.id_categoria
+            LEFT JOIN proveedores pr ON pr.id = v.proveedor_preferido_id
+
+            LEFT JOIN LATERAL (
+                SELECT ci.url
+                FROM catalogo_imagenes ci
+                WHERE ci.id_variante = v.id
+                  AND ci.activo = TRUE
+                ORDER BY ci.es_principal DESC, ci.orden ASC, ci.id ASC
+                LIMIT 1
+            ) img_var ON TRUE
+
+            LEFT JOIN LATERAL (
+                SELECT ci.url
+                FROM catalogo_imagenes ci
+                WHERE ci.id_producto = p.id
+                  AND ci.activo = TRUE
+                ORDER BY ci.es_principal DESC, ci.orden ASC, ci.id ASC
+                LIMIT 1
+            ) img_prod ON TRUE
+
+            WHERE v.id = %s
+        """, (variante_id,))
+
+        return cur.fetchone()
+
+
+def update_variante_catalogo(conn, variante_id: int, data: dict):
+    campos = []
+    valores = {"variante_id": variante_id}
+
+    for campo in [
+        "nombre_variante",
+        "sku",
+        "codigo_barras",
+        "codigo_proveedor",
+        "proveedor_preferido_id",
+        "alicuota_iva",
+        "gravado",
+        "permite_precio_libre",
+    ]:
+        if campo in data:
+            campos.append(f"{campo} = %({campo})s")
+            valores[campo] = data[campo]
+
+    if not campos:
+        return get_variante_by_id(conn, variante_id)
+
+    with conn.cursor() as cur:
+        cur.execute(f"""
+            UPDATE variantes
+            SET {", ".join(campos)},
+                updated_at = NOW()
+            WHERE id = %(variante_id)s
+            RETURNING id
+        """, valores)
+
+    return get_variante_by_id(conn, variante_id)
+
+
+def update_variante_estado(conn, variante_id: int, activo: bool):
+    with conn.cursor() as cur:
+        cur.execute("""
+            UPDATE variantes
+            SET activo = %s,
+                updated_at = NOW()
+            WHERE id = %s
+            RETURNING id
+        """, (activo, variante_id))
+
+        row = cur.fetchone()
+
+    if row is None:
+        return None
+
+    return get_variante_by_id(conn, variante_id)
