@@ -713,8 +713,6 @@ def update_variante_catalogo(conn, variante_id: int, data: dict):
 
     for campo in [
         "nombre_variante",
-        "sku",
-        "codigo_barras",
         "codigo_proveedor",
         "proveedor_preferido_id",
         "alicuota_iva",
@@ -756,3 +754,32 @@ def update_variante_estado(conn, variante_id: int, activo: bool):
         return None
 
     return get_variante_by_id(conn, variante_id)
+
+def asignar_identidad_variante(conn, variante_id: int, sku: str, codigo_barras: str):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE variantes
+            SET sku = %s,
+                codigo_barras = %s,
+                updated_at = NOW()
+            WHERE id = %s
+            RETURNING
+                id,
+                id_producto,
+                nombre_variante,
+                sku,
+                codigo_barras,
+                codigo_proveedor,
+                proveedor_preferido_id,
+                alicuota_iva,
+                gravado,
+                precio_minorista,
+                precio_mayorista,
+                permite_precio_libre,
+                costo_promedio_vigente,
+                activo
+            """,
+            (sku, codigo_barras, variante_id),
+        )
+        return cur.fetchone()

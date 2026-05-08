@@ -100,9 +100,10 @@ export default function NuevaVentaPage() {
         query: query.trim() || undefined,
         categoria_id: categoriaId || undefined,
         limit: DEFAULT_LIMIT,
+        offset: 0,
       });
 
-      setCatalogo(data || []);
+      setCatalogo(Array.isArray(data) ? data : data?.items || []);
     } catch (err) {
       setError(err.message || "No se pudo cargar el catálogo POS");
     } finally {

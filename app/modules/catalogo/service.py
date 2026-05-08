@@ -25,6 +25,7 @@ from .repository import (
     get_variante_by_id,
     update_variante_catalogo,
     update_variante_estado,
+    asignar_identidad_variante,
 )
 
 
@@ -229,6 +230,32 @@ def _validar_proveedor_activo(conn, proveedor_id: int | None):
 
     return proveedor
 
+def _generar_sku_variante(variante_id: int) -> str:
+    return f"VAR-{variante_id:08d}"
+
+
+def _calcular_digito_verificador_ean13(base_12: str) -> str:
+    if len(base_12) != 12 or not base_12.isdigit():
+        raise ValueError("La base EAN-13 debe tener 12 dígitos")
+
+    suma = 0
+
+    for index, char in enumerate(base_12):
+        digito = int(char)
+        suma += digito if index % 2 == 0 else digito * 3
+
+    resto = suma % 10
+    verificador = 0 if resto == 0 else 10 - resto
+
+    return str(verificador)
+
+
+def _generar_codigo_barras_interno(variante_id: int) -> str:
+    if variante_id <= 0:
+        raise ValueError("El id de variante debe ser mayor a 0")
+
+    base = f"29{variante_id:010d}"
+    return base + _calcular_digito_verificador_ean13(base)
 
 def crear_producto(data):
     conn = get_connection()
@@ -288,13 +315,13 @@ def crear_variante(data):
                 )
 
             try:
-                return crear_variante_catalogo(
+                variante = crear_variante_catalogo(
                     conn,
                     {
                         "id_producto": data.id_producto,
                         "nombre_variante": data.nombre_variante.strip(),
-                        "sku": data.sku.strip() if data.sku else None,
-                        "codigo_barras": data.codigo_barras.strip() if data.codigo_barras else None,
+                        "sku": None,
+                        "codigo_barras": None,
                         "codigo_proveedor": data.codigo_proveedor.strip() if data.codigo_proveedor else None,
                         "proveedor_preferido_id": data.proveedor_preferido_id,
                         "alicuota_iva": data.alicuota_iva,
@@ -303,6 +330,16 @@ def crear_variante(data):
                         "precio_mayorista": data.precio_mayorista,
                         "permite_precio_libre": data.permite_precio_libre,
                     },
+                )
+
+                sku = _generar_sku_variante(variante["id"])
+                codigo_barras = _generar_codigo_barras_interno(variante["id"])
+
+                return asignar_identidad_variante(
+                    conn,
+                    variante["id"],
+                    sku,
+                    codigo_barras,
                 )
 
             except UniqueViolation:
@@ -449,10 +486,12 @@ def editar_variante(variante_id: int, data):
             if "proveedor_preferido_id" in payload:
                 _validar_proveedor_activo(conn, payload["proveedor_preferido_id"])
 
-            for campo in ["nombre_variante", "sku", "codigo_barras", "codigo_proveedor"]:
+            payload.pop("sku", None)
+            payload.pop("codigo_barras", None)
+
+            for campo in ["nombre_variante", "codigo_proveedor"]:
                 if campo in payload and payload[campo] is not None:
                     payload[campo] = payload[campo].strip()
-
             return update_variante_catalogo(conn, variante_id, payload)
 
     finally:

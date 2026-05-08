@@ -74,9 +74,6 @@ export default function Sidebar() {
         <NavLink to="/catalogo" style={navStyle}>
           Catálogo
         </NavLink>
-        <NavLink to="/stock/ingreso" style={navStyle}>
-          Ingreso mercadería
-        </NavLink>
         <NavLink to="/mercaderia/alta" style={navStyle}>
           Alta mercadería
         </NavLink>

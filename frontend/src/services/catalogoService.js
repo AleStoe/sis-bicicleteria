@@ -32,12 +32,8 @@ export function listarProductos() {
   return apiRequest("/catalogo/productos");
 }
 
-export function listarVariantes() {
-  return apiRequest("/catalogo/variantes");
-}
-
-export function listarCatalogoPOS(params = {}) {
-  return apiRequest(`/catalogo/pos${buildQuery(params)}`);
+export function obtenerProducto(productoId) {
+  return apiRequest(`/catalogo/productos/${productoId}`);
 }
 
 export function crearProducto(data) {
@@ -47,15 +43,77 @@ export function crearProducto(data) {
   });
 }
 
+export function editarProducto(productoId, data) {
+  return apiRequest(`/catalogo/productos/${productoId}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export function cambiarEstadoProducto(productoId, data) {
+  return apiRequest(`/catalogo/productos/${productoId}/estado`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function listarVariantes() {
+  return apiRequest("/catalogo/variantes");
+}
+
+export function obtenerVariante(varianteId) {
+  return apiRequest(`/catalogo/variantes/${varianteId}`);
+}
+
 export function crearVariante(data) {
   return apiRequest("/catalogo/variantes", {
     method: "POST",
     body: JSON.stringify(data),
   });
 }
+
+export function editarVariante(varianteId, data) {
+  return apiRequest(`/catalogo/variantes/${varianteId}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export function cambiarEstadoVariante(varianteId, data) {
+  return apiRequest(`/catalogo/variantes/${varianteId}/estado`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function listarCatalogoPOS(params = {}) {
+  return apiRequest(`/catalogo/pos${buildQuery(params)}`);
+}
+
 export function crearImagenCatalogo(data) {
   return apiRequest("/catalogo/imagenes", {
     method: "POST",
     body: JSON.stringify(data),
+  });
+}
+
+export function listarImagenesProducto(productoId) {
+  return apiRequest(`/catalogo/productos/${productoId}/imagenes`);
+}
+
+export function listarImagenesVariante(varianteId) {
+  return apiRequest(`/catalogo/variantes/${varianteId}/imagenes`);
+}
+
+export function editarImagenCatalogo(imagenId, data) {
+  return apiRequest(`/catalogo/imagenes/${imagenId}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export function eliminarImagenCatalogo(imagenId) {
+  return apiRequest(`/catalogo/imagenes/${imagenId}`, {
+    method: "DELETE",
   });
 }

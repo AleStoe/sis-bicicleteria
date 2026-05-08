@@ -23,7 +23,7 @@ import AuditoriaPage from "./pages/AuditoriaPage";
 import BicicletasSerializadasPage from "./pages/BicicletasSerializadasPage";
 import ProveedoresPage from "./pages/ProveedoresPage";
 import PreciosPage from "./pages/PreciosPage";
-//import CatalogoPage from "./pages/CatalogoPage";
+import CatalogoPage from "./pages/CatalogoPage";
 // import IngresoMercaderiaPage from "./pages/IngresoMercaderiaPage";
 import AltaMercaderiaPage from "./pages/AltaMercaderiaPage";
 
@@ -57,8 +57,8 @@ export default function App() {
           <Route path="/serializadas" element={<BicicletasSerializadasPage />} />
           <Route path="/proveedores" element={<ProveedoresPage />} />
           <Route path="/precios" element={<PreciosPage />} />
-        {/*  <Route path="/catalogo" element={<CatalogoPage />} />
-        <Route path="/stock/ingreso" element={<IngresoMercaderiaPage />} />*/}
+        <Route path="/catalogo" element={<CatalogoPage />} />
+        {/*  <Route path="/stock/ingreso" element={<IngresoMercaderiaPage />} />*/}
           <Route path="/mercaderia/alta" element={<AltaMercaderiaPage />} />
         </Routes>
       </AppLayout>

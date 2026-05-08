@@ -274,8 +274,9 @@ def test_crear_variante_basica(client):
     assert variante["id"] > 0
     assert variante["id_producto"] == producto["id"]
     assert variante["nombre_variante"] == "Rodado 29 Negro"
-    assert variante["sku"] == "SKU-VAR-BASICA"
-    assert variante["codigo_barras"] == "7790000000022"
+    assert variante["sku"] == f"VAR-{variante['id']:08d}"
+    assert variante["codigo_barras"].startswith("29")
+    assert _ean13_valido(variante["codigo_barras"])
     assert variante["codigo_proveedor"] == "PROV-VAR-BASICA"
     assert _dec(variante["precio_minorista"]) == Decimal("15000")
     assert _dec(variante["precio_mayorista"]) == Decimal("10000")
@@ -306,7 +307,8 @@ def test_obtener_variante_detalle(client):
     assert data["id_producto"] == producto["id"]
     assert data["producto_nombre"] == "Producto Variante Detalle"
     assert data["nombre_variante"] == "Detalle Variante"
-    assert data["sku"] == "SKU-VAR-DETALLE"
+    assert data["sku"] == f"VAR-{variante['id']:08d}"
+    assert _ean13_valido(data["codigo_barras"])
 
 
 def test_obtener_variante_inexistente_devuelve_404(client):
@@ -351,8 +353,9 @@ def test_editar_variante_sin_tocar_precios(client):
 
     assert data["id"] == variante["id"]
     assert data["nombre_variante"] == "Variante Despues Editar"
-    assert data["sku"] == "SKU-DESPUES-EDITAR"
-    assert data["codigo_barras"] == "7790000000055"
+    assert data["sku"] == f"VAR-{variante['id']:08d}"
+    assert data["codigo_barras"] == variante["codigo_barras"]
+    assert _ean13_valido(data["codigo_barras"])
     assert data["codigo_proveedor"] == "PROV-DESPUES-EDITAR"
     assert data["permite_precio_libre"] is True
 
@@ -418,8 +421,8 @@ def test_catalogo_pos_busca_por_nombre_sku_codigo_barras_y_codigo_proveedor(
     for query in [
         "Cubierta Test Busqueda POS",
         "29x2.10 Negra POS",
-        "SKU-BUSQUEDA-POS",
-        "7791234567890",
+        variante["sku"],
+        variante["codigo_barras"],
         "COD-PROV-BUSQUEDA-POS",
     ]:
         response = client.get(
@@ -705,3 +708,20 @@ def test_catalogo_pos_incluye_marca_y_permite_buscar_por_marca(
 
     assert item["id_marca"] == marca["id"]
     assert item["marca_nombre"] == "Marca POS Busqueda Test"
+
+def _ean13_valido(value: str) -> bool:
+    if not value or len(value) != 13 or not value.isdigit():
+        return False
+
+    base = value[:12]
+    verificador = int(value[-1])
+
+    suma = 0
+    for index, char in enumerate(base):
+        digito = int(char)
+        suma += digito if index % 2 == 0 else digito * 3
+
+    resto = suma % 10
+    esperado = 0 if resto == 0 else 10 - resto
+
+    return verificador == esperado
