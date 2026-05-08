@@ -1,20 +1,28 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { crearAjusteStock, crearIngresoStock, listarStock } from "../services/stockService";
 import { listarProveedores } from "../services/proveedoresService";
+import { CURRENT_USER_ID, CURRENT_SUCURSAL_ID } from "../config/appConfig";
 
-const ID_USUARIO = 1;
-const ID_SUCURSAL_DEFAULT = 1;
+const ID_USUARIO = CURRENT_USER_ID || 1;
+const ID_SUCURSAL_DEFAULT = CURRENT_SUCURSAL_ID || 1;
 
 export default function StockPage() {
+  const navigate = useNavigate();
+
   const [stock, setStock] = useState([]);
   const [proveedores, setProveedores] = useState([]);
   const [query, setQuery] = useState("");
-  const [soloProblemas, setSoloProblemas] = useState(false);
+  const [filtroEstado, setFiltroEstado] = useState("todos");
+
   const [loading, setLoading] = useState(true);
   const [procesando, setProcesando] = useState(false);
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
   const [ultimoIngreso, setUltimoIngreso] = useState(null);
+
+  const [seleccionado, setSeleccionado] = useState(null);
+  const [modoPanel, setModoPanel] = useState("detalle");
 
   const [ingresoForm, setIngresoForm] = useState({
     id_sucursal: ID_SUCURSAL_DEFAULT,
@@ -22,7 +30,7 @@ export default function StockPage() {
     id_proveedor: "",
     cantidad_ingresada: "",
     costo_productos: "",
-    gastos_adicionales: 0,
+    gastos_adicionales: "0",
     origen_ingreso: "manual",
     observacion: "",
     id_usuario: ID_USUARIO,
@@ -64,8 +72,43 @@ export default function StockPage() {
       const data = await listarProveedores({ solo_activos: true });
       setProveedores(data || []);
     } catch (err) {
-      setError(err.message || "No se pudieron cargar los proveedores");
+      setError(err.message || "No se pudieron cargar proveedores");
     }
+  }
+
+  function seleccionarItem(item, modo = "detalle") {
+    setSeleccionado(item);
+    setModoPanel(modo);
+
+    setIngresoForm((p) => ({
+      ...p,
+      id_sucursal: item.sucursal_id,
+      id_variante: item.variante_id,
+    }));
+
+    setAjusteForm((p) => ({
+      ...p,
+      id_sucursal: item.sucursal_id,
+      id_variante: item.variante_id,
+    }));
+  }
+
+  function cerrarPanel() {
+    setSeleccionado(null);
+    setModoPanel("detalle");
+  }
+
+  function estadoStock(item) {
+    const disponible = Number(item.stock_disponible || 0);
+    const fisico = Number(item.stock_fisico || 0);
+    const reservado = Number(item.stock_reservado || 0);
+    const pendiente = Number(item.stock_vendido_pendiente_entrega || 0);
+
+    if (fisico < reservado + pendiente) return "inconsistente";
+    if (disponible <= 0) return "sin_disponible";
+    if (pendiente > 0) return "pendiente";
+    if (reservado > 0) return "reservado";
+    return "ok";
   }
 
   const stockFiltrado = useMemo(() => {
@@ -83,34 +126,29 @@ export default function StockPage() {
         .join(" ")
         .toLowerCase();
 
-      const coincide = !q || texto.includes(q);
-      const stockDisponible = Number(item.stock_disponible || 0);
-      const stockFisico = Number(item.stock_fisico || 0);
-      const reservado = Number(item.stock_reservado || 0);
-      const pendiente = Number(item.stock_vendido_pendiente_entrega || 0);
+      const coincideTexto = !q || texto.includes(q);
+      const estado = estadoStock(item);
+      const coincideEstado = filtroEstado === "todos" || filtroEstado === estado;
 
-      const problema =
-        stockDisponible <= 0 ||
-        reservado > 0 ||
-        pendiente > 0 ||
-        stockFisico < reservado + pendiente;
-
-      return coincide && (!soloProblemas || problema);
+      return coincideTexto && coincideEstado;
     });
-  }, [stock, query, soloProblemas]);
+  }, [stock, query, filtroEstado]);
 
   const resumen = useMemo(() => {
     return stock.reduce(
       (acc, item) => {
+        const estado = estadoStock(item);
+
         acc.variantes += 1;
         acc.stockFisico += Number(item.stock_fisico || 0);
         acc.stockReservado += Number(item.stock_reservado || 0);
         acc.stockPendiente += Number(item.stock_vendido_pendiente_entrega || 0);
         acc.stockDisponible += Number(item.stock_disponible || 0);
 
-        if (Number(item.stock_disponible || 0) <= 0) acc.sinDisponible += 1;
-        if (Number(item.stock_reservado || 0) > 0) acc.conReservado += 1;
-        if (Number(item.stock_vendido_pendiente_entrega || 0) > 0) acc.conPendiente += 1;
+        if (estado === "sin_disponible") acc.sinDisponible += 1;
+        if (estado === "reservado") acc.reservados += 1;
+        if (estado === "pendiente") acc.pendientes += 1;
+        if (estado === "inconsistente") acc.inconsistentes += 1;
 
         return acc;
       },
@@ -121,25 +159,12 @@ export default function StockPage() {
         stockPendiente: 0,
         stockDisponible: 0,
         sinDisponible: 0,
-        conReservado: 0,
-        conPendiente: 0,
+        reservados: 0,
+        pendientes: 0,
+        inconsistentes: 0,
       }
     );
   }, [stock]);
-
-  function seleccionarVariante(item) {
-    setIngresoForm((p) => ({
-      ...p,
-      id_sucursal: item.sucursal_id,
-      id_variante: item.variante_id,
-    }));
-
-    setAjusteForm((p) => ({
-      ...p,
-      id_sucursal: item.sucursal_id,
-      id_variante: item.variante_id,
-    }));
-  }
 
   async function handleIngreso(e) {
     e.preventDefault();
@@ -166,7 +191,7 @@ export default function StockPage() {
         id_variante: Number(ingresoForm.id_variante),
         id_proveedor: Number(ingresoForm.id_proveedor),
         cantidad_ingresada: Number(ingresoForm.cantidad_ingresada),
-        costo_productos: Number(ingresoForm.costo_productos),
+        costo_productos: Number(ingresoForm.costo_productos || 0),
         gastos_adicionales: Number(ingresoForm.gastos_adicionales || 0),
         observacion: ingresoForm.observacion.trim() || null,
         id_usuario: ID_USUARIO,
@@ -180,14 +205,16 @@ export default function StockPage() {
       });
 
       setMensaje(
-        `Ingreso registrado. Stock anterior: ${formatNumber(res.stock_anterior)}, nuevo: ${formatNumber(res.stock_nuevo)}. Costo promedio nuevo: ${formatMoney(res.costo_promedio_nuevo)}`
+        `Ingreso registrado. Stock: ${formatNumber(res.stock_anterior)} → ${formatNumber(
+          res.stock_nuevo
+        )}. Costo promedio: ${formatMoney(res.costo_promedio_nuevo)}`
       );
 
       setIngresoForm((p) => ({
         ...p,
         cantidad_ingresada: "",
         costo_productos: "",
-        gastos_adicionales: 0,
+        gastos_adicionales: "0",
         observacion: "",
       }));
 
@@ -204,6 +231,11 @@ export default function StockPage() {
 
     if (!ajusteForm.id_variante) {
       setError("Ajuste: seleccioná una variante");
+      return;
+    }
+
+    if (!ajusteForm.cantidad || Number(ajusteForm.cantidad) === 0) {
+      setError("Ajuste: la cantidad no puede ser 0");
       return;
     }
 
@@ -230,9 +262,7 @@ export default function StockPage() {
 
       const res = await crearAjusteStock(payload);
 
-      setMensaje(
-        `Ajuste registrado. Disponible nuevo: ${formatNumber(res.stock_disponible_nuevo)}`
-      );
+      setMensaje(`Ajuste registrado. Disponible nuevo: ${formatNumber(res.stock_disponible_nuevo)}`);
 
       setAjusteForm((p) => ({
         ...p,
@@ -248,15 +278,6 @@ export default function StockPage() {
     }
   }
 
-  function irAPrecios() {
-    if (!ultimoIngreso?.id_proveedor) {
-      window.location.href = "/precios";
-      return;
-    }
-
-    window.location.href = "/precios";
-  }
-
   const costoCambio =
     ultimoIngreso &&
     Number(ultimoIngreso.costo_promedio_anterior) !== Number(ultimoIngreso.costo_promedio_nuevo);
@@ -265,16 +286,19 @@ export default function StockPage() {
 
   return (
     <div style={pageStyle}>
-      <div style={headerStyle}>
+      <header style={headerStyle}>
         <div>
           <h1 style={{ margin: 0 }}>Stock</h1>
           <p style={mutedStyle}>
-            Control de stock físico, reservado, vendido pendiente de entrega y disponible.
+            Inventario físico, reservado, vendido pendiente de entrega y disponible.
           </p>
         </div>
 
-        <button onClick={cargarTodo}>Refrescar</button>
-      </div>
+        <div style={actionsStyle}>
+          <button onClick={cargarTodo}>Refrescar</button>
+          <button onClick={() => navigate("/mercaderia/alta")}>Alta mercadería</button>
+        </div>
+      </header>
 
       {mensaje && <div style={successStyle}>{mensaje}</div>}
       {error && <div style={alertStyle}>Error: {error}</div>}
@@ -283,175 +307,321 @@ export default function StockPage() {
         <div style={priceWarningStyle}>
           <div>
             <strong>El costo promedio cambió.</strong>
-            <div style={{ marginTop: "4px" }}>
+            <div>
               Anterior: {formatMoney(ultimoIngreso.costo_promedio_anterior)} · Nuevo:{" "}
               {formatMoney(ultimoIngreso.costo_promedio_nuevo)}
             </div>
-            <div style={{ marginTop: "4px", color: "#667085" }}>
-              Conviene revisar precios desfasados para este proveedor.
-            </div>
+            <div style={mutedSmallStyle}>Conviene revisar precios desfasados.</div>
           </div>
 
-          <button type="button" onClick={irAPrecios} style={warningButtonStyle}>
+          <button type="button" onClick={() => navigate("/precios")} style={warningButtonStyle}>
             Ir a precios
           </button>
         </div>
       )}
 
       <section style={metricGridStyle}>
-        <Metric label="Variantes con stock" value={resumen.variantes} />
-        <Metric label="Stock físico" value={formatNumber(resumen.stockFisico)} />
+        <Metric label="Variantes" value={resumen.variantes} />
+        <Metric label="Físico" value={formatNumber(resumen.stockFisico)} />
         <Metric label="Reservado" value={formatNumber(resumen.stockReservado)} />
         <Metric label="Pendiente entrega" value={formatNumber(resumen.stockPendiente)} />
         <Metric label="Disponible" value={formatNumber(resumen.stockDisponible)} />
         <Metric label="Sin disponible" value={resumen.sinDisponible} danger={resumen.sinDisponible > 0} />
+        <Metric label="Inconsistencias" value={resumen.inconsistentes} danger={resumen.inconsistentes > 0} />
       </section>
 
-      <div style={gridStyle}>
-        <section style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
-          <div style={toolbarStyle}>
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Buscar producto, variante, SKU o sucursal"
-              style={inputStyle}
-            />
+      <section style={cardStyle}>
+        <div style={toolbarStyle}>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Buscar producto, variante, SKU, sucursal o ID..."
+            style={inputStyle}
+          />
 
-            <label style={checkStyle}>
-              <input
-                type="checkbox"
-                checked={soloProblemas}
-                onChange={(e) => setSoloProblemas(e.target.checked)}
-              />
-              Solo alertas
-            </label>
+          <div style={filterButtonsStyle}>
+            <FilterButton label="Todos" value="todos" current={filtroEstado} onClick={setFiltroEstado} />
+            <FilterButton label="Sin stock" value="sin_disponible" current={filtroEstado} onClick={setFiltroEstado} />
+            <FilterButton label="Reservado" value="reservado" current={filtroEstado} onClick={setFiltroEstado} />
+            <FilterButton label="Pendiente" value="pendiente" current={filtroEstado} onClick={setFiltroEstado} />
+            <FilterButton label="Inconsistente" value="inconsistente" current={filtroEstado} onClick={setFiltroEstado} />
           </div>
+        </div>
+      </section>
 
-          {stockFiltrado.length === 0 ? (
-            <div style={{ padding: "18px" }}>No hay stock para mostrar.</div>
-          ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table style={tableStyle}>
-                <thead style={{ background: "#f9fafb" }}>
-                  <tr>
-                    <th style={thStyle}>Producto</th>
-                    <th style={thStyle}>Sucursal</th>
-                    <th style={thStyle}>Físico</th>
-                    <th style={thStyle}>Reservado</th>
-                    <th style={thStyle}>Pendiente</th>
-                    <th style={thStyle}>Disponible</th>
-                    <th style={thStyle}>Estado</th>
-                    <th style={thStyle}>Acción</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {stockFiltrado.map((item) => {
-                    const disponible = Number(item.stock_disponible || 0);
-                    const reservado = Number(item.stock_reservado || 0);
-                    const pendiente = Number(item.stock_vendido_pendiente_entrega || 0);
-                    const alerta = disponible <= 0 || reservado > 0 || pendiente > 0;
+      <section style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
+        <div style={tableHeaderStyle}>
+          <div>
+            <h2 style={cardTitleStyle}>Inventario</h2>
+            <p style={mutedSmallStyle}>
+              {stockFiltrado.length} resultado(s). Click para detalle, acciones para operar.
+            </p>
+          </div>
+        </div>
 
-                    return (
-                      <tr key={`${item.sucursal_id}-${item.variante_id}`} style={{ borderTop: "1px solid #eee" }}>
-                        <td style={tdStyle}>
-                          <strong>{item.producto_nombre} - {item.nombre_variante}</strong>
-                          <div style={mutedSmallStyle}>SKU: {item.sku || "-"} · Variante #{item.variante_id}</div>
-                        </td>
-                        <td style={tdStyle}>{item.sucursal_nombre}</td>
-                        <td style={tdStyle}>{formatNumber(item.stock_fisico)}</td>
-                        <td style={tdStyle}>{formatNumber(item.stock_reservado)}</td>
-                        <td style={tdStyle}>{formatNumber(item.stock_vendido_pendiente_entrega)}</td>
-                        <td style={tdStyle}><strong>{formatNumber(item.stock_disponible)}</strong></td>
-                        <td style={tdStyle}>
-                          {alerta ? (
-                            <span style={warningPillStyle}>Revisar</span>
-                          ) : (
-                            <span style={okPillStyle}>OK</span>
-                          )}
-                        </td>
-                        <td style={tdStyle}>
-                          <button onClick={() => seleccionarVariante(item)}>Usar</button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+        {stockFiltrado.length === 0 ? (
+          <div style={{ padding: "18px" }}>No hay stock para mostrar.</div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={tableStyle}>
+              <thead style={{ background: "#f9fafb" }}>
+                <tr>
+                  <th style={thStyle}>Producto</th>
+                  <th style={thStyle}>Sucursal</th>
+                  <th style={thStyle}>Físico</th>
+                  <th style={thStyle}>Reservado</th>
+                  <th style={thStyle}>Pendiente</th>
+                  <th style={thStyle}>Disponible</th>
+                  <th style={thStyle}>Estado</th>
+                  <th style={thStyle}>Acciones</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {stockFiltrado.map((item) => {
+                  const estado = estadoStock(item);
+
+                  return (
+                    <tr
+                      key={`${item.sucursal_id}-${item.variante_id}`}
+                      onClick={() => seleccionarItem(item, "detalle")}
+                      style={{
+                        borderTop: "1px solid #eee",
+                        cursor: "pointer",
+                        background:
+                          seleccionado?.variante_id === item.variante_id &&
+                          seleccionado?.sucursal_id === item.sucursal_id
+                            ? "#f8fbff"
+                            : "white",
+                      }}
+                    >
+                      <td style={tdStyle}>
+                        <strong>{item.producto_nombre}</strong>
+                        <div>{item.nombre_variante}</div>
+                        <div style={mutedSmallStyle}>
+                          SKU: {item.sku || "-"} · Variante #{item.variante_id}
+                        </div>
+                      </td>
+
+                      <td style={tdStyle}>{item.sucursal_nombre}</td>
+                      <td style={tdStyle}>{formatNumber(item.stock_fisico)}</td>
+                      <td style={tdStyle}>{formatNumber(item.stock_reservado)}</td>
+                      <td style={tdStyle}>{formatNumber(item.stock_vendido_pendiente_entrega)}</td>
+                      <td style={tdStyle}>
+                        <strong>{formatNumber(item.stock_disponible)}</strong>
+                      </td>
+                      <td style={tdStyle}>
+                        <EstadoBadge estado={estado} />
+                      </td>
+                      <td style={tdStyle}>
+                        <div style={rowActionsStyle}>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              seleccionarItem(item, "ingreso");
+                            }}
+                          >
+                            Ingreso
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              seleccionarItem(item, "ajuste");
+                            }}
+                          >
+                            Ajuste
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {seleccionado && (
+        <aside style={drawerOverlayStyle} onClick={cerrarPanel}>
+          <div style={drawerStyle} onClick={(e) => e.stopPropagation()}>
+            <div style={drawerHeaderStyle}>
+              <div>
+                <h2 style={{ margin: 0 }}>{seleccionado.producto_nombre}</h2>
+                <p style={mutedStyle}>{seleccionado.nombre_variante}</p>
+              </div>
+
+              <button onClick={cerrarPanel}>×</button>
             </div>
-          )}
-        </section>
 
-        <aside style={sideStyle}>
-          <section style={cardStyle}>
-            <h2 style={cardTitleStyle}>Ingreso de mercadería</h2>
-            <form onSubmit={handleIngreso} style={formStyle}>
-              <TextInput label="Sucursal" value={ingresoForm.id_sucursal} onChange={(v) => setIngresoForm((p) => ({ ...p, id_sucursal: v }))} />
-              <TextInput label="Variante" value={ingresoForm.id_variante} onChange={(v) => setIngresoForm((p) => ({ ...p, id_variante: v }))} />
-
-              <label style={fieldStyle}>
-                <span style={labelStyle}>Proveedor</span>
-                <select
-                  value={ingresoForm.id_proveedor}
-                  onChange={(e) => setIngresoForm((p) => ({ ...p, id_proveedor: e.target.value }))}
-                  style={inputStyle}
-                >
-                  <option value="">Seleccionar proveedor...</option>
-                  {proveedores.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      #{p.id} - {p.nombre}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <TextInput label="Cantidad ingresada" value={ingresoForm.cantidad_ingresada} onChange={(v) => setIngresoForm((p) => ({ ...p, cantidad_ingresada: v }))} type="number" />
-              <TextInput label="Costo productos total" value={ingresoForm.costo_productos} onChange={(v) => setIngresoForm((p) => ({ ...p, costo_productos: v }))} type="number" />
-              <TextInput label="Gastos adicionales" value={ingresoForm.gastos_adicionales} onChange={(v) => setIngresoForm((p) => ({ ...p, gastos_adicionales: v }))} type="number" />
-
-              <label style={fieldStyle}>
-                <span style={labelStyle}>Observación</span>
-                <textarea
-                  value={ingresoForm.observacion}
-                  onChange={(e) => setIngresoForm((p) => ({ ...p, observacion: e.target.value }))}
-                  style={textareaStyle}
-                  placeholder="Ej: ingreso por factura, remito, reposición..."
-                />
-              </label>
-
-              <button type="submit" disabled={procesando}>
-                {procesando ? "Guardando..." : "Registrar ingreso"}
+            <div style={drawerTabsStyle}>
+              <button
+                style={modoPanel === "detalle" ? activeTabStyle : tabStyle}
+                onClick={() => setModoPanel("detalle")}
+              >
+                Detalle
               </button>
-            </form>
-          </section>
-
-          <section style={cardStyle}>
-            <h2 style={cardTitleStyle}>Ajuste manual</h2>
-            <form onSubmit={handleAjuste} style={formStyle}>
-              <TextInput label="Sucursal" value={ajusteForm.id_sucursal} onChange={(v) => setAjusteForm((p) => ({ ...p, id_sucursal: v }))} />
-              <TextInput label="Variante" value={ajusteForm.id_variante} onChange={(v) => setAjusteForm((p) => ({ ...p, id_variante: v }))} />
-              <TextInput label="Cantidad (+ suma / - resta)" value={ajusteForm.cantidad} onChange={(v) => setAjusteForm((p) => ({ ...p, cantidad: v }))} type="number" />
-
-              <label style={fieldStyle}>
-                <span style={labelStyle}>Motivo obligatorio</span>
-                <textarea
-                  value={ajusteForm.nota}
-                  onChange={(e) => setAjusteForm((p) => ({ ...p, nota: e.target.value }))}
-                  style={textareaStyle}
-                  placeholder="Ej: conteo físico, diferencia detectada..."
-                />
-              </label>
-
-              <button type="submit" disabled={procesando}>
-                {procesando ? "Guardando..." : "Registrar ajuste"}
+              <button
+                style={modoPanel === "ingreso" ? activeTabStyle : tabStyle}
+                onClick={() => setModoPanel("ingreso")}
+              >
+                Ingreso
               </button>
-            </form>
-
-            <div style={noteStyle}>
-              El ajuste manual queda auditado y no debe usarse para ventas, reservas o taller.
+              <button
+                style={modoPanel === "ajuste" ? activeTabStyle : tabStyle}
+                onClick={() => setModoPanel("ajuste")}
+              >
+                Ajuste
+              </button>
             </div>
-          </section>
+
+            {modoPanel === "detalle" && (
+              <div style={drawerContentStyle}>
+                <InfoRow label="Sucursal" value={seleccionado.sucursal_nombre} />
+                <InfoRow label="SKU" value={seleccionado.sku || "-"} />
+                <InfoRow label="Variante ID" value={`#${seleccionado.variante_id}`} />
+                <InfoRow label="Stock físico" value={formatNumber(seleccionado.stock_fisico)} />
+                <InfoRow label="Reservado" value={formatNumber(seleccionado.stock_reservado)} />
+                <InfoRow
+                  label="Pendiente entrega"
+                  value={formatNumber(seleccionado.stock_vendido_pendiente_entrega)}
+                />
+                <InfoRow label="Disponible" value={formatNumber(seleccionado.stock_disponible)} />
+
+                <div style={drawerActionsStyle}>
+                  <button onClick={() => setModoPanel("ingreso")}>Registrar ingreso</button>
+                  <button onClick={() => setModoPanel("ajuste")}>Ajustar stock</button>
+                </div>
+
+                <div style={noteStyle}>
+                  El stock disponible se calcula como físico - reservado - pendiente de entrega.
+                </div>
+              </div>
+            )}
+
+            {modoPanel === "ingreso" && (
+              <form onSubmit={handleIngreso} style={drawerContentStyle}>
+                <TextInput
+                  label="Sucursal"
+                  value={ingresoForm.id_sucursal}
+                  onChange={(v) => setIngresoForm((p) => ({ ...p, id_sucursal: v }))}
+                />
+
+                <TextInput
+                  label="Variante"
+                  value={ingresoForm.id_variante}
+                  onChange={(v) => setIngresoForm((p) => ({ ...p, id_variante: v }))}
+                />
+
+                <label style={fieldStyle}>
+                  <span style={labelStyle}>Proveedor</span>
+                  <select
+                    value={ingresoForm.id_proveedor}
+                    onChange={(e) =>
+                      setIngresoForm((p) => ({ ...p, id_proveedor: e.target.value }))
+                    }
+                    style={inputStyle}
+                  >
+                    <option value="">Seleccionar proveedor...</option>
+                    {proveedores.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        #{p.id} - {p.nombre}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <TextInput
+                  label="Cantidad ingresada"
+                  type="number"
+                  value={ingresoForm.cantidad_ingresada}
+                  onChange={(v) =>
+                    setIngresoForm((p) => ({ ...p, cantidad_ingresada: v }))
+                  }
+                />
+
+                <TextInput
+                  label="Costo productos total"
+                  type="number"
+                  value={ingresoForm.costo_productos}
+                  onChange={(v) =>
+                    setIngresoForm((p) => ({ ...p, costo_productos: v }))
+                  }
+                />
+
+                <TextInput
+                  label="Gastos adicionales"
+                  type="number"
+                  value={ingresoForm.gastos_adicionales}
+                  onChange={(v) =>
+                    setIngresoForm((p) => ({ ...p, gastos_adicionales: v }))
+                  }
+                />
+
+                <label style={fieldStyle}>
+                  <span style={labelStyle}>Observación</span>
+                  <textarea
+                    value={ingresoForm.observacion}
+                    onChange={(e) =>
+                      setIngresoForm((p) => ({ ...p, observacion: e.target.value }))
+                    }
+                    style={textareaStyle}
+                    placeholder="Factura, remito, reposición..."
+                  />
+                </label>
+
+                <button type="submit" disabled={procesando}>
+                  {procesando ? "Guardando..." : "Registrar ingreso"}
+                </button>
+              </form>
+            )}
+
+            {modoPanel === "ajuste" && (
+              <form onSubmit={handleAjuste} style={drawerContentStyle}>
+                <TextInput
+                  label="Sucursal"
+                  value={ajusteForm.id_sucursal}
+                  onChange={(v) => setAjusteForm((p) => ({ ...p, id_sucursal: v }))}
+                />
+
+                <TextInput
+                  label="Variante"
+                  value={ajusteForm.id_variante}
+                  onChange={(v) => setAjusteForm((p) => ({ ...p, id_variante: v }))}
+                />
+
+                <TextInput
+                  label="Cantidad (+ suma / - resta)"
+                  type="number"
+                  value={ajusteForm.cantidad}
+                  onChange={(v) => setAjusteForm((p) => ({ ...p, cantidad: v }))}
+                />
+
+                <label style={fieldStyle}>
+                  <span style={labelStyle}>Motivo obligatorio</span>
+                  <textarea
+                    value={ajusteForm.nota}
+                    onChange={(e) =>
+                      setAjusteForm((p) => ({ ...p, nota: e.target.value }))
+                    }
+                    style={textareaStyle}
+                    placeholder="Conteo físico, diferencia detectada..."
+                  />
+                </label>
+
+                <button type="submit" disabled={procesando}>
+                  {procesando ? "Guardando..." : "Registrar ajuste"}
+                </button>
+
+                <div style={noteStyle}>
+                  Usá ajuste solo para diferencias reales de inventario. Ventas, reservas,
+                  entregas y taller tienen sus propios movimientos.
+                </div>
+              </form>
+            )}
+          </div>
         </aside>
-      </div>
+      )}
     </div>
   );
 }
@@ -459,13 +629,45 @@ export default function StockPage() {
 function Metric({ label, value, danger = false }) {
   return (
     <div style={metricStyle}>
-      <span style={mutedStyle}>{label}</span>
-      <strong style={{ ...metricValueStyle, color: danger ? "#b42318" : "#111827" }}>{value}</strong>
+      <span style={mutedSmallStyle}>{label}</span>
+      <strong style={{ ...metricValueStyle, color: danger ? "#b42318" : "#111827" }}>
+        {value}
+      </strong>
     </div>
   );
 }
 
-function TextInput({ label, value, onChange, type = "number" }) {
+function FilterButton({ label, value, current, onClick }) {
+  return (
+    <button
+      type="button"
+      style={current === value ? activeFilterStyle : filterStyle}
+      onClick={() => onClick(value)}
+    >
+      {label}
+    </button>
+  );
+}
+
+function EstadoBadge({ estado }) {
+  if (estado === "ok") return <span style={okPillStyle}>OK</span>;
+  if (estado === "sin_disponible") return <span style={dangerPillStyle}>Sin disponible</span>;
+  if (estado === "reservado") return <span style={bluePillStyle}>Reservado</span>;
+  if (estado === "pendiente") return <span style={warningPillStyle}>Pendiente</span>;
+  if (estado === "inconsistente") return <span style={dangerPillStyle}>Inconsistente</span>;
+  return <span style={warningPillStyle}>Revisar</span>;
+}
+
+function InfoRow({ label, value }) {
+  return (
+    <div style={infoRowStyle}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function TextInput({ label, value, onChange, type = "text" }) {
   return (
     <label style={fieldStyle}>
       <span style={labelStyle}>{label}</span>
@@ -494,30 +696,216 @@ function formatMoney(value) {
 }
 
 const pageStyle = { padding: "24px", background: "#f6f7fb", minHeight: "100vh" };
-const headerStyle = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", marginBottom: "16px", flexWrap: "wrap" };
+const headerStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "12px",
+  marginBottom: "16px",
+  flexWrap: "wrap",
+};
+const actionsStyle = { display: "flex", gap: "10px", flexWrap: "wrap" };
 const mutedStyle = { color: "#667085", margin: "6px 0 0" };
 const mutedSmallStyle = { color: "#667085", fontSize: "13px", marginTop: "4px" };
-const alertStyle = { background: "#fff1f0", color: "#b42318", padding: "12px", borderRadius: "10px", border: "1px solid #f4c7c3", marginBottom: "16px" };
-const successStyle = { background: "#e8fff0", color: "#146c2e", padding: "12px", borderRadius: "10px", border: "1px solid #b7ebc6", marginBottom: "16px" };
-const priceWarningStyle = { background: "#fffaeb", color: "#92400e", padding: "14px", borderRadius: "12px", border: "1px solid #facc15", marginBottom: "16px", display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "center" };
-const warningButtonStyle = { border: "1px solid #d97706", background: "#fff", color: "#92400e", borderRadius: "8px", padding: "10px 12px", fontWeight: "bold", cursor: "pointer", whiteSpace: "nowrap" };
-const metricGridStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "12px", marginBottom: "16px" };
-const metricStyle = { background: "white", borderRadius: "14px", boxShadow: "0 2px 10px rgba(0,0,0,.08)", padding: "14px", display: "grid", gap: "6px" };
+const alertStyle = {
+  background: "#fff1f0",
+  color: "#b42318",
+  padding: "12px",
+  borderRadius: "10px",
+  border: "1px solid #f4c7c3",
+  marginBottom: "16px",
+};
+const successStyle = {
+  background: "#e8fff0",
+  color: "#146c2e",
+  padding: "12px",
+  borderRadius: "10px",
+  border: "1px solid #b7ebc6",
+  marginBottom: "16px",
+};
+const priceWarningStyle = {
+  background: "#fffaeb",
+  color: "#92400e",
+  padding: "14px",
+  borderRadius: "12px",
+  border: "1px solid #facc15",
+  marginBottom: "16px",
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "12px",
+  alignItems: "center",
+};
+const warningButtonStyle = {
+  border: "1px solid #d97706",
+  background: "#fff",
+  color: "#92400e",
+  borderRadius: "8px",
+  padding: "10px 12px",
+  fontWeight: "bold",
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+};
+const metricGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+  gap: "12px",
+  marginBottom: "16px",
+};
+const metricStyle = {
+  background: "white",
+  borderRadius: "14px",
+  boxShadow: "0 2px 10px rgba(0,0,0,.08)",
+  padding: "14px",
+  display: "grid",
+  gap: "6px",
+};
 const metricValueStyle = { fontSize: "22px" };
-const gridStyle = { display: "grid", gridTemplateColumns: "minmax(620px,1fr) 380px", gap: "16px", alignItems: "start" };
-const cardStyle = { background: "white", borderRadius: "14px", boxShadow: "0 2px 10px rgba(0,0,0,.08)", padding: "16px", marginBottom: "16px" };
-const toolbarStyle = { display: "grid", gridTemplateColumns: "1fr auto", gap: "12px", padding: "16px", borderBottom: "1px solid #eee", alignItems: "center" };
-const inputStyle = { width: "100%", padding: "10px 12px", borderRadius: "10px", border: "1px solid #d0d5dd", fontSize: "15px", boxSizing: "border-box" };
-const checkStyle = { display: "flex", gap: "8px", alignItems: "center", whiteSpace: "nowrap" };
-const tableStyle = { width: "100%", borderCollapse: "collapse", minWidth: "980px" };
-const thStyle = { textAlign: "left", padding: "12px 10px", borderBottom: "1px solid #e5e7eb" };
+const cardStyle = {
+  background: "white",
+  borderRadius: "14px",
+  boxShadow: "0 2px 10px rgba(0,0,0,.08)",
+  padding: "16px",
+  marginBottom: "16px",
+};
+const toolbarStyle = {
+  display: "grid",
+  gridTemplateColumns: "minmax(260px, 1fr)",
+  gap: "12px",
+};
+const inputStyle = {
+  width: "100%",
+  padding: "10px 12px",
+  borderRadius: "10px",
+  border: "1px solid #d0d5dd",
+  fontSize: "15px",
+  boxSizing: "border-box",
+};
+const filterButtonsStyle = { display: "flex", gap: "8px", flexWrap: "wrap" };
+const filterStyle = {
+  border: "1px solid #d0d5dd",
+  background: "white",
+  borderRadius: "999px",
+  padding: "8px 12px",
+  fontWeight: 700,
+  cursor: "pointer",
+};
+const activeFilterStyle = {
+  ...filterStyle,
+  background: "#1f6feb",
+  borderColor: "#1f6feb",
+  color: "white",
+};
+const tableHeaderStyle = {
+  padding: "16px 18px",
+  borderBottom: "1px solid #eee",
+};
+const cardTitleStyle = { margin: 0, fontSize: "20px" };
+const tableStyle = { width: "100%", borderCollapse: "collapse", minWidth: "1000px" };
+const thStyle = {
+  textAlign: "left",
+  padding: "12px 10px",
+  borderBottom: "1px solid #e5e7eb",
+};
 const tdStyle = { padding: "10px", verticalAlign: "top" };
-const okPillStyle = { background: "#ecfdf3", color: "#067647", borderRadius: "999px", padding: "4px 8px", fontWeight: "bold", fontSize: "13px" };
-const warningPillStyle = { background: "#fffaeb", color: "#b54708", borderRadius: "999px", padding: "4px 8px", fontWeight: "bold", fontSize: "13px" };
-const sideStyle = { display: "grid", gap: "0" };
-const cardTitleStyle = { marginTop: 0, marginBottom: "14px", fontSize: "20px" };
-const formStyle = { display: "grid", gap: "10px" };
+const rowActionsStyle = { display: "flex", gap: "6px", flexWrap: "wrap" };
+const okPillStyle = {
+  background: "#ecfdf3",
+  color: "#067647",
+  borderRadius: "999px",
+  padding: "4px 8px",
+  fontWeight: "bold",
+  fontSize: "13px",
+};
+const warningPillStyle = {
+  background: "#fffaeb",
+  color: "#b54708",
+  borderRadius: "999px",
+  padding: "4px 8px",
+  fontWeight: "bold",
+  fontSize: "13px",
+};
+const dangerPillStyle = {
+  background: "#fff1f0",
+  color: "#b42318",
+  borderRadius: "999px",
+  padding: "4px 8px",
+  fontWeight: "bold",
+  fontSize: "13px",
+};
+const bluePillStyle = {
+  background: "#eef4ff",
+  color: "#175cd3",
+  borderRadius: "999px",
+  padding: "4px 8px",
+  fontWeight: "bold",
+  fontSize: "13px",
+};
+const drawerOverlayStyle = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(0,0,0,.35)",
+  zIndex: 1000,
+  display: "flex",
+  justifyContent: "flex-end",
+};
+const drawerStyle = {
+  width: "min(460px, 100%)",
+  background: "white",
+  height: "100%",
+  boxShadow: "-8px 0 30px rgba(0,0,0,.22)",
+  overflowY: "auto",
+};
+const drawerHeaderStyle = {
+  padding: "18px",
+  borderBottom: "1px solid #eee",
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "12px",
+};
+const drawerTabsStyle = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr 1fr",
+  borderBottom: "1px solid #eee",
+};
+const tabStyle = {
+  border: "none",
+  background: "white",
+  padding: "12px",
+  fontWeight: 700,
+  cursor: "pointer",
+};
+const activeTabStyle = {
+  ...tabStyle,
+  background: "#eef4ff",
+  color: "#175cd3",
+};
+const drawerContentStyle = {
+  padding: "18px",
+  display: "grid",
+  gap: "12px",
+};
+const drawerActionsStyle = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: "10px",
+  marginTop: "8px",
+};
 const fieldStyle = { display: "flex", flexDirection: "column", gap: "7px" };
 const labelStyle = { fontWeight: "bold", fontSize: "14px" };
-const textareaStyle = { ...inputStyle, minHeight: "68px", resize: "vertical" };
-const noteStyle = { background: "#f9fafb", borderLeft: "4px solid #111827", padding: "10px", borderRadius: "8px", color: "#344054", marginTop: "12px" };
+const textareaStyle = { ...inputStyle, minHeight: "76px", resize: "vertical" };
+const noteStyle = {
+  background: "#f9fafb",
+  borderLeft: "4px solid #111827",
+  padding: "10px",
+  borderRadius: "8px",
+  color: "#344054",
+  marginTop: "8px",
+};
+const infoRowStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "10px",
+  borderBottom: "1px solid #f2f4f7",
+  paddingBottom: "10px",
+  color: "#344054",
+};

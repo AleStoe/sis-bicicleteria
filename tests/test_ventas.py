@@ -1,3 +1,4 @@
+
 from decimal import Decimal
 from tests.conftest import (
     get_caja_movimientos,

@@ -32,7 +32,9 @@ export default function PagoVentaPanel({
   });
 
   const saldo = Number(saldoPendiente || 0);
-  const ventaCerradaParaPago = ["entregada", "anulada"].includes(estadoVenta);
+  const ventaCerradaParaPago = ["entregada", "anulada", "devuelta", "devuelta_parcial"].includes(
+    estadoVenta
+  );
   const puedePagar = !ventaCerradaParaPago && saldo > 0;
 
   useEffect(() => {
@@ -48,13 +50,15 @@ export default function PagoVentaPanel({
     }, 150);
   }, [autoFocusPago]);
 
-  const pagosConfirmados = useMemo(() => {
-    return pagos.filter((pago) => pago.estado === "confirmado");
-  }, [pagos]);
+  const pagosConfirmados = useMemo(
+    () => pagos.filter((pago) => pago.estado === "confirmado"),
+    [pagos]
+  );
 
-  const pagosRevertidos = useMemo(() => {
-    return pagos.filter((pago) => pago.estado === "revertido");
-  }, [pagos]);
+  const pagosRevertidos = useMemo(
+    () => pagos.filter((pago) => pago.estado === "revertido"),
+    [pagos]
+  );
 
   const totalConfirmado = useMemo(() => {
     return pagosConfirmados.reduce(
@@ -81,6 +85,23 @@ export default function PagoVentaPanel({
     if (onPagoCambiado) {
       await onPagoCambiado();
     }
+  }
+
+  function setMontoRapido(valor) {
+    if (!puedePagar) return;
+
+    setError("");
+    setForm((actual) => ({
+      ...actual,
+      monto: String(Math.max(0, Number(valor || 0))),
+    }));
+
+    setTimeout(() => montoRef.current?.focus(), 50);
+  }
+
+  function limpiarMonto() {
+    setForm((actual) => ({ ...actual, monto: "" }));
+    setTimeout(() => montoRef.current?.focus(), 50);
   }
 
   async function registrarPago(e) {
@@ -117,13 +138,13 @@ export default function PagoVentaPanel({
         nota: form.nota?.trim() || null,
       });
 
-      setForm({ medio_pago: "efectivo", monto: "", nota: "" });
+      setForm({ medio_pago: form.medio_pago, monto: "", nota: "" });
       await refrescarTodo();
 
       setMensaje(
         Number(resultado?.saldo_restante || 0) === 0
-          ? "Pago registrado correctamente. La venta quedó pagada."
-          : `Pago registrado correctamente. Saldo restante: ${formatMoney(resultado?.saldo_restante ?? 0)}`
+          ? "Pago registrado. La venta quedó pagada."
+          : `Pago registrado. Saldo restante: ${formatMoney(resultado?.saldo_restante ?? 0)}`
       );
     } catch (err) {
       setError(err.message || "No se pudo registrar el pago. Verificá que la caja esté abierta.");
@@ -149,7 +170,7 @@ export default function PagoVentaPanel({
       await refrescarTodo();
 
       setMensaje(
-        `Pago revertido correctamente. Saldo actual: ${formatMoney(resultado?.saldo_restante ?? 0)}`
+        `Pago revertido. Saldo actual: ${formatMoney(resultado?.saldo_restante ?? 0)}`
       );
     } catch (err) {
       setError(err.message || "No se pudo revertir el pago");
@@ -158,26 +179,12 @@ export default function PagoVentaPanel({
     }
   }
 
-  function completarSaldo() {
-    if (!puedePagar) return;
-
-    setError("");
-    setForm((actual) => ({
-      ...actual,
-      monto: String(Number(saldo || 0)),
-    }));
-
-    montoRef.current?.focus();
-  }
-
   return (
     <section ref={panelRef} style={cardStyle}>
       <div style={headerStyle}>
         <div>
-          <h2 style={titleStyle}>Cobro de la venta</h2>
-          <p style={mutedStyle}>
-            Pagos reales registrados contra caja. Permite pago mixto cargando varios pagos.
-          </p>
+          <h2 style={titleStyle}>Cobro</h2>
+          <p style={mutedStyle}>Registrá pagos reales contra caja. Permite pago mixto.</p>
         </div>
 
         <button onClick={cargarPagos} disabled={loading || guardando} style={secondaryBtnStyle}>
@@ -185,10 +192,16 @@ export default function PagoVentaPanel({
         </button>
       </div>
 
-      <div style={metricsGridStyle}>
+      <div style={heroGridStyle}>
+        <div style={saldoBoxStyle}>
+          <span style={mutedSmallStyle}>Saldo a cobrar</span>
+          <strong style={saldoValueStyle}>{formatMoney(saldo)}</strong>
+          <span style={mutedSmallStyle}>Estado: {estadoVenta || "-"}</span>
+        </div>
+
         <Metric label="Pagado confirmado" value={formatMoney(totalConfirmado)} tone="ok" />
-        <Metric label="Saldo a cobrar" value={formatMoney(saldo)} tone={saldo > 0 ? "danger" : "ok"} />
-        <Metric label="Estado venta" value={estadoVenta || "-"} />
+        <Metric label="Pagos confirmados" value={pagosConfirmados.length} />
+        <Metric label="Revertidos" value={pagosRevertidos.length} tone={pagosRevertidos.length ? "warn" : ""} />
       </div>
 
       {mensaje && <div style={successStyle}>{mensaje}</div>}
@@ -197,90 +210,93 @@ export default function PagoVentaPanel({
       {!puedePagar && (
         <div style={noteStyle}>
           {ventaCerradaParaPago
-            ? "Esta venta no puede recibir pagos directos. Si fue entregada con deuda, el pago corresponde al módulo Deudas."
-            : pagosConfirmados.length === 0
-              ? "No hay saldo pendiente para cobrar. Si la venta figura pagada sin pagos reales, probablemente se cubrió con crédito."
-              : "Esta venta no tiene saldo pendiente para cobrar."}
+            ? "Esta venta no puede recibir pagos directos. Si fue entregada con deuda, cobrá desde el módulo Deudas."
+            : "Esta venta no tiene saldo pendiente para cobrar."}
         </div>
       )}
 
-      {pagosConfirmados.length === 0 && pagosRevertidos.length > 0 && (
-        <div style={warningInfoStyle}>
-          Todos los pagos registrados para esta venta fueron revertidos. Por eso no impactan el saldo actual.
+      <form onSubmit={registrarPago} style={formStyle}>
+        <div style={medioGridStyle}>
+          {MEDIOS_PAGO.map((medio) => (
+            <button
+              key={medio.value}
+              type="button"
+              disabled={!puedePagar || guardando}
+              onClick={() => setForm((p) => ({ ...p, medio_pago: medio.value }))}
+              style={form.medio_pago === medio.value ? medioActiveStyle : medioStyle}
+            >
+              {medio.label}
+            </button>
+          ))}
         </div>
-      )}
 
-      <form onSubmit={registrarPago} style={formGridStyle}>
-        <label style={fieldStyle}>
-          <span style={labelStyle}>Medio</span>
-          <select
-            value={form.medio_pago}
-            onChange={(e) => setForm((p) => ({ ...p, medio_pago: e.target.value }))}
-            style={inputStyle}
-            disabled={!puedePagar || guardando}
-          >
-            {MEDIOS_PAGO.map((medio) => (
-              <option key={medio.value} value={medio.value}>
-                {medio.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label style={fieldStyle}>
-          <span style={labelStyle}>Monto</span>
-          <input
-            ref={montoRef}
-            type="number"
-            min="0.01"
-            step="0.01"
-            max={saldo || undefined}
-            value={form.monto}
-            onChange={(e) => setForm((p) => ({ ...p, monto: e.target.value }))}
-            style={inputStyle}
-            disabled={!puedePagar || guardando}
-            placeholder={puedePagar ? formatMoney(saldo) : ""}
-          />
-        </label>
-
-        <label style={fieldStyle}>
-          <span style={labelStyle}>Nota</span>
-          <input
-            value={form.nota}
-            onChange={(e) => setForm((p) => ({ ...p, nota: e.target.value }))}
-            placeholder="Opcional"
-            style={inputStyle}
-            disabled={!puedePagar || guardando}
-          />
-        </label>
-
-        <div style={buttonGroupStyle}>
+        <div style={quickGridStyle}>
           <button
             type="button"
             disabled={!puedePagar || guardando}
-            onClick={completarSaldo}
+            onClick={() => setMontoRapido(saldo)}
             style={secondaryBtnStyle}
           >
-            Cobrar saldo
+            Cobrar total
           </button>
-
           <button
-            type="submit"
+            type="button"
             disabled={!puedePagar || guardando}
-            style={primaryBtnStyle}
+            onClick={() => setMontoRapido(saldo / 2)}
+            style={secondaryBtnStyle}
           >
+            Mitad
+          </button>
+          <button
+            type="button"
+            disabled={!puedePagar || guardando}
+            onClick={limpiarMonto}
+            style={secondaryBtnStyle}
+          >
+            Limpiar
+          </button>
+        </div>
+
+        <div style={inputGridStyle}>
+          <label style={fieldStyle}>
+            <span style={labelStyle}>Monto</span>
+            <input
+              ref={montoRef}
+              type="number"
+              min="0.01"
+              step="0.01"
+              max={saldo || undefined}
+              value={form.monto}
+              onChange={(e) => setForm((p) => ({ ...p, monto: e.target.value }))}
+              style={inputStyle}
+              disabled={!puedePagar || guardando}
+              placeholder={puedePagar ? formatMoney(saldo) : ""}
+            />
+          </label>
+
+          <label style={fieldStyle}>
+            <span style={labelStyle}>Nota</span>
+            <input
+              value={form.nota}
+              onChange={(e) => setForm((p) => ({ ...p, nota: e.target.value }))}
+              placeholder="Opcional"
+              style={inputStyle}
+              disabled={!puedePagar || guardando}
+            />
+          </label>
+
+          <button type="submit" disabled={!puedePagar || guardando} style={primaryBtnStyle}>
             {guardando ? "Registrando..." : "Registrar pago"}
           </button>
         </div>
       </form>
 
       <div style={hintStyle}>
-        Ejemplo pago mixto: cargá efectivo por una parte, luego tarjeta por el saldo restante.
+        Para pago mixto: registrá un medio, luego cargá el saldo restante con otro.
       </div>
 
       <PagoTabla
         titulo="Pagos confirmados"
-        descripcion="Estos pagos impactan en el saldo de la venta."
         pagos={pagosConfirmados}
         guardando={guardando}
         onRevertir={handleRevertirPago}
@@ -295,14 +311,13 @@ export default function PagoVentaPanel({
             style={secondaryBtnStyle}
           >
             {mostrarRevertidos
-              ? "Ocultar pagos revertidos"
-              : `Mostrar pagos revertidos (${pagosRevertidos.length})`}
+              ? "Ocultar revertidos"
+              : `Mostrar revertidos (${pagosRevertidos.length})`}
           </button>
 
           {mostrarRevertidos && (
             <PagoTabla
-              titulo="Historial de pagos revertidos"
-              descripcion="Estos pagos son históricos. No impactan el saldo vigente."
+              titulo="Pagos revertidos"
               pagos={pagosRevertidos}
               guardando={guardando}
               onRevertir={handleRevertirPago}
@@ -316,22 +331,11 @@ export default function PagoVentaPanel({
   );
 }
 
-function PagoTabla({
-  titulo,
-  descripcion,
-  pagos,
-  guardando,
-  onRevertir,
-  vacio,
-  soloHistorial = false,
-}) {
+function PagoTabla({ titulo, pagos, guardando, onRevertir, vacio, soloHistorial = false }) {
   return (
     <div style={{ marginTop: "16px" }}>
       <div style={sectionHeaderStyle}>
-        <div>
-          <h3 style={sectionTitleStyle}>{titulo}</h3>
-          <p style={mutedStyle}>{descripcion}</p>
-        </div>
+        <h3 style={sectionTitleStyle}>{titulo}</h3>
       </div>
 
       <div style={{ overflowX: "auto" }}>
@@ -344,7 +348,7 @@ function PagoTabla({
               <th style={thStyle}>Monto</th>
               <th style={thStyle}>Estado</th>
               <th style={thStyle}>Nota</th>
-              <th style={thStyle}>Acciones</th>
+              <th style={thStyle}>Acción</th>
             </tr>
           </thead>
 
@@ -361,7 +365,7 @@ function PagoTabla({
                   <td style={tdStyle}>#{pago.id}</td>
                   <td style={tdStyle}>{formatDate(pago.fecha)}</td>
                   <td style={tdStyle}>{renderMedio(pago.medio_pago)}</td>
-                  <td style={tdStyle}>{formatMoney(pago.monto_total_cobrado)}</td>
+                  <td style={tdStrongStyle}>{formatMoney(pago.monto_total_cobrado)}</td>
                   <td style={tdStyle}>
                     <EstadoPago estado={pago.estado} />
                   </td>
@@ -391,24 +395,19 @@ function PagoTabla({
 
 function Metric({ label, value, tone }) {
   const style =
-    tone === "ok"
-      ? metricOkStyle
-      : tone === "danger"
-        ? metricDangerStyle
-        : metricStyle;
+    tone === "ok" ? metricOkStyle : tone === "warn" ? metricWarnStyle : metricStyle;
 
   return (
     <div style={style}>
-      <span>{label}</span>
+      <span style={mutedSmallStyle}>{label}</span>
       <strong>{value}</strong>
     </div>
   );
 }
 
 function EstadoPago({ estado }) {
-  const esConfirmado = estado === "confirmado";
   return (
-    <span style={esConfirmado ? estadoOkStyle : estadoMutedStyle}>
+    <span style={estado === "confirmado" ? estadoOkStyle : estadoMutedStyle}>
       {estado}
     </span>
   );
@@ -455,48 +454,39 @@ const headerStyle = {
   marginBottom: "14px",
 };
 
-const titleStyle = {
-  margin: 0,
-  fontSize: "22px",
-};
+const titleStyle = { margin: 0, fontSize: "22px" };
+const mutedStyle = { margin: "6px 0 0", color: "#667085", fontSize: "14px" };
+const mutedSmallStyle = { color: "#667085", fontSize: "13px" };
+const mutedInlineStyle = { color: "#667085", fontSize: "13px" };
 
-const sectionHeaderStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-start",
-  gap: "12px",
-  marginBottom: "8px",
-};
-
-const sectionTitleStyle = {
-  margin: 0,
-  fontSize: "17px",
-};
-
-const mutedStyle = {
-  margin: "6px 0 0",
-  color: "#667085",
-  fontSize: "14px",
-};
-
-const mutedInlineStyle = {
-  color: "#667085",
-  fontSize: "13px",
-};
-
-const metricsGridStyle = {
+const heroGridStyle = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+  gridTemplateColumns: "minmax(230px, 1.4fr) repeat(3, minmax(150px, 1fr))",
   gap: "10px",
   marginBottom: "14px",
 };
 
+const saldoBoxStyle = {
+  border: "1px solid #fecdca",
+  borderRadius: "14px",
+  padding: "14px",
+  background: "#fff1f0",
+  color: "#b42318",
+  display: "grid",
+  gap: "6px",
+};
+
+const saldoValueStyle = {
+  fontSize: "30px",
+  lineHeight: 1,
+};
+
 const metricStyle = {
   border: "1px solid #eaecf0",
-  borderRadius: "12px",
-  padding: "12px",
+  borderRadius: "14px",
+  padding: "14px",
   display: "grid",
-  gap: "5px",
+  gap: "6px",
   background: "#f9fafb",
   color: "#344054",
 };
@@ -508,30 +498,57 @@ const metricOkStyle = {
   color: "#067647",
 };
 
-const metricDangerStyle = {
+const metricWarnStyle = {
   ...metricStyle,
-  background: "#fff1f0",
-  borderColor: "#fecdca",
-  color: "#b42318",
+  background: "#fff8e1",
+  borderColor: "#f3dc97",
+  color: "#8a6d00",
 };
 
-const formGridStyle = {
+const formStyle = {
   display: "grid",
-  gridTemplateColumns: "180px 180px minmax(220px, 1fr) 270px",
   gap: "12px",
-  alignItems: "end",
   marginTop: "14px",
 };
 
-const fieldStyle = {
+const medioGridStyle = {
   display: "grid",
-  gap: "6px",
+  gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
+  gap: "8px",
 };
 
-const labelStyle = {
-  fontWeight: 700,
-  fontSize: "14px",
+const medioStyle = {
+  border: "1px solid #d0d5dd",
+  background: "white",
+  color: "#111827",
+  borderRadius: "12px",
+  padding: "12px",
+  fontWeight: 800,
+  cursor: "pointer",
 };
+
+const medioActiveStyle = {
+  ...medioStyle,
+  background: "#1f6feb",
+  borderColor: "#1f6feb",
+  color: "white",
+};
+
+const quickGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+  gap: "8px",
+};
+
+const inputGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "180px minmax(220px, 1fr) 180px",
+  gap: "12px",
+  alignItems: "end",
+};
+
+const fieldStyle = { display: "grid", gap: "6px" };
+const labelStyle = { fontWeight: 700, fontSize: "14px" };
 
 const inputStyle = {
   width: "100%",
@@ -540,12 +557,6 @@ const inputStyle = {
   border: "1px solid #d0d5dd",
   borderRadius: "10px",
   fontSize: "15px",
-};
-
-const buttonGroupStyle = {
-  display: "grid",
-  gridTemplateColumns: "1fr 1fr",
-  gap: "8px",
 };
 
 const primaryBtnStyle = {
@@ -602,19 +613,10 @@ const noteStyle = {
   padding: "12px",
   borderRadius: "10px",
   border: "1px solid #f3dc97",
-};
-
-const warningInfoStyle = {
-  background: "#fff8e1",
-  color: "#8a6d00",
-  padding: "12px",
-  borderRadius: "10px",
-  border: "1px solid #f3dc97",
   marginBottom: "12px",
 };
 
 const hintStyle = {
-  marginTop: "10px",
   background: "#f9fafb",
   color: "#475467",
   border: "1px solid #eaecf0",
@@ -622,6 +624,16 @@ const hintStyle = {
   padding: "10px",
   fontSize: "13px",
 };
+
+const sectionHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: "12px",
+  marginBottom: "8px",
+};
+
+const sectionTitleStyle = { margin: 0, fontSize: "17px" };
 
 const tableStyle = {
   width: "100%",
@@ -639,6 +651,11 @@ const tdStyle = {
   padding: "10px",
   borderTop: "1px solid #eee",
   verticalAlign: "top",
+};
+
+const tdStrongStyle = {
+  ...tdStyle,
+  fontWeight: 800,
 };
 
 const estadoOkStyle = {

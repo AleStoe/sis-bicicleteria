@@ -26,6 +26,7 @@ import PreciosPage from "./pages/PreciosPage";
 import CatalogoPage from "./pages/CatalogoPage";
 // import IngresoMercaderiaPage from "./pages/IngresoMercaderiaPage";
 import AltaMercaderiaPage from "./pages/AltaMercaderiaPage";
+import VentaCobroPage from "./pages/VentaCobroPage";
 
 export default function App() {
   return (
@@ -60,6 +61,7 @@ export default function App() {
         <Route path="/catalogo" element={<CatalogoPage />} />
         {/*  <Route path="/stock/ingreso" element={<IngresoMercaderiaPage />} />*/}
           <Route path="/mercaderia/alta" element={<AltaMercaderiaPage />} />
+          <Route path="/ventas/:ventaId/cobro" element={<VentaCobroPage />} />
         </Routes>
       </AppLayout>
     </BrowserRouter>

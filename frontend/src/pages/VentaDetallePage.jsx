@@ -289,13 +289,12 @@ async function handleDevolverItem(item) {
         </div>
       )}
 
-      <PagoVentaPanel
-        ventaId={venta.id}
-        saldoPendiente={venta.saldo_pendiente}
-        estadoVenta={venta.estado}
-        autoFocusPago={enfocarPagos}
-        onPagoCambiado={cargarVenta}
-      />
+      <Link
+        to={`/ventas/${venta.id}/cobro`}
+        style={primaryLinkActionStyle}
+      >
+        Cobrar venta
+      </Link>
 
       <section style={cardStyle}>
         <h2 style={cardTitleStyle}>Acciones operativas</h2>
@@ -639,6 +638,18 @@ const warnActionStyle = {
   border: "1px solid #f3dc97",
   background: "#fff8e1",
   color: "#8a6d00",
+  borderRadius: "10px",
+  padding: "12px",
+  fontWeight: 800,
+  cursor: "pointer",
+};
+
+const primaryLinkActionStyle = {
+  textDecoration: "none",
+  textAlign: "center",
+  border: "none",
+  background: "#1f6feb",
+  color: "white",
   borderRadius: "10px",
   padding: "12px",
   fontWeight: 800,
