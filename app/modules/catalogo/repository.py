@@ -264,6 +264,7 @@ def get_catalogo_pos(
                 OR v.nombre_variante ILIKE %(query)s
                 OR v.sku ILIKE %(query)s
                 OR v.codigo_barras ILIKE %(query)s
+                OR v.codigo_proveedor ILIKE %(query)s
             )
         """)
         params["query"] = f"%{query.strip()}%"
@@ -288,6 +289,7 @@ def get_catalogo_pos(
                 v.permite_precio_libre,
                 v.sku,
                 v.codigo_barras,
+                v.codigo_proveedor,
 
                 COALESCE(img_var.url, img_prod.url) AS imagen_principal,
 
@@ -366,7 +368,9 @@ def get_catalogo_pos(
                          AND v.codigo_barras = %(query_exacta)s THEN 0
                     WHEN %(query_exacta)s <> ''
                          AND v.sku = %(query_exacta)s THEN 1
-                    ELSE 2
+                    WHEN %(query_exacta)s <> ''
+                        AND v.codigo_proveedor = %(query_exacta)s THEN 2
+                    ELSE 3
                 END,
                 c.nombre,
                 p.nombre,
@@ -379,3 +383,176 @@ def get_catalogo_pos(
         })
 
         return cur.fetchall()
+
+def get_categoria_by_id(conn, categoria_id: int):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id, nombre, activo
+            FROM categorias
+            WHERE id = %s
+            """,
+            (categoria_id,),
+        )
+        return cur.fetchone()
+
+
+def get_marca_by_id(conn, marca_id: int):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id, nombre, activa
+            FROM marcas
+            WHERE id = %s
+            """,
+            (marca_id,),
+        )
+        return cur.fetchone()
+
+
+def get_proveedor_by_id(conn, proveedor_id: int):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id, nombre, activo
+            FROM proveedores
+            WHERE id = %s
+            """,
+            (proveedor_id,),
+        )
+        return cur.fetchone()
+
+
+def get_producto_by_id(conn, producto_id: int):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT
+                id,
+                id_categoria,
+                id_marca,
+                nombre,
+                tipo_item,
+                stockeable,
+                serializable,
+                activo
+            FROM productos
+            WHERE id = %s
+            """,
+            (producto_id,),
+        )
+        return cur.fetchone()
+
+
+def crear_producto_catalogo(conn, data: dict):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO productos (
+                id_categoria,
+                id_marca,
+                nombre,
+                tipo_item,
+                stockeable,
+                serializable,
+                activo
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, TRUE)
+            RETURNING
+                id,
+                id_categoria,
+                id_marca,
+                nombre,
+                tipo_item,
+                stockeable,
+                serializable,
+                activo
+            """,
+            (
+                data["id_categoria"],
+                data.get("id_marca"),
+                data["nombre"],
+                data["tipo_item"],
+                data["stockeable"],
+                data["serializable"],
+            ),
+        )
+        return cur.fetchone()
+
+
+def crear_variante_catalogo(conn, data: dict):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO variantes (
+                id_producto,
+                nombre_variante,
+                sku,
+                codigo_barras,
+                codigo_proveedor,
+                proveedor_preferido_id,
+                alicuota_iva,
+                gravado,
+                precio_minorista,
+                precio_mayorista,
+                permite_precio_libre,
+                costo_promedio_vigente,
+                activo
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0, TRUE)
+            RETURNING
+                id,
+                id_producto,
+                nombre_variante,
+                sku,
+                codigo_barras,
+                codigo_proveedor,
+                proveedor_preferido_id,
+                alicuota_iva,
+                gravado,
+                precio_minorista,
+                precio_mayorista,
+                permite_precio_libre,
+                costo_promedio_vigente,
+                activo
+            """,
+            (
+                data["id_producto"],
+                data["nombre_variante"],
+                data.get("sku"),
+                data.get("codigo_barras"),
+                data.get("codigo_proveedor"),
+                data.get("proveedor_preferido_id"),
+                data["alicuota_iva"],
+                data["gravado"],
+                data["precio_minorista"],
+                data["precio_mayorista"],
+                data["permite_precio_libre"],
+            ),
+        )
+        return cur.fetchone()
+
+def get_marcas(conn):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id, nombre, activa, created_at
+            FROM marcas
+            WHERE activa = TRUE
+            ORDER BY nombre
+            """
+        )
+        return cur.fetchall()
+
+
+def crear_marca_catalogo(conn, data: dict):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO marcas (nombre, activa)
+            VALUES (%s, TRUE)
+            RETURNING id, nombre, activa, created_at
+            """,
+            (data["nombre"],),
+        )
+        return cur.fetchone()

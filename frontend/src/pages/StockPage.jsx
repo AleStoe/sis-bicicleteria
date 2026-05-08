@@ -1,17 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { crearAjusteStock, crearIngresoStock, listarStock } from "../services/stockService";
+import { listarProveedores } from "../services/proveedoresService";
 
 const ID_USUARIO = 1;
 const ID_SUCURSAL_DEFAULT = 1;
 
 export default function StockPage() {
   const [stock, setStock] = useState([]);
+  const [proveedores, setProveedores] = useState([]);
   const [query, setQuery] = useState("");
   const [soloProblemas, setSoloProblemas] = useState(false);
   const [loading, setLoading] = useState(true);
   const [procesando, setProcesando] = useState(false);
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
+  const [ultimoIngreso, setUltimoIngreso] = useState(null);
 
   const [ingresoForm, setIngresoForm] = useState({
     id_sucursal: ID_SUCURSAL_DEFAULT,
@@ -36,20 +39,32 @@ export default function StockPage() {
   });
 
   useEffect(() => {
-    cargarStock();
+    cargarTodo();
   }, []);
+
+  async function cargarTodo() {
+    await Promise.all([cargarStock(), cargarProveedores()]);
+  }
 
   async function cargarStock() {
     try {
       setLoading(true);
       setError("");
-
       const data = await listarStock();
       setStock(data || []);
     } catch (err) {
       setError(err.message || "No se pudo cargar el stock");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function cargarProveedores() {
+    try {
+      const data = await listarProveedores({ solo_activos: true });
+      setProveedores(data || []);
+    } catch (err) {
+      setError(err.message || "No se pudieron cargar los proveedores");
     }
   }
 
@@ -134,10 +149,16 @@ export default function StockPage() {
       return;
     }
 
+    if (!ingresoForm.cantidad_ingresada || Number(ingresoForm.cantidad_ingresada) <= 0) {
+      setError("Ingreso: la cantidad debe ser mayor a 0");
+      return;
+    }
+
     try {
       setProcesando(true);
       setError("");
       setMensaje("");
+      setUltimoIngreso(null);
 
       const payload = {
         ...ingresoForm,
@@ -153,8 +174,13 @@ export default function StockPage() {
 
       const res = await crearIngresoStock(payload);
 
+      setUltimoIngreso({
+        ...res,
+        id_proveedor: payload.id_proveedor,
+      });
+
       setMensaje(
-        `Ingreso registrado. Stock anterior: ${res.stock_anterior}, nuevo: ${res.stock_nuevo}. Costo promedio nuevo: ${formatNumber(res.costo_promedio_nuevo)}`
+        `Ingreso registrado. Stock anterior: ${formatNumber(res.stock_anterior)}, nuevo: ${formatNumber(res.stock_nuevo)}. Costo promedio nuevo: ${formatMoney(res.costo_promedio_nuevo)}`
       );
 
       setIngresoForm((p) => ({
@@ -190,6 +216,7 @@ export default function StockPage() {
       setProcesando(true);
       setError("");
       setMensaje("");
+      setUltimoIngreso(null);
 
       const payload = {
         ...ajusteForm,
@@ -221,6 +248,19 @@ export default function StockPage() {
     }
   }
 
+  function irAPrecios() {
+    if (!ultimoIngreso?.id_proveedor) {
+      window.location.href = "/precios";
+      return;
+    }
+
+    window.location.href = "/precios";
+  }
+
+  const costoCambio =
+    ultimoIngreso &&
+    Number(ultimoIngreso.costo_promedio_anterior) !== Number(ultimoIngreso.costo_promedio_nuevo);
+
   if (loading) return <p style={{ padding: "24px" }}>Cargando stock...</p>;
 
   return (
@@ -233,11 +273,30 @@ export default function StockPage() {
           </p>
         </div>
 
-        <button onClick={cargarStock}>Refrescar</button>
+        <button onClick={cargarTodo}>Refrescar</button>
       </div>
 
       {mensaje && <div style={successStyle}>{mensaje}</div>}
       {error && <div style={alertStyle}>Error: {error}</div>}
+
+      {costoCambio && (
+        <div style={priceWarningStyle}>
+          <div>
+            <strong>El costo promedio cambió.</strong>
+            <div style={{ marginTop: "4px" }}>
+              Anterior: {formatMoney(ultimoIngreso.costo_promedio_anterior)} · Nuevo:{" "}
+              {formatMoney(ultimoIngreso.costo_promedio_nuevo)}
+            </div>
+            <div style={{ marginTop: "4px", color: "#667085" }}>
+              Conviene revisar precios desfasados para este proveedor.
+            </div>
+          </div>
+
+          <button type="button" onClick={irAPrecios} style={warningButtonStyle}>
+            Ir a precios
+          </button>
+        </div>
+      )}
 
       <section style={metricGridStyle}>
         <Metric label="Variantes con stock" value={resumen.variantes} />
@@ -324,11 +383,27 @@ export default function StockPage() {
 
         <aside style={sideStyle}>
           <section style={cardStyle}>
-            <h2 style={cardTitleStyle}>Ingreso de stock</h2>
+            <h2 style={cardTitleStyle}>Ingreso de mercadería</h2>
             <form onSubmit={handleIngreso} style={formStyle}>
               <TextInput label="Sucursal" value={ingresoForm.id_sucursal} onChange={(v) => setIngresoForm((p) => ({ ...p, id_sucursal: v }))} />
               <TextInput label="Variante" value={ingresoForm.id_variante} onChange={(v) => setIngresoForm((p) => ({ ...p, id_variante: v }))} />
-              <TextInput label="Proveedor ID" value={ingresoForm.id_proveedor} onChange={(v) => setIngresoForm((p) => ({ ...p, id_proveedor: v }))} />
+
+              <label style={fieldStyle}>
+                <span style={labelStyle}>Proveedor</span>
+                <select
+                  value={ingresoForm.id_proveedor}
+                  onChange={(e) => setIngresoForm((p) => ({ ...p, id_proveedor: e.target.value }))}
+                  style={inputStyle}
+                >
+                  <option value="">Seleccionar proveedor...</option>
+                  {proveedores.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      #{p.id} - {p.nombre}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
               <TextInput label="Cantidad ingresada" value={ingresoForm.cantidad_ingresada} onChange={(v) => setIngresoForm((p) => ({ ...p, cantidad_ingresada: v }))} type="number" />
               <TextInput label="Costo productos total" value={ingresoForm.costo_productos} onChange={(v) => setIngresoForm((p) => ({ ...p, costo_productos: v }))} type="number" />
               <TextInput label="Gastos adicionales" value={ingresoForm.gastos_adicionales} onChange={(v) => setIngresoForm((p) => ({ ...p, gastos_adicionales: v }))} type="number" />
@@ -339,6 +414,7 @@ export default function StockPage() {
                   value={ingresoForm.observacion}
                   onChange={(e) => setIngresoForm((p) => ({ ...p, observacion: e.target.value }))}
                   style={textareaStyle}
+                  placeholder="Ej: ingreso por factura, remito, reposición..."
                 />
               </label>
 
@@ -409,16 +485,26 @@ function formatNumber(value) {
   });
 }
 
+function formatMoney(value) {
+  return Number(value || 0).toLocaleString("es-AR", {
+    style: "currency",
+    currency: "ARS",
+    maximumFractionDigits: 2,
+  });
+}
+
 const pageStyle = { padding: "24px", background: "#f6f7fb", minHeight: "100vh" };
 const headerStyle = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", marginBottom: "16px", flexWrap: "wrap" };
 const mutedStyle = { color: "#667085", margin: "6px 0 0" };
 const mutedSmallStyle = { color: "#667085", fontSize: "13px", marginTop: "4px" };
 const alertStyle = { background: "#fff1f0", color: "#b42318", padding: "12px", borderRadius: "10px", border: "1px solid #f4c7c3", marginBottom: "16px" };
 const successStyle = { background: "#e8fff0", color: "#146c2e", padding: "12px", borderRadius: "10px", border: "1px solid #b7ebc6", marginBottom: "16px" };
+const priceWarningStyle = { background: "#fffaeb", color: "#92400e", padding: "14px", borderRadius: "12px", border: "1px solid #facc15", marginBottom: "16px", display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "center" };
+const warningButtonStyle = { border: "1px solid #d97706", background: "#fff", color: "#92400e", borderRadius: "8px", padding: "10px 12px", fontWeight: "bold", cursor: "pointer", whiteSpace: "nowrap" };
 const metricGridStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "12px", marginBottom: "16px" };
 const metricStyle = { background: "white", borderRadius: "14px", boxShadow: "0 2px 10px rgba(0,0,0,.08)", padding: "14px", display: "grid", gap: "6px" };
 const metricValueStyle = { fontSize: "22px" };
-const gridStyle = { display: "grid", gridTemplateColumns: "minmax(620px,1fr) 360px", gap: "16px", alignItems: "start" };
+const gridStyle = { display: "grid", gridTemplateColumns: "minmax(620px,1fr) 380px", gap: "16px", alignItems: "start" };
 const cardStyle = { background: "white", borderRadius: "14px", boxShadow: "0 2px 10px rgba(0,0,0,.08)", padding: "16px", marginBottom: "16px" };
 const toolbarStyle = { display: "grid", gridTemplateColumns: "1fr auto", gap: "12px", padding: "16px", borderBottom: "1px solid #eee", alignItems: "center" };
 const inputStyle = { width: "100%", padding: "10px 12px", borderRadius: "10px", border: "1px solid #d0d5dd", fontSize: "15px", boxSizing: "border-box" };

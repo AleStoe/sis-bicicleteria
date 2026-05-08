@@ -10,6 +10,10 @@ from .service import (
     editar_imagen,
     eliminar_imagen,
     listar_catalogo_pos,
+    crear_producto,
+    crear_variante,    
+    listar_marcas,
+    crear_marca,
 )
 
 from .schema import (
@@ -20,6 +24,12 @@ from .schema import (
     CatalogoImagenUpdate,
     CatalogoImagenOut,
     CatalogoPOSItemOut,
+    ProductoCreate,
+    ProductoCreateOut,
+    VarianteCreate,
+    VarianteCreateOut,    
+    MarcaOut,
+    MarcaCreate,
 )
 
 router = APIRouter()
@@ -76,3 +86,21 @@ def catalogo_pos(
         categoria_id=categoria_id,
         limit=limit,
     )
+
+@router.post("/productos", response_model=ProductoCreateOut)
+def crear_producto_route(data: ProductoCreate):
+    return crear_producto(data)
+
+
+@router.post("/variantes", response_model=VarianteCreateOut)
+def crear_variante_route(data: VarianteCreate):
+    return crear_variante(data)
+
+@router.get("/marcas", response_model=list[MarcaOut])
+def marcas():
+    return listar_marcas()
+
+
+@router.post("/marcas", response_model=MarcaOut)
+def crear_marca_route(data: MarcaCreate):
+    return crear_marca(data)

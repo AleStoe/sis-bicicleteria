@@ -1,9 +1,15 @@
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import router as api_router
 from app.db.connection import get_connection
 from app.modules.auditoria.routes import router as auditoria_router
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+UPLOADS_DIR = BASE_DIR / "uploads"
 
 app = FastAPI(title="Sistema Bicicleteria Agus")
 
@@ -20,6 +26,12 @@ app.add_middleware(
 
 app.include_router(api_router)
 app.include_router(auditoria_router, prefix="/auditoria", tags=["Auditoría"])
+
+app.mount(
+    "/uploads",
+    StaticFiles(directory=str(UPLOADS_DIR)),
+    name="uploads",
+)
 
 
 @app.get("/health")

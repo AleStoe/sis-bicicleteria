@@ -17,10 +17,45 @@ export function listarCategorias() {
   return apiRequest("/catalogo/categorias");
 }
 
+export function listarMarcas() {
+  return apiRequest("/catalogo/marcas");
+}
+
+export function crearMarca(data) {
+  return apiRequest("/catalogo/marcas", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function listarProductos() {
+  return apiRequest("/catalogo/productos");
+}
+
 export function listarVariantes() {
   return apiRequest("/catalogo/variantes");
 }
 
 export function listarCatalogoPOS(params = {}) {
   return apiRequest(`/catalogo/pos${buildQuery(params)}`);
+}
+
+export function crearProducto(data) {
+  return apiRequest("/catalogo/productos", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function crearVariante(data) {
+  return apiRequest("/catalogo/variantes", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+export function crearImagenCatalogo(data) {
+  return apiRequest("/catalogo/imagenes", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 }
