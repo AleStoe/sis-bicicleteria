@@ -16,8 +16,11 @@ class VentaItemCreateInput(BaseModel):
 class VentaPagoCreateInput(BaseModel):
     medio_pago: MedioPagoVenta
     monto: Decimal = Field(gt=0)
-    nota: Optional[str] = None
 
+    cuotas: Optional[int] = Field(default=None, gt=0)
+    entidad: Optional[str] = Field(default=None, max_length=80)
+
+    nota: Optional[str] = None
 
 class VentaCreateInput(BaseModel):
     id_cliente: int
@@ -28,6 +31,7 @@ class VentaCreateInput(BaseModel):
     observaciones: Optional[str] = None
     usar_credito: bool = True
     monto_credito_a_aplicar: Optional[Decimal] = None
+    
 
 
 class VentaEntregaInput(BaseModel):

@@ -6,6 +6,9 @@ from app.modules.authz.service import (
     exigir_permiso_anular_venta,
     exigir_permiso_entregar_con_deuda,
 )
+from app.modules.reglas_comerciales.service import (
+    simular_reglas_comerciales,
+)
 from app.db.connection import get_connection
 from app.modules.stock import service as stock_service
 from app.modules.creditos import service as creditos_service
@@ -36,6 +39,7 @@ from .repository import (
     get_venta_devolucion_by_venta_item_id,
     insert_venta_item_devolucion,
     get_total_devuelto_by_venta_item_id,
+    insert_venta_regla_aplicada,
 )
 from app.shared.constants import (
     AUDITORIA_ENTIDAD_VENTA,
@@ -422,8 +426,32 @@ def crear_venta(data):
                         "subtotal": subtotal,
                     }
                 )
+            pagos = getattr(data, "pagos", []) or []
+            resultado_reglas = simular_reglas_comerciales(
+                type(
+                    "TmpSimulacion",
+                    (),
+                    {
+                        "subtotal_base": subtotal_total,
+                        "medios_pago": pagos,
+                    },
+                )()
+            )
 
-            total_final = redondear_monto(subtotal_total)
+            descuento_total = redondear_monto(
+                resultado_reglas["descuento_total"]
+            )
+
+            recargo_total = redondear_monto(
+                resultado_reglas["recargo_total"]
+            )
+
+            total_final = redondear_monto(
+                resultado_reglas["total_final"]
+            )
+
+            reglas_aplicadas = resultado_reglas["reglas_aplicadas"]
+
             credito_aplicado = Decimal("0")
 
             venta_id = insert_venta(
@@ -433,8 +461,8 @@ def crear_venta(data):
                     "id_cliente": data.id_cliente,
                     "estado": "creada",
                     "subtotal_base": subtotal_total,
-                    "descuento_total": Decimal("0"),
-                    "recargo_total": Decimal("0"),
+                    "descuento_total": descuento_total,
+                    "recargo_total": recargo_total,
                     "total_final": total_final,
                     "saldo_pendiente": total_final,
                     "id_usuario_creador": data.id_usuario,
@@ -442,7 +470,18 @@ def crear_venta(data):
                     "id_reserva_origen": None,
                 },
             )
-
+            for regla in reglas_aplicadas:
+                insert_venta_regla_aplicada(
+                    conn,
+                    {
+                        "id_venta": venta_id,
+                        "id_regla_comercial": regla["id_regla_comercial"],
+                        "tipo": regla["tipo"],
+                        "descripcion_snapshot": regla["descripcion"],
+                        "monto_aplicado": regla["monto_aplicado"],
+                        "porcentaje_aplicado": regla["porcentaje_aplicado"],
+                    },
+                )
             for fila in venta_items:
                 item = fila["item"]
                 variante = fila["variante"]
@@ -545,7 +584,6 @@ def crear_venta(data):
                     saldo_despues_credito,
                     estado_venta,
                 )
-            pagos = getattr(data, "pagos", []) or []
 
             for pago in pagos:
                 pagos_service.registrar_pago(

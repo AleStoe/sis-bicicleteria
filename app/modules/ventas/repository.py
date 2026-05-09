@@ -405,3 +405,30 @@ def get_total_devuelto_by_venta_item_id(conn, id_venta_item: int):
             (id_venta_item,),
         )
         return cur.fetchone()["cantidad_devuelta"]
+
+def insert_venta_regla_aplicada(conn, data):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO venta_reglas_aplicadas (
+                id_venta,
+                id_regla_comercial,
+                tipo,
+                descripcion_snapshot,
+                monto_aplicado,
+                porcentaje_aplicado
+            )
+            VALUES (
+                %(id_venta)s,
+                %(id_regla_comercial)s,
+                %(tipo)s,
+                %(descripcion_snapshot)s,
+                %(monto_aplicado)s,
+                %(porcentaje_aplicado)s
+            )
+            RETURNING id
+            """,
+            data,
+        )
+
+        return cur.fetchone()[0]
