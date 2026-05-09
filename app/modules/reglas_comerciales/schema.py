@@ -32,6 +32,9 @@ class PagoSimulacionInput(BaseModel):
     medio_pago: MedioPagoRegla
     monto: Decimal = Field(gt=0)
 
+    cuotas: int | None = Field(default=None, gt=0)
+    entidad: str | None = Field(default=None, max_length=80)
+
 
 class SimularReglasInput(BaseModel):
     subtotal_base: Decimal = Field(gt=0)

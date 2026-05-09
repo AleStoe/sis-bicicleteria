@@ -9,7 +9,11 @@ from .repository import (
     get_reglas_comerciales,
     get_reglas_activas_por_medios,
 )
-
+REGLAS_CUOTAS = {
+    3: Decimal("15"),
+    6: Decimal("35"),
+    12: Decimal("70"),
+}
 
 def _dec(value) -> Decimal:
     return Decimal(str(value))
@@ -41,69 +45,93 @@ def simular_reglas_comerciales(data):
     subtotal_base = redondear_monto(data.subtotal_base)
 
     pagos = data.medios_pago or []
-    medios_pago = [p.medio_pago for p in pagos]
-    total_pagado = redondear_monto(sum((_dec(p.monto) for p in pagos), Decimal("0")))
 
-    conn = get_connection()
+    descuento_total = Decimal("0")
+    recargo_total = Decimal("0")
 
-    try:
-        reglas = get_reglas_activas_por_medios(conn, medios_pago)
+    reglas_aplicadas = []
 
-        descuento_total = Decimal("0")
-        recargo_total = Decimal("0")
-        reglas_aplicadas = []
+    total_pagos = Decimal("0")
 
-        for regla in reglas:
-            if regla["requiere_pago_total"] and total_pagado != subtotal_base:
-                continue
+    for pago in pagos:
+        monto_pago = redondear_monto(_dec(pago.monto))
 
-            monto = _calcular_monto_regla(regla, subtotal_base)
+        total_pagos += monto_pago
 
-            if monto <= 0:
-                continue
+        # =========================================
+        # EFECTIVO / TRANSFERENCIA
+        # =========================================
 
-            if regla["tipo"] == "descuento":
-                descuento_total = redondear_monto(descuento_total + monto)
-            elif regla["tipo"] == "recargo":
-                recargo_total = redondear_monto(recargo_total + monto)
-            else:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Tipo de regla comercial inválido: {regla['tipo']}",
-                )
+        if pago.medio_pago in ("efectivo", "transferencia"):
+            descuento = redondear_monto(
+                monto_pago * Decimal("0.10")
+            )
+
+            descuento_total += descuento
 
             reglas_aplicadas.append(
                 {
-                    "id_regla_comercial": regla["id"],
-                    "tipo": regla["tipo"],
-                    "descripcion": regla["nombre"],
-                    "medio_pago": regla["medio_pago"],
-                    "porcentaje_aplicado": regla["porcentaje"],
-                    "monto_aplicado": monto,
+                    "id_regla_comercial": 1,
+                    "tipo": "descuento",
+                    "descripcion": (
+                        f"Descuento contado 10% "
+                        f"({pago.medio_pago})"
+                    ),
+                    "medio_pago": pago.medio_pago,
+                    "porcentaje_aplicado": Decimal("10"),
+                    "monto_aplicado": descuento,
                 }
             )
 
-            if not regla["combinable"]:
-                break
+        # =========================================
+        # TARJETA
+        # =========================================
 
-        if descuento_total > subtotal_base:
-            raise HTTPException(
-                status_code=400,
-                detail="El descuento calculado supera el subtotal",
-            )
+        elif pago.medio_pago == "tarjeta":
+            cuotas = pago.cuotas or 1
 
-        total_final = redondear_monto(
-            subtotal_base - descuento_total + recargo_total
-        )
+            if cuotas > 1:
+                porcentaje = REGLAS_CUOTAS.get(cuotas)
 
-        return {
-            "subtotal_base": subtotal_base,
-            "descuento_total": descuento_total,
-            "recargo_total": recargo_total,
-            "total_final": total_final,
-            "reglas_aplicadas": reglas_aplicadas,
-        }
+                if porcentaje is None:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"No existe regla financiera "
+                            f"para {cuotas} cuotas"
+                        ),
+                    )
 
-    finally:
-        conn.close()
-        
+                recargo = redondear_monto(
+                    monto_pago * (porcentaje / Decimal("100"))
+                )
+
+                recargo_total += recargo
+
+                reglas_aplicadas.append(
+                    {
+                        "id_regla_comercial": cuotas,
+                        "tipo": "recargo",
+                        "descripcion": (
+                            f"Recargo tarjeta "
+                            f"{cuotas} cuotas"
+                        ),
+                        "medio_pago": "tarjeta",
+                        "porcentaje_aplicado": porcentaje,
+                        "monto_aplicado": recargo,
+                    }
+                )
+
+    total_final = redondear_monto(
+        subtotal_base
+        - descuento_total
+        + recargo_total
+    )
+
+    return {
+        "subtotal_base": subtotal_base,
+        "descuento_total": descuento_total,
+        "recargo_total": recargo_total,
+        "total_final": total_final,
+        "reglas_aplicadas": reglas_aplicadas,
+    }
