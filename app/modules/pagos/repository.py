@@ -215,3 +215,31 @@ def get_total_pagado_confirmado_por_venta(conn, venta_id: int) -> Decimal:
         )
         row = cur.fetchone()
         return Decimal(str(row["total_pagado"]))
+
+def insert_pago_tarjeta_detalle(conn, data: dict):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            INSERT INTO pagos_tarjeta_detalle (
+                id_pago,
+                monto_base,
+                monto_recargo_financiero,
+                monto_neto_liquidado,
+                cuotas,
+                entidad,
+                observacion
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+            """,
+            (
+                data["id_pago"],
+                data["monto_base"],
+                data["monto_recargo_financiero"],
+                data["monto_neto_liquidado"],
+                data["cuotas"],
+                data["entidad"],
+                data.get("observacion"),
+            ),
+        )
+        return cur.fetchone()["id"]

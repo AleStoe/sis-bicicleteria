@@ -676,3 +676,22 @@ def get_reserva(conn, reserva_id: int):
             (reserva_id,),
         )
         return cur.fetchone()
+
+def get_pago_tarjeta_detalle_by_pago_id(conn, pago_id):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT
+                id_pago,
+                monto_base,
+                monto_recargo_financiero,
+                monto_neto_liquidado,
+                cuotas,
+                entidad
+            FROM pagos_tarjeta_detalle
+            WHERE id_pago = %s
+            """,
+            (pago_id,),
+        )
+
+        return cur.fetchone()

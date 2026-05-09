@@ -5,6 +5,7 @@ from tests.conftest import (
     get_deudas_by_cliente,
     get_venta,
     asignar_rol_usuario,
+    get_pago_tarjeta_detalle_by_pago_id,
 )
 def _abrir_caja(client, sucursal_id: int, usuario_id: int):
     return client.post(
@@ -175,6 +176,47 @@ def test_registra_pago_total_tarjeta(client, db_conn, seed_venta_basica):
     assert venta["estado"] == "pagada_total"
     assert float(venta["saldo_pendiente"]) == 0.0
 
+def test_pago_tarjeta_crea_detalle_financiero(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    venta_id = crear_venta_base(client, seed_venta_basica)
+
+    abrir_caja = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+
+    assert abrir_caja.status_code == 200
+
+    response = client.post(
+        "/pagos/",
+        json={
+            "origen_tipo": "venta",
+            "origen_id": venta_id,
+            "medio_pago": "tarjeta",
+            "monto": 24440,
+            "cuotas": 6,
+            "entidad": "Visa",
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "nota": "Pago tarjeta cuotas",
+        },
+    )
+
+    assert response.status_code == 200
+
+    pago_id = response.json()["pago_id"]
+
+    detalle = get_pago_tarjeta_detalle_by_pago_id(
+        db_conn,
+        pago_id,
+    )
+
+    assert detalle is not None
+    assert detalle["cuotas"] == 6
+    assert detalle["entidad"] == "Visa"
 
 def test_registra_pago_parcial(client, db_conn, seed_venta_basica):
     venta_id = crear_venta_base(client, seed_venta_basica)
@@ -1177,3 +1219,102 @@ def test_reversion_pago_crea_auditoria(client, db_conn, seed_venta_basica):
     assert "pago_registrado" in acciones
     assert "revertir_pago" in acciones
 
+def test_pago_efectivo_no_crea_detalle_tarjeta(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    venta_id = crear_venta_base(client, seed_venta_basica)
+
+    abrir_caja = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+
+    assert abrir_caja.status_code == 200
+
+    response = client.post(
+        "/pagos/",
+        json=_payload_pago(
+            venta_id,
+            "efectivo",
+            24440,
+            seed_venta_basica["usuario_id"],
+            "Pago efectivo",
+        ),
+    )
+
+    assert response.status_code == 200
+
+    pago_id = response.json()["pago_id"]
+
+    detalle = get_pago_tarjeta_detalle_by_pago_id(
+        db_conn,
+        pago_id,
+    )
+
+    assert detalle is None
+
+def test_venta_con_tarjeta_6_cuotas_persiste_recargo(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    abrir_caja = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+
+    assert abrir_caja.status_code == 200
+
+    response = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 1,
+                }
+            ],
+            "pagos": [
+                {
+                    "medio_pago": "tarjeta",
+                    "monto": 32994,
+                    "cuotas": 6,
+                    "entidad": "Mastercard",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200, response.text
+
+    venta_id = response.json()["venta_id"]
+
+    venta = get_venta(db_conn, venta_id)
+
+    assert Decimal(str(venta["recargo_total"])) > Decimal("0")
+
+    pagos_response = client.get(
+        f"/pagos/ventas/{venta_id}/pagos"
+    )
+
+    pagos = pagos_response.json()
+
+    assert len(pagos) == 1
+
+    pago_id = pagos[0]["id"]
+
+    detalle = get_pago_tarjeta_detalle_by_pago_id(
+        db_conn,
+        pago_id,
+    )
+
+    assert detalle is not None
+    assert detalle["cuotas"] == 6
+    assert detalle["entidad"] == "Mastercard"

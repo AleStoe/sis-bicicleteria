@@ -431,4 +431,4 @@ def insert_venta_regla_aplicada(conn, data):
             data,
         )
 
-        return cur.fetchone()[0]
+        return cur.fetchone()["id"]

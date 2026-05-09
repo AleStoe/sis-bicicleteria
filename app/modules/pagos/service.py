@@ -18,6 +18,7 @@ from .repository import (
     obtener_pagos_por_venta,
     update_pago_estado,
     update_venta_saldo_y_estado,
+    insert_pago_tarjeta_detalle,
 )
 
 from app.shared.constants import (
@@ -160,7 +161,30 @@ def registrar_pago(conn, data: dict):
                 "id_usuario": data["id_usuario"],
             },
         )
+        if medio_pago == "tarjeta":
+            cuotas = data.get("cuotas") or 1
+            entidad = data.get("entidad") or "Sin especificar"
 
+            monto_base = redondear_monto(data.get("monto_base") or monto)
+            monto_recargo_financiero = redondear_monto(
+                data.get("monto_recargo_financiero") or Decimal("0")
+            )
+            monto_neto_liquidado = redondear_monto(
+                data.get("monto_neto_liquidado") or monto
+            )
+
+            insert_pago_tarjeta_detalle(
+                conn,
+                {
+                    "id_pago": pago_id,
+                    "monto_base": monto_base,
+                    "monto_recargo_financiero": monto_recargo_financiero,
+                    "monto_neto_liquidado": monto_neto_liquidado,
+                    "cuotas": cuotas,
+                    "entidad": entidad,
+                    "observacion": data.get("nota"),
+                },
+            )
         insert_caja_movimiento(
             conn,
             id_caja=caja["id"],
@@ -241,7 +265,30 @@ def registrar_pago(conn, data: dict):
             "id_usuario": data["id_usuario"],
         },
     )
+    if medio_pago == "tarjeta":
+        cuotas = data.get("cuotas") or 1
+        entidad = data.get("entidad") or "Sin especificar"
 
+        monto_base = redondear_monto(data.get("monto_base") or monto)
+        monto_recargo_financiero = redondear_monto(
+            data.get("monto_recargo_financiero") or Decimal("0")
+        )
+        monto_neto_liquidado = redondear_monto(
+            data.get("monto_neto_liquidado") or monto
+        )
+
+        insert_pago_tarjeta_detalle(
+            conn,
+            {
+                "id_pago": pago_id,
+                "monto_base": monto_base,
+                "monto_recargo_financiero": monto_recargo_financiero,
+                "monto_neto_liquidado": monto_neto_liquidado,
+                "cuotas": cuotas,
+                "entidad": entidad,
+                "observacion": data.get("nota"),
+            },
+        )
     insert_caja_movimiento(
         conn,
         id_caja=caja["id"],
@@ -302,6 +349,11 @@ def crear_pago(data):
                 "monto": data.monto,
                 "nota": data.nota,
                 "id_usuario": data.id_usuario,
+                "cuotas": getattr(data, "cuotas", None),
+                "entidad": getattr(data, "entidad", None),
+                "monto_base": getattr(data, "monto_base", None),
+                "monto_recargo_financiero": getattr(data, "monto_recargo_financiero", None),
+                "monto_neto_liquidado": getattr(data, "monto_neto_liquidado", None),
             }
 
             if hasattr(data, "id_sucursal"):

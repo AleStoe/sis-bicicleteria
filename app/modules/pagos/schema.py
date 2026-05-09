@@ -10,15 +10,12 @@ class PagoCreateInput(BaseModel):
     monto: Decimal = Field(gt=0)
     id_usuario: int = Field(gt=0)
     nota: str | None = None
+    cuotas: int | None = Field(default=None, gt=0)
+    entidad: str | None = Field(default=None, max_length=80)
+    monto_base: Decimal | None = Field(default=None, ge=0)
+    monto_recargo_financiero: Decimal | None = Field(default=None, ge=0)
+    monto_neto_liquidado: Decimal | None = Field(default=None, ge=0)
 
-class PagoCreateOutput(BaseModel):
-    ok: bool
-    pago_id: int
-    origen_tipo: str | None = None
-    origen_id: int | None = None
-    venta_id: int | None = None
-    estado_venta: str | None = None
-    saldo_restante: Decimal | None = None
 
 class PagoReversionInput(BaseModel):
     motivo: str = Field(min_length=3, max_length=500)

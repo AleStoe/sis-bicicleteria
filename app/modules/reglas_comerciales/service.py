@@ -110,7 +110,7 @@ def simular_reglas_comerciales(data):
 
                 reglas_aplicadas.append(
                     {
-                        "id_regla_comercial": cuotas,
+                        "id_regla_comercial": None,
                         "tipo": "recargo",
                         "descripcion": (
                             f"Recargo tarjeta "

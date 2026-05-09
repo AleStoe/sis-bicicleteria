@@ -594,6 +594,8 @@ def crear_venta(data):
                         "origen_id": venta_id,
                         "medio_pago": pago.medio_pago,
                         "monto": pago.monto,
+                        "cuotas": getattr(pago, "cuotas", None),
+                        "entidad": getattr(pago, "entidad", None),
                         "nota": pago.nota,
                         "id_usuario": data.id_usuario,
                     },

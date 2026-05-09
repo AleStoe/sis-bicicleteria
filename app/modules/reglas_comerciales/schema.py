@@ -42,7 +42,7 @@ class SimularReglasInput(BaseModel):
 
 
 class ReglaAplicadaOutput(BaseModel):
-    id_regla_comercial: int
+    id_regla_comercial: int | None = None
     tipo: str
     descripcion: str
     medio_pago: str | None = None
