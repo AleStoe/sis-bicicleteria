@@ -96,7 +96,7 @@ def crear_deuda_por_venta(data):
 
 def listar_deudas(
     *,
-    id_cliente: int | None = None,
+    q: str | None = None,
     estado: str | None = None,
     origen_tipo: str | None = None,
     origen_id: int | None = None,
@@ -105,7 +105,7 @@ def listar_deudas(
     try:
         return repository.get_deudas_filtradas(
             conn,
-            id_cliente=id_cliente,
+            q=q,
             estado=estado,
             origen_tipo=origen_tipo,
             origen_id=origen_id,
@@ -117,7 +117,7 @@ def listar_deudas(
 def obtener_deuda(deuda_id: int):
     conn = get_connection()
     try:
-        deuda = repository.get_deuda_by_id(conn, deuda_id)
+        deuda = repository.get_deuda_detalle_by_id(conn, deuda_id)
 
         if deuda is None:
             raise HTTPException(

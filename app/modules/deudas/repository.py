@@ -185,7 +185,7 @@ def update_deuda_saldo_y_estado(conn, deuda_id: int, saldo_actual, estado: str):
 def get_deudas_filtradas(
     conn,
     *,
-    id_cliente: int | None = None,
+    q: str | None = None,
     estado: str | None = None,
     origen_tipo: str | None = None,
     origen_id: int | None = None,
@@ -193,7 +193,9 @@ def get_deudas_filtradas(
     sql = """
         SELECT
             d.*,
-            c.nombre AS cliente_nombre
+            c.nombre AS cliente_nombre,
+            c.dni AS cliente_dni,
+            c.telefono AS cliente_telefono
         FROM deudas_cliente d
         INNER JOIN clientes c
             ON c.id = d.id_cliente
@@ -201,9 +203,18 @@ def get_deudas_filtradas(
     """
     params = []
 
-    if id_cliente is not None:
-        sql += " AND d.id_cliente = %s"
-        params.append(id_cliente)
+    if q:
+        q_limpio = q.strip()
+        q_like = f"%{q_limpio}%"
+
+        sql += """
+            AND (
+                c.nombre ILIKE %s
+                OR c.dni ILIKE %s
+                OR CAST(c.id AS TEXT) = %s
+            )
+        """
+        params.extend([q_like, q_like, q_limpio])
 
     if estado is not None:
         sql += " AND d.estado = %s"
@@ -222,3 +233,21 @@ def get_deudas_filtradas(
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(sql, tuple(params))
         return cur.fetchall()
+    
+def get_deuda_detalle_by_id(conn, deuda_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT
+                d.*,
+                c.nombre AS cliente_nombre,
+                c.dni AS cliente_dni,
+                c.telefono AS cliente_telefono
+            FROM deudas_cliente d
+            INNER JOIN clientes c
+                ON c.id = d.id_cliente
+            WHERE d.id = %s
+            """,
+            (deuda_id,),
+        )
+        return cur.fetchone()

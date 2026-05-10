@@ -18,13 +18,13 @@ def crear_deuda(data: DeudaCrearInput):
 
 @router.get("/")
 def listar(
-    id_cliente: Optional[int] = Query(default=None),
+    q: Optional[str] = Query(default=None),
     estado: Optional[str] = Query(default=None),
     origen_tipo: Optional[str] = Query(default=None),
     origen_id: Optional[int] = Query(default=None),
 ):
     return listar_deudas(
-        id_cliente=id_cliente,
+        q=q,
         estado=estado,
         origen_tipo=origen_tipo,
         origen_id=origen_id,

@@ -36,11 +36,15 @@ export default function DeudasListPage() {
   const [deudas, setDeudas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [filtros, setFiltros] = useState({ estado: "abierta", id_cliente: "" });
+  const [filtros, setFiltros] = useState({ estado: "abierta", q: "" });
 
   useEffect(() => {
-    cargarDeudas();
-  }, []);
+    const timer = setTimeout(() => {
+      cargarDeudas(filtros);
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [filtros.estado, filtros.q]);
 
   async function cargarDeudas(params = filtros) {
     try {
@@ -61,7 +65,7 @@ export default function DeudasListPage() {
   }
 
   function limpiarFiltros() {
-    const next = { estado: "", id_cliente: "" };
+    const next = { estado: "", q: "" };
     setFiltros(next);
     cargarDeudas(next);
   }
@@ -113,11 +117,11 @@ export default function DeudasListPage() {
           </label>
 
           <label style={fieldStyle}>
-            <span style={labelStyle}>ID cliente</span>
+            <span style={labelStyle}>Buscar cliente</span>
             <input
-              value={filtros.id_cliente}
-              onChange={(e) => setFiltros((p) => ({ ...p, id_cliente: e.target.value }))}
-              placeholder="Ej: 12"
+              value={filtros.q}
+              onChange={(e) => setFiltros((p) => ({ ...p, q: e.target.value }))}
+              placeholder="DNI, nombre o ID..."
               style={inputStyle}
             />
           </label>
