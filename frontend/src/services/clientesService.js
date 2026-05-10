@@ -55,3 +55,12 @@ export function crearBicicletaCliente(clienteId, data) {
     body: JSON.stringify(data),
   });
 }
+
+export function obtenerHistorialBicicletaCliente(
+  clienteId,
+  bicicletaId
+) {
+  return apiRequest(
+    `/clientes/${clienteId}/bicicletas/${bicicletaId}/historial`
+  );
+}

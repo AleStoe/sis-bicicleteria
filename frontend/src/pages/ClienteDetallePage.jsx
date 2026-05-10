@@ -6,7 +6,7 @@ import {
   activarCliente,
   listarBicicletasCliente,
 } from "../services/clientesService";
-
+import { Eye } from "lucide-react";
 export default function ClienteDetallePage() {
   const { clienteId } = useParams();
   const navigate = useNavigate();
@@ -235,20 +235,29 @@ export default function ClienteDetallePage() {
           <div style={bikeGridStyle}>
             {bicicletas.map((bici) => (
               <div key={bici.id} style={bikeCardStyle}>
-                <strong>
-                  {bici.marca} {bici.modelo}
-                </strong>
+                <div style={bikeHeaderStyle}>
+                  <div>
+                    <strong style={{ fontSize: "16px" }}>
+                      {bici.marca} {bici.modelo}
+                    </strong>
 
-                <div style={bikeMetaStyle}>
-                  Rodado: {bici.rodado || "-"}
+                    <div style={bikeMetaStyle}>
+                      Cuadro: {bici.numero_cuadro || "-"}
+                    </div>
+                  </div>
+
+                  <Link
+                    to={`/clientes/${cliente.id}/bicicletas/${bici.id}`}
+                    style={bikeActionStyle}
+                  >
+                    <Eye size={16} />
+                    Ver historial
+                  </Link>
                 </div>
 
-                <div style={bikeMetaStyle}>
-                  Color: {bici.color || "-"}
-                </div>
-
-                <div style={bikeMetaStyle}>
-                  Cuadro: {bici.numero_cuadro || "-"}
+                <div style={bikeSpecsGridStyle}>
+                  <Spec label="Rodado" value={bici.rodado || "-"} />
+                  <Spec label="Color" value={bici.color || "-"} />
                 </div>
 
                 {bici.notas && (
@@ -357,6 +366,15 @@ function Info({ label, value, full = false }) {
     >
       <div style={infoLabelStyle}>{label}</div>
       <div>{value}</div>
+    </div>
+  );
+}
+
+function Spec({ label, value }) {
+  return (
+    <div style={specStyle}>
+      <span style={specLabelStyle}>{label}</span>
+      <strong>{value}</strong>
     </div>
   );
 }
@@ -696,4 +714,45 @@ const alertStyle = {
 const emptyStyle = {
   color: "#667085",
   padding: "12px 0",
+};
+
+const bikeHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "10px",
+  alignItems: "flex-start",
+};
+
+const bikeActionStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "6px",
+  textDecoration: "none",
+  border: "1px solid #d0d5dd",
+  borderRadius: "10px",
+  padding: "8px 10px",
+  color: "#344054",
+  fontWeight: 800,
+  background: "white",
+};
+
+const bikeSpecsGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0,1fr))",
+  gap: "8px",
+  marginTop: "8px",
+};
+
+const specStyle = {
+  background: "white",
+  borderRadius: "10px",
+  padding: "10px",
+  border: "1px solid #eaecf0",
+  display: "grid",
+  gap: "4px",
+};
+
+const specLabelStyle = {
+  fontSize: "12px",
+  color: "#667085",
 };
