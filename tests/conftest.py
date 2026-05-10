@@ -695,3 +695,16 @@ def get_pago_tarjeta_detalle_by_pago_id(conn, pago_id):
         )
 
         return cur.fetchone()
+
+def get_venta_items(conn, venta_id: int):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT *
+            FROM venta_items
+            WHERE id_venta = %s
+            ORDER BY id
+            """,
+            (venta_id,),
+        )
+        return cur.fetchall()

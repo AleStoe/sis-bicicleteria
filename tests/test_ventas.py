@@ -354,8 +354,14 @@ def test_rechaza_cantidad_cero(client, seed_venta_basica):
     }
 
     response = client.post("/ventas/", json=payload)
-    assert response.status_code == 400
-    assert response.json()["detail"] == "La cantidad debe ser mayor a 0"
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["loc"] == [
+        "body",
+        "items",
+        0,
+        "cantidad",
+    ]
+    assert "greater than 0" in response.json()["detail"][0]["msg"]
 
 
 def test_venta_mixta_solo_mueve_stock_del_item_stockeable(client, db_conn, seed_venta_mixta):

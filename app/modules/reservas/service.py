@@ -529,11 +529,26 @@ def convertir_reserva_en_venta(reserva_id: int, data):
                     {
                         "id_venta": venta_id,
                         "id_variante": item["id_variante"],
-                        "id_bicicleta_serializada": item.get("id_bicicleta_serializada"),
-                        "descripcion_snapshot": item.get("descripcion_snapshot"),
+                        "id_bicicleta_serializada": item.get(
+                            "id_bicicleta_serializada"
+                        ),
+
+                        "descripcion_snapshot": item.get(
+                            "descripcion_snapshot"
+                        ),
+
                         "cantidad": item["cantidad"],
+
                         "precio_lista": precio_estimado,
                         "precio_final": precio_estimado,
+
+                        "precio_unitario_original": precio_estimado,
+                        "precio_unitario_final": precio_estimado,
+
+                        "bonificado": False,
+                        "motivo_bonificacion": None,
+                        "motivo_precio_manual": None,
+
                         "costo_unitario_aplicado": costo_promedio,
                         "subtotal": subtotal_estimado,
                     },

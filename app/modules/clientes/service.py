@@ -33,6 +33,8 @@ def _normalizar_create_input(data):
     data.dni = _limpiar_texto(data.dni)
     data.direccion = _limpiar_texto(data.direccion)
     data.notas = _limpiar_texto(data.notas)
+    data.cuit = _limpiar_texto(data.cuit)
+    data.razon_social = _limpiar_texto(data.razon_social)
     return data
 
 
@@ -42,6 +44,8 @@ def _normalizar_update_input(data):
     data.dni = _limpiar_texto(data.dni)
     data.direccion = _limpiar_texto(data.direccion)
     data.notas = _limpiar_texto(data.notas)
+    data.cuit = _limpiar_texto(data.cuit)
+    data.razon_social = _limpiar_texto(data.razon_social)
     return data
 
 

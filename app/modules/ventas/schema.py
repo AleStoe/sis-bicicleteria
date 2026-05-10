@@ -1,6 +1,5 @@
 from decimal import Decimal
 from typing import List, Optional, Literal
-
 from pydantic import BaseModel, Field, ConfigDict
 
 
@@ -8,10 +7,41 @@ MedioPagoVenta = Literal["efectivo", "transferencia", "mercadopago", "tarjeta"]
 
 
 class VentaItemCreateInput(BaseModel):
-    id_variante: int = Field(gt=0)
-    cantidad: Decimal
-    id_bicicleta_serializada: Optional[int] = Field(default=None, gt=0)
+    id_variante: int
+    cantidad: Decimal = Field(gt=0)
 
+    id_bicicleta_serializada: Optional[int] = None
+
+    precio_unitario_manual: Optional[Decimal] = Field(
+        default=None,
+        gt=0,
+    )
+
+    bonificado: bool = False
+
+    motivo_precio_manual: Optional[str] = Field(
+        default=None,
+        max_length=300,
+    )
+
+    motivo_bonificacion: Optional[str] = Field(
+        default=None,
+        max_length=300,
+    )
+
+    def model_post_init(self, __context):
+        if self.bonificado and not self.motivo_bonificacion:
+            raise ValueError(
+                "La bonificación requiere motivo"
+            )
+
+        if (
+            self.precio_unitario_manual is not None
+            and not self.motivo_precio_manual
+        ):
+            raise ValueError(
+                "El precio manual requiere motivo"
+            )
 
 class VentaPagoCreateInput(BaseModel):
     medio_pago: MedioPagoVenta
@@ -110,6 +140,15 @@ class VentaDetalleItemOutput(BaseModel):
     precio_final: Decimal
     costo_unitario_aplicado: Decimal
     subtotal: Decimal
+    bonificado: bool = False
+
+    motivo_bonificacion: Optional[str] = None
+
+    motivo_precio_manual: Optional[str] = None
+
+    precio_unitario_original: Decimal
+
+    precio_unitario_final: Decimal
 
 class VentaDeudaAbiertaResumenOutput(BaseModel):
     id: int

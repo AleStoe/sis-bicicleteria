@@ -7,6 +7,9 @@ def get_clientes(conn, q=None, solo_activos=False):
             dni,
             direccion,
             tipo_cliente,
+            condicion_iva,
+            cuit,
+            razon_social,
             notas,
             activo
         FROM clientes
@@ -24,9 +27,11 @@ def get_clientes(conn, q=None, solo_activos=False):
                 nombre ILIKE %s
                 OR telefono ILIKE %s
                 OR COALESCE(dni, '') ILIKE %s
+                OR COALESCE(cuit, '') ILIKE %s
+                OR COALESCE(razon_social, '') ILIKE %s
             )
         """
-        params.extend([q_like, q_like, q_like])
+        params.extend([q_like, q_like, q_like, q_like, q_like])
 
     sql += " ORDER BY activo DESC, nombre ASC, id ASC"
 
@@ -46,6 +51,9 @@ def get_cliente_by_id(conn, cliente_id: int):
                 dni,
                 direccion,
                 tipo_cliente,
+                condicion_iva,
+                cuit,
+                razon_social,
                 notas,
                 activo
             FROM clientes
@@ -66,10 +74,13 @@ def insert_cliente(conn, data):
                 dni,
                 direccion,
                 tipo_cliente,
+                condicion_iva,
+                cuit,
+                razon_social,
                 notas,
                 activo
             )
-            VALUES (%s, %s, %s, %s, %s, %s, true)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, true)
             RETURNING id
             """,
             (
@@ -78,6 +89,9 @@ def insert_cliente(conn, data):
                 data.dni,
                 data.direccion,
                 data.tipo_cliente,
+                data.condicion_iva,
+                data.cuit,
+                data.razon_social,
                 data.notas,
             ),
         )
@@ -96,6 +110,9 @@ def update_cliente(conn, cliente_id: int, data):
                 dni = %s,
                 direccion = %s,
                 tipo_cliente = %s,
+                condicion_iva = %s,
+                cuit = %s,
+                razon_social = %s,
                 notas = %s,
                 activo = %s,
                 updated_at = now()
@@ -107,6 +124,9 @@ def update_cliente(conn, cliente_id: int, data):
                 data.dni,
                 data.direccion,
                 data.tipo_cliente,
+                data.condicion_iva,
+                data.cuit,
+                data.razon_social,
                 data.notas,
                 data.activo,
                 cliente_id,
@@ -182,6 +202,7 @@ def get_resumen_ventas_cliente(conn, cliente_id: int):
         )
         return cur.fetchone()
 
+
 def activar_cliente(conn, cliente_id: int):
     with conn.cursor() as cur:
         cur.execute(
@@ -194,6 +215,7 @@ def activar_cliente(conn, cliente_id: int):
             """,
             (cliente_id,),
         )
+
 
 def get_bicicletas_cliente(conn, cliente_id: int):
     with conn.cursor() as cur:

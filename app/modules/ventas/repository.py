@@ -116,10 +116,19 @@ def insert_venta_item(conn, data: dict):
                 cantidad,
                 precio_lista,
                 precio_final,
+                precio_unitario_original,
+                precio_unitario_final,
+                bonificado,
+                motivo_bonificacion,
+                motivo_precio_manual,
                 costo_unitario_aplicado,
                 subtotal
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (
+                %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s,
+                %s, %s, %s, %s
+            )
             RETURNING id
             """,
             (
@@ -130,13 +139,17 @@ def insert_venta_item(conn, data: dict):
                 data["cantidad"],
                 data["precio_lista"],
                 data["precio_final"],
+                data["precio_unitario_original"],
+                data["precio_unitario_final"],
+                data.get("bonificado", False),
+                data.get("motivo_bonificacion"),
+                data.get("motivo_precio_manual"),
                 data["costo_unitario_aplicado"],
                 data["subtotal"],
             ),
         )
+
         return cur.fetchone()["id"]
-
-
 
 def update_venta_estado(conn, venta_id: int, nuevo_estado: str):
     with conn.cursor() as cur:
@@ -257,7 +270,12 @@ def get_venta_items_by_venta_id(conn, venta_id: int):
                 precio_lista,
                 precio_final,
                 costo_unitario_aplicado,
-                subtotal
+                subtotal,
+                bonificado,
+                motivo_bonificacion,
+                motivo_precio_manual,
+                precio_unitario_original,
+                precio_unitario_final
             FROM venta_items
             WHERE id_venta = %s
             ORDER BY id
@@ -287,7 +305,12 @@ def get_venta_items_detallados_by_venta_id(conn, venta_id: int):
                 p.tipo_item,
                 p.stockeable,
                 p.serializable,
-                p.activo AS producto_activo
+                p.activo AS producto_activo,
+                vi.bonificado,
+                vi.motivo_bonificacion,
+                vi.motivo_precio_manual,
+                vi.precio_unitario_original,
+                vi.precio_unitario_final
             FROM venta_items vi
             INNER JOIN variantes v
                 ON v.id = vi.id_variante

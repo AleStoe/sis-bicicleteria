@@ -392,6 +392,10 @@ def crear_venta(data):
                     "id_variante": item.id_variante,
                     "cantidad": item.cantidad,
                     "id_bicicleta_serializada": item.id_bicicleta_serializada,
+                    "precio_unitario_manual": item.precio_unitario_manual,
+                    "bonificado": item.bonificado,
+                    "motivo_precio_manual": item.motivo_precio_manual,
+                    "motivo_bonificacion": item.motivo_bonificacion,
                 }
                 for item in data.items
             ]
@@ -405,10 +409,28 @@ def crear_venta(data):
 
             for item in items_consolidados:
                 variante = variantes_map[item["id_variante"]]
-                precio_minorista = redondear_monto(variante["precio_minorista"])
+                precio_lista = redondear_monto(variante["precio_minorista"])
+
                 cantidad = to_decimal(item["cantidad"])
-                subtotal = redondear_monto(precio_minorista * cantidad)
-                subtotal_total = redondear_monto(subtotal_total + subtotal)
+
+                bonificado = item.get("bonificado", False)
+
+                precio_manual = item.get("precio_unitario_manual")
+
+                if bonificado:
+                    precio_final = Decimal("0")
+                else:
+                    precio_final = (
+                        redondear_monto(to_decimal(precio_manual))
+                        if precio_manual is not None
+                        else precio_lista
+                    )
+
+                subtotal = redondear_monto(precio_final * cantidad)
+
+                subtotal_total = redondear_monto(
+                    subtotal_total + subtotal
+                )
 
                 if item["id_bicicleta_serializada"] is not None:
                     _validar_y_bloquear_bicicleta_serializada_para_venta(
@@ -424,6 +446,11 @@ def crear_venta(data):
                         "variante": variante,
                         "cantidad": cantidad,
                         "subtotal": subtotal,
+                        "precio_final": precio_final,
+                        "precio_lista": precio_lista,
+                        "bonificado": bonificado,
+                        "motivo_precio_manual": item.get("motivo_precio_manual"),
+                        "motivo_bonificacion": item.get("motivo_bonificacion"),
                     }
                 )
             pagos = getattr(data, "pagos", []) or []
@@ -497,11 +524,38 @@ def crear_venta(data):
                         "id_venta": venta_id,
                         "id_variante": variante["id"],
                         "id_bicicleta_serializada": item["id_bicicleta_serializada"],
-                        "descripcion_snapshot": f"{variante['producto_nombre']} - {variante['nombre_variante']}",
+                        "descripcion_snapshot": (
+                            f"{variante['producto_nombre']} - "
+                            f"{variante['nombre_variante']}"
+                        ),
                         "cantidad": cantidad,
-                        "precio_lista": precio_minorista,
-                        "precio_final": precio_minorista,
+
+                        "precio_lista": fila["precio_lista"],
+                        "precio_final": fila["precio_final"],
+
+                        "precio_unitario_original": fila.get(
+                            "precio_lista"
+                        ) or fila.get("precio_final"),
+
+                        "precio_unitario_final": fila.get(
+                            "precio_final"
+                        ) or fila.get("precio_lista"),
+
+                        "bonificado": fila.get(
+                            "bonificado",
+                            False,
+                        ),
+
+                        "motivo_bonificacion": fila.get(
+                            "motivo_bonificacion"
+                        ),
+
+                        "motivo_precio_manual": fila.get(
+                            "motivo_precio_manual"
+                        ),
+
                         "costo_unitario_aplicado": costo_promedio,
+
                         "subtotal": subtotal,
                     },
                 )
@@ -584,7 +638,6 @@ def crear_venta(data):
                     saldo_despues_credito,
                     estado_venta,
                 )
-
             for pago in pagos:
                 pagos_service.registrar_pago(
                     conn,
@@ -600,7 +653,6 @@ def crear_venta(data):
                         "id_usuario": data.id_usuario,
                     },
                 )
-
             venta_actualizada = get_venta_for_update(conn, venta_id)
             saldo_pendiente = redondear_monto(venta_actualizada["saldo_pendiente"])
 
