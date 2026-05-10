@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-
+import { useParams } from "react-router-dom";
 import VentaHeader from "../components/ventas/detalle/VentaHeader";
 import VentaResumenCards from "../components/ventas/detalle/VentaResumenCards";
 
@@ -12,11 +11,13 @@ import {
   devolverVenta,
   devolverItemsVenta,
 } from "../services/ventasService";
-
+import VentaItemsVendidos from "../components/ventas/detalle/VentaItemsVendidos";
 import { listarPagosDeVenta } from "../services/pagosService";
 import { CURRENT_USER_ID } from "../config/appConfig";
 import { formatMoney } from "./VentasListPage";
 import VentaAccionesPanel from "../components/ventas/detalle/VentaAccionesPanel";
+import VentaSituacionFinanciera from "../components/ventas/detalle/VentaSituacionFinanciera";
+
 export default function VentaDetallePage() {
   const params = useParams();
   const ventaId = params.ventaId || params.id;
@@ -50,7 +51,7 @@ export default function VentaDetallePage() {
     } finally {
       setLoading(false);
     }
-    console.log("VENTA ID PARAM:", ventaId);
+  
   }
 
   async function cargarVenta() {
@@ -263,10 +264,7 @@ export default function VentaDetallePage() {
     );
   }
 
-  if (!data) {
-    return <p style={{ padding: "24px" }}>No se encontró la venta.</p>;
-  }
-
+  
   if (!data) {
     return <p style={{ padding: "24px" }}>No se encontró la venta.</p>;
   }
@@ -310,12 +308,11 @@ export default function VentaDetallePage() {
         formatMoney={formatMoney}
       />
 
-      {cubiertoNoPago > 0 && (
-        <div style={noteStyle}>
-          Esta venta tiene monto cubierto sin pago real registrado. Probablemente
-          corresponde a crédito aplicado u otro ajuste financiero.
-        </div>
-      )}
+      <VentaSituacionFinanciera
+        cubiertoNoPago={cubiertoNoPago}
+        tieneDeuda={tieneDeuda}
+        deuda={deuda}
+      />
 
       <VentaAccionesPanel
         venta={venta}
@@ -328,96 +325,13 @@ export default function VentaDetallePage() {
         onDevolverCompleta={handleDevolverVentaCompleta}
       />
 
-      <section style={itemsCardStyle}>
-        <div style={itemsHeaderStyle}>
-          <h2 style={{ margin: 0, fontSize: "20px" }}>Items vendidos</h2>
-        </div>
-
-        {items.length === 0 ? (
-          <div style={{ padding: "18px" }}>La venta no tiene items.</div>
-        ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table style={tableStyle}>
-              <thead style={{ background: "#f9fafb" }}>
-                <tr>
-                  <th style={thStyle}>Item</th>
-                  <th style={thStyle}>Serializada</th>
-                  <th style={thStyle}>Cantidad</th>
-                  <th style={thStyle}>Precio lista</th>
-                  <th style={thStyle}>Precio final</th>
-                  <th style={thStyle}>Subtotal</th>
-                  <th style={thStyle}>Acción</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {items.map((item) => (
-                  <tr key={item.id} style={{ borderTop: "1px solid #eee" }}>
-                    <td style={tdStyle}>
-                      <strong>{item.descripcion_snapshot}</strong>
-                      <div style={mutedInlineStyle}>
-                        Item #{item.id} · Variante #{item.id_variante}
-                      </div>
-
-                      {item.bonificado && (
-                        <div style={bonusBadgeStyle}>
-                          Bonificado: {item.motivo_bonificacion || "sin motivo"}
-                        </div>
-                      )}
-
-                      {item.motivo_precio_manual && (
-                        <div style={manualPriceBadgeStyle}>
-                          Precio manual: {item.motivo_precio_manual}
-                        </div>
-                      )}
-                    </td>
-
-                    <td style={tdStyle}>
-                      {item.id_bicicleta_serializada
-                        ? `#${item.id_bicicleta_serializada}`
-                        : "-"}
-                    </td>
-
-                    <td style={tdStyle}>
-                      {Number(item.cantidad).toLocaleString("es-AR")}
-                    </td>
-
-                    <td style={tdStyle}>{formatMoney(item.precio_lista)}</td>
-                    <td style={tdStyle}>{formatMoney(item.precio_final)}</td>
-                    <td style={tdStyle}>
-                      <strong>{formatMoney(item.subtotal)}</strong>
-                    </td>
-
-                    <td style={tdStyle}>
-                      {venta.estado === "entregada" ? (
-                        <div style={{ display: "grid", gap: "6px" }}>
-                          <button
-                            onClick={() => handleDevolverItem(item)}
-                            disabled={procesando}
-                          >
-                            Devolver item
-                          </button>
-
-                          {item.id_bicicleta_serializada && (
-                            <button
-                              onClick={() => handleDevolverSerializada(item)}
-                              disabled={procesando}
-                            >
-                              Devolver serializada
-                            </button>
-                          )}
-                        </div>
-                      ) : (
-                        <span style={mutedInlineStyle}>-</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+      <VentaItemsVendidos
+        venta={venta}
+        items={items}
+        procesando={procesando}
+        onDevolverItem={handleDevolverItem}
+        onDevolverSerializada={handleDevolverSerializada}
+      />
     </div>
   );
 }
@@ -426,32 +340,6 @@ const pageStyle = {
   padding: "24px",
   background: "#f6f7fb",
   minHeight: "100vh",
-};
-
-
-
-const cardStyle = {
-  background: "white",
-  borderRadius: "14px",
-  boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
-  padding: "16px",
-  marginBottom: "16px",
-};
-
-const cardTitleStyle = {
-  marginTop: 0,
-  marginBottom: "14px",
-  fontSize: "20px",
-};
-
-const warnActionStyle = {
-  border: "1px solid #f3dc97",
-  background: "#fff8e1",
-  color: "#8a6d00",
-  borderRadius: "10px",
-  padding: "12px",
-  fontWeight: 800,
-  cursor: "pointer",
 };
 
 const alertStyle = {
@@ -470,95 +358,4 @@ const successStyle = {
   borderRadius: "10px",
   border: "1px solid #b7ebc6",
   marginBottom: "16px",
-};
-
-const successSoftStyle = {
-  background: "#e8fff0",
-  color: "#146c2e",
-  padding: "12px",
-  borderRadius: "10px",
-  border: "1px solid #b7ebc6",
-};
-
-const warningStyle = {
-  background: "#fff8e1",
-  color: "#8a6d00",
-  padding: "12px",
-  borderRadius: "10px",
-  border: "1px solid #f3dc97",
-  display: "grid",
-  gap: "6px",
-};
-
-const noteStyle = {
-  background: "#fff8e1",
-  color: "#8a6d00",
-  padding: "12px",
-  borderRadius: "10px",
-  border: "1px solid #f3dc97",
-  marginBottom: "16px",
-};
-
-const itemsCardStyle = {
-  ...cardStyle,
-  padding: 0,
-  overflow: "hidden",
-};
-
-const itemsHeaderStyle = {
-  padding: "16px 18px",
-  borderBottom: "1px solid #eee",
-};
-
-const tableStyle = {
-  width: "100%",
-  borderCollapse: "collapse",
-  minWidth: "980px",
-};
-
-const thStyle = {
-  textAlign: "left",
-  padding: "12px 10px",
-  borderBottom: "1px solid #e5e7eb",
-};
-
-const tdStyle = {
-  padding: "12px 10px",
-  verticalAlign: "top",
-};
-
-const mutedInlineStyle = {
-  color: "#667085",
-  fontSize: "13px",
-  marginTop: "4px",
-};
-
-const detailLinkStyle = {
-  textDecoration: "none",
-  fontWeight: 800,
-  color: "#175cd3",
-};
-
-const bonusBadgeStyle = {
-  display: "inline-block",
-  marginTop: "6px",
-  background: "#ecfdf3",
-  color: "#067647",
-  border: "1px solid #abefc6",
-  borderRadius: "999px",
-  padding: "4px 8px",
-  fontSize: "12px",
-  fontWeight: 800,
-};
-
-const manualPriceBadgeStyle = {
-  display: "inline-block",
-  marginTop: "6px",
-  background: "#fff8e1",
-  color: "#8a6d00",
-  border: "1px solid #f3dc97",
-  borderRadius: "999px",
-  padding: "4px 8px",
-  fontSize: "12px",
-  fontWeight: 800,
 };

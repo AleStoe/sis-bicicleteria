@@ -24,3 +24,23 @@ __pycache__/
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# Frontend build
+frontend/dist/
+
+# Node
+frontend/node_modules/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Env
+.env
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
