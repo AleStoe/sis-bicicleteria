@@ -1385,9 +1385,14 @@ def devolver_items(venta_id: int, data):
                         },
                     )
 
-                subtotal_item = to_decimal(item["subtotal"])
+                precio_unitario_final = to_decimal(
+                    item.get("precio_unitario_final")
+                    or item.get("precio_final")
+                    or 0
+                )
+
                 monto_item = redondear_monto(
-                    subtotal_item * cantidad_devuelta / cantidad_original
+                    precio_unitario_final * cantidad_devuelta
                 )
 
                 devolucion_id = insert_venta_item_devolucion(
@@ -1426,19 +1431,14 @@ def devolver_items(venta_id: int, data):
 
                 total_devolucion = redondear_monto(total_devolucion + monto_item)
 
-            if total_devolucion <= Decimal("0"):
-                raise HTTPException(
-                    status_code=400,
-                    detail="El monto total de devolución debe ser mayor a 0",
+            if total_devolucion > Decimal("0"):
+                creditos_service.crear_credito_por_devolucion_venta(
+                    conn,
+                    id_cliente=venta["id_cliente"],
+                    id_venta=venta_id,
+                    monto_credito=total_devolucion,
+                    id_usuario=data.id_usuario,
                 )
-
-            creditos_service.crear_credito_por_devolucion_venta(
-                conn,
-                id_cliente=venta["id_cliente"],
-                id_venta=venta_id,
-                monto_credito=total_devolucion,
-                id_usuario=data.id_usuario,
-            )
 
             items_actualizados = get_venta_items_detallados_by_venta_id(conn, venta_id)
 
