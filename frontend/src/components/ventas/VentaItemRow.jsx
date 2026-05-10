@@ -1,6 +1,7 @@
 import { useState } from "react";
 import VentaItemPrecioPanel from "./item/VentaItemPrecioPanel";
 import VentaItemBonificacionPanel from "./item/VentaItemBonificacionPanel";
+import VentaItemSerializadaPanel from "./item/VentaItemSerializadaPanel";
 function formatMoney(value) {
   const n = Number(value || 0);
 
@@ -290,26 +291,18 @@ export default function VentaItemRow({
             </div>
 
             {item.modo_venta_serializada === "serializada" && (
-              <select
-                value={item.id_bicicleta_serializada || ""}
-                onChange={(e) => onSeleccionarSerializada?.(index, e.target.value)}
-                style={styles.select}
-                disabled={Boolean(cargandoSerializadas?.[String(item.id_variante)])}
-              >
-                <option value="">
-                  {cargandoSerializadas?.[String(item.id_variante)]
-                    ? "Cargando cuadros..."
-                    : "Seleccionar número de cuadro"}
-                </option>
-
-                {(serializadasPorVariante?.[String(item.id_variante)] || []).map(
-                  (bici) => (
-                    <option key={bici.id} value={bici.id}>
-                      {bici.numero_cuadro}
-                    </option>
-                  )
-                )}
-              </select>
+              <VentaItemSerializadaPanel
+                item={item}
+                bicicletasDisponibles={
+                  serializadasPorVariante?.[String(item.id_variante)] || []
+                }
+                seleccionarSerializada={(id) =>
+                  onSeleccionarSerializada?.(index, id)
+                }
+                limpiarSerializada={() =>
+                  onSeleccionarSerializada?.(index, "")
+                }
+              />
             )}
           </div>
         )}
