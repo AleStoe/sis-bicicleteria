@@ -283,7 +283,7 @@ export default function VentaDetallePage() {
     venta.estado
   );
   const puedeEntregar = !["entregada", ...estadosFinales].includes(venta.estado);
-  const puedeDevolver = venta.estado === "entregada";
+  const puedeDevolver = ["entregada", "devuelta_parcial"].includes(venta.estado);
 
   const tieneDeuda = situacion_financiera?.tiene_deuda;
   const deuda = situacion_financiera?.deuda_abierta;

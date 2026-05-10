@@ -261,24 +261,38 @@ def get_venta_items_by_venta_id(conn, venta_id: int):
         cur.execute(
             """
             SELECT
-                id,
-                id_venta,
-                id_variante,
-                id_bicicleta_serializada,
-                descripcion_snapshot,
-                cantidad,
-                precio_lista,
-                precio_final,
-                costo_unitario_aplicado,
-                subtotal,
-                bonificado,
-                motivo_bonificacion,
-                motivo_precio_manual,
-                precio_unitario_original,
-                precio_unitario_final
-            FROM venta_items
-            WHERE id_venta = %s
-            ORDER BY id
+                vi.id,
+                vi.id_venta,
+                vi.id_variante,
+                vi.id_bicicleta_serializada,
+                vi.descripcion_snapshot,
+                vi.cantidad,
+                vi.precio_lista,
+                vi.precio_final,
+                vi.costo_unitario_aplicado,
+                vi.subtotal,
+                vi.bonificado,
+                vi.motivo_bonificacion,
+                vi.motivo_precio_manual,
+                vi.precio_unitario_original,
+                vi.precio_unitario_final,
+                COALESCE(dev.cantidad_devuelta, 0) AS cantidad_devuelta,
+                CASE
+                    WHEN COALESCE(dev.cantidad_devuelta, 0) >= vi.cantidad
+                        THEN TRUE
+                    ELSE FALSE
+                END AS devuelto_total
+            FROM venta_items vi
+            LEFT JOIN (
+                SELECT
+                    id_venta_item,
+                    SUM(cantidad_devuelta) AS cantidad_devuelta
+                FROM venta_item_devoluciones
+                GROUP BY id_venta_item
+            ) dev
+                ON dev.id_venta_item = vi.id
+            WHERE vi.id_venta = %s
+            ORDER BY vi.id
             """,
             (venta_id,),
         )
