@@ -419,6 +419,133 @@ def get_catalogo_pos(
         "items": items,
     }
 
+def get_catalogo_pos_por_codigo(
+    conn,
+    id_sucursal: int,
+    codigo: str,
+):
+    codigo = codigo.strip()
+
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT
+                v.id AS id_variante,
+                v.id_producto,
+                p.nombre AS producto_nombre,
+                v.nombre_variante,
+                c.id AS categoria_id,
+                c.nombre AS categoria_nombre,
+                m.id AS id_marca,
+                m.nombre AS marca_nombre,
+                p.tipo_item,
+                p.stockeable,
+                p.serializable,
+                v.precio_minorista,
+                v.precio_mayorista,
+                v.permite_precio_libre,
+                v.sku,
+                v.codigo_barras,
+                v.codigo_proveedor,
+                v.proveedor_preferido_id,
+                pr.nombre AS proveedor_preferido_nombre,
+
+                COALESCE(img_var.url, img_prod.url) AS imagen_principal,
+
+                v.activo,
+
+                COALESCE(ss.stock_fisico, 0) AS stock_fisico,
+                COALESCE(ss.stock_reservado, 0) AS stock_reservado,
+                COALESCE(ss.stock_vendido_pendiente_entrega, 0) AS stock_vendido_pendiente_entrega,
+
+                GREATEST(
+                    COALESCE(ss.stock_fisico, 0)
+                    - COALESCE(ss.stock_reservado, 0)
+                    - COALESCE(ss.stock_vendido_pendiente_entrega, 0),
+                    0
+                ) AS stock_disponible,
+
+                CASE
+                    WHEN p.stockeable = TRUE
+                         AND p.serializable = FALSE
+                         AND (
+                            COALESCE(ss.stock_fisico, 0)
+                            - COALESCE(ss.stock_reservado, 0)
+                            - COALESCE(ss.stock_vendido_pendiente_entrega, 0)
+                         ) <= 0 THEN FALSE
+
+                    WHEN v.permite_precio_libre = FALSE
+                         AND COALESCE(v.precio_minorista, 0) <= 0 THEN FALSE
+
+                    ELSE TRUE
+                END AS disponible_para_venta,
+
+                CASE
+                    WHEN p.stockeable = TRUE
+                         AND p.serializable = FALSE
+                         AND (
+                            COALESCE(ss.stock_fisico, 0)
+                            - COALESCE(ss.stock_reservado, 0)
+                            - COALESCE(ss.stock_vendido_pendiente_entrega, 0)
+                         ) <= 0 THEN 'sin_stock'
+
+                    WHEN v.permite_precio_libre = FALSE
+                         AND COALESCE(v.precio_minorista, 0) <= 0 THEN 'precio_no_definido'
+
+                    ELSE NULL
+                END AS motivo_no_disponible
+
+            FROM variantes v
+            INNER JOIN productos p ON p.id = v.id_producto
+            INNER JOIN categorias c ON c.id = p.id_categoria
+            LEFT JOIN marcas m ON m.id = p.id_marca
+            LEFT JOIN proveedores pr ON pr.id = v.proveedor_preferido_id
+            LEFT JOIN stock_sucursal ss
+                ON ss.id_variante = v.id
+               AND ss.id_sucursal = %(id_sucursal)s
+
+            LEFT JOIN LATERAL (
+                SELECT ci.url
+                FROM catalogo_imagenes ci
+                WHERE ci.id_variante = v.id
+                  AND ci.activo = TRUE
+                ORDER BY ci.es_principal DESC, ci.orden ASC, ci.id ASC
+                LIMIT 1
+            ) img_var ON TRUE
+
+            LEFT JOIN LATERAL (
+                SELECT ci.url
+                FROM catalogo_imagenes ci
+                WHERE ci.id_producto = p.id
+                  AND ci.activo = TRUE
+                ORDER BY ci.es_principal DESC, ci.orden ASC, ci.id ASC
+                LIMIT 1
+            ) img_prod ON TRUE
+
+            WHERE v.activo = TRUE
+              AND p.activo = TRUE
+              AND c.activo = TRUE
+              AND (
+                v.codigo_barras = %(codigo)s
+                OR v.sku = %(codigo)s
+                OR v.codigo_proveedor = %(codigo)s
+              )
+
+            ORDER BY
+                CASE
+                    WHEN v.codigo_barras = %(codigo)s THEN 0
+                    WHEN v.sku = %(codigo)s THEN 1
+                    WHEN v.codigo_proveedor = %(codigo)s THEN 2
+                    ELSE 3
+                END
+
+            LIMIT 1
+        """, {
+            "id_sucursal": id_sucursal,
+            "codigo": codigo,
+        })
+
+        return cur.fetchone()
+
 def get_categoria_by_id(conn, categoria_id: int):
     with conn.cursor() as cur:
         cur.execute(

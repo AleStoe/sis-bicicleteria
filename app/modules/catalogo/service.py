@@ -26,6 +26,7 @@ from .repository import (
     update_variante_catalogo,
     update_variante_estado,
     asignar_identidad_variante,
+    get_catalogo_pos_por_codigo,
 )
 
 
@@ -510,5 +511,32 @@ def cambiar_estado_variante(variante_id: int, data):
 
             return update_variante_estado(conn, variante_id, data.activo)
 
+    finally:
+        conn.close()
+    
+def buscar_catalogo_pos_por_codigo(
+    id_sucursal: int,
+    codigo: str,
+):
+    codigo_limpio = (codigo or "").strip()
+
+    if not codigo_limpio:
+        raise HTTPException(status_code=400, detail="El código es obligatorio")
+
+    conn = get_connection()
+    try:
+        item = get_catalogo_pos_por_codigo(
+            conn,
+            id_sucursal=id_sucursal,
+            codigo=codigo_limpio,
+        )
+
+        if item is None:
+            raise HTTPException(
+                status_code=404,
+                detail="No se encontró producto para ese código",
+            )
+
+        return item
     finally:
         conn.close()

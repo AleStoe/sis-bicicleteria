@@ -90,13 +90,24 @@ def _consolidar_items(items):
             }
             continue
 
-        clave = (id_variante, None)
+        clave = (
+            id_variante,
+            None,
+            item.get("precio_unitario_manual"),
+            bool(item.get("bonificado", False)),
+            item.get("motivo_precio_manual"),
+            item.get("motivo_bonificacion"),
+        )
 
         if clave not in consolidados:
             consolidados[clave] = {
                 "id_variante": id_variante,
                 "cantidad": cantidad,
                 "id_bicicleta_serializada": None,
+                "precio_unitario_manual": item.get("precio_unitario_manual"),
+                "bonificado": bool(item.get("bonificado", False)),
+                "motivo_precio_manual": item.get("motivo_precio_manual"),
+                "motivo_bonificacion": item.get("motivo_bonificacion"),
             }
         else:
             consolidados[clave]["cantidad"] += cantidad

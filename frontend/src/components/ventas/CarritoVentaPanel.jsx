@@ -17,10 +17,9 @@ export default function CarritoVentaPanel({
       ) : (
         items.map((item, index) => (
           <VentaItemRow
-            key={`${item.id_variante}-${index}`}
+            key={item.line_id}
             item={item}
             index={index}
-            items={items}
             serializadasPorVariante={serializadasPorVariante}
             cargandoSerializadas={cargandoSerializadas}
             onCargarSerializadas={onCargarSerializadas}

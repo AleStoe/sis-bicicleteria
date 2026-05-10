@@ -725,3 +725,52 @@ def _ean13_valido(value: str) -> bool:
     esperado = 0 if resto == 0 else 10 - resto
 
     return verificador == esperado
+
+def test_catalogo_pos_busqueda_exacta_por_codigo(
+    client,
+    seed_venta_basica,
+):
+    categoria = _get_first_categoria(client)
+
+    producto = _crear_producto(
+        client,
+        categoria_id=categoria["id"],
+        nombre="Producto Codigo Exacto POS",
+    )
+
+    variante = _crear_variante(
+        client,
+        producto_id=producto["id"],
+        nombre_variante="Variante Exacta POS",
+        sku="SKU-EXACTO-POS",
+        codigo_barras="7799999999999",
+        codigo_proveedor="COD-EXACTO-POS",
+        precio_minorista=15000,
+        precio_mayorista=10000,
+    )
+
+    codigo_barras = variante["codigo_barras"]
+
+    response = client.get(
+        f"/catalogo/pos/buscar-exacto?id_sucursal={seed_venta_basica['sucursal_id']}&codigo={codigo_barras}"
+    )
+
+    assert response.status_code == 200, response.text
+
+    data = response.json()
+
+    assert data["id_variante"] == variante["id"]
+    assert data["producto_nombre"] == "Producto Codigo Exacto POS"
+    assert data["codigo_barras"] == codigo_barras
+    assert data["motivo_no_disponible"] == "sin_stock"
+
+
+def test_catalogo_pos_busqueda_exacta_inexistente_devuelve_404(
+    client,
+    seed_venta_basica,
+):
+    response = client.get(
+        f"/catalogo/pos/buscar-exacto?id_sucursal={seed_venta_basica['sucursal_id']}&codigo=NO-EXISTE"
+    )
+
+    assert response.status_code == 404

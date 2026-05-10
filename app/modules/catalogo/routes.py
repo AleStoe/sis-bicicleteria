@@ -20,6 +20,7 @@ from .service import (
     obtener_variante,
     editar_variante,
     cambiar_estado_variante,
+    buscar_catalogo_pos_por_codigo,
    
 )
 
@@ -146,3 +147,13 @@ def editar_variante_route(variante_id: int, data: VarianteUpdate):
 @router.post("/variantes/{variante_id}/estado", response_model=VarianteOut)
 def cambiar_estado_variante_route(variante_id: int, data: VarianteEstadoUpdate):
     return cambiar_estado_variante(variante_id, data)
+
+@router.get("/pos/buscar-exacto", response_model=CatalogoPOSItemOut)
+def catalogo_pos_buscar_exacto(
+    id_sucursal: int,
+    codigo: str,
+):
+    return buscar_catalogo_pos_por_codigo(
+        id_sucursal=id_sucursal,
+        codigo=codigo,
+    )

@@ -1,17 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { listarCatalogoPOS, listarCategorias } from "../services/catalogoService";
+import {
+  listarCatalogoPOS,
+  listarCategorias,
+  buscarCatalogoPOSExacto,
+} from "../services/catalogoService";
 import { listarClientes } from "../services/clientesService";
-import { crearVenta } from "../services/ventasService";
+import { crearVenta, entregarVenta } from "../services/ventasService";
+import { crearPago } from "../services/pagosService";
 import { listarSerializadasDisponibles } from "../services/serializadasService";
 import CarritoVentaPanel from "../components/ventas/CarritoVentaPanel";
 import ResumenVentaPanel from "../components/ventas/ResumenVentaPanel";
+import CheckoutVentaPanel from "../components/ventas/CheckoutVentaPanel";
 
 import { CURRENT_USER_ID, CURRENT_SUCURSAL_ID } from "../config/appConfig";
 
 const ID_USUARIO = CURRENT_USER_ID;
 const ID_SUCURSAL = CURRENT_SUCURSAL_ID;
 const DEFAULT_LIMIT = 80;
+
+function crearLineId() {
+  return crypto.randomUUID();
+}
 
 export default function NuevaVentaPage() {
   const navigate = useNavigate();
@@ -36,6 +46,7 @@ export default function NuevaVentaPage() {
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
+  const [mensajePOS, setMensajePOS] = useState("");
 
   useEffect(() => {
     cargarInicial();
@@ -60,6 +71,14 @@ export default function NuevaVentaPage() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  function mostrarMensajePOS(texto) {
+    setMensajePOS(texto);
+
+    setTimeout(() => {
+      setMensajePOS("");
+    }, 2500);
+  }
 
   async function cargarInicial() {
     try {
@@ -113,6 +132,40 @@ export default function NuevaVentaPage() {
     }
   }
 
+async function handleBuscarEnter(e) {
+  if (e.key !== "Enter") return;
+
+  e.preventDefault();
+
+  const codigo = query.trim();
+
+  if (!codigo) return;
+
+  try {
+    setError("");
+
+    const producto = await buscarCatalogoPOSExacto({
+      id_sucursal: ID_SUCURSAL,
+      codigo,
+    });
+
+    if (!producto) {
+      mostrarMensajePOS("No se encontró producto para ese código");
+      return;
+    }
+
+    await agregarItem(producto);
+
+    setQuery("");
+    mostrarMensajePOS(`${producto.producto_nombre} agregado`);
+    setTimeout(() => {
+      searchRef.current?.focus();
+    }, 0);
+  } catch (err) {
+    mostrarMensajePOS(err.message || "No se encontró producto");
+  }
+}
+
   async function cargarSerializadasDisponibles(idVariante) {
     const key = String(idVariante);
 
@@ -146,9 +199,9 @@ export default function NuevaVentaPage() {
         ? 0
         : Number(
             item.precio_unitario_manual ||
-            item.precio_final ||
-            item.precio_minorista ||
-            0
+              item.precio_final ||
+              item.precio_minorista ||
+              0
           );
 
       return acc + precioUnitario * Number(item.cantidad || 0);
@@ -177,15 +230,9 @@ export default function NuevaVentaPage() {
 
   function puedeAgregar(item) {
     if (item.disponible_para_venta === false && !item.serializable) return false;
-
     if (getPrecio(item) <= 0) return false;
-
-    // Las serializadas no dependen de stock_sucursal disponible.
-    // Dependen de bicicletas_serializadas.estado = disponible.
     if (item.serializable) return true;
-
     if (item.stockeable && Number(item.stock_disponible || 0) <= 0) return false;
-
     return true;
   }
 
@@ -199,16 +246,10 @@ export default function NuevaVentaPage() {
     setMensaje("");
 
     if (producto.serializable) {
-      const disponibles = await cargarSerializadasDisponibles(producto.id_variante);
-
-      if (disponibles.length === 0) {
-        setError("No hay bicicletas serializadas disponibles para esta variante");
-        return;
-      }
-
       setItems((actual) => [
         ...actual,
         {
+          line_id: crearLineId(),
           id_variante: producto.id_variante,
           id_producto: producto.id_producto,
           descripcion: getDescripcion(producto),
@@ -221,8 +262,9 @@ export default function NuevaVentaPage() {
           precio_minorista: getPrecio(producto),
           cantidad: 1,
           imagen_principal: producto.imagen_principal,
-          id_bicicleta_serializada: "",
+          id_bicicleta_serializada: null,
           numero_cuadro: "",
+          modo_venta_serializada: "caja",
         },
       ]);
 
@@ -233,7 +275,9 @@ export default function NuevaVentaPage() {
       const existente = actual.find(
         (item) =>
           Number(item.id_variante) === Number(producto.id_variante) &&
-          !item.id_bicicleta_serializada
+          !item.id_bicicleta_serializada &&
+          !item.bonificado &&
+          !item.precio_unitario_manual
       );
 
       if (existente) {
@@ -248,8 +292,7 @@ export default function NuevaVentaPage() {
         }
 
         return actual.map((item) =>
-          Number(item.id_variante) === Number(producto.id_variante) &&
-          !item.id_bicicleta_serializada
+          item.line_id === existente.line_id
             ? { ...item, cantidad: nuevaCantidad }
             : item
         );
@@ -258,6 +301,7 @@ export default function NuevaVentaPage() {
       return [
         ...actual,
         {
+          line_id: crearLineId(),
           id_variante: producto.id_variante,
           id_producto: producto.id_producto,
           descripcion: getDescripcion(producto),
@@ -297,63 +341,59 @@ export default function NuevaVentaPage() {
     );
   }
 
-  function cambiarCantidad(idVariante, nuevaCantidadRaw, index = null) {
+  function cambiarCantidad(lineId, nuevaCantidadRaw) {
     const nuevaCantidad = Number(nuevaCantidadRaw);
 
     if (!Number.isFinite(nuevaCantidad)) return;
 
     if (nuevaCantidad <= 0) {
-      if (index !== null) {
-        quitarItem(idVariante, index);
-      } else {
-        quitarItem(idVariante);
-      }
+      quitarItem(lineId);
       return;
     }
 
     setItems((actual) =>
-      actual.map((item, i) => {
-        if (index !== null && i !== index) return item;
-        if (index === null && Number(item.id_variante) !== Number(idVariante)) return item;
+      actual.map((item) => {
+        if (item.line_id !== lineId) return item;
 
-        if (item.serializable) {
+        if (
+          item.serializable &&
+          item.modo_venta_serializada === "serializada"
+        ) {
           setError("Las bicicletas serializadas siempre tienen cantidad 1");
           return { ...item, cantidad: 1 };
         }
 
-        if (item.stockeable && nuevaCantidad > Number(item.stock_disponible || 0)) {
+        if (
+          item.stockeable &&
+          nuevaCantidad > Number(item.stock_disponible || 0)
+        ) {
           setError("La cantidad supera el stock disponible");
           return item;
         }
 
+        setError("");
         return { ...item, cantidad: nuevaCantidad };
       })
     );
   }
 
-  function quitarItem(idVariante, index = null) {
-    if (index !== null) {
-      setItems((actual) => actual.filter((_, i) => i !== index));
-      return;
-    }
+  function quitarItem(lineId) {
+    setItems((actual) => actual.filter((item) => item.line_id !== lineId));
+  }
 
+  function actualizarItemCarrito(lineId, cambios) {
     setItems((actual) =>
-      actual.filter((item) => Number(item.id_variante) !== Number(idVariante))
+      actual.map((item) =>
+        item.line_id === lineId
+          ? {
+              ...item,
+              ...cambios,
+            }
+          : item
+      )
     );
   }
-  function actualizarItemCarrito(idVariante, cambios, index = null) {
-    setItems((actual) =>
-      actual.map((item, i) => {
-        if (index !== null && i !== index) return item;
-        if (index === null && Number(item.id_variante) !== Number(idVariante)) return item;
 
-        return {
-          ...item,
-          ...cambios,
-        };
-      })
-    );
-  }
   function vaciarVenta() {
     setItems([]);
     setObservaciones("");
@@ -361,24 +401,27 @@ export default function NuevaVentaPage() {
     setMensaje("");
   }
 
-  async function cerrarVenta() {
+  function validarVentaAntesDeFinalizar() {
     if (!clienteId) {
       setError("Seleccioná un cliente");
-      return;
+      return false;
     }
 
     if (items.length === 0) {
       setError("Agregá al menos un item");
-      return;
+      return false;
     }
 
     const serializadaSinCuadro = items.find(
-      (item) => item.serializable && !item.id_bicicleta_serializada
+      (item) =>
+        item.serializable &&
+        item.modo_venta_serializada === "serializada" &&
+        !item.id_bicicleta_serializada
     );
 
     if (serializadaSinCuadro) {
       setError(`Seleccioná número de cuadro para: ${serializadaSinCuadro.descripcion}`);
-      return;
+      return false;
     }
 
     const serializadasElegidas = items
@@ -387,19 +430,25 @@ export default function NuevaVentaPage() {
 
     if (new Set(serializadasElegidas).size !== serializadasElegidas.length) {
       setError("No podés vender dos veces la misma bicicleta serializada");
-      return;
+      return false;
     }
 
-    const payload = {
+    return true;
+  }
+
+  function crearPayloadVenta(pagos = []) {
+    return {
       id_cliente: Number(clienteId),
       id_sucursal: ID_SUCURSAL,
       id_usuario: ID_USUARIO,
       items: items.map((item) => ({
         id_variante: Number(item.id_variante),
         cantidad: String(item.cantidad),
-        id_bicicleta_serializada: item.id_bicicleta_serializada
-          ? Number(item.id_bicicleta_serializada)
-          : null,
+        id_bicicleta_serializada:
+          item.modo_venta_serializada === "serializada" &&
+          item.id_bicicleta_serializada
+            ? Number(item.id_bicicleta_serializada)
+            : null,
 
         precio_unitario_manual: item.precio_unitario_manual
           ? String(item.precio_unitario_manual)
@@ -410,11 +459,17 @@ export default function NuevaVentaPage() {
         motivo_precio_manual: item.motivo_precio_manual || null,
         motivo_bonificacion: item.motivo_bonificacion || null,
       })),
-      pagos: [],
+      pagos,
       observaciones: observaciones.trim() || null,
-      usar_credito: usarCredito,
+      usar_credito: pagos.length === 0 ? usarCredito : false,
       monto_credito_a_aplicar: null,
     };
+  }
+
+  async function finalizarCheckout({ pagos = [], entregar_ahora }) {
+    if (!validarVentaAntesDeFinalizar()) return;
+
+    const payload = crearPayloadVenta([]);
 
     try {
       setGuardando(true);
@@ -423,9 +478,26 @@ export default function NuevaVentaPage() {
 
       const resultado = await crearVenta(payload);
 
-      navigate(`/ventas/${resultado.venta_id}?pagar=1`);
+      for (const pago of pagos) {
+        await crearPago({
+          origen_tipo: "venta",
+          origen_id: Number(resultado.venta_id),
+          medio_pago: pago.medio_pago,
+          monto: String(pago.monto),
+          id_usuario: ID_USUARIO,
+          nota: pago.nota || null,
+        });
+      }
+
+      if (entregar_ahora) {
+        await entregarVenta(resultado.venta_id, {
+          id_usuario: ID_USUARIO,
+        });
+      }
+
+      navigate(`/ventas/${resultado.venta_id}`);
     } catch (err) {
-      setError(err.message || "No se pudo cerrar la venta");
+      setError(err.message || "No se pudo finalizar la venta");
     } finally {
       setGuardando(false);
     }
@@ -442,7 +514,7 @@ export default function NuevaVentaPage() {
           <span style={bikeStyle}>🚲</span>
           <div>
             <strong>Sistema de Ventas - Bicicletería</strong>
-            <div style={topSubtleStyle}>POS real: crear venta y cobrar desde detalle</div>
+            <div style={topSubtleStyle}>POS real: crear, cobrar y entregar desde checkout</div>
           </div>
         </div>
 
@@ -451,6 +523,7 @@ export default function NuevaVentaPage() {
             ref={searchRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={handleBuscarEnter}
             placeholder="Buscar producto, código o barra... (F2)"
             style={topSearchStyle}
           />
@@ -466,13 +539,18 @@ export default function NuevaVentaPage() {
 
       {error && <div style={alertStyle}>Error: {error}</div>}
       {mensaje && <div style={successStyle}>{mensaje}</div>}
-
+      {mensajePOS && (
+          <div style={posMessageStyle}>
+            {mensajePOS}
+          </div>
+        )}
       <main style={layoutStyle}>
         <section style={leftPanelStyle}>
           <div style={searchRowStyle}>
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={handleBuscarEnter}
               placeholder="Producto, talle, SKU o código de barras"
               style={searchStyle}
             />
@@ -528,7 +606,7 @@ export default function NuevaVentaPage() {
                       <div style={tagRowStyle}>
                         <span style={tagStyle}>{producto.categoria_nombre}</span>
                         {producto.serializable ? (
-                          <span style={serializableTagStyle}>Serializada</span>
+                          <span style={serializableTagStyle}>Bicicleta</span>
                         ) : producto.stockeable ? (
                           <span style={stockTagStyle}>
                             Stock: {Number(producto.stock_disponible || 0).toLocaleString("es-AR")}
@@ -587,30 +665,6 @@ export default function NuevaVentaPage() {
 
           <ResumenVentaPanel total={total} />
 
-          <section style={paymentsStyle}>
-            <div style={paymentsHeaderStyle}>
-              <h3 style={{ margin: 0 }}>Cobro real</h3>
-              <span style={mutedStyle}>Se registra después de crear la venta</span>
-            </div>
-
-            <div style={paymentStatusGridStyle}>
-              <div style={paidBoxStyle}>
-                <span>Pago en esta pantalla</span>
-                <strong>{formatMoney(0)}</strong>
-              </div>
-
-              <div style={dueBoxStyle}>
-                <span>Saldo inicial</span>
-                <strong>{formatMoney(total)}</strong>
-              </div>
-            </div>
-
-            <div style={noteStyle}>
-              Esta pantalla solo crea la venta. Los productos comunes pasan a pendiente de entrega.
-              Las bicis serializadas se asignan por número de cuadro. El cobro se hace en el detalle de venta.
-            </div>
-          </section>
-
           <label style={fieldStyle}>
             <span>Observaciones</span>
             <textarea
@@ -630,20 +684,13 @@ export default function NuevaVentaPage() {
             Aplicar crédito disponible si existe
           </label>
 
-          <div style={bottomActionsStyle}>
-            <button type="button" onClick={vaciarVenta} style={secondaryBtnStyle}>
-              Vaciar
-            </button>
-
-            <button
-              type="button"
-              onClick={cerrarVenta}
-              disabled={guardando || items.length === 0}
-              style={primaryBtnStyle}
-            >
-              {guardando ? "Creando..." : "Crear venta y cobrar"}
-            </button>
-          </div>
+          <CheckoutVentaPanel
+            total={total}
+            items={items}
+            guardando={guardando}
+            onVaciar={vaciarVenta}
+            onFinalizar={finalizarCheckout}
+          />
         </aside>
       </main>
     </div>
@@ -754,12 +801,14 @@ const rightPanelStyle = {
 };
 
 const searchRowStyle = { display: "flex", gap: "8px", marginBottom: "12px" };
+
 const searchStyle = {
   flex: 1,
   border: "1px solid #d0d5dd",
   borderRadius: "10px",
   padding: "11px 12px",
 };
+
 const iconButtonStyle = {
   border: "1px solid #d0d5dd",
   borderRadius: "10px",
@@ -888,116 +937,13 @@ const clientSelectStyle = {
   padding: "10px",
 };
 
-const cartStyle = {
-  border: "1px solid #eaecf0",
-  borderRadius: "12px",
-  overflow: "hidden",
-  minHeight: "240px",
-  marginBottom: "12px",
-};
-
-const emptyCartStyle = {
-  minHeight: "240px",
+const fieldStyle = {
   display: "grid",
-  placeItems: "center",
-  color: "#667085",
-};
-
-const cartItemStyle = {
-  display: "grid",
-  gridTemplateColumns: "1fr 92px 112px 98px 34px",
-  gap: "8px",
-  alignItems: "center",
-  padding: "10px",
-  borderBottom: "1px solid #f2f4f7",
-};
-
-const cartPriceStyle = { textAlign: "right" };
-const qtyControlStyle = { display: "flex", alignItems: "center", justifyContent: "center" };
-const qtyInputStyle = {
-  width: "42px",
-  textAlign: "center",
-  border: "1px solid #d0d5dd",
-  padding: "6px 4px",
-};
-
-const cartSubtotalStyle = { textAlign: "right", fontWeight: 800 };
-const removeBtnStyle = { border: "none", background: "transparent", cursor: "pointer" };
-
-const summaryStyle = {
-  borderTop: "1px solid #eaecf0",
-  paddingTop: "10px",
-  marginBottom: "12px",
-};
-
-const summaryLineStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  padding: "7px 0",
-  color: "#475467",
-};
-
-const totalLineStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  paddingTop: "10px",
-  fontSize: "24px",
-  color: "#0b5bd3",
-};
-
-const paymentsStyle = {
-  border: "1px solid #eaecf0",
-  borderRadius: "12px",
-  padding: "12px",
-  marginBottom: "12px",
-};
-
-const paymentsHeaderStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  gap: "8px",
-  alignItems: "baseline",
+  gap: "6px",
   marginBottom: "10px",
+  fontWeight: 700,
 };
 
-const paymentStatusGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "1fr 1fr",
-  gap: "10px",
-  marginBottom: "8px",
-};
-
-const paidBoxStyle = {
-  background: "#ecfdf3",
-  border: "1px solid #abefc6",
-  color: "#067647",
-  borderRadius: "10px",
-  padding: "10px",
-  display: "grid",
-  gap: "4px",
-};
-
-const dueBoxStyle = {
-  background: "#fff1f0",
-  border: "1px solid #fecdca",
-  color: "#b42318",
-  borderRadius: "10px",
-  padding: "10px",
-  display: "grid",
-  gap: "4px",
-};
-
-const noteStyle = {
-  background: "#f9fafb",
-  border: "1px solid #eaecf0",
-  color: "#475467",
-  borderRadius: "10px",
-  padding: "10px",
-  fontSize: "13px",
-  lineHeight: 1.4,
-};
-
-const fieldStyle = { display: "grid", gap: "6px", marginBottom: "10px", fontWeight: 700 };
 const textareaStyle = {
   minHeight: "56px",
   border: "1px solid #d0d5dd",
@@ -1006,30 +952,12 @@ const textareaStyle = {
   resize: "vertical",
 };
 
-const checkStyle = { display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px", color: "#344054" };
-
-const bottomActionsStyle = {
-  display: "grid",
-  gridTemplateColumns: "1fr 1.4fr",
-  gap: "10px",
-};
-
-const secondaryBtnStyle = {
-  border: "1px solid #d0d5dd",
-  background: "white",
-  borderRadius: "12px",
-  padding: "14px",
-  fontWeight: 800,
-};
-
-const primaryBtnStyle = {
-  border: "none",
-  background: "#12a15f",
-  color: "white",
-  borderRadius: "12px",
-  padding: "14px",
-  fontWeight: 900,
-  fontSize: "17px",
+const checkStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "8px",
+  marginBottom: "12px",
+  color: "#344054",
 };
 
 const alertStyle = {
@@ -1055,27 +983,12 @@ const emptyStyle = {
   textAlign: "center",
   color: "#667085",
 };
-
-const serializadaBoxStyle = {
-  marginTop: "8px",
-  background: "#fff8e1",
-  border: "1px solid #f3dc97",
+const posMessageStyle = {
+  margin: "12px 14px 0",
+  background: "#111827",
+  color: "white",
+  padding: "12px 14px",
   borderRadius: "10px",
-  padding: "8px",
-};
-
-const serializadaTitleStyle = {
-  fontSize: "12px",
-  fontWeight: 800,
-  color: "#8a6d00",
-  marginBottom: "6px",
-};
-
-const serializadaSelectStyle = {
-  width: "100%",
-  border: "1px solid #d0d5dd",
-  borderRadius: "8px",
-  padding: "8px",
-  fontSize: "14px",
-  boxSizing: "border-box",
+  fontWeight: 700,
+  boxShadow: "0 6px 24px rgba(0,0,0,.22)",
 };

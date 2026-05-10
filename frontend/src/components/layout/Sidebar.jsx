@@ -11,74 +11,77 @@ function navStyle({ isActive }) {
   };
 }
 
+function Section({ title, children }) {
+  return (
+    <div style={{ display: "grid", gap: "6px" }}>
+      <div style={sectionTitleStyle}>{title}</div>
+      {children}
+    </div>
+  );
+}
+
 export default function Sidebar() {
   return (
-    <aside
-      style={{
-        width: "220px",
-        borderRight: "1px solid #ddd",
-        padding: "24px",
-        boxSizing: "border-box",
-      }}
-    >
-      <h2>Sis Bicicletería</h2>
+    <aside style={sidebarStyle}>
+      <h2 style={titleStyle}>Sis Bicicletería</h2>
 
-      <nav style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-        <NavLink to="/ventas/nueva" style={navStyle}>
-          Nueva venta
-        </NavLink>
+      <nav style={navWrapStyle}>
+        <Section title="Ventas">
+          <NavLink to="/ventas/nueva" style={navStyle}>Nueva venta</NavLink>
+          <NavLink to="/ventas" style={navStyle}>Ventas</NavLink>
+          <NavLink to="/reservas" style={navStyle}>Reservas</NavLink>
+          <NavLink to="/deudas" style={navStyle}>Deudas</NavLink>
+          <NavLink to="/creditos" style={navStyle}>Créditos</NavLink>
+        </Section>
 
-        <NavLink to="/ventas" style={navStyle}>
-          Ventas
-        </NavLink>
+        <Section title="Operación">
+          <NavLink to="/taller" style={navStyle}>Taller</NavLink>
+          <NavLink to="/stock" style={navStyle}>Stock</NavLink>
+          <NavLink to="/serializadas" style={navStyle}>Bicis serializadas</NavLink>
+          <NavLink to="/mercaderia/alta" style={navStyle}>Alta mercadería</NavLink>
+        </Section>
 
-        <NavLink to="/clientes" style={navStyle}>
-          Clientes
-        </NavLink>
+        <Section title="Administración">
+          <NavLink to="/caja" style={navStyle}>Caja</NavLink>
+          <NavLink to="/pagos" style={navStyle}>Pagos</NavLink>
+          <NavLink to="/precios" style={navStyle}>Precios</NavLink>
+          <NavLink to="/catalogo" style={navStyle}>Catálogo</NavLink>
+          <NavLink to="/proveedores" style={navStyle}>Proveedores</NavLink>
+          <NavLink to="/clientes" style={navStyle}>Clientes</NavLink>
+        </Section>
 
-        <NavLink to="/taller" style={navStyle}>
-          Taller
-        </NavLink>
-
-        <NavLink to="/stock" style={navStyle}>
-          Stock
-        </NavLink>
-
-        <NavLink to="/caja" style={navStyle}>
-          Caja
-        </NavLink>
-        <NavLink to="/deudas" style={navStyle}>
-          Deudas
-        </NavLink>
-        <NavLink to="/pagos" style={navStyle}>
-          Pagos
-        </NavLink>
-        <NavLink to="/creditos" style={navStyle}>
-          Créditos
-        </NavLink>
-        <NavLink to="/reservas" style={navStyle}>
-          Reservas
-        </NavLink>
-        <NavLink to="/auditoria" style={navStyle}>
-          Auditoría
-        </NavLink>
-        <NavLink to="/serializadas" style={navStyle}>
-          Bicis serializadas
-        </NavLink>
-        <NavLink to="/proveedores" style={navStyle}>
-          Proveedores
-        </NavLink>
-        <NavLink to="/precios" style={navStyle}>
-          Precios
-        </NavLink>
-        <NavLink to="/catalogo" style={navStyle}>
-          Catálogo
-        </NavLink>
-        <NavLink to="/mercaderia/alta" style={navStyle}>
-          Alta mercadería
-        </NavLink>
-
+        <Section title="Control">
+          <NavLink to="/auditoria" style={navStyle}>Auditoría</NavLink>
+        </Section>
       </nav>
     </aside>
   );
 }
+
+const sidebarStyle = {
+  width: "240px",
+  borderRight: "1px solid #ddd",
+  padding: "20px",
+  boxSizing: "border-box",
+  overflowY: "auto",
+};
+
+const titleStyle = {
+  marginTop: 0,
+  marginBottom: "20px",
+  fontSize: "20px",
+};
+
+const navWrapStyle = {
+  display: "grid",
+  gap: "20px",
+};
+
+const sectionTitleStyle = {
+  fontSize: "11px",
+  fontWeight: 900,
+  color: "#667085",
+  textTransform: "uppercase",
+  letterSpacing: ".06em",
+  marginBottom: "2px",
+};

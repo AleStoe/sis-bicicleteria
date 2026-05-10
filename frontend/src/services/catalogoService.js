@@ -117,3 +117,7 @@ export function eliminarImagenCatalogo(imagenId) {
     method: "DELETE",
   });
 }
+
+export function buscarCatalogoPOSExacto(params = {}) {
+  return apiRequest(`/catalogo/pos/buscar-exacto${buildQuery(params)}`);
+}
