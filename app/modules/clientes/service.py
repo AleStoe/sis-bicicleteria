@@ -12,6 +12,9 @@ from .repository import (
     get_ventas_cliente,
     get_bicicletas_cliente,
     insert_bicicleta_cliente,
+    get_bicicleta_cliente_detalle,
+    get_historial_taller_bicicleta_cliente,
+    get_venta_origen_bicicleta_cliente,
 )
 
 
@@ -263,5 +266,41 @@ def crear_bicicleta_cliente_service(cliente_id: int, data):
                 raise HTTPException(status_code=400, detail="El modelo es obligatorio")
 
             return insert_bicicleta_cliente(conn, cliente_id, data)
+    finally:
+        conn.close()
+
+def obtener_historial_bicicleta_cliente_service(cliente_id: int, bicicleta_id: int):
+    conn = get_connection()
+
+    try:
+        _obtener_cliente_o_404(conn, cliente_id)
+
+        bicicleta = get_bicicleta_cliente_detalle(
+            conn,
+            cliente_id=cliente_id,
+            bicicleta_id=bicicleta_id,
+        )
+
+        if bicicleta is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No existe la bicicleta {bicicleta_id} para el cliente {cliente_id}",
+            )
+
+        venta_origen = get_venta_origen_bicicleta_cliente(
+            conn,
+            bicicleta.get("id_venta_origen"),
+        )
+
+        historial_taller = get_historial_taller_bicicleta_cliente(
+            conn,
+            bicicleta_id=bicicleta_id,
+        )
+
+        return {
+            "bicicleta": bicicleta,
+            "venta_origen": venta_origen,
+            "historial_taller": historial_taller,
+        }
     finally:
         conn.close()

@@ -224,6 +224,8 @@ def get_bicicletas_cliente(conn, cliente_id: int):
             SELECT
                 id,
                 id_cliente,
+                id_bicicleta_serializada,
+                id_venta_origen,
                 marca,
                 modelo,
                 rodado,
@@ -245,6 +247,8 @@ def insert_bicicleta_cliente(conn, cliente_id: int, data):
             """
             INSERT INTO bicicletas_clientes (
                 id_cliente,
+                id_bicicleta_serializada,
+                id_venta_origen,
                 marca,
                 modelo,
                 rodado,
@@ -252,10 +256,12 @@ def insert_bicicleta_cliente(conn, cliente_id: int, data):
                 numero_cuadro,
                 notas
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING
                 id,
                 id_cliente,
+                id_bicicleta_serializada,
+                id_venta_origen,
                 marca,
                 modelo,
                 rodado,
@@ -265,6 +271,8 @@ def insert_bicicleta_cliente(conn, cliente_id: int, data):
             """,
             (
                 cliente_id,
+                getattr(data, "id_bicicleta_serializada", None),
+                getattr(data, "id_venta_origen", None),
                 data.marca,
                 data.modelo,
                 data.rodado,
@@ -272,5 +280,73 @@ def insert_bicicleta_cliente(conn, cliente_id: int, data):
                 data.numero_cuadro,
                 data.notas,
             ),
+        )
+        return cur.fetchone()
+    
+def get_bicicleta_cliente_detalle(conn, cliente_id: int, bicicleta_id: int):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT
+                id,
+                id_cliente,
+                id_bicicleta_serializada,
+                id_venta_origen,
+                marca,
+                modelo,
+                rodado,
+                color,
+                numero_cuadro,
+                notas,
+                created_at,
+                updated_at
+            FROM bicicletas_clientes
+            WHERE id = %s
+              AND id_cliente = %s
+            """,
+            (bicicleta_id, cliente_id),
+        )
+        return cur.fetchone()
+
+
+def get_historial_taller_bicicleta_cliente(conn, bicicleta_id: int):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT
+                id,
+                fecha_ingreso,
+                estado,
+                problema_reportado,
+                observaciones,
+                fecha_prometida,
+                total_final,
+                saldo_pendiente
+            FROM ordenes_taller
+            WHERE id_bicicleta_cliente = %s
+            ORDER BY fecha_ingreso DESC, id DESC
+            """,
+            (bicicleta_id,),
+        )
+        return cur.fetchall()
+
+
+def get_venta_origen_bicicleta_cliente(conn, venta_id: int | None):
+    if venta_id is None:
+        return None
+
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT
+                id,
+                fecha,
+                estado,
+                total_final,
+                saldo_pendiente
+            FROM ventas
+            WHERE id = %s
+            """,
+            (venta_id,),
         )
         return cur.fetchone()

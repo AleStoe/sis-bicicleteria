@@ -10,7 +10,8 @@ from .service import (
     activar_cliente_service,
     listar_bicicletas_cliente_service,
     crear_bicicleta_cliente_service,
-)
+    obtener_historial_bicicleta_cliente_service,
+    )
 
 router = APIRouter()
 
@@ -54,3 +55,10 @@ def listar_bicicletas_cliente(cliente_id: int):
 @router.post("/{cliente_id}/bicicletas", status_code=201)
 def crear_bicicleta_cliente(cliente_id: int, data: BicicletaClienteCreateInput):
     return crear_bicicleta_cliente_service(cliente_id, data)
+
+@router.get("/{cliente_id}/bicicletas/{bicicleta_id}/historial")
+def historial_bicicleta_cliente(cliente_id: int, bicicleta_id: int):
+    return obtener_historial_bicicleta_cliente_service(
+        cliente_id=cliente_id,
+        bicicleta_id=bicicleta_id,
+    )

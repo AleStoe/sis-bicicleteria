@@ -822,6 +822,12 @@ def entregar_venta(venta_id: int, data):
                         conn,
                         {
                             "id_cliente": venta["id_cliente"],
+                            "id_bicicleta_serializada": bicicleta["id"],
+                            "id_venta_origen": venta_id,
+                            "marca": "Bicicleta",
+                            "modelo": item["descripcion_snapshot"],
+                            "rodado": None,
+                            "color": None,
                             "numero_cuadro": bicicleta["numero_cuadro"],
                             "notas": f"Generada desde venta #{venta_id}",
                         },

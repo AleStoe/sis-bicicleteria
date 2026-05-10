@@ -115,3 +115,165 @@ def test_rechaza_condicion_iva_invalida(client, clean_db):
     )
 
     assert response.status_code == 422
+
+def test_historial_bicicleta_cliente_devuelve_taller_y_venta_origen(client, db_conn, clean_db):
+    crear_cliente = client.post(
+        "/clientes/",
+        json={
+            "nombre": "Cliente Bici Historial",
+            "telefono": "2915550000",
+            "tipo_cliente": "minorista",
+            "condicion_iva": "consumidor_final",
+        },
+    )
+    assert crear_cliente.status_code == 200, crear_cliente.text
+    cliente_id = crear_cliente.json()["cliente_id"]
+
+    with db_conn.cursor() as cur:
+        cur.execute("""
+            INSERT INTO sucursales (
+                nombre,
+                activa
+            )
+            VALUES (
+                'Sucursal Test Historial',
+                TRUE
+            )
+            RETURNING id
+        """)
+        sucursal_id = cur.fetchone()["id"]
+
+        cur.execute("""
+            INSERT INTO usuarios (
+                nombre,
+                email,
+                username,
+                password_hash,
+                activo
+            )
+            VALUES (
+                'Usuario Test Historial',
+                'historial@test.com',
+                'usuario_historial',
+                'hash_test',
+                TRUE
+            )
+            RETURNING id
+        """)
+        usuario_id = cur.fetchone()["id"]
+
+        cur.execute("""
+            INSERT INTO ventas (
+                id_sucursal,
+                id_cliente,
+                estado,
+                subtotal_base,
+                descuento_total,
+                recargo_total,
+                total_final,
+                saldo_pendiente,
+                id_usuario_creador
+            )
+            VALUES (
+                %s,
+                %s,
+                'entregada',
+                100000,
+                0,
+                0,
+                100000,
+                0,
+                %s
+            )
+            RETURNING id
+        """, (
+            sucursal_id,
+            cliente_id,
+            usuario_id,
+        ))
+        venta_id = cur.fetchone()["id"]
+
+        cur.execute("""
+            INSERT INTO bicicletas_clientes (
+                id_cliente,
+                id_venta_origen,
+                marca,
+                modelo,
+                rodado,
+                color,
+                numero_cuadro,
+                notas
+            )
+            VALUES (
+                %s,
+                %s,
+                'Venzo',
+                'Raptor',
+                '29',
+                'Negra',
+                'ABC123',
+                'Bici de prueba historial'
+            )
+            RETURNING id
+        """, (
+            cliente_id,
+            venta_id,
+        ))
+        bicicleta_id = cur.fetchone()["id"]
+
+        cur.execute("""
+            INSERT INTO ordenes_taller (
+                id_sucursal,
+                id_cliente,
+                id_bicicleta_cliente,
+                estado,
+                problema_reportado,
+                observaciones,
+                total_final,
+                saldo_pendiente,
+                id_usuario
+            )
+            VALUES (
+                %s,
+                %s,
+                %s,
+                'ingresada',
+                'Hace ruido la transmisión',
+                'Revisar cadena y piñón',
+                15000,
+                15000,
+                %s
+            )
+            RETURNING id
+        """, (
+            sucursal_id,
+            cliente_id,
+            bicicleta_id,
+            usuario_id,
+        ))
+        orden_id = cur.fetchone()["id"]
+
+    db_conn.commit()
+
+    response = client.get(
+        f"/clientes/{cliente_id}/bicicletas/{bicicleta_id}/historial"
+    )
+
+    assert response.status_code == 200, response.text
+
+    data = response.json()
+
+    assert data["bicicleta"]["id"] == bicicleta_id
+    assert data["bicicleta"]["id_venta_origen"] == venta_id
+
+    assert data["venta_origen"]["id"] == venta_id
+    assert data["venta_origen"]["estado"] == "entregada"
+
+    assert len(data["historial_taller"]) == 1
+
+    assert data["historial_taller"][0]["id"] == orden_id
+
+    assert (
+        data["historial_taller"][0]["problema_reportado"]
+        == "Hace ruido la transmisión"
+    )
