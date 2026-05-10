@@ -251,3 +251,62 @@ def get_deuda_detalle_by_id(conn, deuda_id: int):
             (deuda_id,),
         )
         return cur.fetchone()
+
+def get_venta_origen_by_id(conn, venta_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT
+                v.id,
+                v.fecha,
+                v.id_cliente,
+                c.nombre AS cliente_nombre,
+                v.id_sucursal,
+                s.nombre AS sucursal_nombre,
+                v.estado,
+                v.subtotal_base,
+                v.descuento_total,
+                v.recargo_total,
+                v.total_final,
+                v.saldo_pendiente,
+                v.observaciones,
+                v.id_reserva_origen
+            FROM ventas v
+            INNER JOIN clientes c
+                ON c.id = v.id_cliente
+            INNER JOIN sucursales s
+                ON s.id = v.id_sucursal
+            WHERE v.id = %s
+            """,
+            (venta_id,),
+        )
+        return cur.fetchone()
+
+
+def get_venta_items_origen_by_venta_id(conn, venta_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT
+                vi.id,
+                vi.id_venta,
+                vi.id_variante,
+                vi.id_bicicleta_serializada,
+                vi.descripcion_snapshot,
+                vi.cantidad,
+                vi.precio_lista,
+                vi.precio_final,
+                vi.costo_unitario_aplicado,
+                vi.subtotal,
+                vi.bonificado,
+                vi.motivo_bonificacion,
+                vi.motivo_precio_manual,
+                vi.precio_unitario_original,
+                vi.precio_unitario_final
+            FROM venta_items vi
+            WHERE vi.id_venta = %s
+            ORDER BY vi.id
+            """,
+            (venta_id,),
+        )
+        return cur.fetchall()

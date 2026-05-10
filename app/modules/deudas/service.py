@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 from fastapi import HTTPException
-
+from psycopg.rows import dict_row
 from app.modules.authz.service import exigir_rol_admin
 from app.db.connection import get_connection
 from app.modules.auditoria import service as auditoria_service
@@ -127,9 +127,29 @@ def obtener_deuda(deuda_id: int):
 
         movimientos = repository.get_deuda_movimientos(conn, deuda_id)
 
+        origen = None
+
+        if deuda["origen_tipo"] == ORIGEN_VENTA:
+            venta = repository.get_venta_origen_by_id(
+                conn,
+                deuda["origen_id"],
+            )
+
+            items = repository.get_venta_items_origen_by_venta_id(
+                conn,
+                deuda["origen_id"],
+            )
+
+            origen = {
+                "tipo": ORIGEN_VENTA,
+                "venta": venta,
+                "items": items,
+            }
+
         return {
             "deuda": deuda,
             "movimientos": movimientos,
+            "origen": origen,
         }
     finally:
         conn.close()
@@ -335,4 +355,8 @@ def crear_deuda_desde_venta_entregada(
     return deuda
 
 def obtener_deuda_abierta_por_origen(conn, *, origen_tipo: str, origen_id: int):
-    return repository.get_deuda_abierta_by_origen(conn, origen_tipo, origen_id)
+    return repository.get_deuda_abierta_by_origen(
+        conn,
+        origen_tipo,
+        origen_id,
+    )
