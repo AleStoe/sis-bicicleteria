@@ -81,7 +81,11 @@ export default function DeudaDetallePage() {
       <div style={headerStyle}>
         <div>
           <h1 style={{ margin: 0 }}>Deuda #{deuda.id}</h1>
-          <p style={mutedStyle}>Cliente #{deuda.id_cliente} · Origen {deuda.origen_tipo} #{deuda.origen_id}</p>
+          <p style={mutedStyle}>
+            {deuda.cliente_nombre || `Cliente #${deuda.id_cliente}`}
+            {deuda.cliente_dni ? ` · DNI ${deuda.cliente_dni}` : ""}
+            {deuda.cliente_telefono ? ` · Tel ${deuda.cliente_telefono}` : ""}
+          </p>
         </div>
 
         <div style={actionsStyle}>
@@ -99,7 +103,21 @@ export default function DeudaDetallePage() {
           <div style={infoGridStyle}>
             <Info label="Estado" value={<EstadoDeudaBadge estado={deuda.estado} />} />
             <Info label="Saldo actual" value={formatMoney(deuda.saldo_actual)} />
-            <Info label="Cliente" value={`#${deuda.id_cliente}`} />
+            <Info
+                label="Cliente"
+                value={
+                  <div>
+                    <div>{deuda.cliente_nombre || `Cliente #${deuda.id_cliente}`}</div>
+
+                    <div style={{ fontSize: "13px", color: "#667085", marginTop: "4px" }}>
+                      {deuda.cliente_dni ? `DNI ${deuda.cliente_dni}` : ""}
+                      {deuda.cliente_telefono
+                        ? ` · ${deuda.cliente_telefono}`
+                        : ""}
+                    </div>
+                  </div>
+                }
+              />
             <Info label="Origen" value={`${deuda.origen_tipo} #${deuda.origen_id}`} />
             <Info label="Genera recargo" value={deuda.genera_recargo ? "Sí" : "No"} />
             <Info label="Tasa recargo" value={deuda.tasa_recargo || "-"} />
