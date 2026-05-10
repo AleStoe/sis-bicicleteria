@@ -1,5 +1,6 @@
 import { useState } from "react";
-
+import VentaItemPrecioPanel from "./item/VentaItemPrecioPanel";
+import VentaItemBonificacionPanel from "./item/VentaItemBonificacionPanel";
 function formatMoney(value) {
   const n = Number(value || 0);
 
@@ -314,68 +315,23 @@ export default function VentaItemRow({
         )}
 
         {panelActivo === "precio" && (
-          <div style={styles.panel}>
-            <div style={styles.panelTitle}>Precio manual</div>
-
-            <div style={styles.inlineForm}>
-              <input
-                type="number"
-                value={precioManual}
-                onChange={(e) => setPrecioManual(e.target.value)}
-                placeholder="Precio manual"
-                style={styles.input}
-              />
-
-              <input
-                value={motivoPrecio}
-                onChange={(e) => setMotivoPrecio(e.target.value)}
-                placeholder="Motivo obligatorio"
-                style={styles.inputGrow}
-              />
-
-              <button type="button" onClick={aplicarPrecioManual} style={styles.applyBtn}>
-                Aplicar
-              </button>
-
-              <button type="button" onClick={limpiarPrecioManual} style={styles.ghostBtn}>
-                Limpiar
-              </button>
-            </div>
-          </div>
+          <VentaItemPrecioPanel
+            precioManual={precioManual}
+            setPrecioManual={setPrecioManual}
+            motivoPrecio={motivoPrecio}
+            setMotivoPrecio={setMotivoPrecio}
+            aplicarPrecioManual={aplicarPrecioManual}
+            limpiarPrecioManual={limpiarPrecioManual}
+          />
         )}
 
         {panelActivo === "bonificacion" && (
-          <div style={styles.panel}>
-            <div style={styles.panelTitle}>Bonificación</div>
-
-            <div style={styles.inlineForm}>
-              <input
-                value={motivoBonificacion}
-                onChange={(e) => setMotivoBonificacion(e.target.value)}
-                placeholder="Motivo obligatorio"
-                style={styles.inputGrow}
-                disabled={item.bonificado}
-              />
-
-              {item.bonificado ? (
-                <button
-                  type="button"
-                  onClick={quitarBonificacion}
-                  style={styles.ghostBtn}
-                >
-                  Quitar
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={aplicarBonificacion}
-                  style={styles.giftBtn}
-                >
-                  Bonificar
-                </button>
-              )}
-            </div>
-          </div>
+          <VentaItemBonificacionPanel
+            motivoBonificacion={motivoBonificacion}
+            setMotivoBonificacion={setMotivoBonificacion}
+            aplicarBonificacion={aplicarBonificacion}
+            limpiarBonificacion={quitarBonificacion}
+          />
         )}
       </div>
     </div>
