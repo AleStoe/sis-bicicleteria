@@ -1,12 +1,7 @@
 import { useMemo, useState } from "react";
-
-const MEDIOS_PAGO = [
-  { value: "efectivo", label: "Efectivo" },
-  { value: "transferencia", label: "Transferencia" },
-  { value: "mercadopago", label: "MercadoPago" },
-  { value: "tarjeta", label: "Tarjeta" },
-];
-
+import CheckoutResumenPago from "./checkout/CheckoutResumenPago";
+import CheckoutAgregarPago from "./checkout/CheckoutAgregarPago";
+import CheckoutPagosList from "./checkout/CheckoutPagosList";
 function formatMoney(value) {
   return Number(value || 0).toLocaleString("es-AR", {
     style: "currency",
@@ -94,89 +89,29 @@ export default function CheckoutVentaPanel({
 
   return (
     <section style={styles.card}>
-      <div style={styles.header}>
-        <div>
-          <h3 style={styles.title}>Checkout</h3>
-          <p style={styles.sub}>
-            {cantidadItems} item{cantidadItems === 1 ? "" : "s"} en el carrito
-          </p>
-        </div>
+      <CheckoutResumenPago
+        total={total}
+        pagado={pagado}
+        pendiente={pendiente}
+        cantidadItems={cantidadItems}
+        formatMoney={formatMoney}
+      />
 
-        <strong style={styles.total}>{formatMoney(total)}</strong>
-      </div>
+      <CheckoutAgregarPago
+        medioPago={medioPago}
+        setMedioPago={setMedioPago}
+        monto={monto}
+        setMonto={setMonto}
+        cobrarTotal={cobrarTotal}
+        agregarPago={agregarPago}
+        errorLocal={errorLocal}
+      />
 
-      <div style={styles.statusGrid}>
-        <div style={styles.paidBox}>
-          <span>Pagado</span>
-          <strong>{formatMoney(pagado)}</strong>
-        </div>
-
-        <div style={pendiente > 0 ? styles.pendingBox : styles.okBox}>
-          <span>{pendiente > 0 ? "Pendiente" : "Venta saldada"}</span>
-          <strong>{formatMoney(pendiente)}</strong>
-        </div>
-      </div>
-
-      <div style={styles.payBox}>
-        <div style={styles.payTitle}>Agregar pago</div>
-
-        <div style={styles.paymentControls}>
-            <select
-                value={medioPago}
-                onChange={(e) => setMedioPago(e.target.value)}
-                style={styles.select}
-            >
-                {MEDIOS_PAGO.map((medio) => (
-                <option key={medio.value} value={medio.value}>
-                    {medio.label}
-                </option>
-                ))}
-            </select>
-        </div>
-
-        <div style={styles.amountRow}>
-          <input
-            type="number"
-            value={monto}
-            onChange={(e) => setMonto(e.target.value)}
-            placeholder="Monto"
-            style={styles.input}
-          />
-
-          <button type="button" onClick={cobrarTotal} style={styles.secondary}>
-            Total
-          </button>
-
-          <button type="button" onClick={agregarPago} style={styles.addBtn}>
-            Agregar
-          </button>
-        </div>
-
-        {errorLocal && <div style={styles.localError}>{errorLocal}</div>}
-      </div>
-
-      <div style={styles.paymentsList}>
-        <div style={styles.paymentsTitle}>Pagos cargados</div>
-
-        {pagosDraft.length === 0 ? (
-          <div style={styles.emptyPayments}>Sin pagos cargados.</div>
-        ) : (
-          pagosDraft.map((pago) => (
-            <div key={pago.temp_id} style={styles.paymentRow}>
-              <span>{renderMedio(pago.medio_pago)}</span>
-              <strong>{formatMoney(pago.monto)}</strong>
-
-              <button
-                type="button"
-                onClick={() => quitarPago(pago.temp_id)}
-                style={styles.removePayment}
-              >
-                Quitar
-              </button>
-            </div>
-          ))
-        )}
-      </div>
+      <CheckoutPagosList
+        pagosDraft={pagosDraft}
+        quitarPago={quitarPago}
+        formatMoney={formatMoney}
+      />
 
       <label style={styles.checkRow}>
         <input
@@ -205,17 +140,6 @@ export default function CheckoutVentaPanel({
   );
 }
 
-function renderMedio(medio) {
-  const map = {
-    efectivo: "Efectivo",
-    transferencia: "Transferencia",
-    mercadopago: "MercadoPago",
-    tarjeta: "Tarjeta",
-  };
-
-  return map[medio] || medio;
-}
-
 const styles = {
   card: {
     border: "1px solid #eaecf0",
@@ -223,139 +147,6 @@ const styles = {
     padding: 14,
     marginTop: 12,
     background: "#ffffff",
-  },
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 10,
-    alignItems: "flex-start",
-    marginBottom: 12,
-  },
-  title: {
-    margin: 0,
-    fontSize: 18,
-  },
-  sub: {
-    margin: "4px 0 0",
-    color: "#667085",
-    fontSize: 13,
-  },
-  total: {
-    fontSize: 26,
-    color: "#0b5bd3",
-  },
-  statusGrid: {
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: 10,
-    marginBottom: 12,
-  },
-  paidBox: {
-    background: "#ecfdf3",
-    border: "1px solid #abefc6",
-    color: "#067647",
-    borderRadius: 12,
-    padding: 12,
-    display: "grid",
-    gap: 4,
-  },
-  pendingBox: {
-    background: "#fff1f0",
-    border: "1px solid #fecdca",
-    color: "#b42318",
-    borderRadius: 12,
-    padding: 12,
-    display: "grid",
-    gap: 4,
-  },
-  okBox: {
-    background: "#ecfdf3",
-    border: "1px solid #abefc6",
-    color: "#067647",
-    borderRadius: 12,
-    padding: 12,
-    display: "grid",
-    gap: 4,
-  },
-  payBox: {
-    border: "1px solid #eaecf0",
-    borderRadius: 12,
-    padding: 10,
-    background: "#f9fafb",
-    marginBottom: 12,
-  },
-  payTitle: {
-    fontWeight: 900,
-    marginBottom: 8,
-    color: "#344054",
-  },
-  amountRow: {
-    display: "grid",
-    gridTemplateColumns: "1fr 80px 100px",
-    gap: 8,
-  },
-  input: {
-    border: "1px solid #d0d5dd",
-    borderRadius: 10,
-    padding: "10px 11px",
-    fontSize: 15,
-  },
-  secondary: {
-    border: "1px solid #d0d5dd",
-    background: "white",
-    borderRadius: 10,
-    padding: "9px 10px",
-    fontWeight: 800,
-    cursor: "pointer",
-  },
-  addBtn: {
-    border: "none",
-    background: "#0b5bd3",
-    color: "white",
-    borderRadius: 10,
-    padding: "9px 10px",
-    fontWeight: 900,
-    cursor: "pointer",
-  },
-  localError: {
-    marginTop: 8,
-    background: "#fff1f0",
-    border: "1px solid #fecdca",
-    color: "#b42318",
-    borderRadius: 8,
-    padding: 8,
-    fontSize: 13,
-  },
-  paymentsList: {
-    border: "1px solid #eaecf0",
-    borderRadius: 12,
-    padding: 10,
-    marginBottom: 12,
-  },
-  paymentsTitle: {
-    fontWeight: 900,
-    marginBottom: 8,
-  },
-  emptyPayments: {
-    color: "#667085",
-    fontSize: 13,
-  },
-  paymentRow: {
-    display: "grid",
-    gridTemplateColumns: "1fr auto auto",
-    gap: 8,
-    alignItems: "center",
-    padding: "7px 0",
-    borderTop: "1px solid #f2f4f7",
-  },
-  removePayment: {
-    border: "1px solid #fecdca",
-    background: "#fff1f0",
-    color: "#b42318",
-    borderRadius: 8,
-    padding: "5px 8px",
-    fontWeight: 800,
-    cursor: "pointer",
   },
   checkRow: {
     display: "flex",
@@ -387,11 +178,7 @@ const styles = {
     fontSize: 16,
     cursor: "pointer",
   },
-  paymentControls: {
-  marginBottom: 10,
-},
-
-select: {
+ select: {
   width: "100%",
   border: "1px solid #d0d5dd",
   borderRadius: 10,
