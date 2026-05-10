@@ -16,9 +16,10 @@ import {
 import { listarPagosDeVenta } from "../services/pagosService";
 import { CURRENT_USER_ID } from "../config/appConfig";
 import { formatMoney } from "./VentasListPage";
-
+import VentaAccionesPanel from "../components/ventas/detalle/VentaAccionesPanel";
 export default function VentaDetallePage() {
-  const { ventaId } = useParams();
+  const params = useParams();
+  const ventaId = params.ventaId || params.id;
 
   const [data, setData] = useState(null);
   const [pagos, setPagos] = useState([]);
@@ -36,7 +37,7 @@ export default function VentaDetallePage() {
       setLoading(true);
       setError("");
       setMensaje("");
-
+      
       const [ventaData, pagosData] = await Promise.all([
         obtenerVenta(ventaId),
         listarPagosDeVenta(ventaId),
@@ -49,6 +50,7 @@ export default function VentaDetallePage() {
     } finally {
       setLoading(false);
     }
+    console.log("VENTA ID PARAM:", ventaId);
   }
 
   async function cargarVenta() {
@@ -253,6 +255,18 @@ export default function VentaDetallePage() {
     return <p style={{ padding: "24px" }}>Cargando detalle de venta...</p>;
   }
 
+  if (error) {
+    return (
+      <div style={pageStyle}>
+        <div style={alertStyle}>Error: {error}</div>
+      </div>
+    );
+  }
+
+  if (!data) {
+    return <p style={{ padding: "24px" }}>No se encontró la venta.</p>;
+  }
+
   if (!data) {
     return <p style={{ padding: "24px" }}>No se encontró la venta.</p>;
   }
@@ -303,66 +317,16 @@ export default function VentaDetallePage() {
         </div>
       )}
 
-      <div style={topActionsStyle}>
-        <Link to={`/ventas/${venta.id}/cobro`} style={primaryLinkActionStyle}>
-          Cobrar venta
-        </Link>
-      </div>
-
-      <section style={cardStyle}>
-        <h2 style={cardTitleStyle}>Acciones operativas</h2>
-
-        <div style={actionGridStyle}>
-          <button
-            onClick={handleEntregarVenta}
-            disabled={!puedeEntregar || procesando}
-            style={puedeEntregar ? primaryActionStyle : disabledActionStyle}
-          >
-            Entregar venta
-          </button>
-
-          <button
-            onClick={handleAnularVenta}
-            disabled={!puedeAnular || procesando}
-            style={puedeAnular ? dangerActionStyle : disabledActionStyle}
-          >
-            Anular venta
-          </button>
-
-          <button
-            onClick={handleDevolverVentaCompleta}
-            disabled={!puedeDevolver || procesando}
-            style={puedeDevolver ? warnActionStyle : disabledActionStyle}
-          >
-            Devolver venta completa
-          </button>
-        </div>
-
-        <div style={smallNoteStyle}>
-          Las devoluciones no revierten pagos: devuelven stock y generan crédito al cliente.
-        </div>
-      </section>
-
-      <section style={cardStyle}>
-        <h2 style={cardTitleStyle}>Situación financiera</h2>
-
-        {tieneDeuda ? (
-          <div style={warningStyle}>
-            <strong>Venta con deuda abierta.</strong>
-            <div>ID deuda: #{deuda.id}</div>
-            <div>Saldo actual: {formatMoney(deuda.saldo_actual)}</div>
-            <div>Estado: {deuda.estado}</div>
-
-            <Link to={`/deudas/${deuda.id}`} style={detailLinkStyle}>
-              Ver deuda
-            </Link>
-          </div>
-        ) : (
-          <div style={successSoftStyle}>
-            No hay deuda abierta asociada a esta venta.
-          </div>
-        )}
-      </section>
+      <VentaAccionesPanel
+        venta={venta}
+        procesando={procesando}
+        puedeEntregar={puedeEntregar}
+        puedeAnular={puedeAnular}
+        puedeDevolver={puedeDevolver}
+        onEntregar={handleEntregarVenta}
+        onAnular={handleAnularVenta}
+        onDevolverCompleta={handleDevolverVentaCompleta}
+      />
 
       <section style={itemsCardStyle}>
         <div style={itemsHeaderStyle}>
@@ -464,9 +428,7 @@ const pageStyle = {
   minHeight: "100vh",
 };
 
-const topActionsStyle = {
-  marginBottom: "16px",
-};
+
 
 const cardStyle = {
   background: "white",
@@ -482,32 +444,6 @@ const cardTitleStyle = {
   fontSize: "20px",
 };
 
-const actionGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: "10px",
-};
-
-const primaryActionStyle = {
-  border: "none",
-  background: "#12a15f",
-  color: "white",
-  borderRadius: "10px",
-  padding: "12px",
-  fontWeight: 800,
-  cursor: "pointer",
-};
-
-const dangerActionStyle = {
-  border: "1px solid #fecdca",
-  background: "#fff1f0",
-  color: "#b42318",
-  borderRadius: "10px",
-  padding: "12px",
-  fontWeight: 800,
-  cursor: "pointer",
-};
-
 const warnActionStyle = {
   border: "1px solid #f3dc97",
   background: "#fff8e1",
@@ -516,16 +452,6 @@ const warnActionStyle = {
   padding: "12px",
   fontWeight: 800,
   cursor: "pointer",
-};
-
-const disabledActionStyle = {
-  border: "1px solid #d0d5dd",
-  background: "#f2f4f7",
-  color: "#98a2b3",
-  borderRadius: "10px",
-  padding: "12px",
-  fontWeight: 800,
-  cursor: "not-allowed",
 };
 
 const alertStyle = {
@@ -573,15 +499,6 @@ const noteStyle = {
   marginBottom: "16px",
 };
 
-const smallNoteStyle = {
-  marginTop: "12px",
-  background: "#f9fafb",
-  borderLeft: "4px solid #111827",
-  padding: "12px",
-  borderRadius: "8px",
-  color: "#344054",
-};
-
 const itemsCardStyle = {
   ...cardStyle,
   padding: 0,
@@ -620,19 +537,6 @@ const detailLinkStyle = {
   textDecoration: "none",
   fontWeight: 800,
   color: "#175cd3",
-};
-
-const primaryLinkActionStyle = {
-  display: "inline-block",
-  textDecoration: "none",
-  textAlign: "center",
-  border: "none",
-  background: "#1f6feb",
-  color: "white",
-  borderRadius: "10px",
-  padding: "12px 16px",
-  fontWeight: 800,
-  cursor: "pointer",
 };
 
 const bonusBadgeStyle = {

@@ -146,9 +146,8 @@ class VentaDetalleItemOutput(BaseModel):
 
     motivo_precio_manual: Optional[str] = None
 
-    precio_unitario_original: Decimal
-
-    precio_unitario_final: Decimal
+    precio_unitario_original: Decimal | None = None
+    precio_unitario_final: Decimal | None = None
 
 class VentaDeudaAbiertaResumenOutput(BaseModel):
     id: int
