@@ -85,18 +85,41 @@ def insert_bicicleta_cliente(conn, data: dict):
             """
             INSERT INTO bicicletas_clientes (
                 id_cliente,
+                id_bicicleta_serializada,
+                id_venta_origen,
+                marca,
+                modelo,
+                rodado,
+                color,
                 numero_cuadro,
                 notas
             )
-            VALUES (%s, %s, %s)
+            VALUES (
+                %(id_cliente)s,
+                %(id_bicicleta_serializada)s,
+                %(id_venta_origen)s,
+                %(marca)s,
+                %(modelo)s,
+                %(rodado)s,
+                %(color)s,
+                %(numero_cuadro)s,
+                %(notas)s
+            )
             RETURNING id
             """,
-            (
-                data["id_cliente"],
-                data["numero_cuadro"],
-                data.get("notas"),
-            ),
+            {
+                "id_cliente": data["id_cliente"],
+                "id_bicicleta_serializada": data.get("id_bicicleta_serializada"),
+                "id_venta_origen": data.get("id_venta_origen"),
+                "marca": data.get("marca"),
+                "modelo": data.get("modelo"),
+                "rodado": data.get("rodado"),
+                "color": data.get("color"),
+                "numero_cuadro": data.get("numero_cuadro"),
+                "notas": data.get("notas"),
+            },
         )
+
         return cur.fetchone()["id"]
 
 def get_bicicletas_serializadas(conn, *, id_variante=None, id_sucursal=None, estado=None):
