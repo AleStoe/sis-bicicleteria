@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import VentaHeader from "../components/ventas/detalle/VentaHeader";
 import VentaResumenCards from "../components/ventas/detalle/VentaResumenCards";
-
+import VentaDocumentosPanel from "../components/ventas/detalle/VentaDocumentosPanel";
 import {
   obtenerVenta,
   anularVenta,
@@ -324,6 +324,8 @@ export default function VentaDetallePage() {
         onAnular={handleAnularVenta}
         onDevolverCompleta={handleDevolverVentaCompleta}
       />
+
+      <VentaDocumentosPanel ventaId={venta.id} />
 
       <VentaItemsVendidos
         venta={venta}

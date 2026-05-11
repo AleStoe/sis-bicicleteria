@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import CheckoutResumenPago from "./checkout/CheckoutResumenPago";
 import CheckoutAgregarPago from "./checkout/CheckoutAgregarPago";
 import CheckoutPagosList from "./checkout/CheckoutPagosList";
@@ -69,24 +69,22 @@ export default function CheckoutVentaPanel({
     setErrorLocal("");
   }
 
-  function finalizar() {
-    if (entregarAhora && pendiente > 0) {
-      setErrorLocal(
-        "No conviene entregar ahora si queda saldo pendiente. Primero cobrá el total o dejala pendiente."
-      );
-      return;
-    }
+  useEffect(() => {
+  setPagosDraft([]);
+  setMonto("");
+  setErrorLocal("");
+}, [items, total]);
 
-    onFinalizar?.({
-      pagos: pagosDraft.map((pago) => ({
-        medio_pago: pago.medio_pago,
-        monto: String(pago.monto),
-        nota: pago.nota || null,
-      })),
-      entregar_ahora: entregarAhora,
-    });
-  }
-
+function finalizar() {
+  onFinalizar?.({
+    pagos: pagosDraft.map((pago) => ({
+      medio_pago: pago.medio_pago,
+      monto: String(pago.monto),
+      nota: pago.nota || null,
+    })),
+    entregar_ahora: entregarAhora,
+  });
+}
   return (
     <section style={styles.card}>
       <CheckoutResumenPago

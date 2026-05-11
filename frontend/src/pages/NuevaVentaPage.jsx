@@ -7,7 +7,6 @@ import {
 } from "../services/catalogoService";
 import { listarClientes } from "../services/clientesService";
 import { crearVenta, entregarVenta } from "../services/ventasService";
-import { crearPago } from "../services/pagosService";
 import { listarSerializadasDisponibles } from "../services/serializadasService";
 import CarritoVentaPanel from "../components/ventas/CarritoVentaPanel";
 import ResumenVentaPanel from "../components/ventas/ResumenVentaPanel";
@@ -469,7 +468,7 @@ async function handleBuscarEnter(e) {
   async function finalizarCheckout({ pagos = [], entregar_ahora }) {
     if (!validarVentaAntesDeFinalizar()) return;
 
-    const payload = crearPayloadVenta([]);
+    const payload = crearPayloadVenta(pagos);
 
     try {
       setGuardando(true);
@@ -477,17 +476,6 @@ async function handleBuscarEnter(e) {
       setMensaje("");
 
       const resultado = await crearVenta(payload);
-
-      for (const pago of pagos) {
-        await crearPago({
-          origen_tipo: "venta",
-          origen_id: Number(resultado.venta_id),
-          medio_pago: pago.medio_pago,
-          monto: String(pago.monto),
-          id_usuario: ID_USUARIO,
-          nota: pago.nota || null,
-        });
-      }
 
       if (entregar_ahora) {
         await entregarVenta(resultado.venta_id, {
