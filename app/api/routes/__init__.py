@@ -14,6 +14,7 @@ from app.modules.gastos.routes import router as gastos_router
 from app.modules.precios.routes import router as precios_router
 from app.modules.proveedores.routes import router as proveedores_router
 from app.modules.reglas_comerciales.routes import router as reglas_comerciales_router
+from app.modules.documentos.routes import router as documentos_router
 router = APIRouter()
 
 router.include_router(catalogo_router, prefix="/catalogo", tags=["Catalogo"])
@@ -30,5 +31,5 @@ router.include_router(creditos_router, prefix="/creditos", tags=["Creditos"])
 router.include_router(gastos_router, prefix="/gastos", tags=["Gastos"])
 router.include_router(precios_router, prefix="/precios", tags=["Precios"])
 router.include_router(proveedores_router, prefix="/proveedores", tags=["Proveedores"])
-router.include_router(reglas_comerciales_router, prefix="/reglas-comerciales", tags=["Reglas Comerciales"],
-)
+router.include_router(reglas_comerciales_router, prefix="/reglas-comerciales", tags=["Reglas Comerciales"],)
+router.include_router(documentos_router,prefix="/documentos", tags=["Documentos"],)
