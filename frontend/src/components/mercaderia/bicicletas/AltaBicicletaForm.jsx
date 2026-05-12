@@ -1,34 +1,67 @@
+import BicicletaModeloForm from "./BicicletaModeloForm";
+import BicicletaVariantesForm from "./BicicletaVariantesForm";
+import BicicletaFichaTecnicaForm from "./BicicletaFichaTecnicaForm";
+import useAltaBicicleta from "./hooks/useAltaBicicleta";
+
 export default function AltaBicicletaForm() {
+  const {
+    categorias,
+    marcas,
+    proveedores,
+    form,
+    procesando,
+    error,
+    mensaje,
+    nombreProducto,
+    setCampo,
+    setVariante,
+    setFicha,
+    agregarVariante,
+    quitarVariante,
+    agregarFicha,
+    quitarFicha,
+    guardar,
+  } = useAltaBicicleta();
+
   return (
-    <section style={styles.card}>
-      <h2 style={styles.cardTitle}>Modelo base</h2>
+    <form onSubmit={guardar} style={styles.card}>
+      {error && <div style={styles.error}>Error: {error}</div>}
 
-      <div style={styles.infoBox}>
-        Acá vamos a cargar la bicicleta como producto base y después sus variantes:
-        talle, color, código proveedor, precio, imagen e ingreso.
-      </div>
+      {mensaje && <div style={styles.success}>{mensaje}</div>}
 
-      <div style={styles.previewBox}>
-        <strong>Ejemplo de estructura correcta</strong>
+      <BicicletaModeloForm
+        form={form}
+        setCampo={setCampo}
+        categorias={categorias}
+        marcas={marcas}
+        proveedores={proveedores}
+        nombreProducto={nombreProducto}
+      />
 
-        <div style={styles.example}>
-          <div>
-            <span style={styles.label}>Producto base</span>
-            <p style={styles.value}>
-              BICICLETA MTB TOPMEGA REGAL R29 ALUMINIO 21V TOURNEY
-            </p>
-          </div>
+      <BicicletaVariantesForm
+        variantes={form.variantes}
+        onAdd={agregarVariante}
+        onChange={setVariante}
+        onRemove={quitarVariante}
+      />
 
-          <div>
-            <span style={styles.label}>Variantes</span>
-            <ul style={styles.list}>
-              <li>Talle S · Negro/Fucsia/Naranja · Código 1007977</li>
-              <li>Talle M · Negro/Fucsia/Naranja · Código 1007978</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-    </section>
+      <BicicletaFichaTecnicaForm
+        items={form.ficha_tecnica}
+        onAdd={agregarFicha}
+        onChange={setFicha}
+        onRemove={quitarFicha}
+      />
+
+      <button
+        type="submit"
+        disabled={procesando}
+        style={styles.primaryButton}
+      >
+        {procesando
+          ? "Creando..."
+          : "Crear bicicleta e ingresar variantes"}
+      </button>
+    </form>
   );
 }
 
@@ -38,42 +71,30 @@ const styles = {
     borderRadius: "14px",
     boxShadow: "0 2px 10px rgba(0,0,0,.08)",
     padding: "16px",
-  },
-  cardTitle: {
-    margin: "0 0 14px",
-    fontSize: "20px",
-  },
-  infoBox: {
-    padding: "12px",
-    borderRadius: "12px",
-    background: "#eef4ff",
-    border: "1px solid #bfdbfe",
-    color: "#344054",
-    marginBottom: "14px",
-  },
-  previewBox: {
     display: "grid",
-    gap: "12px",
-    border: "1px solid #e5e7eb",
+    gap: "18px",
+  },
+  primaryButton: {
+    border: "none",
+    background: "#12a15f",
+    color: "#fff",
     borderRadius: "12px",
     padding: "14px",
+    fontWeight: 900,
+    cursor: "pointer",
   },
-  example: {
-    display: "grid",
-    gap: "10px",
+  error: {
+    background: "#fff1f0",
+    color: "#b42318",
+    padding: "12px",
+    borderRadius: "10px",
+    border: "1px solid #f4c7c3",
   },
-  label: {
-    display: "block",
-    fontSize: "12px",
-    color: "#667085",
-    marginBottom: "4px",
-  },
-  value: {
-    margin: 0,
-    fontWeight: 800,
-  },
-  list: {
-    margin: 0,
-    paddingLeft: "20px",
+  success: {
+    background: "#e8fff0",
+    color: "#146c2e",
+    padding: "12px",
+    borderRadius: "10px",
+    border: "1px solid #b7ebc6",
   },
 };

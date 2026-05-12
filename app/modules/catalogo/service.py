@@ -29,6 +29,7 @@ from .repository import (
     get_catalogo_pos_por_codigo,
     listar_ficha_tecnica_producto,
     reemplazar_ficha_tecnica_producto,
+    get_variante_activa_by_codigo_proveedor,
 )
 
 
@@ -317,15 +318,38 @@ def crear_variante(data):
                     detail="Un servicio no debería tener proveedor preferido",
                 )
 
+            codigo_proveedor = (
+                data.codigo_proveedor.strip()
+                if data.codigo_proveedor
+                else None
+            )
+
+            if codigo_proveedor:
+                existente = get_variante_activa_by_codigo_proveedor(
+                    conn,
+                    codigo_proveedor,
+                )
+
+                if existente is not None:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"Ya existe una variante activa con código proveedor "
+                            f"{codigo_proveedor}"
+                        ),
+                    )
+
             try:
                 variante = crear_variante_catalogo(
                     conn,
                     {
                         "id_producto": data.id_producto,
                         "nombre_variante": data.nombre_variante.strip(),
+                        "talle": data.talle.strip() if data.talle else None,
+                        "color": data.color.strip() if data.color else None,
                         "sku": None,
                         "codigo_barras": None,
-                        "codigo_proveedor": data.codigo_proveedor.strip() if data.codigo_proveedor else None,
+                        "codigo_proveedor": codigo_proveedor,
                         "proveedor_preferido_id": data.proveedor_preferido_id,
                         "alicuota_iva": data.alicuota_iva,
                         "gravado": data.gravado,
@@ -355,7 +379,7 @@ def crear_variante(data):
 
     finally:
         conn.close()
-    
+        
 def listar_marcas():
     conn = get_connection()
 

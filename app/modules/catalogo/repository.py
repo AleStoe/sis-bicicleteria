@@ -1027,3 +1027,22 @@ def reemplazar_ficha_tecnica_producto(conn, producto_id: int, items: list[dict])
             filas.append(cur.fetchone())
 
         return filas
+    
+def get_variante_activa_by_codigo_proveedor(conn, codigo_proveedor: str):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT
+                id,
+                id_producto,
+                nombre_variante,
+                codigo_proveedor,
+                activo
+            FROM variantes
+            WHERE codigo_proveedor = %s
+              AND activo = TRUE
+            LIMIT 1
+            """,
+            (codigo_proveedor,),
+        )
+        return cur.fetchone()

@@ -1,5 +1,5 @@
 from decimal import Decimal
-
+import uuid
 
 def _dec(value) -> Decimal:
     return Decimal(str(value))
@@ -52,12 +52,18 @@ def _crear_variante(
     nombre_variante: str = "Variante Test",
     sku: str | None = "SKU-TEST-CATALOGO",
     codigo_barras: str | None = "7790000000011",
-    codigo_proveedor: str | None = "COD-PROV-TEST",
+    codigo_proveedor: str | None = None,
     proveedor_preferido_id: int | None = None,
     precio_minorista: int | float | str = 10000,
     precio_mayorista: int | float | str = 7000,
     permite_precio_libre: bool = False,
 ):
+    codigo_proveedor_final = (
+        codigo_proveedor
+        if codigo_proveedor is not None
+        else f"COD-PROV-{uuid.uuid4().hex[:8].upper()}"
+    )
+
     response = client.post(
         "/catalogo/variantes",
         json={
@@ -65,7 +71,7 @@ def _crear_variante(
             "nombre_variante": nombre_variante,
             "sku": sku,
             "codigo_barras": codigo_barras,
-            "codigo_proveedor": codigo_proveedor,
+            "codigo_proveedor": codigo_proveedor_final,
             "proveedor_preferido_id": proveedor_preferido_id,
             "alicuota_iva": 21,
             "gravado": True,
@@ -74,6 +80,7 @@ def _crear_variante(
             "permite_precio_libre": permite_precio_libre,
         },
     )
+
     assert response.status_code == 200, response.text
     return response.json()
 
@@ -774,3 +781,37 @@ def test_catalogo_pos_busqueda_exacta_inexistente_devuelve_404(
     )
 
     assert response.status_code == 404
+
+def test_no_permite_codigo_proveedor_duplicado_en_variante(client):
+    categoria = _get_first_categoria(client)
+
+    producto = _crear_producto(
+        client,
+        categoria_id=categoria["id"],
+        nombre="Producto Codigo Proveedor Duplicado",
+    )
+
+    payload = {
+        "id_producto": producto["id"],
+        "nombre_variante": "Variante A",
+        "codigo_proveedor": "COD-DUP-TEST",
+        "alicuota_iva": "21.00",
+        "gravado": True,
+        "precio_minorista": "1000",
+        "precio_mayorista": "800",
+        "permite_precio_libre": False,
+    }
+
+    primera = client.post("/catalogo/variantes", json=payload)
+    assert primera.status_code == 200, primera.text
+
+    segunda = client.post(
+        "/catalogo/variantes",
+        json={
+            **payload,
+            "nombre_variante": "Variante B",
+        },
+    )
+
+    assert segunda.status_code == 400
+    assert "código proveedor" in segunda.json()["detail"]

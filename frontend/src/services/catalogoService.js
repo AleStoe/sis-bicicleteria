@@ -150,3 +150,13 @@ export function subirImagenCatalogo({
   });
 }
 
+export function obtenerFichaTecnicaProducto(productoId) {
+  return apiRequest(`/catalogo/productos/${productoId}/ficha-tecnica`);
+}
+
+export function reemplazarFichaTecnicaProducto(productoId, data) {
+  return apiRequest(`/catalogo/productos/${productoId}/ficha-tecnica`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
