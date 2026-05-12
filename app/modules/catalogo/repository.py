@@ -16,7 +16,6 @@ def get_categorias(conn):
 
 
 def get_productos(conn):
-
     with conn.cursor() as cur:
         cur.execute("""
             SELECT
@@ -26,16 +25,21 @@ def get_productos(conn):
                 p.stockeable,
                 p.serializable,
                 p.activo,
+                p.rodado,
+                p.tipo_bicicleta,
+                p.material_cuadro,
                 c.id AS categoria_id,
-                c.nombre AS categoria_nombre
+                c.nombre AS categoria_nombre,
+                p.id_marca,
+                m.nombre AS marca_nombre
             FROM productos p
             INNER JOIN categorias c
                 ON c.id = p.id_categoria
+            LEFT JOIN marcas m
+                ON m.id = p.id_marca
             ORDER BY p.nombre
         """)
-        result = cur.fetchall()
-
-    return result
+        return cur.fetchall()
 
 
 def get_variantes(conn):
@@ -51,8 +55,11 @@ def get_variantes(conn):
                 c.id AS categoria_id,
                 c.nombre AS categoria_nombre,
                 v.nombre_variante,
+                v.talle,
+                v.color,
                 v.sku,
                 v.codigo_barras,
+                v.codigo_proveedor,
                 v.proveedor_preferido_id,
                 pr.nombre AS proveedor_preferido_nombre,
                 v.alicuota_iva,
@@ -91,9 +98,7 @@ def get_variantes(conn):
 
             ORDER BY p.nombre, v.nombre_variante
         """)
-        result = cur.fetchall()
-
-    return result
+        return cur.fetchall()
 
 def crear_imagen_catalogo(conn, data):
     with conn.cursor() as cur:
@@ -268,6 +273,8 @@ def get_catalogo_pos(
                 OR v.codigo_barras ILIKE %(query)s
                 OR v.codigo_proveedor ILIKE %(query)s
                 OR m.nombre ILIKE %(query)s
+                OR v.talle ILIKE %(query)s
+                OR v.color ILIKE %(query)s
             )
         """)
         params["query"] = f"%{query.strip()}%"
@@ -297,6 +304,8 @@ def get_catalogo_pos(
                 v.id_producto,
                 p.nombre AS producto_nombre,
                 v.nombre_variante,
+                v.talle,
+                v.color, 
                 c.id AS categoria_id,
                 c.nombre AS categoria_nombre,
                 m.id AS id_marca,
@@ -312,6 +321,7 @@ def get_catalogo_pos(
                 v.codigo_proveedor,
                 v.proveedor_preferido_id,
                 pr.nombre AS proveedor_preferido_nombre,
+              
 
                 COALESCE(img_var.url, img_prod.url) AS imagen_principal,
 
@@ -431,6 +441,8 @@ def get_catalogo_pos_por_codigo(
             SELECT
                 v.id AS id_variante,
                 v.id_producto,
+                v.talle,
+                v.color,  
                 p.nombre AS producto_nombre,
                 v.nombre_variante,
                 c.id AS categoria_id,
@@ -597,6 +609,9 @@ def get_producto_by_id(conn, producto_id: int):
                 tipo_item,
                 stockeable,
                 serializable,
+                rodado,
+                tipo_bicicleta,
+                material_cuadro,
                 activo
             FROM productos
             WHERE id = %s
@@ -617,9 +632,12 @@ def crear_producto_catalogo(conn, data: dict):
                 tipo_item,
                 stockeable,
                 serializable,
+                rodado,
+                tipo_bicicleta,
+                material_cuadro,
                 activo
             )
-            VALUES (%s, %s, %s, %s, %s, %s, TRUE)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE)
             RETURNING
                 id,
                 id_categoria,
@@ -628,6 +646,9 @@ def crear_producto_catalogo(conn, data: dict):
                 tipo_item,
                 stockeable,
                 serializable,
+                rodado,
+                tipo_bicicleta,
+                material_cuadro,
                 activo
             """,
             (
@@ -637,6 +658,9 @@ def crear_producto_catalogo(conn, data: dict):
                 data["tipo_item"],
                 data["stockeable"],
                 data["serializable"],
+                data.get("rodado"),
+                data.get("tipo_bicicleta"),
+                data.get("material_cuadro"),
             ),
         )
         return cur.fetchone()
@@ -649,6 +673,8 @@ def crear_variante_catalogo(conn, data: dict):
             INSERT INTO variantes (
                 id_producto,
                 nombre_variante,
+                talle,
+                color,
                 sku,
                 codigo_barras,
                 codigo_proveedor,
@@ -661,11 +687,13 @@ def crear_variante_catalogo(conn, data: dict):
                 costo_promedio_vigente,
                 activo
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0, TRUE)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0, TRUE)
             RETURNING
                 id,
                 id_producto,
                 nombre_variante,
+                talle,
+                color,
                 sku,
                 codigo_barras,
                 codigo_proveedor,
@@ -681,6 +709,8 @@ def crear_variante_catalogo(conn, data: dict):
             (
                 data["id_producto"],
                 data["nombre_variante"],
+                data.get("talle"),
+                data.get("color"),
                 data.get("sku"),
                 data.get("codigo_barras"),
                 data.get("codigo_proveedor"),
@@ -730,6 +760,9 @@ def update_producto_catalogo(conn, producto_id: int, data: dict):
         "tipo_item",
         "stockeable",
         "serializable",
+        "rodado",
+        "tipo_bicicleta",
+        "material_cuadro",
     ]:
         if campo in data:
             campos.append(f"{campo} = %({campo})s")
@@ -752,6 +785,9 @@ def update_producto_catalogo(conn, producto_id: int, data: dict):
                 tipo_item,
                 stockeable,
                 serializable,
+                rodado,
+                tipo_bicicleta,
+                material_cuadro,
                 activo
         """, valores)
 
@@ -773,6 +809,9 @@ def update_producto_estado(conn, producto_id: int, activo: bool):
                 tipo_item,
                 stockeable,
                 serializable,
+                rodado,
+                tipo_bicicleta,
+                material_cuadro,
                 activo
         """, (activo, producto_id))
 
@@ -792,6 +831,8 @@ def get_variante_by_id(conn, variante_id: int):
                 c.id AS categoria_id,
                 c.nombre AS categoria_nombre,
                 v.nombre_variante,
+                v.talle,
+                v.color,
                 v.sku,
                 v.codigo_barras,
                 v.codigo_proveedor,
@@ -840,6 +881,10 @@ def update_variante_catalogo(conn, variante_id: int, data: dict):
 
     for campo in [
         "nombre_variante",
+        "talle",
+        "color",
+        "sku",
+        "codigo_barras",
         "codigo_proveedor",
         "proveedor_preferido_id",
         "alicuota_iva",
@@ -895,6 +940,8 @@ def asignar_identidad_variante(conn, variante_id: int, sku: str, codigo_barras: 
                 id,
                 id_producto,
                 nombre_variante,
+                talle,
+                color,
                 sku,
                 codigo_barras,
                 codigo_proveedor,

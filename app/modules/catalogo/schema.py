@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from decimal import Decimal
-
+from datetime import datetime
 from pydantic import Field
 from typing import Literal
 
@@ -20,6 +20,9 @@ class ProductoOut(BaseModel):
     categoria_nombre: str
     id_marca: int | None = None
     marca_nombre: str | None = None
+    rodado: str | None = None
+    tipo_bicicleta: str | None = None
+    material_cuadro: str | None = None
 
 
 class VarianteOut(BaseModel):
@@ -46,6 +49,8 @@ class VarianteOut(BaseModel):
 
     activo: bool
     imagen_principal: str | None = None
+    talle: str | None = None
+    color: str | None = None
 
 
 class CatalogoImagenCreate(BaseModel):
@@ -105,7 +110,8 @@ class CatalogoPOSItemOut(BaseModel):
 
     proveedor_preferido_id: int | None = None
     proveedor_preferido_nombre: str | None = None
-
+    talle: str | None = None
+    color: str | None = None
 
 TipoItemCatalogo = Literal["producto", "servicio"]
 
@@ -122,6 +128,9 @@ class ProductoCreate(BaseModel):
     tipo_item: TipoItemCatalogo = "producto"
     stockeable: bool = True
     serializable: bool = False
+    rodado: str | None = Field(default=None, max_length=30)
+    tipo_bicicleta: str | None = Field(default=None, max_length=80)
+    material_cuadro: str | None = Field(default=None, max_length=80)
 
 
 class ProductoCreateOut(BaseModel):
@@ -133,6 +142,9 @@ class ProductoCreateOut(BaseModel):
     stockeable: bool
     serializable: bool
     activo: bool
+    rodado: str | None = None
+    tipo_bicicleta: str | None = None
+    material_cuadro: str | None = None
 
 
 class VarianteCreate(BaseModel):
@@ -149,6 +161,8 @@ class VarianteCreate(BaseModel):
     precio_minorista: Decimal = Field(default=Decimal("0"), ge=0)
     precio_mayorista: Decimal = Field(default=Decimal("0"), ge=0)
     permite_precio_libre: bool = False
+    talle: str | None = Field(default=None, max_length=50)
+    color: str | None = Field(default=None, max_length=120)
 
 
 class VarianteCreateOut(BaseModel):
@@ -166,8 +180,10 @@ class VarianteCreateOut(BaseModel):
     permite_precio_libre: bool
     costo_promedio_vigente: Decimal
     activo: bool
+    talle: str | None = None
+    color: str | None = None
 
-from datetime import datetime
+
 
 
 class MarcaOut(BaseModel):
@@ -187,6 +203,9 @@ class ProductoUpdate(BaseModel):
     tipo_item: TipoItemCatalogo | None = None
     stockeable: bool | None = None
     serializable: bool | None = None
+    rodado: str | None = Field(default=None, max_length=30)
+    tipo_bicicleta: str | None = Field(default=None, max_length=80)
+    material_cuadro: str | None = Field(default=None, max_length=80)
 
 
 class ProductoEstadoUpdate(BaseModel):
@@ -203,6 +222,8 @@ class VarianteUpdate(BaseModel):
     alicuota_iva: Decimal | None = None
     gravado: bool | None = None
     permite_precio_libre: bool | None = None
+    talle: str | None = Field(default=None, max_length=50)
+    color: str | None = Field(default=None, max_length=120)
 
 
 class VarianteEstadoUpdate(BaseModel):
