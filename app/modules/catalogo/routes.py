@@ -24,6 +24,8 @@ from .service import (
     editar_variante,
     cambiar_estado_variante,
     buscar_catalogo_pos_por_codigo,
+    obtener_ficha_tecnica_producto,
+    reemplazar_ficha_tecnica_producto_service,
    
 )
 
@@ -46,6 +48,8 @@ from .schema import (
     VarianteUpdate,
     VarianteEstadoUpdate,
     CatalogoPOSPaginatedOut,
+    ProductoFichaTecnicaItemOut,
+    ProductoFichaTecnicaReplaceInput,
 )
 
 router = APIRouter()
@@ -218,3 +222,21 @@ async def subir_imagen_catalogo(
             orden=orden,
         )
     )
+
+@router.get(
+    "/productos/{producto_id}/ficha-tecnica",
+    response_model=list[ProductoFichaTecnicaItemOut],
+)
+def ficha_tecnica_producto(producto_id: int):
+    return obtener_ficha_tecnica_producto(producto_id)
+
+
+@router.put(
+    "/productos/{producto_id}/ficha-tecnica",
+    response_model=list[ProductoFichaTecnicaItemOut],
+)
+def reemplazar_ficha_tecnica_producto_route(
+    producto_id: int,
+    data: ProductoFichaTecnicaReplaceInput,
+):
+    return reemplazar_ficha_tecnica_producto_service(producto_id, data)

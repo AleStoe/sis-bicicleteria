@@ -957,3 +957,73 @@ def asignar_identidad_variante(conn, variante_id: int, sku: str, codigo_barras: 
             (sku, codigo_barras, variante_id),
         )
         return cur.fetchone()
+
+def listar_ficha_tecnica_producto(conn, producto_id: int):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT
+                id,
+                id_producto,
+                grupo,
+                clave,
+                valor,
+                orden,
+                activo
+            FROM producto_ficha_tecnica
+            WHERE id_producto = %s
+              AND activo = TRUE
+            ORDER BY grupo, orden, id
+            """,
+            (producto_id,),
+        )
+        return cur.fetchall()
+
+
+def reemplazar_ficha_tecnica_producto(conn, producto_id: int, items: list[dict]):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE producto_ficha_tecnica
+            SET activo = FALSE,
+                updated_at = NOW()
+            WHERE id_producto = %s
+              AND activo = TRUE
+            """,
+            (producto_id,),
+        )
+
+        filas = []
+
+        for item in items:
+            cur.execute(
+                """
+                INSERT INTO producto_ficha_tecnica (
+                    id_producto,
+                    grupo,
+                    clave,
+                    valor,
+                    orden,
+                    activo
+                )
+                VALUES (%s, %s, %s, %s, %s, TRUE)
+                RETURNING
+                    id,
+                    id_producto,
+                    grupo,
+                    clave,
+                    valor,
+                    orden,
+                    activo
+                """,
+                (
+                    producto_id,
+                    item["grupo"],
+                    item["clave"],
+                    item["valor"],
+                    item.get("orden", 0),
+                ),
+            )
+            filas.append(cur.fetchone())
+
+        return filas

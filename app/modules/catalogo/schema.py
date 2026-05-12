@@ -229,3 +229,23 @@ class VarianteUpdate(BaseModel):
 class VarianteEstadoUpdate(BaseModel):
     activo: bool
     id_usuario: int = Field(gt=0)
+
+class ProductoFichaTecnicaItemInput(BaseModel):
+    grupo: str = Field(min_length=1, max_length=80)
+    clave: str = Field(min_length=1, max_length=120)
+    valor: str = Field(min_length=1, max_length=1000)
+    orden: int = 0
+
+
+class ProductoFichaTecnicaItemOut(BaseModel):
+    id: int
+    id_producto: int
+    grupo: str
+    clave: str
+    valor: str
+    orden: int
+    activo: bool
+
+
+class ProductoFichaTecnicaReplaceInput(BaseModel):
+    items: list[ProductoFichaTecnicaItemInput]

@@ -27,6 +27,8 @@ from .repository import (
     update_variante_estado,
     asignar_identidad_variante,
     get_catalogo_pos_por_codigo,
+    listar_ficha_tecnica_producto,
+    reemplazar_ficha_tecnica_producto,
 )
 
 
@@ -538,5 +540,54 @@ def buscar_catalogo_pos_por_codigo(
             )
 
         return item
+    finally:
+        conn.close()
+def obtener_ficha_tecnica_producto(producto_id: int):
+    conn = get_connection()
+
+    try:
+        producto = get_producto_by_id(conn, producto_id)
+
+        if producto is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No existe el producto {producto_id}",
+            )
+
+        return listar_ficha_tecnica_producto(conn, producto_id)
+
+    finally:
+        conn.close()
+
+
+def reemplazar_ficha_tecnica_producto_service(producto_id: int, data):
+    conn = get_connection()
+
+    try:
+        with conn.transaction():
+            producto = get_producto_by_id(conn, producto_id)
+
+            if producto is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No existe el producto {producto_id}",
+                )
+
+            items = [
+                {
+                    "grupo": item.grupo.strip().upper(),
+                    "clave": item.clave.strip(),
+                    "valor": item.valor.strip(),
+                    "orden": item.orden,
+                }
+                for item in data.items
+            ]
+
+            return reemplazar_ficha_tecnica_producto(
+                conn,
+                producto_id,
+                items,
+            )
+
     finally:
         conn.close()
