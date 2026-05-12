@@ -39,6 +39,7 @@ export default function Sidebar() {
           <NavLink to="/stock" style={navStyle}>Stock</NavLink>
           <NavLink to="/serializadas" style={navStyle}>Bicis serializadas</NavLink>
           <NavLink to="/mercaderia/alta" style={navStyle}>Alta mercadería</NavLink>
+          <NavLink to="/mercaderia/bicicletas/alta" style={navStyle}> Alta bicicletas</NavLink>
         </Section>
 
         <Section title="Administración">
