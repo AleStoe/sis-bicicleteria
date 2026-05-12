@@ -121,3 +121,32 @@ export function eliminarImagenCatalogo(imagenId) {
 export function buscarCatalogoPOSExacto(params = {}) {
   return apiRequest(`/catalogo/pos/buscar-exacto${buildQuery(params)}`);
 }
+
+export function subirImagenCatalogo({
+  archivo,
+  id_producto = null,
+  id_variante = null,
+  es_principal = true,
+  orden = 0,
+}) {
+  const formData = new FormData();
+
+  formData.append("archivo", archivo);
+
+  if (id_producto !== null && id_producto !== undefined) {
+    formData.append("id_producto", String(id_producto));
+  }
+
+  if (id_variante !== null && id_variante !== undefined) {
+    formData.append("id_variante", String(id_variante));
+  }
+
+  formData.append("es_principal", String(es_principal));
+  formData.append("orden", String(orden));
+
+  return apiRequest("/catalogo/imagenes/upload", {
+    method: "POST",
+    body: formData,
+  });
+}
+

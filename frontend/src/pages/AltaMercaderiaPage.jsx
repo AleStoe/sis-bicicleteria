@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  crearImagenCatalogo,
+  subirImagenCatalogo,
   crearMarca,
   crearProducto,
   crearVariante,
@@ -10,6 +10,9 @@ import {
 } from "../services/catalogoService";
 import { listarProveedores } from "../services/proveedoresService";
 import { crearIngresoStock } from "../services/stockService";
+import AltaMercaderiaProveedorSelect from "../components/mercaderia/alta/AltaMercaderiaProveedorSelect";
+import AltaMercaderiaIngresoFields from "../components/mercaderia/alta/AltaMercaderiaIngresoFields";
+import AltaMercaderiaImagenUpload from "../components/mercaderia/alta/AltaMercaderiaImagenUpload";
 
 const ID_USUARIO = 1;
 const ID_SUCURSAL_DEFAULT = 1;
@@ -59,7 +62,8 @@ export default function AltaMercaderiaPage() {
     precio_minorista: "0",
     precio_mayorista: "0",
 
-    imagen_url: "",
+    imagen_archivo: null,
+    imagen_preview: "",
     observacion: "",
   });
 
@@ -299,11 +303,10 @@ export default function AltaMercaderiaPage() {
         permite_precio_libre: form.tipo_item === "servicio",
       });
 
-      if (form.imagen_url.trim()) {
-        await crearImagenCatalogo({
-          id_producto: null,
+      if (form.imagen_archivo) {
+        await subirImagenCatalogo({
+          archivo: form.imagen_archivo,
           id_variante: variante.id,
-          url: form.imagen_url.trim(),
           es_principal: true,
           orden: 0,
         });
@@ -393,7 +396,8 @@ export default function AltaMercaderiaPage() {
       gastos_adicionales: "0",
       precio_minorista: "0",
       precio_mayorista: "0",
-      imagen_url: "",
+      imagen_archivo: null,
+      imagen_preview: "",
       observacion: "",
     }));
   }
@@ -491,14 +495,14 @@ export default function AltaMercaderiaPage() {
                   </button>
                 </div>
               ) : (
-                <ProveedorSelect
+                <AltaMercaderiaProveedorSelect
                   form={form}
                   setCampo={setCampo}
                   proveedores={proveedores}
                 />
               )}
 
-              <IngresoFields
+              <AltaMercaderiaIngresoFields
                 form={form}
                 setCampo={setCampo}
                 costoRef={costoRef}
@@ -629,13 +633,13 @@ export default function AltaMercaderiaPage() {
                 />
               </label>
 
-              <ProveedorSelect
+              <AltaMercaderiaProveedorSelect
                 form={form}
                 setCampo={setCampo}
                 proveedores={proveedores}
               />
 
-              <IngresoFields
+              <AltaMercaderiaIngresoFields
                 form={form}
                 setCampo={setCampo}
                 costoRef={costoRef}
@@ -676,15 +680,7 @@ export default function AltaMercaderiaPage() {
                 </label>
               </div>
 
-              <label style={styles.label}>
-                Imagen URL
-                <input
-                  style={styles.input}
-                  value={form.imagen_url}
-                  onChange={(e) => setCampo("imagen_url", e.target.value)}
-                  placeholder="https://..."
-                />
-              </label>
+              <AltaMercaderiaImagenUpload form={form} setForm={setForm} />
 
               {form.imagen_url && (
                 <img
@@ -712,105 +708,8 @@ export default function AltaMercaderiaPage() {
   );
 }
 
-function ProveedorSelect({ form, setCampo, proveedores }) {
-  return (
-    <label style={styles.label}>
-      Proveedor *
-      <select
-        style={styles.input}
-        value={form.id_proveedor}
-        onChange={(e) => setCampo("id_proveedor", e.target.value)}
-      >
-        <option value="">Seleccionar proveedor...</option>
-        {proveedores.map((p) => (
-          <option key={p.id} value={p.id}>
-            #{p.id} - {p.nombre}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
 
-function IngresoFields({
-  form,
-  setCampo,
-  costoRef,
-  costoUnitarioConGastos,
-  totalProductos,
-}) {
-  return (
-    <>
-      <div style={styles.twoCols}>
-        <label style={styles.label}>
-          Cantidad *
-          <input
-            style={styles.input}
-            type="number"
-            value={form.cantidad}
-            onChange={(e) => setCampo("cantidad", e.target.value)}
-          />
-        </label>
 
-        <label style={styles.label}>
-          IVA
-          <select
-            style={styles.input}
-            value={form.alicuota_iva}
-            onChange={(e) => setCampo("alicuota_iva", e.target.value)}
-          >
-            <option value="21.00">21%</option>
-            <option value="10.50">10.5%</option>
-            <option value="27.00">27%</option>
-            <option value="0">0%</option>
-          </select>
-        </label>
-      </div>
-
-      <label style={styles.label}>
-        Costo unitario real *
-        <input
-          ref={costoRef}
-          style={styles.input}
-          type="number"
-          value={form.costo_unitario}
-          onChange={(e) => setCampo("costo_unitario", e.target.value)}
-          placeholder="Costo final por unidad"
-        />
-      </label>
-
-      <label style={styles.label}>
-        Gastos adicionales
-        <input
-          style={styles.input}
-          type="number"
-          value={form.gastos_adicionales}
-          onChange={(e) => setCampo("gastos_adicionales", e.target.value)}
-        />
-      </label>
-
-      <div style={styles.calcBox}>
-        <span>Total productos</span>
-        <strong>{formatMoney(totalProductos)}</strong>
-      </div>
-
-      <div style={styles.calcBox}>
-        <span>Costo unitario final</span>
-        <strong>{formatMoney(costoUnitarioConGastos)}</strong>
-      </div>
-
-      <label style={styles.label}>
-        Observación
-        <textarea
-          style={styles.textarea}
-          value={form.observacion}
-          onChange={(e) => setCampo("observacion", e.target.value)}
-          placeholder="Factura, remito, observación..."
-        />
-      </label>
-    </>
-  );
-}
 
 function redondearPrecio(valor) {
   if (!valor || valor <= 0) return 0;

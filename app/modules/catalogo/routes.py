@@ -1,4 +1,7 @@
-from fastapi import APIRouter
+from pathlib import Path
+from uuid import uuid4
+
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 
 from .service import (
     listar_categorias,
@@ -156,4 +159,62 @@ def catalogo_pos_buscar_exacto(
     return buscar_catalogo_pos_por_codigo(
         id_sucursal=id_sucursal,
         codigo=codigo,
+    )
+
+BASE_DIR = Path(__file__).resolve().parents[3]
+UPLOADS_CATALOGO_DIR = BASE_DIR / "uploads" / "catalogo"
+UPLOADS_CATALOGO_DIR.mkdir(parents=True, exist_ok=True)
+
+
+@router.post("/imagenes/upload", response_model=CatalogoImagenOut)
+async def subir_imagen_catalogo(
+    archivo: UploadFile = File(...),
+    id_producto: int | None = Form(default=None),
+    id_variante: int | None = Form(default=None),
+    es_principal: bool = Form(default=True),
+    orden: int = Form(default=0),
+):
+    if id_producto is None and id_variante is None:
+        raise HTTPException(
+            status_code=400,
+            detail="La imagen debe pertenecer a un producto o a una variante",
+        )
+
+    if id_producto is not None and id_variante is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="La imagen no puede pertenecer a producto y variante al mismo tiempo",
+        )
+
+    extension = Path(archivo.filename or "").suffix.lower()
+
+    if extension not in {".jpg", ".jpeg", ".png", ".webp"}:
+        raise HTTPException(
+            status_code=400,
+            detail="Formato de imagen no permitido. Usá jpg, jpeg, png o webp",
+        )
+
+    nombre_archivo = f"{uuid4().hex}{extension}"
+    destino = UPLOADS_CATALOGO_DIR / nombre_archivo
+
+    contenido = await archivo.read()
+
+    if len(contenido) > 5 * 1024 * 1024:
+        raise HTTPException(
+            status_code=400,
+            detail="La imagen no puede superar 5MB",
+        )
+
+    destino.write_bytes(contenido)
+
+    url = f"/uploads/catalogo/{nombre_archivo}"
+
+    return crear_imagen(
+        CatalogoImagenCreate(
+            id_producto=id_producto,
+            id_variante=id_variante,
+            url=url,
+            es_principal=es_principal,
+            orden=orden,
+        )
     )
