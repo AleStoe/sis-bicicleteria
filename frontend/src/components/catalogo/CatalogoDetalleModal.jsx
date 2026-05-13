@@ -1,8 +1,4 @@
-export default function CatalogoDetalleModal({
-  item,
-  onClose,
-  onEdit,
-}) {
+export default function CatalogoDetalleModal({ item, onClose, onEdit }) {
   return (
     <div style={modalOverlayStyle} onClick={onClose}>
       <div style={modalStyle} onClick={(e) => e.stopPropagation()}>
@@ -12,7 +8,9 @@ export default function CatalogoDetalleModal({
             <div style={mutedSmallStyle}>{item.nombre_variante}</div>
           </div>
 
-          <button onClick={onClose}>✕</button>
+          <button type="button" onClick={onClose}>
+            ✕
+          </button>
         </div>
 
         <div style={modalContentStyle}>
@@ -54,9 +52,13 @@ export default function CatalogoDetalleModal({
               value={formatMoney(item.precio_mayorista)}
             />
 
-            <div style={{ marginTop: "16px", display: "flex", gap: "10px" }}>
-              <button onClick={onEdit}>Editar</button>
-              <button onClick={onClose}>Cerrar</button>
+            <div style={modalActionsStyle}>
+              <button type="button" onClick={onEdit}>
+                Editar
+              </button>
+              <button type="button" onClick={onClose}>
+                Cerrar
+              </button>
             </div>
           </div>
         </div>
@@ -74,6 +76,20 @@ function InfoRow({ label, value }) {
   );
 }
 
+function formatNumber(value) {
+  return Number(value || 0).toLocaleString("es-AR", {
+    maximumFractionDigits: 3,
+  });
+}
+
+function formatMoney(value) {
+  return Number(value || 0).toLocaleString("es-AR", {
+    style: "currency",
+    currency: "ARS",
+    maximumFractionDigits: 2,
+  });
+}
+
 const modalOverlayStyle = {
   position: "fixed",
   inset: 0,
@@ -83,6 +99,7 @@ const modalOverlayStyle = {
   zIndex: 1000,
   padding: "20px",
 };
+
 const modalStyle = {
   width: "min(950px, 100%)",
   background: "white",
@@ -90,6 +107,7 @@ const modalStyle = {
   overflow: "hidden",
   boxShadow: "0 20px 60px rgba(0,0,0,.35)",
 };
+
 const modalHeaderStyle = {
   padding: "18px 22px",
   borderBottom: "1px solid #eee",
@@ -97,12 +115,14 @@ const modalHeaderStyle = {
   justifyContent: "space-between",
   alignItems: "start",
 };
+
 const modalContentStyle = {
   display: "grid",
   gridTemplateColumns: "420px 1fr",
   gap: "20px",
   padding: "22px",
 };
+
 const modalImageStyle = {
   width: "100%",
   maxHeight: "420px",
@@ -111,6 +131,7 @@ const modalImageStyle = {
   background: "#f9fafb",
   border: "1px solid #e5e7eb",
 };
+
 const bigPlaceholderStyle = {
   height: "420px",
   borderRadius: "14px",
@@ -120,11 +141,13 @@ const bigPlaceholderStyle = {
   background: "#f9fafb",
   color: "#667085",
 };
+
 const modalInfoStyle = {
   display: "grid",
   gap: "10px",
   alignContent: "start",
 };
+
 const infoRowStyle = {
   display: "flex",
   justifyContent: "space-between",
@@ -133,4 +156,18 @@ const infoRowStyle = {
   borderBottom: "1px solid #f2f4f7",
 };
 
+const infoLabelStyle = {
+  color: "#667085",
+};
 
+const mutedSmallStyle = {
+  color: "#667085",
+  fontSize: "13px",
+  marginTop: "4px",
+};
+
+const modalActionsStyle = {
+  marginTop: "16px",
+  display: "flex",
+  gap: "10px",
+};

@@ -13,6 +13,8 @@ import ProductImage from "../components/catalogo/ProductImage";
 import EstadoBadge from "../components/catalogo/EstadoBadge";
 import CodeLine from "../components/catalogo/CodeLine";
 import CatalogoDetalleModal from "../components/catalogo/CatalogoDetalleModal";
+import CatalogoPanelEdicion from "../components/catalogo/CatalogoPanelEdicion";
+
 const ID_SUCURSAL_DEFAULT = 1;
 const ID_USUARIO = 1;
 const LIMIT = 20;
@@ -466,184 +468,25 @@ export default function CatalogoPage() {
           )}
         </section>
 
-        <aside style={sideStyle}>
-          {!seleccionado ? (
-            <section style={cardStyle}>
-              <h2 style={cardTitleStyle}>Panel de edición</h2>
-              <p style={mutedStyle}>
-                Seleccioná una variante para editar producto, variante e imagen.
-                Los precios se manejan aparte desde el módulo de precios.
-              </p>
-              <div style={noteStyle}>
-                Atajos: <strong>/</strong> enfoca búsqueda · <strong>Esc</strong> cierra panel.
-              </div>
-              <div style={noteStyle}>
-                Doble click sobre un artículo para ver imagen grande y detalle completo.
-              </div>
-            </section>
-          ) : (
-            <section style={cardStyle}>
-              <div style={panelHeaderStyle}>
-                <div>
-                  <h2 style={cardTitleStyle}>Editar catálogo</h2>
-                  <p style={mutedSmallStyle}>
-                    {seleccionado.producto_nombre} · Variante #{seleccionado.id_variante}
-                  </p>
-                </div>
-                <button type="button" onClick={cerrarPanel}>
-                  ×
-                </button>
-              </div>
-
-              <div style={identityBoxStyle}>
-                <strong>Identidad fija</strong>
-                <div style={mutedSmallStyle}>SKU: {seleccionado.sku || "-"}</div>
-                <div style={mutedSmallStyle}>
-                  EAN interno: {seleccionado.codigo_barras || "-"}
-                </div>
-                <div style={mutedSmallStyle}>
-                  Código proveedor: {seleccionado.codigo_proveedor || "-"}
-                </div>
-                <div style={mutedSmallStyle}>
-                  Proveedor: {seleccionado.proveedor_preferido_nombre || "-"}
-                </div>
-              </div>
-
-              <form onSubmit={guardarProducto} style={formStyle}>
-                <h3 style={subTitleStyle}>Producto</h3>
-
-                <TextInput
-                  label="Nombre producto"
-                  value={productoForm?.nombre || ""}
-                  onChange={(v) => setProductoForm((p) => ({ ...p, nombre: v }))}
-                />
-
-                <label style={fieldStyle}>
-                  <span style={labelStyle}>Categoría</span>
-                  <select
-                    value={productoForm?.id_categoria || ""}
-                    onChange={(e) =>
-                      setProductoForm((p) => ({
-                        ...p,
-                        id_categoria: e.target.value,
-                      }))
-                    }
-                    style={inputStyle}
-                  >
-                    {categorias.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.nombre}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label style={fieldStyle}>
-                  <span style={labelStyle}>Marca</span>
-                  <select
-                    value={productoForm?.id_marca || ""}
-                    onChange={(e) =>
-                      setProductoForm((p) => ({ ...p, id_marca: e.target.value }))
-                    }
-                    style={inputStyle}
-                  >
-                    <option value="">Sin marca</option>
-                    {marcas.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.nombre}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <button type="submit" disabled={procesando}>
-                  {procesando ? "Guardando..." : "Guardar producto"}
-                </button>
-              </form>
-
-              <div style={separatorStyle} />
-
-              <form onSubmit={guardarVariante} style={formStyle}>
-                <h3 style={subTitleStyle}>Variante</h3>
-
-                <TextInput
-                  label="Nombre variante"
-                  value={form?.nombre_variante || ""}
-                  onChange={(v) => setForm((p) => ({ ...p, nombre_variante: v }))}
-                />
-
-                <TextInput
-                  label="IVA"
-                  type="number"
-                  value={form?.alicuota_iva || 21}
-                  onChange={(v) => setForm((p) => ({ ...p, alicuota_iva: v }))}
-                />
-
-                <label style={checkStyle}>
-                  <input
-                    type="checkbox"
-                    checked={Boolean(form?.gravado)}
-                    onChange={(e) =>
-                      setForm((p) => ({ ...p, gravado: e.target.checked }))
-                    }
-                  />
-                  Gravado
-                </label>
-
-                <label style={checkStyle}>
-                  <input
-                    type="checkbox"
-                    checked={Boolean(form?.permite_precio_libre)}
-                    onChange={(e) =>
-                      setForm((p) => ({
-                        ...p,
-                        permite_precio_libre: e.target.checked,
-                      }))
-                    }
-                  />
-                  Permite precio libre
-                </label>
-
-                <button type="submit" disabled={procesando}>
-                  {procesando ? "Guardando..." : "Guardar variante"}
-                </button>
-              </form>
-
-              <div style={separatorStyle} />
-
-              <form onSubmit={guardarImagen} style={formStyle}>
-                <h3 style={subTitleStyle}>Imagen</h3>
-
-                <ProductImage url={seleccionado.imagen_principal} />
-
-                <TextInput
-                  label="URL imagen principal"
-                  value={imagenUrl}
-                  onChange={setImagenUrl}
-                />
-
-                <button type="submit" disabled={procesando || !imagenUrl.trim()}>
-                  {procesando ? "Guardando..." : "Guardar imagen"}
-                </button>
-              </form>
-
-              <div style={separatorStyle} />
-
-              <button
-                type="button"
-                onClick={toggleEstadoVariante}
-                disabled={procesando}
-                style={seleccionado.activo ? dangerButtonStyle : okButtonStyle}
-              >
-                {seleccionado.activo ? "Desactivar variante" : "Activar variante"}
-              </button>
-
-              <div style={noteStyle}>
-                SKU y EAN son identidad interna fija. No se editan desde catálogo.
-              </div>
-            </section>
-          )}
-        </aside>
+        {seleccionado && (
+          <CatalogoPanelEdicion
+            seleccionado={seleccionado}
+            productoForm={productoForm}
+            form={form}
+            imagenUrl={imagenUrl}
+            categorias={categorias}
+            marcas={marcas}
+            procesando={procesando}
+            onCerrar={cerrarPanel}
+            onGuardarProducto={guardarProducto}
+            onGuardarVariante={guardarVariante}
+            onGuardarImagen={guardarImagen}
+            onToggleEstado={toggleEstadoVariante}
+            setProductoForm={setProductoForm}
+            setForm={setForm}
+            setImagenUrl={setImagenUrl}
+          />
+        )}
       </div>
 
       {detalle && (
