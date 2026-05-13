@@ -24,7 +24,6 @@ const LIMIT = 20;
 export default function CatalogoPage() {
   const searchRef = useRef(null);
   const navigate = useNavigate();
-
   const [items, setItems] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [marcas, setMarcas] = useState([]);
@@ -541,8 +540,8 @@ export default function CatalogoPage() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            abrirPanel(item);
-                            cargarFichaTecnicaProducto(item.id_producto);
+
+                            navigate(`/catalogo/productos/${item.id_producto}`);
                           }}
                         >
                           Editar

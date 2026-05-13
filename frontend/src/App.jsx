@@ -29,7 +29,7 @@ import AltaMercaderiaPage from "./pages/AltaMercaderiaPage";
 import VentaCobroPage from "./pages/VentaCobroPage";
 import ClienteBicicletaDetallePage from "./pages/ClienteBicicletaDetallePage";
 import AltaBicicletaPage from "./pages/AltaBicicletaPage";
-
+import CatalogoProductoDetallePage from "./pages/CatalogoProductoDetallePage";
 export default function App() {
   return (
     <BrowserRouter>
@@ -66,7 +66,7 @@ export default function App() {
           <Route path="/ventas/:ventaId/cobro" element={<VentaCobroPage />} />
           <Route path="/clientes/:clienteId/bicicletas/:bicicletaId" element={<ClienteBicicletaDetallePage />}/>
           <Route path="/mercaderia/bicicletas/alta" element={<AltaBicicletaPage />} />
-          
+          <Route path="/catalogo/productos/:productoId" element={<CatalogoProductoDetallePage />} />
 
         </Routes>
       </AppLayout>

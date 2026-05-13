@@ -602,19 +602,26 @@ def get_producto_by_id(conn, producto_id: int):
         cur.execute(
             """
             SELECT
-                id,
-                id_categoria,
-                id_marca,
-                nombre,
-                tipo_item,
-                stockeable,
-                serializable,
-                rodado,
-                tipo_bicicleta,
-                material_cuadro,
-                activo
-            FROM productos
-            WHERE id = %s
+                p.id,
+                p.id_categoria,
+                c.nombre AS categoria_nombre,
+                p.id_marca,
+                m.nombre AS marca_nombre,
+                p.nombre,
+                p.tipo_item,
+                p.stockeable,
+                p.serializable,
+                p.rodado,
+                p.tipo_bicicleta,
+                p.material_cuadro,
+                p.descripcion,
+                p.activo
+            FROM productos p
+            INNER JOIN categorias c
+                ON c.id = p.id_categoria
+            LEFT JOIN marcas m
+                ON m.id = p.id_marca
+            WHERE p.id = %s
             """,
             (producto_id,),
         )
