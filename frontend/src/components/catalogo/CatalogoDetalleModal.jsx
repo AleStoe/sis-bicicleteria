@@ -1,6 +1,29 @@
+import { useEffect, useState } from "react";
 import { API_BASE_URL } from "../../config/appConfig";
+import { obtenerFichaTecnicaProducto } from "../../services/catalogoService";
 
 export default function CatalogoDetalleModal({ item, onClose, onEdit }) {
+  const [fichaTecnica, setFichaTecnica] = useState([]);
+  const [cargandoFicha, setCargandoFicha] = useState(false);
+
+  useEffect(() => {
+    cargarFichaTecnica();
+  }, [item?.id_producto]);
+
+  async function cargarFichaTecnica() {
+    if (!item?.id_producto) return;
+
+    try {
+      setCargandoFicha(true);
+      const data = await obtenerFichaTecnicaProducto(item.id_producto);
+      setFichaTecnica(data || []);
+    } catch {
+      setFichaTecnica([]);
+    } finally {
+      setCargandoFicha(false);
+    }
+  }
+
   return (
     <div style={modalOverlayStyle} onClick={onClose}>
       <div style={modalStyle} onClick={(e) => e.stopPropagation()}>
@@ -54,6 +77,28 @@ export default function CatalogoDetalleModal({ item, onClose, onEdit }) {
               value={formatMoney(item.precio_mayorista)}
             />
 
+            <div style={separatorStyle} />
+
+            <div>
+              <h3 style={sectionTitleStyle}>Ficha técnica</h3>
+
+              {cargandoFicha ? (
+                <div style={mutedSmallStyle}>Cargando ficha técnica...</div>
+              ) : fichaTecnica.length === 0 ? (
+                <div style={mutedSmallStyle}>Sin ficha técnica cargada.</div>
+              ) : (
+                <div style={fichaBoxStyle}>
+                  {fichaTecnica.map((itemFicha) => (
+                    <InfoRow
+                      key={itemFicha.id}
+                      label={`${itemFicha.grupo} · ${itemFicha.clave}`}
+                      value={itemFicha.valor}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div style={modalActionsStyle}>
               <button type="button" onClick={onEdit}>
                 Editar
@@ -67,6 +112,16 @@ export default function CatalogoDetalleModal({ item, onClose, onEdit }) {
       </div>
     </div>
   );
+}
+
+function getImageUrl(url) {
+  if (!url) return "";
+
+  if (url.startsWith("http://") || url.startsWith("https://")) {
+    return url;
+  }
+
+  return `${API_BASE_URL}${url}`;
 }
 
 function InfoRow({ label, value }) {
@@ -103,7 +158,7 @@ const modalOverlayStyle = {
 };
 
 const modalStyle = {
-  width: "min(950px, 100%)",
+  width: "min(1050px, 100%)",
   background: "white",
   borderRadius: "18px",
   overflow: "hidden",
@@ -172,4 +227,20 @@ const modalActionsStyle = {
   marginTop: "16px",
   display: "flex",
   gap: "10px",
+};
+
+const separatorStyle = {
+  height: "1px",
+  background: "#eee",
+  margin: "10px 0",
+};
+
+const sectionTitleStyle = {
+  margin: "0 0 8px",
+  fontSize: "16px",
+};
+
+const fichaBoxStyle = {
+  display: "grid",
+  gap: "8px",
 };

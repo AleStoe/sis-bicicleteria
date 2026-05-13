@@ -1,3 +1,5 @@
+import FichaTecnicaEditor from "./FichaTecnicaEditor";
+
 export default function CatalogoPanelEdicion({
   seleccionado,
   productoForm,
@@ -15,7 +17,13 @@ export default function CatalogoPanelEdicion({
   onGuardarImagen,
   onToggleEstado,
   setProductoForm,
-  setForm
+  setForm,
+  fichaTecnica,
+  cargandoFicha,
+  onChangeFicha,
+  onAddFicha,
+  onRemoveFicha,
+  onGuardarFicha,
 }) {
   if (!seleccionado || !productoForm || !form) {
     return null;
@@ -36,7 +44,12 @@ export default function CatalogoPanelEdicion({
           ✕
         </button>
       </div>
-
+      fichaTecnica={fichaTecnica}
+      cargandoFicha={cargandoFicha}
+      onChangeFicha={cambiarFichaTecnica}
+      onAddFicha={agregarItemFichaTecnica}
+      onRemoveFicha={quitarItemFichaTecnica}
+      onGuardarFicha={guardarFichaTecnica}
       <form onSubmit={onGuardarProducto} style={panelSectionStyle}>
         <h3 style={sectionTitleStyle}>Producto</h3>
 
@@ -213,7 +226,20 @@ export default function CatalogoPanelEdicion({
             Guardar imagen
         </button>
         </form>
-
+        <div style={panelSectionStyle}>
+          {cargandoFicha ? (
+            <div style={mutedSmallStyle}>Cargando ficha técnica...</div>
+          ) : (
+            <FichaTecnicaEditor
+              items={fichaTecnica}
+              procesando={procesando}
+              onChange={onChangeFicha}
+              onAdd={onAddFicha}
+              onRemove={onRemoveFicha}
+              onSave={onGuardarFicha}
+            />
+          )}
+        </div>  
       <div style={panelSectionStyle}>
         <h3 style={sectionTitleStyle}>Estado</h3>
 

@@ -8,6 +8,8 @@ import {
   listarCatalogoPOS,
   listarCategorias,
   listarMarcas,
+  obtenerFichaTecnicaProducto,
+  reemplazarFichaTecnicaProducto,
 } from "../services/catalogoService";
 import ProductImage from "../components/catalogo/ProductImage";
 import EstadoBadge from "../components/catalogo/EstadoBadge";
@@ -42,7 +44,8 @@ export default function CatalogoPage() {
   const [productoForm, setProductoForm] = useState(null);
   const [imagenArchivo, setImagenArchivo] = useState(null);
   const [imagenPreview, setImagenPreview] = useState("");
-
+  const [fichaTecnica, setFichaTecnica] = useState([]);
+  const [cargandoFicha, setCargandoFicha] = useState(false);
   useEffect(() => {
     cargarCategorias();
     cargarMarcas();
@@ -146,6 +149,8 @@ export default function CatalogoPage() {
     setProductoForm(null);
     setImagenArchivo(null);
     setImagenPreview("");
+    setFichaTecnica([]);
+    setCargandoFicha(false);
   }
 
   function abrirDetalle(item) {
@@ -155,7 +160,87 @@ export default function CatalogoPage() {
   function cerrarDetalle() {
     setDetalle(null);
   }
+  function fichaVacia() {
+    return {
+      grupo: "",
+      clave: "",
+      valor: "",
+      orden: 0,
+    };
+  }
 
+  async function cargarFichaTecnicaProducto(productoId) {
+    if (!productoId) return;
+
+    try {
+      setCargandoFicha(true);
+
+      const data = await obtenerFichaTecnicaProducto(productoId);
+
+      setFichaTecnica(
+        (data || []).map((item, index) => ({
+          id: item.id,
+          grupo: item.grupo || "",
+          clave: item.clave || "",
+          valor: item.valor || "",
+          orden: item.orden ?? index + 1,
+        }))
+      );
+    } catch (err) {
+      setError(err.message || "No se pudo cargar la ficha técnica");
+      setFichaTecnica([]);
+    } finally {
+      setCargandoFicha(false);
+    }
+  }
+
+  function cambiarFichaTecnica(index, campo, valor) {
+    setFichaTecnica((actual) =>
+      actual.map((item, i) =>
+        i === index ? { ...item, [campo]: valor } : item
+      )
+    );
+  }
+
+  function agregarItemFichaTecnica() {
+    setFichaTecnica((actual) => [...actual, fichaVacia()]);
+  }
+
+  function quitarItemFichaTecnica(index) {
+    setFichaTecnica((actual) => actual.filter((_, i) => i !== index));
+  }
+
+  async function guardarFichaTecnica(e) {
+    e.preventDefault();
+
+    if (!seleccionado?.id_producto) return;
+
+    const items = fichaTecnica
+      .filter((item) => item.clave.trim() && item.valor.trim())
+      .map((item, index) => ({
+        grupo: item.grupo.trim() || "GENERAL",
+        clave: item.clave.trim(),
+        valor: item.valor.trim(),
+        orden: index + 1,
+      }));
+
+    try {
+      setProcesando(true);
+      setError("");
+      setMensaje("");
+
+      await reemplazarFichaTecnicaProducto(seleccionado.id_producto, {
+        items,
+      });
+
+      setMensaje("Ficha técnica actualizada correctamente.");
+      await cargarFichaTecnicaProducto(seleccionado.id_producto);
+    } catch (err) {
+      setError(err.message || "No se pudo guardar la ficha técnica");
+    } finally {
+      setProcesando(false);
+    }
+  }
   async function guardarProducto(e) {
     e.preventDefault();
 
@@ -457,6 +542,7 @@ export default function CatalogoPage() {
                           onClick={(e) => {
                             e.stopPropagation();
                             abrirPanel(item);
+                            cargarFichaTecnicaProducto(item.id_producto);
                           }}
                         >
                           Editar
