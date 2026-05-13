@@ -1,9 +1,21 @@
+import { API_BASE_URL } from "../../config/appConfig";
+
+function getImageUrl(url) {
+  if (!url) return "";
+
+  if (url.startsWith("http://") || url.startsWith("https://")) {
+    return url;
+  }
+
+  return `${API_BASE_URL}${url}`;
+}
+
 export default function ProductImage({ url }) {
   if (!url) {
     return <div style={styles.placeholder}>Sin imagen</div>;
   }
 
-  return <img src={url} alt="Producto" style={styles.image} />;
+  return <img src={getImageUrl(url)} alt="Producto" style={styles.image} />;
 }
 
 const styles = {
@@ -13,6 +25,7 @@ const styles = {
     objectFit: "cover",
     borderRadius: "12px",
     border: "1px solid #e5e7eb",
+    background: "#fff",
   },
   placeholder: {
     width: "58px",

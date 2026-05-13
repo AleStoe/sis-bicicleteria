@@ -11,7 +11,7 @@ import { listarSerializadasDisponibles } from "../services/serializadasService";
 import CarritoVentaPanel from "../components/ventas/CarritoVentaPanel";
 import ResumenVentaPanel from "../components/ventas/ResumenVentaPanel";
 import CheckoutVentaPanel from "../components/ventas/CheckoutVentaPanel";
-
+import { buildImageUrl } from "../utils/images";
 import { CURRENT_USER_ID, CURRENT_SUCURSAL_ID } from "../config/appConfig";
 
 const ID_USUARIO = CURRENT_USER_ID;
@@ -582,7 +582,11 @@ async function handleBuscarEnter(e) {
                   >
                     <div style={imageBoxStyle}>
                       {producto.imagen_principal ? (
-                        <img src={producto.imagen_principal} alt={getDescripcion(producto)} style={imageStyle} />
+                        <img
+                          src={buildImageUrl(producto.imagen_principal)}
+                          alt={getDescripcion(producto)}
+                          style={imageStyle}
+                        />
                       ) : (
                         <span style={{ fontSize: "30px" }}>🚲</span>
                       )}

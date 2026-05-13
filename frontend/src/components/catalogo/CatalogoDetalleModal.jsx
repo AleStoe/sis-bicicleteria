@@ -1,3 +1,5 @@
+import { API_BASE_URL } from "../../config/appConfig";
+
 export default function CatalogoDetalleModal({ item, onClose, onEdit }) {
   return (
     <div style={modalOverlayStyle} onClick={onClose}>
@@ -17,7 +19,7 @@ export default function CatalogoDetalleModal({ item, onClose, onEdit }) {
           <div>
             {item.imagen_principal ? (
               <img
-                src={item.imagen_principal}
+                src={getImageUrl(item.imagen_principal)}
                 alt={item.producto_nombre}
                 style={modalImageStyle}
               />

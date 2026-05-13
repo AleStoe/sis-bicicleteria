@@ -2,6 +2,7 @@ import { useState } from "react";
 import VentaItemPrecioPanel from "./item/VentaItemPrecioPanel";
 import VentaItemBonificacionPanel from "./item/VentaItemBonificacionPanel";
 import VentaItemSerializadaPanel from "./item/VentaItemSerializadaPanel";
+
 function formatMoney(value) {
   const n = Number(value || 0);
 

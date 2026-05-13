@@ -2,7 +2,10 @@ export default function CatalogoPanelEdicion({
   seleccionado,
   productoForm,
   form,
-  imagenUrl,
+  imagenArchivo,
+  imagenPreview,
+  setImagenArchivo,
+  setImagenPreview,
   categorias,
   marcas,
   procesando,
@@ -12,8 +15,7 @@ export default function CatalogoPanelEdicion({
   onGuardarImagen,
   onToggleEstado,
   setProductoForm,
-  setForm,
-  setImagenUrl,
+  setForm
 }) {
   if (!seleccionado || !productoForm || !form) {
     return null;
@@ -178,20 +180,39 @@ export default function CatalogoPanelEdicion({
         <h3 style={sectionTitleStyle}>Imagen principal</h3>
 
         <label style={labelStyle}>
-          URL imagen
-
-          <input
+            Subir imagen
+            <input
             style={inputStyle}
-            value={imagenUrl}
-            onChange={(e) => setImagenUrl(e.target.value)}
-            placeholder="https://..."
-          />
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            onChange={(e) => {
+                const archivo = e.target.files?.[0] || null;
+
+                setImagenArchivo(archivo);
+                setImagenPreview(archivo ? URL.createObjectURL(archivo) : "");
+            }}
+            />
         </label>
 
-        <button disabled={procesando}>
-          Guardar imagen
+        {imagenPreview && (
+            <img
+            src={imagenPreview}
+            alt="Preview"
+            style={{
+                width: "100%",
+                maxHeight: "180px",
+                objectFit: "contain",
+                border: "1px solid #e5e7eb",
+                borderRadius: "12px",
+                background: "#fff",
+            }}
+            />
+        )}
+
+        <button disabled={procesando || !imagenArchivo}>
+            Guardar imagen
         </button>
-      </form>
+        </form>
 
       <div style={panelSectionStyle}>
         <h3 style={sectionTitleStyle}>Estado</h3>

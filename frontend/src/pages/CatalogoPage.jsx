@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   cambiarEstadoVariante,
-  crearImagenCatalogo,
+  subirImagenCatalogo,
   editarProducto,
   editarVariante,
   listarCatalogoPOS,
@@ -40,7 +40,8 @@ export default function CatalogoPage() {
   const [detalle, setDetalle] = useState(null);
   const [form, setForm] = useState(null);
   const [productoForm, setProductoForm] = useState(null);
-  const [imagenUrl, setImagenUrl] = useState("");
+  const [imagenArchivo, setImagenArchivo] = useState(null);
+  const [imagenPreview, setImagenPreview] = useState("");
 
   useEffect(() => {
     cargarCategorias();
@@ -135,14 +136,16 @@ export default function CatalogoPage() {
       permite_precio_libre: Boolean(item.permite_precio_libre),
     });
 
-    setImagenUrl("");
+    setImagenArchivo(null);
+    setImagenPreview("");
   }
 
   function cerrarPanel() {
     setSeleccionado(null);
     setForm(null);
     setProductoForm(null);
-    setImagenUrl("");
+    setImagenArchivo(null);
+    setImagenPreview("");
   }
 
   function abrirDetalle(item) {
@@ -213,17 +216,16 @@ export default function CatalogoPage() {
   async function guardarImagen(e) {
     e.preventDefault();
 
-    if (!seleccionado || !imagenUrl.trim()) return;
+    if (!seleccionado || !imagenArchivo) return;
 
     try {
       setProcesando(true);
       setError("");
       setMensaje("");
 
-      await crearImagenCatalogo({
-        id_producto: null,
+      await subirImagenCatalogo({
+        archivo: imagenArchivo,
         id_variante: seleccionado.id_variante,
-        url: imagenUrl.trim(),
         es_principal: true,
         orden: 0,
       });
@@ -473,7 +475,10 @@ export default function CatalogoPage() {
             seleccionado={seleccionado}
             productoForm={productoForm}
             form={form}
-            imagenUrl={imagenUrl}
+            imagenArchivo={imagenArchivo}
+            imagenPreview={imagenPreview}
+            setImagenArchivo={setImagenArchivo}
+            setImagenPreview={setImagenPreview}
             categorias={categorias}
             marcas={marcas}
             procesando={procesando}
@@ -484,7 +489,6 @@ export default function CatalogoPage() {
             onToggleEstado={toggleEstadoVariante}
             setProductoForm={setProductoForm}
             setForm={setForm}
-            setImagenUrl={setImagenUrl}
           />
         )}
       </div>
