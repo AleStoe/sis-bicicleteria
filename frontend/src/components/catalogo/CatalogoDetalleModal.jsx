@@ -87,15 +87,7 @@ export default function CatalogoDetalleModal({ item, onClose, onEdit }) {
               ) : fichaTecnica.length === 0 ? (
                 <div style={mutedSmallStyle}>Sin ficha técnica cargada.</div>
               ) : (
-                <div style={fichaBoxStyle}>
-                  {fichaTecnica.map((itemFicha) => (
-                    <InfoRow
-                      key={itemFicha.id}
-                      label={`${itemFicha.grupo} · ${itemFicha.clave}`}
-                      value={itemFicha.valor}
-                    />
-                  ))}
-                </div>
+                <FichaTecnicaAgrupada items={fichaTecnica} />
               )}
             </div>
 
@@ -146,7 +138,37 @@ function formatMoney(value) {
     maximumFractionDigits: 2,
   });
 }
+function FichaTecnicaAgrupada({ items }) {
+  const grupos = items.reduce((acc, item) => {
+    const grupo = item.grupo || "Otros";
 
+    if (!acc[grupo]) {
+      acc[grupo] = [];
+    }
+
+    acc[grupo].push(item);
+    return acc;
+  }, {});
+
+  return (
+    <div style={fichaGroupedStyle}>
+      {Object.entries(grupos).map(([grupo, componentes]) => (
+        <div key={grupo} style={fichaGroupStyle}>
+          <h4 style={fichaGroupTitleStyle}>{grupo}</h4>
+
+          <div style={fichaSpecsStyle}>
+            {componentes.map((item) => (
+              <div key={item.id} style={fichaSpecRowStyle}>
+                <span style={fichaSpecLabelStyle}>{item.clave}</span>
+                <strong style={fichaSpecValueStyle}>{item.valor || "-"}</strong>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 const modalOverlayStyle = {
   position: "fixed",
   inset: 0,
@@ -159,6 +181,9 @@ const modalOverlayStyle = {
 
 const modalStyle = {
   width: "min(1050px, 100%)",
+  maxHeight: "92vh",
+  display: "flex",
+  flexDirection: "column",
   background: "white",
   borderRadius: "18px",
   overflow: "hidden",
@@ -175,9 +200,11 @@ const modalHeaderStyle = {
 
 const modalContentStyle = {
   display: "grid",
-  gridTemplateColumns: "420px 1fr",
+  gridTemplateColumns: "320px 1fr",
   gap: "20px",
   padding: "22px",
+  overflowY: "auto",
+  alignItems: "start",
 };
 
 const modalImageStyle = {
@@ -243,4 +270,48 @@ const sectionTitleStyle = {
 const fichaBoxStyle = {
   display: "grid",
   gap: "8px",
+};
+
+const fichaGroupedStyle = {
+  display: "grid",
+  gap: "14px",
+};
+
+const fichaGroupStyle = {
+  border: "1px solid #e5e7eb",
+  borderRadius: "12px",
+  padding: "12px",
+  background: "#fff",
+};
+
+const fichaGroupTitleStyle = {
+  margin: "0 0 10px",
+  fontSize: "13px",
+  color: "#175cd3",
+  textTransform: "uppercase",
+  letterSpacing: ".04em",
+};
+
+const fichaSpecsStyle = {
+  display: "grid",
+  gap: "8px",
+};
+
+const fichaSpecRowStyle = {
+  display: "grid",
+  gridTemplateColumns: "minmax(110px, 1fr) minmax(120px, 1.2fr)",
+  gap: "12px",
+  alignItems: "baseline",
+  borderBottom: "1px solid #f2f4f7",
+  paddingBottom: "7px",
+};
+
+const fichaSpecLabelStyle = {
+  color: "#667085",
+  fontSize: "13px",
+};
+
+const fichaSpecValueStyle = {
+  textAlign: "right",
+  fontSize: "14px",
 };

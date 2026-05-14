@@ -1,3 +1,18 @@
+import {
+  FICHA_TECNICA_BICICLETA,
+  getCamposPorGrupo,
+} from "../../../constants/fichaTecnicaBicicleta";
+
+function normalizarGrupo(grupo) {
+  const limpio = String(grupo || "").trim().toLowerCase();
+
+  const encontrado = FICHA_TECNICA_BICICLETA.find(
+    (item) => item.grupo.toLowerCase() === limpio
+  );
+
+  return encontrado?.grupo || grupo || "";
+}
+
 export default function BicicletaFichaTecnicaForm({
   items,
   onAdd,
@@ -14,38 +29,61 @@ export default function BicicletaFichaTecnicaForm({
         </button>
       </div>
 
-      {items.map((item, index) => (
-        <div key={index} style={styles.fichaRow}>
-          <input
-            style={styles.input}
-            value={item.grupo}
-            onChange={(e) => onChange(index, "grupo", e.target.value)}
-            placeholder="Grupo"
-          />
+      {items.map((item, index) => {
+        const grupoNormalizado = normalizarGrupo(item.grupo);
+        const camposDisponibles = getCamposPorGrupo(grupoNormalizado);
 
-          <input
-            style={styles.input}
-            value={item.clave}
-            onChange={(e) => onChange(index, "clave", e.target.value)}
-            placeholder="Clave"
-          />
+        return (
+          <div key={index} style={styles.fichaRow}>
+            <select
+              style={styles.input}
+              value={grupoNormalizado}
+              onChange={(e) => {
+                onChange(index, "grupo", e.target.value);
+                onChange(index, "clave", "");
+              }}
+            >
+              <option value="">Grupo</option>
 
-          <input
-            style={styles.input}
-            value={item.valor}
-            onChange={(e) => onChange(index, "valor", e.target.value)}
-            placeholder="Valor"
-          />
+              {FICHA_TECNICA_BICICLETA.map((grupo) => (
+                <option key={grupo.grupo} value={grupo.grupo}>
+                  {grupo.grupo}
+                </option>
+              ))}
+            </select>
 
-          <button
-            type="button"
-            onClick={() => onRemove(index)}
-            style={styles.dangerButton}
-          >
-            X
-          </button>
-        </div>
-      ))}
+            <select
+              style={styles.input}
+              value={item.clave || ""}
+              onChange={(e) => onChange(index, "clave", e.target.value)}
+              disabled={!grupoNormalizado}
+            >
+              <option value="">Campo</option>
+
+              {camposDisponibles.map((campo) => (
+                <option key={campo} value={campo}>
+                  {campo}
+                </option>
+              ))}
+            </select>
+
+            <input
+              style={styles.input}
+              value={item.valor || ""}
+              onChange={(e) => onChange(index, "valor", e.target.value)}
+              placeholder="Valor"
+            />
+
+            <button
+              type="button"
+              onClick={() => onRemove(index)}
+              style={styles.dangerButton}
+            >
+              X
+            </button>
+          </div>
+        );
+      })}
     </section>
   );
 }
@@ -67,7 +105,7 @@ const styles = {
   },
   fichaRow: {
     display: "grid",
-    gridTemplateColumns: "180px 240px 1fr auto",
+    gridTemplateColumns: "220px 260px 1fr auto",
     gap: "8px",
     alignItems: "center",
   },
@@ -78,6 +116,7 @@ const styles = {
     borderRadius: "10px",
     fontSize: "14px",
     boxSizing: "border-box",
+    background: "#fff",
   },
   secondaryButton: {
     border: "1px solid #d0d5dd",

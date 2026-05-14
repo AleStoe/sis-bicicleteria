@@ -7,7 +7,7 @@ import {
   registrarEgresoCaja,
   registrarAjusteCaja,
 } from "../services/cajaService";
-import { formatCurrency } from "../utils/currency";
+import { formatCurrency } from "../utils/formatters";
 
 const ID_SUCURSAL = 1;
 const ID_USUARIO = 1;

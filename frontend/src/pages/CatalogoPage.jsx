@@ -15,7 +15,6 @@ import ProductImage from "../components/catalogo/ProductImage";
 import EstadoBadge from "../components/catalogo/EstadoBadge";
 import CodeLine from "../components/catalogo/CodeLine";
 import CatalogoDetalleModal from "../components/catalogo/CatalogoDetalleModal";
-import CatalogoPanelEdicion from "../components/catalogo/CatalogoPanelEdicion";
 
 const ID_SUCURSAL_DEFAULT = 1;
 const ID_USUARIO = 1;
@@ -554,28 +553,6 @@ export default function CatalogoPage() {
             </div>
           )}
         </section>
-
-        {seleccionado && (
-          <CatalogoPanelEdicion
-            seleccionado={seleccionado}
-            productoForm={productoForm}
-            form={form}
-            imagenArchivo={imagenArchivo}
-            imagenPreview={imagenPreview}
-            setImagenArchivo={setImagenArchivo}
-            setImagenPreview={setImagenPreview}
-            categorias={categorias}
-            marcas={marcas}
-            procesando={procesando}
-            onCerrar={cerrarPanel}
-            onGuardarProducto={guardarProducto}
-            onGuardarVariante={guardarVariante}
-            onGuardarImagen={guardarImagen}
-            onToggleEstado={toggleEstadoVariante}
-            setProductoForm={setProductoForm}
-            setForm={setForm}
-          />
-        )}
       </div>
 
       {detalle && (
@@ -583,9 +560,8 @@ export default function CatalogoPage() {
           item={detalle}
           onClose={cerrarDetalle}
           onEdit={() => {
-            abrirPanel(detalle);
-            cerrarDetalle();
-          }}
+              navigate(`/catalogo/productos/${detalle.id_producto}`);
+            }}
         />
       )}
     </div>

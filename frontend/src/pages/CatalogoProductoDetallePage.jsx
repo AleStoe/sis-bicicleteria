@@ -1,13 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-
+import { getImageUrl } from "../utils/images";
 import {
   obtenerProducto,
   listarVariantes,
+  obtenerFichaTecnicaProducto,
 } from "../services/catalogoService";
 
 const TAB_GENERAL = "general";
+
 const TAB_VARIANTES = "variantes";
+
+const TAB_FICHA = "ficha";
 
 export default function CatalogoProductoDetallePage() {
   const { productoId } = useParams();
@@ -15,6 +19,7 @@ export default function CatalogoProductoDetallePage() {
 
   const [producto, setProducto] = useState(null);
   const [variantes, setVariantes] = useState([]);
+  const [fichaTecnica, setFichaTecnica] = useState([]);
   const [tabActiva, setTabActiva] = useState(TAB_GENERAL);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -28,8 +33,11 @@ export default function CatalogoProductoDetallePage() {
       setLoading(true);
       setError("");
 
-      const productoData = await obtenerProducto(productoId);
-      const variantesData = await listarVariantes();
+      const [productoData, variantesData, fichaData] = await Promise.all([
+        obtenerProducto(productoId),
+        listarVariantes(),
+        obtenerFichaTecnicaProducto(productoId),
+      ]);
 
       setProducto(productoData);
 
@@ -38,6 +46,7 @@ export default function CatalogoProductoDetallePage() {
           (v) => String(v.id_producto) === String(productoId)
         )
       );
+      setFichaTecnica(fichaData || []);
     } catch (err) {
       setError(err.message || "No se pudo cargar el producto");
     } finally {
@@ -45,8 +54,18 @@ export default function CatalogoProductoDetallePage() {
     }
   }
 
+  const imagenPrincipal = useMemo(() => {
+    const varianteConImagen = variantes.find(
+      (v) => v.imagen_principal
+    );
+
+    return varianteConImagen?.imagen_principal || null;
+  }, [variantes]);
+
   const resumenVariantes = useMemo(() => {
-    const activas = variantes.filter((v) => v.activo !== false).length;
+    const activas = variantes.filter(
+      (v) => v.activo !== false
+    ).length;
 
     return {
       total: variantes.length,
@@ -95,9 +114,17 @@ export default function CatalogoProductoDetallePage() {
 
       <section style={styles.heroGrid}>
         <div style={styles.imageCard}>
-          <div style={styles.imagePlaceholder}>
-            Sin imagen principal
-          </div>
+          {imagenPrincipal ? (
+            <img
+              src={getImageUrl(imagenPrincipal)}
+              alt={producto.nombre}
+              style={styles.heroImage}
+            />
+          ) : (
+            <div style={styles.imagePlaceholder}>
+              Sin imagen principal
+            </div>
+          )}
         </div>
 
         <div style={styles.summaryCard}>
@@ -127,6 +154,12 @@ export default function CatalogoProductoDetallePage() {
           onClick={() => setTabActiva(TAB_VARIANTES)}
         >
           Variantes ({resumenVariantes.total})
+        </TabButton>
+        <TabButton
+          active={tabActiva === TAB_FICHA}
+          onClick={() => setTabActiva(TAB_FICHA)}
+        >
+          Ficha técnica ({fichaTecnica.length})
         </TabButton>
       </nav>
 
@@ -191,6 +224,32 @@ export default function CatalogoProductoDetallePage() {
                       <strong>{formatMoney(variante.precio_mayorista)}</strong>
                     </div>
                   </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+      {tabActiva === TAB_FICHA && (
+        <section style={styles.card}>
+          <div style={styles.sectionHeader}>
+            <div>
+              <h2 style={styles.sectionTitle}>Ficha técnica</h2>
+              <p style={styles.muted}>
+                Componentes y especificaciones del producto base.
+              </p>
+            </div>
+          </div>
+
+          {fichaTecnica.length === 0 ? (
+            <div style={styles.empty}>Este producto no tiene ficha técnica cargada.</div>
+          ) : (
+            <div style={styles.fichaGrid}>
+              {fichaTecnica.map((item) => (
+                <div key={item.id} style={styles.fichaItem}>
+                  <div style={styles.fichaGrupo}>{item.grupo || "GENERAL"}</div>
+                  <div style={styles.fichaClave}>{item.clave}</div>
+                  <strong>{item.valor || "-"}</strong>
                 </div>
               ))}
             </div>
@@ -457,4 +516,38 @@ const styles = {
     padding: "20px",
     color: "#b42318",
   },
+  heroImage: {
+  width: "100%",
+  height: "100%",
+  minHeight: "230px",
+  objectFit: "contain",
+  borderRadius: "14px",
+  background: "#f9fafb",
+},
+fichaGrid: {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: "12px",
+},
+
+fichaItem: {
+  border: "1px solid #e5e7eb",
+  borderRadius: "12px",
+  padding: "12px",
+  background: "#fff",
+},
+
+fichaGrupo: {
+  color: "#175cd3",
+  fontSize: "12px",
+  fontWeight: 800,
+  textTransform: "uppercase",
+  marginBottom: "4px",
+},
+
+fichaClave: {
+  color: "#667085",
+  fontSize: "13px",
+  marginBottom: "4px",
+},
 };
