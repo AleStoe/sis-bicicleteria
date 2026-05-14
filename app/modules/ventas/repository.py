@@ -45,6 +45,7 @@ def get_variantes_by_ids(conn, ids):
                 v.id,
                 v.nombre_variante,
                 v.precio_minorista,
+                 v.precio_mayorista,
                 v.costo_promedio_vigente,
                 v.id_producto,
                 v.activo AS variante_activa,
@@ -75,6 +76,7 @@ def insert_venta(conn, data: dict):
                 id_sucursal,
                 id_cliente,
                 estado,
+                tipo_precio,
                 subtotal_base,
                 descuento_total,
                 recargo_total,
@@ -84,13 +86,14 @@ def insert_venta(conn, data: dict):
                 observaciones,
                 id_reserva_origen
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
             (
                 data["id_sucursal"],
                 data["id_cliente"],
                 data.get("estado", "creada"),
+                data.get("tipo_precio", "minorista"),
                 data.get("subtotal_base", 0),
                 data.get("descuento_total", 0),
                 data.get("recargo_total", 0),
@@ -211,6 +214,7 @@ def get_ventas(conn):
                 v.id_sucursal,
                 s.nombre AS sucursal_nombre,
                 v.estado,
+                v.tipo_precio,
                 v.total_final,
                 v.saldo_pendiente,
                 v.id_reserva_origen
@@ -237,6 +241,7 @@ def get_venta_by_id(conn, venta_id: int):
                 v.id_sucursal,
                 s.nombre AS sucursal_nombre,
                 v.estado,
+                v.tipo_precio,
                 v.subtotal_base,
                 v.descuento_total,
                 v.recargo_total,
@@ -346,6 +351,7 @@ def get_venta_for_update(conn, venta_id: int):
                 id_cliente,
                 id_sucursal,
                 estado,
+                tipo_precio,
                 total_final,
                 saldo_pendiente,
                 id_reserva_origen

@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field, ConfigDict
 
 
 MedioPagoVenta = Literal["efectivo", "transferencia", "mercadopago", "tarjeta"]
-
+TipoPrecioVenta = Literal["minorista", "mayorista"]
 
 class VentaItemCreateInput(BaseModel):
     id_variante: int
@@ -56,6 +56,7 @@ class VentaCreateInput(BaseModel):
     id_cliente: int
     id_sucursal: int
     id_usuario: int
+    tipo_precio: TipoPrecioVenta = "minorista"
     items: List[VentaItemCreateInput]
     pagos: List[VentaPagoCreateInput] = Field(default_factory=list)
     observaciones: Optional[str] = None

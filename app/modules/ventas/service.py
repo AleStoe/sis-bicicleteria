@@ -420,7 +420,22 @@ def crear_venta(data):
 
             for item in items_consolidados:
                 variante = variantes_map[item["id_variante"]]
-                precio_lista = redondear_monto(variante["precio_minorista"])
+                campo_precio = (
+                    "precio_mayorista"
+                    if data.tipo_precio == "mayorista"
+                    else "precio_minorista"
+                )
+
+                precio_lista = redondear_monto(variante[campo_precio])
+
+                if precio_lista <= Decimal("0"):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"La variante {item['id_variante']} no tiene precio "
+                            f"{data.tipo_precio} configurado"
+                        ),
+                    )
 
                 cantidad = to_decimal(item["cantidad"])
 
@@ -498,6 +513,7 @@ def crear_venta(data):
                     "id_sucursal": data.id_sucursal,
                     "id_cliente": data.id_cliente,
                     "estado": "creada",
+                    "tipo_precio": data.tipo_precio,
                     "subtotal_base": subtotal_total,
                     "descuento_total": descuento_total,
                     "recargo_total": recargo_total,
