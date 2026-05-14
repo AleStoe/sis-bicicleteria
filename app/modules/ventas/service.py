@@ -1519,3 +1519,87 @@ def devolver_items(venta_id: int, data):
 
     finally:
         conn.close()
+
+def simular_venta(data):
+    conn = get_connection()
+
+    try:
+        if not data.items:
+            raise HTTPException(status_code=400, detail="La venta debe tener al menos un item")
+
+        items_input = [
+            {
+                "id_variante": item.id_variante,
+                "cantidad": item.cantidad,
+                "id_bicicleta_serializada": item.id_bicicleta_serializada,
+                "precio_unitario_manual": item.precio_unitario_manual,
+                "bonificado": item.bonificado,
+                "motivo_precio_manual": item.motivo_precio_manual,
+                "motivo_bonificacion": item.motivo_bonificacion,
+            }
+            for item in data.items
+        ]
+
+        items_consolidados = _consolidar_items(items_input)
+        ids_unicos = list({item["id_variante"] for item in items_consolidados})
+        variantes_map = _obtener_variantes_map(conn, ids_unicos)
+
+        subtotal_total = Decimal("0")
+
+        for item in items_consolidados:
+            variante = variantes_map[item["id_variante"]]
+
+            campo_precio = (
+                "precio_mayorista"
+                if data.tipo_precio == "mayorista"
+                else "precio_minorista"
+            )
+
+            precio_lista = redondear_monto(variante[campo_precio])
+
+            if precio_lista <= Decimal("0"):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"La variante {item['id_variante']} no tiene precio {data.tipo_precio} configurado",
+                )
+
+            cantidad = to_decimal(item["cantidad"])
+            bonificado = item.get("bonificado", False)
+            precio_manual = item.get("precio_unitario_manual")
+
+            if bonificado:
+                precio_final = Decimal("0")
+            else:
+                precio_final = (
+                    redondear_monto(to_decimal(precio_manual))
+                    if precio_manual is not None
+                    else precio_lista
+                )
+
+            subtotal_total = redondear_monto(
+                subtotal_total + redondear_monto(precio_final * cantidad)
+            )
+
+        pagos = getattr(data, "pagos", []) or []
+
+        resultado_reglas = simular_reglas_comerciales(
+            type(
+                "TmpSimulacion",
+                (),
+                {
+                    "subtotal_base": subtotal_total,
+                    "medios_pago": pagos,
+                },
+            )()
+        )
+
+        return {
+            "subtotal_base": redondear_monto(subtotal_total),
+            "descuento_total": redondear_monto(resultado_reglas["descuento_total"]),
+            "recargo_total": redondear_monto(resultado_reglas["recargo_total"]),
+            "total_final": redondear_monto(resultado_reglas["total_final"]),
+            "reglas_aplicadas": resultado_reglas["reglas_aplicadas"],
+        }
+
+    finally:
+        conn.close()

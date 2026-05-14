@@ -13,7 +13,6 @@ import ResumenVentaPanel from "../components/ventas/ResumenVentaPanel";
 import CheckoutVentaPanel from "../components/ventas/CheckoutVentaPanel";
 import { buildImageUrl } from "../utils/images";
 import { CURRENT_USER_ID, CURRENT_SUCURSAL_ID } from "../config/appConfig";
-
 const ID_USUARIO = CURRENT_USER_ID;
 const ID_SUCURSAL = CURRENT_SUCURSAL_ID;
 const DEFAULT_LIMIT = 80;
@@ -33,7 +32,7 @@ export default function NuevaVentaPage() {
   const [query, setQuery] = useState("");
   const [categoriaId, setCategoriaId] = useState("");
   const [clienteId, setClienteId] = useState("1");
-
+  const [tipoPrecio, setTipoPrecio] = useState("minorista");
   const [items, setItems] = useState([]);
   const [serializadasPorVariante, setSerializadasPorVariante] = useState({});
   const [cargandoSerializadas, setCargandoSerializadas] = useState({});
@@ -100,8 +99,11 @@ export default function NuevaVentaPage() {
       const consumidorFinal = (clientesData || []).find((c) => Number(c.id) === 1);
       if (consumidorFinal) {
         setClienteId("1");
+        setTipoPrecio(tipoPrecioParaCliente(consumidorFinal));
       } else if ((clientesData || []).length > 0) {
-        setClienteId(String(clientesData[0].id));
+        const primerCliente = clientesData[0];
+        setClienteId(String(primerCliente.id));
+        setTipoPrecio(tipoPrecioParaCliente(primerCliente));
       }
     } catch (err) {
       setError(err.message || "No se pudo cargar la venta rápida");
@@ -199,7 +201,7 @@ async function handleBuscarEnter(e) {
         : Number(
             item.precio_unitario_manual ||
               item.precio_final ||
-              item.precio_minorista ||
+              item.precio_lista ||
               0
           );
 
@@ -214,11 +216,26 @@ async function handleBuscarEnter(e) {
   function getCodigo(item) {
     return item.codigo_barras || item.sku || `#${item.id_variante}`;
   }
-
-  function getPrecio(item) {
-    return Number(item.precio_minorista || 0);
+  function getClienteSeleccionado() {
+    return clientes.find((cliente) => Number(cliente.id) === Number(clienteId));
   }
 
+  function tipoPrecioParaCliente(cliente) {
+    return cliente?.tipo_cliente === "mayorista" ? "mayorista" : "minorista";
+  }
+  function handleCambiarCliente(nuevoClienteId) {
+    const cliente = clientes.find((c) => Number(c.id) === Number(nuevoClienteId));
+
+    setClienteId(nuevoClienteId);
+    setTipoPrecio(tipoPrecioParaCliente(cliente));
+  }
+  function getPrecio(item) {
+  return Number(
+    tipoPrecio === "mayorista"
+      ? item.precio_mayorista || 0
+      : item.precio_minorista || 0
+  );
+}
   function getMotivoBloqueo(item) {
     if (item.motivo_no_disponible === "sin_stock" && !item.serializable) return "Sin stock";
     if (item.motivo_no_disponible === "precio_no_definido") return "Precio no definido";
@@ -258,7 +275,10 @@ async function handleBuscarEnter(e) {
           stockeable: producto.stockeable,
           serializable: true,
           stock_disponible: Number(producto.stock_disponible || 0),
-          precio_minorista: getPrecio(producto),
+          precio_minorista: Number(producto.precio_minorista || 0),
+          precio_mayorista: Number(producto.precio_mayorista || 0),
+          precio_lista: getPrecio(producto),
+          tipo_precio_aplicado: tipoPrecio,
           cantidad: 1,
           imagen_principal: producto.imagen_principal,
           id_bicicleta_serializada: null,
@@ -310,7 +330,10 @@ async function handleBuscarEnter(e) {
           stockeable: producto.stockeable,
           serializable: producto.serializable,
           stock_disponible: Number(producto.stock_disponible || 0),
-          precio_minorista: getPrecio(producto),
+          precio_minorista: Number(producto.precio_minorista || 0),
+          precio_mayorista: Number(producto.precio_mayorista || 0),
+          precio_lista: getPrecio(producto),
+          tipo_precio_aplicado: tipoPrecio,
           cantidad: 1,
           imagen_principal: producto.imagen_principal,
           id_bicicleta_serializada: null,
@@ -440,6 +463,7 @@ async function handleBuscarEnter(e) {
       id_cliente: Number(clienteId),
       id_sucursal: ID_SUCURSAL,
       id_usuario: ID_USUARIO,
+      tipo_precio: tipoPrecio,
       items: items.map((item) => ({
         id_variante: Number(item.id_variante),
         cantidad: String(item.cantidad),
@@ -474,7 +498,10 @@ async function handleBuscarEnter(e) {
       setGuardando(true);
       setError("");
       setMensaje("");
-
+      console.log("TOTAL FRONT", total);
+      console.log("PAGOS", JSON.stringify(pagos, null, 2));
+      console.log("ITEMS FRONT", JSON.stringify(items, null, 2));
+      console.log("PAYLOAD CREAR VENTA", JSON.stringify(payload, null, 2));
       const resultado = await crearVenta(payload);
 
       if (entregar_ahora) {
@@ -611,7 +638,7 @@ async function handleBuscarEnter(e) {
                     </div>
 
                     <div style={productPriceStyle}>
-                      <strong>{formatMoney(producto.precio_minorista)}</strong>
+                      <strong>{formatMoney(getPrecio(producto))}</strong>
                       <button
                         type="button"
                         onClick={() => agregarItem(producto)}
@@ -634,12 +661,23 @@ async function handleBuscarEnter(e) {
 
             <label style={clientLabelStyle}>
               Cliente
-              <select value={clienteId} onChange={(e) => setClienteId(e.target.value)} style={clientSelectStyle}>
+              <select value={clienteId} onChange={(e) => handleCambiarCliente(e.target.value)} style={clientSelectStyle}>
                 {clientes.map((cliente) => (
                   <option key={cliente.id} value={cliente.id}>
                     {cliente.nombre} #{cliente.id}
                   </option>
                 ))}
+              </select>
+            </label>
+            <label style={clientLabelStyle}>
+              Precio
+              <select
+                value={tipoPrecio}
+                onChange={(e) => setTipoPrecio(e.target.value)}
+                style={clientSelectStyle}
+              >
+                <option value="minorista">Minorista</option>
+                <option value="mayorista">Mayorista</option>
               </select>
             </label>
           </div>
@@ -678,6 +716,7 @@ async function handleBuscarEnter(e) {
 
           <CheckoutVentaPanel
             total={total}
+            tipoPrecio={tipoPrecio}
             items={items}
             guardando={guardando}
             onVaciar={vaciarVenta}

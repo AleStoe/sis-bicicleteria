@@ -16,6 +16,8 @@ from .schema import (
     VentaDevolucionOutput,
     VentaDevolucionParcialInput,
     VentaDevolucionParcialOutput,
+    VentaSimulacionInput, 
+    VentaSimulacionOut
 )
 from .service import (
     crear_venta,
@@ -26,6 +28,7 @@ from .service import (
     devolver_item_serializado_entregado,
     devolver_venta,
     devolver_items,
+    simular_venta
 )
 
 router = APIRouter()
@@ -69,3 +72,7 @@ def devolver_venta_route(venta_id: int, data: VentaDevolucionInput):
 @router.post("/{venta_id}/devolver-items", response_model=VentaDevolucionParcialOutput)
 def devolver_items_route(venta_id: int, data: VentaDevolucionParcialInput):
     return devolver_items(venta_id, data)
+
+@router.post("/simular", response_model=VentaSimulacionOut)
+def simular_venta_endpoint(data: VentaSimulacionInput):
+    return simular_venta(data)

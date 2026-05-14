@@ -49,3 +49,10 @@ export function devolverItemsVenta(ventaId, data) {
     body: JSON.stringify(data),
   });
 }
+
+export function simularVenta(data) {
+  return apiRequest("/ventas/simular", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}

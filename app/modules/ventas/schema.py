@@ -205,3 +205,16 @@ class VentaDevolucionParcialOutput(BaseModel):
     ok: bool
     venta_id: int
     credito_generado: Decimal
+
+class VentaSimulacionInput(BaseModel):
+    tipo_precio: TipoPrecioVenta = "minorista"
+    items: List[VentaItemCreateInput]
+    pagos: List[VentaPagoCreateInput] = Field(default_factory=list)
+
+
+class VentaSimulacionOut(BaseModel):
+    subtotal_base: Decimal
+    descuento_total: Decimal
+    recargo_total: Decimal
+    total_final: Decimal
+    reglas_aplicadas: list = Field(default_factory=list)
