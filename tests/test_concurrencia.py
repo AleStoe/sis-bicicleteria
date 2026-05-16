@@ -150,11 +150,12 @@ def test_concurrencia_dos_pagos_que_juntos_exceden_saldo(seed_venta_basica):
     with get_test_conn() as conn:
         venta = get_venta(conn, venta_id)
         pagos_confirmados = _contar_pagos(conn, venta_id)
+        movimientos_caja = _contar_movimientos_caja_por_venta(conn, venta_id)
 
     assert pagos_confirmados == 1
+    assert movimientos_caja == 1
     assert venta["estado"] == "pagada_parcial"
     assert float(venta["saldo_pendiente"]) == 9440.0
-
 
 def test_concurrencia_doble_entrega_misma_venta(seed_venta_basica):
     # setup secuencial
@@ -205,12 +206,14 @@ def test_concurrencia_doble_entrega_misma_venta(seed_venta_basica):
             seed_venta_basica["variante_id"],
         )
         entregas = _contar_movimientos_stock_por_venta(conn, venta_id, "entrega")
+        auditorias_entrega = _contar_auditoria_entrega(conn, venta_id)
 
     assert venta["estado"] == "entregada"
     assert float(venta["saldo_pendiente"]) == 0.0
     assert float(stock["stock_fisico"]) == 5.0
     assert float(stock["stock_vendido_pendiente_entrega"]) == 0.0
     assert entregas == 1
+    assert auditorias_entrega == 1
 
 
 def test_concurrencia_dos_ventas_compiten_por_ultimo_stock(seed_venta_basica):
@@ -264,6 +267,7 @@ def test_concurrencia_dos_ventas_compiten_por_ultimo_stock(seed_venta_basica):
     assert float(stock["stock_fisico"]) == 1.0
     assert float(stock["stock_vendido_pendiente_entrega"]) == 1.0
     assert total_ventas == 1
+    
 
 
 def test_concurrencia_pago_mientras_otra_request_anula(seed_venta_basica):
@@ -402,3 +406,37 @@ def test_stress_ventas_concurrencia(seed_venta_basica):
 
     assert float(stock["stock_vendido_pendiente_entrega"]) == 3.0
     assert float(stock["stock_fisico"]) == 3.0
+
+def _contar_movimientos_caja_por_venta(conn, venta_id: int) -> int:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT COUNT(*) AS cantidad
+            FROM caja_movimientos
+            WHERE origen_tipo = 'pago'
+              AND origen_id IN (
+                  SELECT id
+                  FROM pagos
+                  WHERE origen_tipo = 'venta'
+                    AND origen_id = %s
+              )
+            """,
+            (venta_id,),
+        )
+        row = cur.fetchone()
+        return int(row["cantidad"])
+
+def _contar_auditoria_entrega(conn, venta_id: int) -> int:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT COUNT(*) AS cantidad
+            FROM auditoria_eventos
+            WHERE entidad = 'venta'
+              AND entidad_id = %s
+              AND accion = 'venta_entregada'
+            """,
+            (venta_id,),
+        )
+        row = cur.fetchone()
+        return int(row["cantidad"])
