@@ -1151,7 +1151,14 @@ def test_anulacion_venta_crea_evento_auditoria(client, db_conn, seed_venta_basic
         },
     )
     assert venta.status_code == 200
+
     venta_id = venta.json()["venta_id"]
+
+    auditoria_antes = get_auditoria_by_entidad(
+        db_conn,
+        "venta",
+        venta_id,
+    )
 
     anulacion = client.post(
         f"/ventas/{venta_id}/anular",
@@ -1160,12 +1167,33 @@ def test_anulacion_venta_crea_evento_auditoria(client, db_conn, seed_venta_basic
             "id_usuario": seed_venta_basica["usuario_id"],
         },
     )
+
     assert anulacion.status_code == 200, anulacion.text
 
-    eventos = get_auditoria_by_entidad(db_conn, "venta", venta_id)
-    acciones = [e["accion"] for e in eventos]
+    auditoria_despues = get_auditoria_by_entidad(
+        db_conn,
+        "venta",
+        venta_id,
+    )
 
-    assert "anular_venta" in acciones
+    nuevos_eventos = auditoria_despues[len(auditoria_antes):]
+
+    eventos_anulacion = [
+        e for e in nuevos_eventos
+        if e["accion"] == "anular_venta"
+    ]
+
+    assert len(eventos_anulacion) == 1
+
+    evento = eventos_anulacion[0]
+
+    assert evento["entidad"] == "venta"
+    assert evento["entidad_id"] == venta_id
+    assert evento["id_usuario"] == seed_venta_basica["usuario_id"]
+
+    detalle = (evento["detalle"] or "").lower()
+
+    assert "anulación" in detalle or "anulacion" in detalle
 
 def test_devolver_item_parcial_genera_credito_y_repone_stock(
     client,
