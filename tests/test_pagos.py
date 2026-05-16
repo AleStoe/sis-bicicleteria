@@ -311,6 +311,12 @@ def test_rechaza_pago_de_venta_anulada(client, db_conn, seed_venta_basica):
         seed_venta_basica["usuario_id"],
     )
     assert abrir_caja.status_code == 200
+    caja_id = abrir_caja.json()["caja_id"]
+
+    venta_antes = get_venta(db_conn, venta_id)
+    pagos_antes = get_pagos_by_venta(db_conn, venta_id)
+    movimientos_caja_antes = get_caja_movimientos(db_conn, caja_id)
+    auditoria_antes = get_auditoria_by_entidad(db_conn, "venta", venta_id)
 
     pago_response = client.post(
         "/pagos/",
@@ -326,9 +332,17 @@ def test_rechaza_pago_de_venta_anulada(client, db_conn, seed_venta_basica):
     assert pago_response.status_code == 400
     assert "está anulada" in pago_response.json()["detail"]
 
-    venta = get_venta(db_conn, venta_id)
-    assert venta["estado"] == "anulada"
+    venta_despues = get_venta(db_conn, venta_id)
+    pagos_despues = get_pagos_by_venta(db_conn, venta_id)
+    movimientos_caja_despues = get_caja_movimientos(db_conn, caja_id)
+    auditoria_despues = get_auditoria_by_entidad(db_conn, "venta", venta_id)
 
+    assert venta_despues["estado"] == venta_antes["estado"]
+    assert venta_despues["saldo_pendiente"] == venta_antes["saldo_pendiente"]
+
+    assert pagos_despues == pagos_antes
+    assert movimientos_caja_despues == movimientos_caja_antes
+    assert auditoria_despues == auditoria_antes
 
 def test_rechaza_medio_pago_invalido(client, seed_venta_basica):
     venta_id = crear_venta_base(client, seed_venta_basica)
@@ -448,6 +462,7 @@ def test_rechaza_sobrepago_acumulado_en_segundo_pago(client, db_conn, seed_venta
         seed_venta_basica["usuario_id"],
     )
     assert abrir_caja.status_code == 200
+    caja_id = abrir_caja.json()["caja_id"]
 
     pago_1 = client.post(
         "/pagos/",
@@ -461,9 +476,14 @@ def test_rechaza_sobrepago_acumulado_en_segundo_pago(client, db_conn, seed_venta
     )
     assert pago_1.status_code == 200
 
-    venta = get_venta(db_conn, venta_id)
-    assert venta["estado"] == "pagada_parcial"
-    assert float(venta["saldo_pendiente"]) == 4440.0
+    venta_antes = get_venta(db_conn, venta_id)
+    pagos_antes = get_pagos_by_venta(db_conn, venta_id)
+    movimientos_caja_antes = get_caja_movimientos(db_conn, caja_id)
+    auditoria_antes = get_auditoria_by_entidad(db_conn, "venta", venta_id)
+
+    assert venta_antes["estado"] == "pagada_parcial"
+    assert Decimal(str(venta_antes["saldo_pendiente"])) == Decimal("4440.00")
+    assert len(pagos_antes) == 1
 
     pago_2 = client.post(
         "/pagos/",
@@ -475,13 +495,21 @@ def test_rechaza_sobrepago_acumulado_en_segundo_pago(client, db_conn, seed_venta
             "Segundo pago excedido",
         ),
     )
+
     assert pago_2.status_code == 400
     assert "supera el saldo pendiente" in pago_2.json()["detail"]
 
-    venta = get_venta(db_conn, venta_id)
-    assert venta["estado"] == "pagada_parcial"
-    assert float(venta["saldo_pendiente"]) == 4440.0
+    venta_despues = get_venta(db_conn, venta_id)
+    pagos_despues = get_pagos_by_venta(db_conn, venta_id)
+    movimientos_caja_despues = get_caja_movimientos(db_conn, caja_id)
+    auditoria_despues = get_auditoria_by_entidad(db_conn, "venta", venta_id)
 
+    assert venta_despues["estado"] == venta_antes["estado"]
+    assert venta_despues["saldo_pendiente"] == venta_antes["saldo_pendiente"]
+
+    assert pagos_despues == pagos_antes
+    assert movimientos_caja_despues == movimientos_caja_antes
+    assert auditoria_despues == auditoria_antes
 
 def test_lista_pagos_de_una_venta_con_dos_medios(client, seed_venta_basica):
     venta_id = crear_venta_base(client, seed_venta_basica)
