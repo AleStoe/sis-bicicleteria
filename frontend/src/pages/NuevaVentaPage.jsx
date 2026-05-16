@@ -16,14 +16,18 @@ import { formatMoney } from "../utils/formatters";
 import { CURRENT_USER_ID, CURRENT_SUCURSAL_ID } from "../config/appConfig";
 import { validarVentaAntesDeCrear } from "../validators/ventasValidator";
 import { buildVentaPayload } from "../builders/ventasPayloadBuilder";
+import {
+  crearLineId,
+  getCodigoItemCatalogo,
+  getDescripcionItemCatalogo,
+  getMotivoBloqueoItemCatalogo,
+  getPrecioItemCatalogo,
+  puedeAgregarItemCatalogo,
+} from "../helpers/ventasItemsHelper";
 
 const ID_USUARIO = CURRENT_USER_ID;
 const ID_SUCURSAL = CURRENT_SUCURSAL_ID;
 const DEFAULT_LIMIT = 80;
-
-function crearLineId() {
-  return crypto.randomUUID();
-}
 
 export default function NuevaVentaPage() {
   const navigate = useNavigate();
@@ -213,13 +217,6 @@ async function handleBuscarEnter(e) {
     }, 0);
   }, [items]);
 
-  function getDescripcion(item) {
-    return [item.producto_nombre, item.nombre_variante].filter(Boolean).join(" - ");
-  }
-
-  function getCodigo(item) {
-    return item.codigo_barras || item.sku || `#${item.id_variante}`;
-  }
   function getClienteSeleccionado() {
     return clientes.find((cliente) => Number(cliente.id) === Number(clienteId));
   }
@@ -233,32 +230,12 @@ async function handleBuscarEnter(e) {
     setClienteId(nuevoClienteId);
     setTipoPrecio(tipoPrecioParaCliente(cliente));
   }
-  function getPrecio(item) {
-  return Number(
-    tipoPrecio === "mayorista"
-      ? item.precio_mayorista || 0
-      : item.precio_minorista || 0
-  );
-}
-  function getMotivoBloqueo(item) {
-    if (item.motivo_no_disponible === "sin_stock" && !item.serializable) return "Sin stock";
-    if (item.motivo_no_disponible === "precio_no_definido") return "Precio no definido";
-    if (!item.serializable && item.stockeable && Number(item.stock_disponible || 0) <= 0) return "Sin stock";
-    if (getPrecio(item) <= 0) return "Precio no definido";
-    return "No disponible";
-  }
 
-  function puedeAgregar(item) {
-    if (item.disponible_para_venta === false && !item.serializable) return false;
-    if (getPrecio(item) <= 0) return false;
-    if (item.serializable) return true;
-    if (item.stockeable && Number(item.stock_disponible || 0) <= 0) return false;
-    return true;
-  }
+
 
   async function agregarItem(producto) {
-    if (!puedeAgregar(producto)) {
-      setError(`No se puede agregar: ${getMotivoBloqueo(producto)}`);
+    if (!puedeAgregarItemCatalogo(producto, tipoPrecio)) {
+      setError(`No se puede agregar: ${getMotivoBloqueoItemCatalogo(producto, tipoPrecio)}`);
       return;
     }
 
@@ -272,8 +249,8 @@ async function handleBuscarEnter(e) {
           line_id: crearLineId(),
           id_variante: producto.id_variante,
           id_producto: producto.id_producto,
-          descripcion: getDescripcion(producto),
-          codigo: getCodigo(producto),
+          descripcion: getDescripcionItemCatalogo(producto),
+          codigo: getCodigoItemCatalogo(producto),
           categoria_nombre: producto.categoria_nombre,
           tipo_item: producto.tipo_item,
           stockeable: producto.stockeable,
@@ -281,7 +258,7 @@ async function handleBuscarEnter(e) {
           stock_disponible: Number(producto.stock_disponible || 0),
           precio_minorista: Number(producto.precio_minorista || 0),
           precio_mayorista: Number(producto.precio_mayorista || 0),
-          precio_lista: getPrecio(producto),
+          precio_lista: getPrecioItemCatalogo(producto, tipoPrecio),
           tipo_precio_aplicado: tipoPrecio,
           cantidad: 1,
           imagen_principal: producto.imagen_principal,
@@ -327,8 +304,8 @@ async function handleBuscarEnter(e) {
           line_id: crearLineId(),
           id_variante: producto.id_variante,
           id_producto: producto.id_producto,
-          descripcion: getDescripcion(producto),
-          codigo: getCodigo(producto),
+          descripcion: getDescripcionItemCatalogo(producto),
+          codigo: getCodigoItemCatalogo(producto),
           categoria_nombre: producto.categoria_nombre,
           tipo_item: producto.tipo_item,
           stockeable: producto.stockeable,
@@ -336,7 +313,7 @@ async function handleBuscarEnter(e) {
           stock_disponible: Number(producto.stock_disponible || 0),
           precio_minorista: Number(producto.precio_minorista || 0),
           precio_mayorista: Number(producto.precio_mayorista || 0),
-          precio_lista: getPrecio(producto),
+          precio_lista: getPrecioItemCatalogo(producto, tipoPrecio),
           tipo_precio_aplicado: tipoPrecio,
           cantidad: 1,
           imagen_principal: producto.imagen_principal,
@@ -562,7 +539,7 @@ async function handleBuscarEnter(e) {
               <div style={emptyStyle}>No hay productos para mostrar.</div>
             ) : (
               catalogo.map((producto) => {
-                const bloqueado = !puedeAgregar(producto);
+                const bloqueado = !puedeAgregarItemCatalogo(producto, tipoPrecio);
 
                 return (
                   <div
@@ -573,7 +550,7 @@ async function handleBuscarEnter(e) {
                       {producto.imagen_principal ? (
                         <img
                           src={buildImageUrl(producto.imagen_principal)}
-                          alt={getDescripcion(producto)}
+                          alt={getDescripcionItemCatalogo(producto)}
                           style={imageStyle}
                         />
                       ) : (
@@ -582,8 +559,8 @@ async function handleBuscarEnter(e) {
                     </div>
 
                     <div style={productInfoStyle}>
-                      <strong>{getDescripcion(producto)}</strong>
-                      <div style={mutedStyle}>{getCodigo(producto)}</div>
+                      <strong>{getDescripcionItemCatalogo(producto)}</strong>
+                      <div style={mutedStyle}>{getCodigoItemCatalogo(producto)}</div>
                       <div style={tagRowStyle}>
                         <span style={tagStyle}>{producto.categoria_nombre}</span>
                         {producto.serializable ? (
@@ -595,12 +572,12 @@ async function handleBuscarEnter(e) {
                         ) : (
                           <span style={serviceTagStyle}>Servicio</span>
                         )}
-                        {bloqueado && <span style={dangerTagStyle}>{getMotivoBloqueo(producto)}</span>}
+                        {bloqueado && <span style={dangerTagStyle}>{getMotivoBloqueoItemCatalogo(producto, tipoPrecio)}</span>}
                       </div>
                     </div>
 
                     <div style={productPriceStyle}>
-                      <strong>{formatMoney(getPrecio(producto))}</strong>
+                      <strong>{formatMoney(getPrecioItemCatalogo(producto, tipoPrecio))}</strong>
                       <button
                         type="button"
                         onClick={() => agregarItem(producto)}
