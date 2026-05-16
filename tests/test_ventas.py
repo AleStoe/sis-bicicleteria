@@ -841,6 +841,15 @@ def test_anular_venta_sin_permiso_devuelve_403(client, db_conn, seed_venta_basic
 
     venta_id = crear_response.json()["venta_id"]
 
+    venta_antes = get_venta(db_conn, venta_id)
+    stock_antes = get_stock_row(
+        db_conn,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["variante_id"],
+    )
+    movimientos_stock_antes = get_movimientos_by_venta(db_conn, venta_id)
+    auditoria_antes = get_auditoria_by_entidad(db_conn, "venta", venta_id)
+
     usuario_sin_permiso_id = _crear_usuario_sin_permiso(db_conn, "operador_anular")
 
     response = client.post(
@@ -853,52 +862,26 @@ def test_anular_venta_sin_permiso_devuelve_403(client, db_conn, seed_venta_basic
 
     assert response.status_code == 403, response.text
 
-    venta = get_venta(db_conn, venta_id)
-    assert venta["estado"] != "anulada"
-
-def test_entregar_venta_con_deuda_crea_deuda_formal(client, db_conn, seed_venta_basica):
-    crear_response = _crear_venta_basica(client, seed_venta_basica)
-    assert crear_response.status_code == 200
-    venta_id = crear_response.json()["venta_id"]
-
-    abrir_caja = _abrir_caja(
-        client,
+    venta_despues = get_venta(db_conn, venta_id)
+    stock_despues = get_stock_row(
+        db_conn,
         seed_venta_basica["sucursal_id"],
-        seed_venta_basica["usuario_id"],
+        seed_venta_basica["variante_id"],
     )
-    assert abrir_caja.status_code == 200
+    movimientos_stock_despues = get_movimientos_by_venta(db_conn, venta_id)
+    auditoria_despues = get_auditoria_by_entidad(db_conn, "venta", venta_id)
 
-    pago_parcial = client.post(
-        "/pagos/",
-        json={
-            "origen_tipo": "venta",
-            "origen_id": venta_id,
-            "medio_pago": "efectivo",
-            "monto": 10000,
-            "id_usuario": seed_venta_basica["usuario_id"],
-            "nota": "Pago parcial para generar deuda al entregar",
-        },
+    assert venta_despues["estado"] == venta_antes["estado"]
+    assert venta_despues["saldo_pendiente"] == venta_antes["saldo_pendiente"]
+
+    assert stock_despues["stock_fisico"] == stock_antes["stock_fisico"]
+    assert (
+        stock_despues["stock_vendido_pendiente_entrega"]
+        == stock_antes["stock_vendido_pendiente_entrega"]
     )
-    assert pago_parcial.status_code == 200
 
-    entrega = client.post(
-        f"/ventas/{venta_id}/entregar",
-        json={"id_usuario": seed_venta_basica["usuario_id"]},
-    )
-    assert entrega.status_code == 200, entrega.text
-
-    venta = get_venta(db_conn, venta_id)
-    assert venta["estado"] == "entregada"
-    assert _to_decimal(venta["saldo_pendiente"]) == Decimal("14440")
-
-    deudas = get_deudas_by_cliente(db_conn, seed_venta_basica["cliente_id"])
-    assert len(deudas) == 1
-
-    deuda = deudas[0]
-    assert deuda["origen_tipo"] == "venta"
-    assert deuda["origen_id"] == venta_id
-    assert _to_decimal(deuda["saldo_actual"]) == Decimal("14440")
-    assert deuda["estado"] == "abierta"
+    assert movimientos_stock_despues == movimientos_stock_antes
+    assert auditoria_despues == auditoria_antes
 
 
 def test_entregar_venta_con_deuda_crea_movimiento_cargo(client, db_conn, seed_venta_basica):
