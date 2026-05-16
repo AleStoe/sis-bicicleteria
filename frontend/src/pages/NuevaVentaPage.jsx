@@ -1,10 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import {
-  listarCatalogoPOS,
-  listarCategorias,
-  buscarCatalogoPOSExacto,
-} from "../services/catalogoService";
 import { listarClientes } from "../services/clientesService";
 import { crearVenta, entregarVenta } from "../services/ventasService";
 import { listarSerializadasDisponibles } from "../services/serializadasService";
@@ -12,6 +7,7 @@ import CarritoVentaPanel from "../components/ventas/CarritoVentaPanel";
 import ResumenVentaPanel from "../components/ventas/ResumenVentaPanel";
 import CheckoutVentaPanel from "../components/ventas/CheckoutVentaPanel";
 import CatalogoPOSPanel from "../components/ventas/catalogo/CatalogoPOSPanel";
+import { useCatalogoPOS } from "../hooks/useCatalogoPOS";
 import { CURRENT_USER_ID, CURRENT_SUCURSAL_ID } from "../config/appConfig";
 import { validarVentaAntesDeCrear } from "../validators/ventasValidator";
 import { buildVentaPayload } from "../builders/ventasPayloadBuilder";
@@ -32,12 +28,7 @@ export default function NuevaVentaPage() {
   const navigate = useNavigate();
   const searchRef = useRef(null);
 
-  const [catalogo, setCatalogo] = useState([]);
-  const [categorias, setCategorias] = useState([]);
   const [clientes, setClientes] = useState([]);
-
-  const [query, setQuery] = useState("");
-  const [categoriaId, setCategoriaId] = useState("");
   const [clienteId, setClienteId] = useState("1");
   const [tipoPrecio, setTipoPrecio] = useState("minorista");
   const [items, setItems] = useState([]);
@@ -47,23 +38,29 @@ export default function NuevaVentaPage() {
   const [observaciones, setObservaciones] = useState("");
   const [usarCredito, setUsarCredito] = useState(true);
   const [loading, setLoading] = useState(true);
-  const [buscando, setBuscando] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
   const [mensajePOS, setMensajePOS] = useState("");
 
+  const {
+    catalogo,
+    categorias,
+    query,
+    setQuery,
+    categoriaId,
+    setCategoriaId,
+    buscando,
+    cargarCatalogo,
+    buscarPorCodigoExacto,
+  } = useCatalogoPOS({
+    idSucursal: ID_SUCURSAL,
+    limit: DEFAULT_LIMIT,
+    setError,
+  });
   useEffect(() => {
     cargarInicial();
   }, []);
-
-  useEffect(() => {
-    const handle = setTimeout(() => {
-      cargarCatalogo();
-    }, 250);
-
-    return () => clearTimeout(handle);
-  }, [query, categoriaId]);
 
   useEffect(() => {
     function onKeyDown(e) {
@@ -90,18 +87,9 @@ export default function NuevaVentaPage() {
       setLoading(true);
       setError("");
 
-      const [categoriasData, clientesData, catalogoData] = await Promise.all([
-        listarCategorias(),
-        listarClientes({ solo_activos: true }),
-        listarCatalogoPOS({
-          id_sucursal: ID_SUCURSAL,
-          limit: DEFAULT_LIMIT,
-        }),
-      ]);
+      const clientesData = await listarClientes({ solo_activos: true });
 
-      setCategorias(categoriasData || []);
       setClientes(clientesData || []);
-      setCatalogo(Array.isArray(catalogoData) ? catalogoData : catalogoData?.items || []);
 
       const consumidorFinal = (clientesData || []).find((c) => Number(c.id) === 1);
       if (consumidorFinal) {
@@ -119,27 +107,6 @@ export default function NuevaVentaPage() {
     }
   }
 
-  async function cargarCatalogo() {
-    try {
-      setBuscando(true);
-      setError("");
-
-      const data = await listarCatalogoPOS({
-        id_sucursal: ID_SUCURSAL,
-        query: query.trim() || undefined,
-        categoria_id: categoriaId || undefined,
-        limit: DEFAULT_LIMIT,
-        offset: 0,
-      });
-
-      setCatalogo(Array.isArray(data) ? data : data?.items || []);
-    } catch (err) {
-      setError(err.message || "No se pudo cargar el catálogo POS");
-    } finally {
-      setBuscando(false);
-    }
-  }
-
 async function handleBuscarEnter(e) {
   if (e.key !== "Enter") return;
 
@@ -152,10 +119,7 @@ async function handleBuscarEnter(e) {
   try {
     setError("");
 
-    const producto = await buscarCatalogoPOSExacto({
-      id_sucursal: ID_SUCURSAL,
-      codigo,
-    });
+    const producto = await buscarProductoExacto(codigo);
 
     if (!producto) {
       mostrarMensajePOS("No se encontró producto para ese código");
