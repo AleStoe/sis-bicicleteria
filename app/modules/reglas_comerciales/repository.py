@@ -72,3 +72,34 @@ def get_reglas_activas_por_medios(conn, medios_pago: list[str]):
             (medios_pago,),
         )
         return cur.fetchall()
+    
+def get_tarjeta_plan_activo(conn, *, medio_pago: str, cuotas: int, entidad: str | None = None):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT
+                id,
+                nombre,
+                medio_pago,
+                entidad,
+                cuotas,
+                porcentaje_recargo_cliente,
+                porcentaje_costo_financiero,
+                activa,
+                fecha_desde,
+                fecha_hasta
+            FROM tarjeta_planes
+            WHERE activa = TRUE
+              AND medio_pago = %s
+              AND cuotas = %s
+              AND (entidad IS NULL OR entidad = %s)
+              AND (fecha_desde IS NULL OR fecha_desde <= NOW())
+              AND (fecha_hasta IS NULL OR fecha_hasta >= NOW())
+            ORDER BY
+                CASE WHEN entidad = %s THEN 0 ELSE 1 END,
+                id DESC
+            LIMIT 1
+            """,
+            (medio_pago, cuotas, entidad, entidad),
+        )
+        return cur.fetchone()

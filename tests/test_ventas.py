@@ -1317,3 +1317,50 @@ def test_devolver_item_no_permite_devolver_mas_de_lo_vendido(
 
     assert response.status_code == 400
     assert "supera lo disponible" in response.json()["detail"]
+def test_simular_venta_tarjeta_3_cuotas_aplica_plan_financiero(
+    client,
+    seed_venta_basica,
+):
+    response = client.post(
+        "/ventas/simular",
+        json={
+            "tipo_precio": "minorista",
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": "1",
+                    "id_bicicleta_serializada": None,
+                    "precio_unitario_manual": None,
+                    "bonificado": False,
+                    "motivo_precio_manual": None,
+                    "motivo_bonificacion": None,
+                }
+            ],
+            "pagos": [
+                {
+                    "medio_pago": "tarjeta",
+                    "monto": str(seed_venta_basica["precio_venta"]),
+                    "cuotas": 3,
+                    "entidad": None,
+                    "nota": None,
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200, response.text
+
+    data = response.json()
+
+    subtotal = _to_decimal(seed_venta_basica["precio_venta"])
+    recargo_esperado = subtotal * Decimal("0.15")
+    total_esperado = subtotal + recargo_esperado
+
+    assert _to_decimal(data["subtotal_base"]) == subtotal
+    assert _to_decimal(data["descuento_total"]) == Decimal("0")
+    assert _to_decimal(data["recargo_total"]) == recargo_esperado
+    assert _to_decimal(data["total_final"]) == total_esperado
+
+    assert data["reglas_aplicadas"][0]["tipo"] == "recargo"
+    assert data["reglas_aplicadas"][0]["medio_pago"] == "tarjeta"
+    assert _to_decimal(data["reglas_aplicadas"][0]["porcentaje_aplicado"]) == Decimal("15.0000")
