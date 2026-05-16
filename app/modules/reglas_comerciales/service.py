@@ -41,6 +41,10 @@ def _calcular_monto_regla(regla: dict, subtotal_base: Decimal) -> Decimal:
     return Decimal("0")
 
 
+def _pago_cubre_total(pago, total: Decimal) -> bool:
+    return redondear_monto(_dec(pago.monto)) >= redondear_monto(total)
+
+
 def simular_reglas_comerciales(data):
     subtotal_base = redondear_monto(data.subtotal_base)
     pagos = data.medios_pago or []
@@ -49,69 +53,54 @@ def simular_reglas_comerciales(data):
     recargo_total = Decimal("0")
     reglas_aplicadas = []
 
-    medios_pago = {pago.medio_pago for pago in pagos}
+    medios_pago = list({pago.medio_pago for pago in pagos})
 
-    # =========================================
-    # EFECTIVO / TRANSFERENCIA
-    # Descuento contado sobre subtotal_base
-    # =========================================
-    if medios_pago & {"efectivo", "transferencia"}:
-        descuento = redondear_monto(subtotal_base * Decimal("0.10"))
+    conn = get_connection()
+    try:
+        reglas = get_reglas_activas_por_medios(conn, medios_pago)
+    finally:
+        conn.close()
 
-        descuento_total += descuento
+    for regla in reglas:
+        medio_regla = regla.get("medio_pago")
 
-        medios_contado = sorted(medios_pago & {"efectivo", "transferencia"})
+        pagos_aplicables = [
+            pago for pago in pagos
+            if medio_regla is None or pago.medio_pago == medio_regla
+        ]
+
+        if not pagos_aplicables:
+            continue
+
+        if regla.get("requiere_pago_total"):
+            if not any(_pago_cubre_total(pago, subtotal_base) for pago in pagos_aplicables):
+                continue
+
+        monto_regla = _calcular_monto_regla(regla, subtotal_base)
+
+        if monto_regla <= Decimal("0"):
+            continue
+
+        if regla["tipo"] == "descuento":
+            descuento_total = redondear_monto(descuento_total + monto_regla)
+        elif regla["tipo"] == "recargo":
+            recargo_total = redondear_monto(recargo_total + monto_regla)
+        else:
+            continue
 
         reglas_aplicadas.append(
             {
-                "id_regla_comercial": 1,
-                "tipo": "descuento",
-                "descripcion": (
-                    "Descuento contado 10% "
-                    f"({', '.join(medios_contado)})"
-                ),
-                "medio_pago": ",".join(medios_contado),
-                "porcentaje_aplicado": Decimal("10"),
-                "monto_aplicado": descuento,
+                "id_regla_comercial": regla["id"],
+                "tipo": regla["tipo"],
+                "descripcion": regla["nombre"],
+                "medio_pago": medio_regla,
+                "porcentaje_aplicado": regla.get("porcentaje"),
+                "monto_aplicado": monto_regla,
             }
         )
 
-    # =========================================
-    # TARJETA
-    # Recargo sobre monto pagado con tarjeta
-    # =========================================
-    for pago in pagos:
-        if pago.medio_pago != "tarjeta":
-            continue
-
-        monto_pago = redondear_monto(_dec(pago.monto))
-        cuotas = pago.cuotas or 1
-
-        if cuotas > 1:
-            porcentaje = REGLAS_CUOTAS.get(cuotas)
-
-            if porcentaje is None:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"No existe regla financiera para {cuotas} cuotas",
-                )
-
-            recargo = redondear_monto(
-                monto_pago * (porcentaje / Decimal("100"))
-            )
-
-            recargo_total += recargo
-
-            reglas_aplicadas.append(
-                {
-                    "id_regla_comercial": None,
-                    "tipo": "recargo",
-                    "descripcion": f"Recargo tarjeta {cuotas} cuotas",
-                    "medio_pago": "tarjeta",
-                    "porcentaje_aplicado": porcentaje,
-                    "monto_aplicado": recargo,
-                }
-            )
+        if not regla.get("combinable", True):
+            break
 
     total_final = redondear_monto(
         subtotal_base - descuento_total + recargo_total
