@@ -685,7 +685,7 @@ def test_no_permite_pago_en_venta_totalmente_pagada(client, db_conn, seed_venta_
     assert pagos_despues == pagos_antes
     assert movimientos_caja_despues == movimientos_caja_antes
     assert auditoria_despues == auditoria_antes
-    
+
 def test_pago_crea_auditoria(client, db_conn, seed_venta_basica):
     venta_id = crear_venta_base(client, seed_venta_basica)
 
@@ -738,6 +738,7 @@ def test_rechaza_pago_directo_a_venta_entregada_con_deuda(client, db_conn, seed_
         seed_venta_basica["usuario_id"],
     )
     assert abrir_caja.status_code == 200
+    caja_id = abrir_caja.json()["caja_id"]
 
     pago_parcial = client.post(
         "/pagos/",
@@ -757,6 +758,15 @@ def test_rechaza_pago_directo_a_venta_entregada_con_deuda(client, db_conn, seed_
     )
     assert entrega.status_code == 200
 
+    venta_antes = get_venta(db_conn, venta_id)
+    pagos_antes = get_pagos_by_venta(db_conn, venta_id)
+    movimientos_caja_antes = get_caja_movimientos(db_conn, caja_id)
+    auditoria_antes = get_auditoria_by_entidad(db_conn, "venta", venta_id)
+
+    assert venta_antes["estado"] == "entregada"
+    assert Decimal(str(venta_antes["saldo_pendiente"])) > Decimal("0.00")
+    assert len(pagos_antes) == 1
+
     pago_despues = client.post(
         "/pagos/",
         json=_payload_pago(
@@ -770,6 +780,18 @@ def test_rechaza_pago_directo_a_venta_entregada_con_deuda(client, db_conn, seed_
 
     assert pago_despues.status_code == 400
     assert "registrá el pago sobre la deuda correspondiente" in pago_despues.json()["detail"]
+
+    venta_despues = get_venta(db_conn, venta_id)
+    pagos_despues = get_pagos_by_venta(db_conn, venta_id)
+    movimientos_caja_despues = get_caja_movimientos(db_conn, caja_id)
+    auditoria_despues = get_auditoria_by_entidad(db_conn, "venta", venta_id)
+
+    assert venta_despues["estado"] == venta_antes["estado"]
+    assert venta_despues["saldo_pendiente"] == venta_antes["saldo_pendiente"]
+
+    assert pagos_despues == pagos_antes
+    assert movimientos_caja_despues == movimientos_caja_antes
+    assert auditoria_despues == auditoria_antes
 
 def test_pago_de_deuda_no_modifica_saldo_de_venta(client, db_conn, seed_venta_basica):
     # crear venta
