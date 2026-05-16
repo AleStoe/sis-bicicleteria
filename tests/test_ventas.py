@@ -959,10 +959,23 @@ def test_entregar_venta_con_deuda_registra_auditoria_especial_y_deuda(client, db
     assert entrega.status_code == 200
 
     auditorias_venta = get_auditoria_by_entidad(db_conn, AUDITORIA_ENTIDAD_VENTA, venta_id)
-    assert auditorias_venta
-    ultima = auditorias_venta[-1]
-    assert ultima["accion"] == AUDITORIA_ACCION_VENTA_ENTREGA_CON_DEUDA
-    assert "saldo_pendiente=14440" in (ultima["detalle"] or "")
+
+    eventos_entrega_con_deuda = [
+        e for e in auditorias_venta
+        if e["accion"] == AUDITORIA_ACCION_VENTA_ENTREGA_CON_DEUDA
+    ]
+
+    assert len(eventos_entrega_con_deuda) == 1
+
+    evento = eventos_entrega_con_deuda[0]
+
+    assert evento["entidad"] == AUDITORIA_ENTIDAD_VENTA
+    assert evento["entidad_id"] == venta_id
+    assert evento["id_usuario"] == seed_venta_basica["usuario_id"]
+
+    detalle = evento["detalle"] or ""
+
+    assert "saldo_pendiente=14440" in detalle
 
 def test_obtener_venta_pagada_total_no_devuelve_deuda_abierta(
     client, db_conn, seed_venta_basica
@@ -1042,16 +1055,28 @@ def test_venta_creada_crea_evento_auditoria(client, db_conn, seed_venta_basica):
             ],
         },
     )
+
     assert venta.status_code == 200
     venta_id = venta.json()["venta_id"]
 
     eventos = get_auditoria_by_entidad(db_conn, "venta", venta_id)
 
-    assert len(eventos) >= 1
+    eventos_creacion = [
+        e for e in eventos
+        if e["accion"] == "venta_creada"
+    ]
 
-    acciones = [e["accion"] for e in eventos]
+    assert len(eventos_creacion) == 1
 
-    assert "venta_creada" in acciones
+    evento = eventos_creacion[0]
+
+    assert evento["entidad"] == "venta"
+    assert evento["entidad_id"] == venta_id
+    assert evento["id_usuario"] == seed_venta_basica["usuario_id"]
+
+    detalle = (evento["detalle"] or "").lower()
+
+    assert "venta" in detalle
 
 def test_venta_entregada_crea_evento_auditoria(client, db_conn, seed_venta_basica):
     venta = client.post(
@@ -1102,7 +1127,6 @@ def test_venta_entregada_sin_deuda_crea_evento_correcto(client, db_conn, seed_ve
     assert venta.status_code == 200
     venta_id = venta.json()["venta_id"]
 
-    # PAGAR TODO
     abrir = _abrir_caja(
         client,
         seed_venta_basica["sucursal_id"],
@@ -1123,16 +1147,33 @@ def test_venta_entregada_sin_deuda_crea_evento_correcto(client, db_conn, seed_ve
     )
     assert pago.status_code == 200, pago.text
 
+    auditoria_antes = get_auditoria_by_entidad(db_conn, "venta", venta_id)
+
     entrega = client.post(
         f"/ventas/{venta_id}/entregar",
         json={"id_usuario": seed_venta_basica["usuario_id"]},
     )
     assert entrega.status_code == 200
 
-    eventos = get_auditoria_by_entidad(db_conn, "venta", venta_id)
-    acciones = [e["accion"] for e in eventos]
+    auditoria_despues = get_auditoria_by_entidad(db_conn, "venta", venta_id)
+    nuevos_eventos = auditoria_despues[len(auditoria_antes):]
 
-    assert "venta_entregada" in acciones
+    eventos_entrega = [
+        e for e in nuevos_eventos
+        if e["accion"] == "venta_entregada"
+    ]
+
+    assert len(eventos_entrega) == 1
+
+    evento = eventos_entrega[0]
+
+    assert evento["entidad"] == "venta"
+    assert evento["entidad_id"] == venta_id
+    assert evento["id_usuario"] == seed_venta_basica["usuario_id"]
+
+    detalle = (evento["detalle"] or "").lower()
+
+    assert "entreg" in detalle
 
 def test_anulacion_venta_crea_evento_auditoria(client, db_conn, seed_venta_basica):
     venta = client.post(
