@@ -11,8 +11,7 @@ import { listarSerializadasDisponibles } from "../services/serializadasService";
 import CarritoVentaPanel from "../components/ventas/CarritoVentaPanel";
 import ResumenVentaPanel from "../components/ventas/ResumenVentaPanel";
 import CheckoutVentaPanel from "../components/ventas/CheckoutVentaPanel";
-import { buildImageUrl } from "../utils/images";
-import { formatMoney } from "../utils/formatters";
+import CatalogoPOSPanel from "../components/ventas/catalogo/CatalogoPOSPanel";
 import { CURRENT_USER_ID, CURRENT_SUCURSAL_ID } from "../config/appConfig";
 import { validarVentaAntesDeCrear } from "../validators/ventasValidator";
 import { buildVentaPayload } from "../builders/ventasPayloadBuilder";
@@ -499,100 +498,19 @@ async function handleBuscarEnter(e) {
           </div>
         )}
       <main style={layoutStyle}>
-        <section style={leftPanelStyle}>
-          <div style={searchRowStyle}>
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={handleBuscarEnter}
-              placeholder="Producto, talle, SKU o código de barras"
-              style={searchStyle}
-            />
-            <button onClick={cargarCatalogo} style={iconButtonStyle} disabled={buscando}>
-              {buscando ? "..." : "↻"}
-            </button>
-          </div>
-
-          <div style={categoryRowStyle}>
-            <button
-              type="button"
-              onClick={() => setCategoriaId("")}
-              style={!categoriaId ? activeCategoryStyle : categoryStyle}
-            >
-              Todos
-            </button>
-
-            {categorias.map((categoria) => (
-              <button
-                key={categoria.id}
-                type="button"
-                onClick={() => setCategoriaId(String(categoria.id))}
-                style={String(categoriaId) === String(categoria.id) ? activeCategoryStyle : categoryStyle}
-              >
-                {categoria.nombre}
-              </button>
-            ))}
-          </div>
-
-          <div style={catalogListStyle}>
-            {catalogo.length === 0 ? (
-              <div style={emptyStyle}>No hay productos para mostrar.</div>
-            ) : (
-              catalogo.map((producto) => {
-                const bloqueado = !puedeAgregarItemCatalogo(producto, tipoPrecio);
-
-                return (
-                  <div
-                    key={producto.id_variante}
-                    style={bloqueado ? productRowBlockedStyle : productRowStyle}
-                  >
-                    <div style={imageBoxStyle}>
-                      {producto.imagen_principal ? (
-                        <img
-                          src={buildImageUrl(producto.imagen_principal)}
-                          alt={getDescripcionItemCatalogo(producto)}
-                          style={imageStyle}
-                        />
-                      ) : (
-                        <span style={{ fontSize: "30px" }}>🚲</span>
-                      )}
-                    </div>
-
-                    <div style={productInfoStyle}>
-                      <strong>{getDescripcionItemCatalogo(producto)}</strong>
-                      <div style={mutedStyle}>{getCodigoItemCatalogo(producto)}</div>
-                      <div style={tagRowStyle}>
-                        <span style={tagStyle}>{producto.categoria_nombre}</span>
-                        {producto.serializable ? (
-                          <span style={serializableTagStyle}>Bicicleta</span>
-                        ) : producto.stockeable ? (
-                          <span style={stockTagStyle}>
-                            Stock: {Number(producto.stock_disponible || 0).toLocaleString("es-AR")}
-                          </span>
-                        ) : (
-                          <span style={serviceTagStyle}>Servicio</span>
-                        )}
-                        {bloqueado && <span style={dangerTagStyle}>{getMotivoBloqueoItemCatalogo(producto, tipoPrecio)}</span>}
-                      </div>
-                    </div>
-
-                    <div style={productPriceStyle}>
-                      <strong>{formatMoney(getPrecioItemCatalogo(producto, tipoPrecio))}</strong>
-                      <button
-                        type="button"
-                        onClick={() => agregarItem(producto)}
-                        disabled={bloqueado}
-                        style={bloqueado ? addBtnDisabledStyle : addBtnStyle}
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </section>
+        <CatalogoPOSPanel
+          query={query}
+          categoriaId={categoriaId}
+          categorias={categorias}
+          catalogo={catalogo}
+          buscando={buscando}
+          tipoPrecio={tipoPrecio}
+          onQueryChange={setQuery}
+          onBuscarEnter={handleBuscarEnter}
+          onRecargarCatalogo={cargarCatalogo}
+          onCategoriaChange={setCategoriaId}
+          onAgregarItem={agregarItem}
+        />
 
         <aside style={rightPanelStyle}>
           <div style={saleTopStyle}>
