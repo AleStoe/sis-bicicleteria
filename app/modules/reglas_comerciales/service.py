@@ -97,7 +97,7 @@ def simular_reglas_comerciales(data):
                 break
 
         for pago in pagos:
-            if pago.medio_pago not in ("tarjeta", "mercadopago"):
+            if pago.medio_pago != "tarjeta":
                 continue
 
             cuotas = pago.cuotas or 1
