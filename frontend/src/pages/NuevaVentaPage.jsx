@@ -15,6 +15,7 @@ import { buildImageUrl } from "../utils/images";
 import { formatMoney } from "../utils/formatters";
 import { CURRENT_USER_ID, CURRENT_SUCURSAL_ID } from "../config/appConfig";
 import { validarVentaAntesDeCrear } from "../validators/ventasValidator";
+import { buildVentaPayload } from "../builders/ventasPayloadBuilder";
 
 const ID_USUARIO = CURRENT_USER_ID;
 const ID_SUCURSAL = CURRENT_SUCURSAL_ID;
@@ -438,34 +439,16 @@ async function handleBuscarEnter(e) {
   }
 
   function crearPayloadVenta(pagos = []) {
-    return {
-      id_cliente: Number(clienteId),
-      id_sucursal: ID_SUCURSAL,
-      id_usuario: ID_USUARIO,
-      tipo_precio: tipoPrecio,
-      items: items.map((item) => ({
-        id_variante: Number(item.id_variante),
-        cantidad: String(item.cantidad),
-        id_bicicleta_serializada:
-          item.modo_venta_serializada === "serializada" &&
-          item.id_bicicleta_serializada
-            ? Number(item.id_bicicleta_serializada)
-            : null,
-
-        precio_unitario_manual: item.precio_unitario_manual
-          ? String(item.precio_unitario_manual)
-          : null,
-
-        bonificado: Boolean(item.bonificado),
-
-        motivo_precio_manual: item.motivo_precio_manual || null,
-        motivo_bonificacion: item.motivo_bonificacion || null,
-      })),
+    return buildVentaPayload({
+      clienteId,
+      sucursalId: ID_SUCURSAL,
+      usuarioId: ID_USUARIO,
+      tipoPrecio,
+      items,
       pagos,
-      observaciones: observaciones.trim() || null,
-      usar_credito: pagos.length === 0 ? usarCredito : false,
-      monto_credito_a_aplicar: null,
-    };
+      observaciones,
+      usarCredito,
+    });
   }
 
   async function finalizarCheckout({ pagos = [], entregar_ahora }) {
