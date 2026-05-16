@@ -115,7 +115,6 @@ def test_rechaza_crear_deuda_duplicada_para_misma_venta(client, db_conn, seed_ve
 
 def test_registrar_pago_parcial_de_deuda(client, db_conn, seed_venta_basica):
     venta_id = _crear_venta_basica(client, seed_venta_basica)
-
     crear_deuda = client.post(
         "/deudas/",
         json={
@@ -136,7 +135,7 @@ def test_registrar_pago_parcial_de_deuda(client, db_conn, seed_venta_basica):
     )
     assert abrir_caja.status_code == 200
     caja_id = abrir_caja.json()["caja_id"]
-
+    auditoria_antes = get_auditoria_by_entidad(db_conn, "deuda", deuda_id)
     response = client.post(
         f"/deudas/{deuda_id}/pagos",
         json={
@@ -169,10 +168,26 @@ def test_registrar_pago_parcial_de_deuda(client, db_conn, seed_venta_basica):
     assert movimientos_caja[0]["tipo_movimiento"] == "ingreso"
     assert _to_decimal(movimientos_caja[0]["monto"]) == Decimal("4000")
 
-    auditoria = get_auditoria_by_entidad(db_conn, "deuda", deuda_id)
-    acciones = [a["accion"] for a in auditoria]
-    assert "deuda_generada" in acciones
-    assert "deuda_pago_registrado" in acciones
+    auditoria_despues = get_auditoria_by_entidad(db_conn, "deuda", deuda_id)
+    nuevos_eventos = auditoria_despues[len(auditoria_antes):]
+
+    eventos_pago = [
+        e for e in nuevos_eventos
+        if e["accion"] == "deuda_pago_registrado"
+    ]
+
+    assert len(eventos_pago) == 1
+
+    evento = eventos_pago[0]
+
+    assert evento["entidad"] == "deuda"
+    assert evento["entidad_id"] == deuda_id
+    assert evento["id_usuario"] == seed_venta_basica["usuario_id"]
+
+    detalle = (evento["detalle"] or "").lower()
+
+    assert "4000" in detalle
+    assert "6000" in detalle
 
 
 def test_registrar_pago_total_de_deuda_la_cierra(client, db_conn, seed_venta_basica):
