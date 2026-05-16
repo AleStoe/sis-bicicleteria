@@ -323,29 +323,44 @@ def test_concurrencia_pago_mientras_otra_request_anula(seed_venta_basica):
             seed_venta_basica["sucursal_id"],
             seed_venta_basica["variante_id"],
         )
+        movimientos_cancelacion = _contar_movimientos_stock_por_venta(
+            conn,
+            venta_id,
+            "cancelacion_venta",
+        )
+        ingresos_caja = _contar_movimientos_caja_por_venta_y_tipo(
+            conn,
+            venta_id,
+            "ingreso",
+        )
 
-    # Estado final obligatorio: anulada y sin deuda
+    # Estado final obligatorio: anulada y sin deuda/saldo vivo.
+    assert r_anular.status_code == 200, r_anular.text
     assert venta["estado"] == "anulada"
     assert float(venta["saldo_pendiente"]) == 0.0
 
-    # La anulación debe haber liberado el pendiente, sin tocar físico
+    # La anulación debe liberar pendiente sin tocar físico.
     assert float(stock["stock_fisico"]) == 6.0
     assert float(stock["stock_vendido_pendiente_entrega"]) == 0.0
+    assert movimientos_cancelacion == 1
 
     # Dos estados válidos:
-    # A) anulación ganó primero -> pago falla -> 0 pagos, 0 créditos
-    # B) pago confirmó primero -> anulación genera crédito -> 1 pago, 1 crédito por 10000
+    # A) anulación ganó primero -> pago falla -> 0 pagos, 0 créditos, 0 ingresos caja
+    # B) pago confirmó primero -> anulación genera crédito -> 1 pago, 1 crédito, 1 ingreso caja
     assert pagos_confirmados in (0, 1)
+    assert creditos in (0, 1)
 
     if pagos_confirmados == 0:
         assert r_pago.status_code == 400, r_pago.text
         assert creditos == 0
+        assert credito is None
+        assert ingresos_caja == 0
     else:
         assert r_pago.status_code == 200, r_pago.text
-        assert r_anular.status_code == 200, r_anular.text
         assert creditos == 1
         assert credito is not None
         assert Decimal(str(credito["saldo_actual"])) == Decimal("10000")
+        assert ingresos_caja == 1
 
 def test_stress_ventas_concurrencia(seed_venta_basica):
     from concurrent.futures import ThreadPoolExecutor
@@ -437,6 +452,23 @@ def _contar_auditoria_entrega(conn, venta_id: int) -> int:
               AND accion = 'venta_entregada'
             """,
             (venta_id,),
+        )
+        row = cur.fetchone()
+        return int(row["cantidad"])
+
+def _contar_movimientos_caja_por_venta_y_tipo(conn, venta_id: int, tipo_movimiento: str) -> int:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT COUNT(*) AS cantidad
+            FROM caja_movimientos cm
+            JOIN pagos p ON p.id = cm.origen_id
+            WHERE cm.origen_tipo = 'pago'
+              AND p.origen_tipo = 'venta'
+              AND p.origen_id = %s
+              AND cm.tipo_movimiento = %s
+            """,
+            (venta_id, tipo_movimiento),
         )
         row = cur.fetchone()
         return int(row["cantidad"])
