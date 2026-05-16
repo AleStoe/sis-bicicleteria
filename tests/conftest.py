@@ -708,3 +708,17 @@ def get_venta_items(conn, venta_id: int):
             (venta_id,),
         )
         return cur.fetchall()
+
+def get_pagos_by_venta(conn, venta_id):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT *
+            FROM pagos
+            WHERE origen_tipo = 'venta'
+              AND origen_id = %s
+            ORDER BY id
+            """,
+            (venta_id,),
+        )
+        return cur.fetchall()
