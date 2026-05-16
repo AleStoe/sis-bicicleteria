@@ -12,7 +12,10 @@ import CarritoVentaPanel from "../components/ventas/CarritoVentaPanel";
 import ResumenVentaPanel from "../components/ventas/ResumenVentaPanel";
 import CheckoutVentaPanel from "../components/ventas/CheckoutVentaPanel";
 import { buildImageUrl } from "../utils/images";
+import { formatMoney } from "../utils/formatters";
 import { CURRENT_USER_ID, CURRENT_SUCURSAL_ID } from "../config/appConfig";
+import { validarVentaAntesDeCrear } from "../validators/ventasValidator";
+
 const ID_USUARIO = CURRENT_USER_ID;
 const ID_SUCURSAL = CURRENT_SUCURSAL_ID;
 const DEFAULT_LIMIT = 80;
@@ -424,34 +427,10 @@ async function handleBuscarEnter(e) {
   }
 
   function validarVentaAntesDeFinalizar() {
-    if (!clienteId) {
-      setError("Seleccioná un cliente");
-      return false;
-    }
+    const errorValidacion = validarVentaAntesDeCrear({ clienteId, items });
 
-    if (items.length === 0) {
-      setError("Agregá al menos un item");
-      return false;
-    }
-
-    const serializadaSinCuadro = items.find(
-      (item) =>
-        item.serializable &&
-        item.modo_venta_serializada === "serializada" &&
-        !item.id_bicicleta_serializada
-    );
-
-    if (serializadaSinCuadro) {
-      setError(`Seleccioná número de cuadro para: ${serializadaSinCuadro.descripcion}`);
-      return false;
-    }
-
-    const serializadasElegidas = items
-      .filter((item) => item.id_bicicleta_serializada)
-      .map((item) => Number(item.id_bicicleta_serializada));
-
-    if (new Set(serializadasElegidas).size !== serializadasElegidas.length) {
-      setError("No podés vender dos veces la misma bicicleta serializada");
+    if (errorValidacion) {
+      setError(errorValidacion);
       return false;
     }
 
@@ -726,14 +705,6 @@ async function handleBuscarEnter(e) {
       </main>
     </div>
   );
-}
-
-function formatMoney(value) {
-  return Number(value || 0).toLocaleString("es-AR", {
-    style: "currency",
-    currency: "ARS",
-    maximumFractionDigits: 2,
-  });
 }
 
 const pageStyle = {
