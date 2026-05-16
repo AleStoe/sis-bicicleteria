@@ -306,6 +306,7 @@ def test_no_permite_anular_venta_entregada(client, db_conn, seed_venta_basica):
         seed_venta_basica["usuario_id"],
     )
     assert abrir_caja_response.status_code == 200
+    caja_id = abrir_caja_response.json()["caja_id"]
 
     pago_response = _pagar_venta_basica_total(client, venta_id, seed_venta_basica)
     assert pago_response.status_code == 200
@@ -316,6 +317,17 @@ def test_no_permite_anular_venta_entregada(client, db_conn, seed_venta_basica):
     )
     assert entregar_response.status_code == 200
 
+    venta_antes = get_venta(db_conn, venta_id)
+    stock_antes = get_stock_row(
+        db_conn,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["variante_id"],
+    )
+    movimientos_stock_antes = get_movimientos_by_venta(db_conn, venta_id)
+    movimientos_caja_antes = get_caja_movimientos(db_conn, caja_id)
+    auditoria_antes = get_auditoria_by_entidad(db_conn, "venta", venta_id)
+    deudas_antes = get_deudas_by_cliente(db_conn, seed_venta_basica["cliente_id"])
+
     anular_response = client.post(
         f"/ventas/{venta_id}/anular",
         json={
@@ -323,8 +335,34 @@ def test_no_permite_anular_venta_entregada(client, db_conn, seed_venta_basica):
             "id_usuario": seed_venta_basica["usuario_id"],
         },
     )
+
     assert anular_response.status_code == 400
     assert "no se puede anular" in anular_response.json()["detail"]
+
+    venta_despues = get_venta(db_conn, venta_id)
+    stock_despues = get_stock_row(
+        db_conn,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["variante_id"],
+    )
+    movimientos_stock_despues = get_movimientos_by_venta(db_conn, venta_id)
+    movimientos_caja_despues = get_caja_movimientos(db_conn, caja_id)
+    auditoria_despues = get_auditoria_by_entidad(db_conn, "venta", venta_id)
+    deudas_despues = get_deudas_by_cliente(db_conn, seed_venta_basica["cliente_id"])
+
+    assert venta_despues["estado"] == venta_antes["estado"]
+    assert venta_despues["saldo_pendiente"] == venta_antes["saldo_pendiente"]
+
+    assert stock_despues["stock_fisico"] == stock_antes["stock_fisico"]
+    assert (
+        stock_despues["stock_vendido_pendiente_entrega"]
+        == stock_antes["stock_vendido_pendiente_entrega"]
+    )
+
+    assert movimientos_stock_despues == movimientos_stock_antes
+    assert movimientos_caja_despues == movimientos_caja_antes
+    assert auditoria_despues == auditoria_antes
+    assert deudas_despues == deudas_antes
 
 
 def test_rechaza_venta_sin_items(client, seed_venta_basica):
