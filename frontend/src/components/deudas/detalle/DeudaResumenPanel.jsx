@@ -1,4 +1,5 @@
-import { EstadoDeudaBadge, formatMoney } from "../../../pages/DeudasListPage";
+import { EstadoDeudaBadge } from "../../../pages/DeudasListPage";
+import { formatMoney } from "../../../utils/formatters";
 
 function Info({ label, value, full = false }) {
   return (

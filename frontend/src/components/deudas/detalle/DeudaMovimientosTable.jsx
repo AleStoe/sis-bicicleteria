@@ -1,4 +1,4 @@
-import { formatMoney } from "../../../pages/DeudasListPage";
+import { formatMoney } from "../../../utils/formatters";
 
 export default function DeudaMovimientosTable({ movimientos }) {
   return (

@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { formatMoney } from "../../../pages/DeudasListPage";
+import { formatMoney } from "../../../utils/formatters";
 
 export default function DeudaOrigenPanel({ origen }) {
   if (!origen) {

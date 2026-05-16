@@ -1,20 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { listarDeudas } from "../services/deudasService";
-
-export function formatMoney(value) {
-  const number = Number(value || 0);
-  return number.toLocaleString("es-AR", {
-    style: "currency",
-    currency: "ARS",
-    minimumFractionDigits: 2,
-  });
-}
-
-export function formatDate(value) {
-  if (!value) return "-";
-  return new Date(value).toLocaleString("es-AR");
-}
+import { formatMoney, formatDateTime } from "../utils/formatters";
 
 export function EstadoDeudaBadge({ estado }) {
   const colors = {
