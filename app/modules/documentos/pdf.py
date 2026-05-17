@@ -164,6 +164,7 @@ def _draw_table_header(c, y, width, margin_x):
 def generar_comprobante_x_pdf(data: dict) -> bytes:
     venta = data["venta"]
     items = data["items"]
+    pagos = data.get("pagos", [])
 
     buffer = BytesIO()
 
@@ -253,14 +254,73 @@ def generar_comprobante_x_pdf(data: dict) -> bytes:
 
     y -= 4 * mm
 
+    c.setFont("Helvetica", 9)
+
+    c.drawRightString(width - margin_x - 35 * mm, y, "Subtotal base")
+    c.drawRightString(width - margin_x, y, _money(venta.get("subtotal_base")))
+
+    y -= 6 * mm
+    c.drawRightString(width - margin_x - 35 * mm, y, "Descuento")
+    c.drawRightString(width - margin_x, y, f"- {_money(venta.get('descuento_total'))}")
+
+    y -= 6 * mm
+    c.drawRightString(width - margin_x - 35 * mm, y, "Recargo")
+    c.drawRightString(width - margin_x, y, f"+ {_money(venta.get('recargo_total'))}")
+
+    y -= 7 * mm
     c.setFont("Helvetica-Bold", 12)
-    c.drawRightString(width - margin_x - 35 * mm, y, "TOTAL")
+    c.drawRightString(width - margin_x - 35 * mm, y, "TOTAL COBRADO")
     c.drawRightString(width - margin_x, y, _money(venta.get("total_final")))
 
     y -= 7 * mm
     c.setFont("Helvetica", 9)
     c.drawRightString(width - margin_x - 35 * mm, y, "Saldo pendiente")
     c.drawRightString(width - margin_x, y, _money(venta.get("saldo_pendiente")))
+
+    # =========================================================
+    # DESGLOSE DE PAGOS
+    # =========================================================
+
+    if pagos:
+        y -= 12 * mm
+
+        c.setFont("Helvetica-Bold", 10)
+        c.drawString(margin_x, y, "Pagos")
+
+        y -= 6 * mm
+
+        for pago in pagos:
+            if y < 35 * mm:
+                c.showPage()
+                y = height - 18 * mm
+
+            medio = _text(pago.get("medio_pago")).capitalize()
+            monto_cobrado = pago.get("monto_total_cobrado")
+
+            c.setFont("Helvetica-Bold", 9)
+            c.drawString(margin_x, y, medio)
+
+            c.drawRightString(
+                width - margin_x,
+                y,
+                _money(monto_cobrado),
+            )
+
+            y -= 5 * mm
+            c.setFont("Helvetica", 8)
+
+            if pago.get("medio_pago") == "tarjeta":
+                detalle = (
+                    f"Base: {_money(pago.get('monto_base'))} · "
+                    f"Recargo: {_money(pago.get('monto_recargo_financiero'))} · "
+                    f"{pago.get('cuotas') or 1} cuota(s)"
+                )
+            else:
+                detalle = "Cobrado real"
+
+            c.drawString(margin_x + 4 * mm, y, detalle[:105])
+
+            y -= 7 * mm
 
     if venta.get("observaciones"):
         y -= 12 * mm

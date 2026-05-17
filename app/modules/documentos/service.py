@@ -5,6 +5,7 @@ from app.db.connection import get_connection
 from .repository import (
     get_venta_comprobante_by_id,
     get_venta_items_comprobante_by_venta_id,
+    get_pagos_comprobante_by_venta_id,
 )
 
 
@@ -30,10 +31,14 @@ def obtener_datos_comprobante_x_venta(venta_id: int):
                 status_code=400,
                 detail="La venta no tiene items para imprimir",
             )
-
+        pagos = get_pagos_comprobante_by_venta_id(
+            conn,
+            venta_id,
+        )
         return {
             "venta": venta,
             "items": items,
+            "pagos": pagos,
         }
 
     finally:
