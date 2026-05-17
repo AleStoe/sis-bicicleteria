@@ -16,194 +16,203 @@ export default function VentaItemVendidoCard({
 
   const devueltoParcial = cantidadDevuelta > 0 && !devueltoTotal;
 
-  return (
-    <div style={itemCardStyle}>
-      <div style={itemTopStyle}>
-        <div>
-          <strong style={{ fontSize: "16px" }}>
-            {item.descripcion_snapshot}
-          </strong>
+  const tienePrecioDiferente =
+    Number(item.precio_lista) !== Number(item.precio_final);
 
-          <div style={mutedInlineStyle}>
-            Item #{item.id} · Variante #{item.id_variante}
+  return (
+    <article style={itemCardStyle}>
+      <div style={mainRowStyle}>
+        <div style={productBlockStyle}>
+          <div style={titleRowStyle}>
+            <h3 style={titleStyle}>{item.descripcion_snapshot}</h3>
+
+            {item.bonificado && <Badge tone="success">Bonificado</Badge>}
+            {item.motivo_precio_manual && <Badge tone="warning">Precio manual</Badge>}
+            {devueltoTotal && <Badge tone="info">Devuelto</Badge>}
+            {devueltoParcial && (
+              <Badge tone="neutral">
+                Devuelto parcial: {cantidadDevuelta} de {cantidadVendida}
+              </Badge>
+            )}
+          </div>
+
+          <div style={metaStyle}>
+            Item #{item.id} · Variante #{item.id_variante} · Cantidad{" "}
+            {cantidadVendida.toLocaleString("es-AR")} ·{" "}
+            {item.id_bicicleta_serializada
+              ? `Serializada #${item.id_bicicleta_serializada}`
+              : "No serializada"}
           </div>
         </div>
 
-        <div style={priceBoxStyle}>
+        <div style={subtotalBlockStyle}>
           <span>Subtotal</span>
-          <strong>{formatMoney(item.subtotal)}</strong>
+          <strong style={{ fontSize: 20 }}>{formatMoney(item.subtotal)}</strong>
         </div>
       </div>
 
-      <div style={specsGridStyle}>
-        <Spec
-          label="Cantidad"
-          value={cantidadVendida.toLocaleString("es-AR")}
-        />
-
-        <Spec
-          label="Devuelto"
-          value={
-            cantidadDevuelta > 0
-              ? cantidadDevuelta.toLocaleString("es-AR")
-              : "-"
-          }
-        />
-
-        <Spec label="Precio lista" value={formatMoney(item.precio_lista)} />
-
-        <Spec label="Precio final" value={formatMoney(item.precio_final)} />
-
-        <Spec
-          label="Serializada"
-          value={
-            item.id_bicicleta_serializada
-              ? `#${item.id_bicicleta_serializada}`
-              : "-"
-          }
-        />
-      </div>
-
-      {(item.bonificado ||
-        item.motivo_precio_manual ||
-        devueltoTotal ||
-        devueltoParcial) && (
-        <div style={badgesRowStyle}>
-          {item.bonificado && <div style={bonusBadgeStyle}>Bonificado</div>}
-
-          {item.motivo_precio_manual && (
-            <div style={manualPriceBadgeStyle}>Precio manual</div>
+      <div style={bottomRowStyle}>
+        <div style={moneyGridStyle}>
+          {tienePrecioDiferente ? (
+            <>
+              <Metric label="Precio lista" value={formatMoney(item.precio_lista)} />
+              <Metric label="Precio final" value={formatMoney(item.precio_final)} />
+            </>
+          ) : (
+            <Metric label="Precio" value={formatMoney(item.precio_final)} />
           )}
 
-          {devueltoTotal && <div style={devueltoBadgeStyle}>Devuelto</div>}
-
-          {devueltoParcial && (
-            <div style={devueltoParcialBadgeStyle}>
-              Devuelto parcial: {cantidadDevuelta} de {cantidadVendida}
-            </div>
+          {cantidadDevuelta > 0 && (
+            <Metric
+              label="Devuelto"
+              value={cantidadDevuelta.toLocaleString("es-AR")}
+            />
           )}
         </div>
-      )}
 
-      <VentaItemVendidoAcciones
-        venta={venta}
-        item={item}
-        procesando={procesando || devueltoTotal}
-        onDevolverItem={onDevolverItem}
-        onDevolverSerializada={onDevolverSerializada}
-      />
-    </div>
+        <VentaItemVendidoAcciones
+          venta={venta}
+          item={item}
+          procesando={procesando || devueltoTotal}
+          onDevolverItem={onDevolverItem}
+          onDevolverSerializada={onDevolverSerializada}
+        />
+      </div>
+    </article>
   );
 }
 
-function Spec({ label, value }) {
+function Metric({ label, value }) {
   return (
-    <div style={specStyle}>
-      <span style={specLabelStyle}>{label}</span>
+    <div style={metricStyle}>
+      <span>{label}</span>
       <strong>{value}</strong>
     </div>
   );
 }
 
+function Badge({ children, tone = "neutral" }) {
+  const toneStyle =
+    tone === "success"
+      ? badgeSuccessStyle
+      : tone === "warning"
+        ? badgeWarningStyle
+        : tone === "info"
+          ? badgeInfoStyle
+          : badgeNeutralStyle;
+
+  return <span style={{ ...badgeBaseStyle, ...toneStyle }}>{children}</span>;
+}
+
 const itemCardStyle = {
   border: "1px solid #eaecf0",
-  borderRadius: "14px",
-  padding: "16px",
-  background: "#fcfcfd",
+  borderRadius: 14,
+  padding: 16,
+  background: "#ffffff",
   display: "grid",
-  gap: "14px",
+  gap: 12,
+  boxShadow: "0 1px 2px rgba(16, 24, 40, 0.04)",
 };
 
-const itemTopStyle = {
+const mainRowStyle = {
+  display: "grid",
+  gridTemplateColumns: "1fr auto",
+  gap: 14,
+  alignItems: "start",
+};
+
+const productBlockStyle = {
+  display: "grid",
+  gap: 6,
+  minWidth: 0,
+};
+
+const titleRowStyle = {
   display: "flex",
-  justifyContent: "space-between",
-  gap: "12px",
-  alignItems: "flex-start",
+  alignItems: "center",
+  gap: 8,
   flexWrap: "wrap",
 };
 
-const priceBoxStyle = {
-  background: "white",
-  border: "1px solid #eaecf0",
-  borderRadius: "10px",
-  padding: "10px 14px",
+const titleStyle = {
+  margin: 0,
+  fontSize: 17,
+  lineHeight: 1.2,
+  fontWeight: 900,
+  color: "#111827",
+};
+
+const metaStyle = {
+  color: "#667085",
+  fontSize: 12,
+  lineHeight: 1.3,
+};
+
+const subtotalBlockStyle = {
+  minWidth: 120,
+  borderRadius: 12,
+  padding: "8px 12px",
+  color: "#111827",
+  background: "#f8fafc",
   display: "grid",
-  gap: "4px",
+  gap: 2,
   textAlign: "right",
 };
 
-const specsGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-  gap: "10px",
-};
-
-const specStyle = {
-  background: "white",
-  border: "1px solid #eaecf0",
-  borderRadius: "10px",
-  padding: "10px",
-  display: "grid",
-  gap: "4px",
-};
-
-const specLabelStyle = {
-  fontSize: "12px",
-  color: "#667085",
-};
-
-const mutedInlineStyle = {
-  color: "#667085",
-  fontSize: "13px",
-  marginTop: "4px",
-};
-
-const badgesRowStyle = {
+const bottomRowStyle = {
   display: "flex",
-  gap: "8px",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 16,
   flexWrap: "wrap",
 };
 
-const bonusBadgeStyle = {
-  display: "inline-block",
+const moneyGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, max-content))",
+  gap: 10,
+  alignItems: "center",
+  width: "fit-content",
+};
+
+const metricStyle = {
+  background: "#f8fafc",
+  borderRadius: 10,
+  padding: "8px 10px",
+  display: "grid",
+  gap: 2,
+  color: "#667085",
+  fontSize: 12,
+  minWidth: 180,
+};
+
+const badgeBaseStyle = {
+  borderRadius: 999,
+  padding: "4px 8px",
+  fontSize: 12,
+  fontWeight: 800,
+};
+
+const badgeSuccessStyle = {
   background: "#ecfdf3",
   color: "#067647",
   border: "1px solid #abefc6",
-  borderRadius: "999px",
-  padding: "4px 8px",
-  fontSize: "12px",
-  fontWeight: 800,
 };
 
-const manualPriceBadgeStyle = {
-  display: "inline-block",
+const badgeWarningStyle = {
   background: "#fff8e1",
   color: "#8a6d00",
   border: "1px solid #f3dc97",
-  borderRadius: "999px",
-  padding: "4px 8px",
-  fontSize: "12px",
-  fontWeight: 800,
 };
 
-const devueltoBadgeStyle = {
-  display: "inline-block",
+const badgeInfoStyle = {
   background: "#eef4ff",
   color: "#3538cd",
   border: "1px solid #c7d7fe",
-  borderRadius: "999px",
-  padding: "4px 8px",
-  fontSize: "12px",
-  fontWeight: 800,
 };
 
-const devueltoParcialBadgeStyle = {
-  display: "inline-block",
+const badgeNeutralStyle = {
   background: "#f9fafb",
   color: "#344054",
   border: "1px solid #d0d5dd",
-  borderRadius: "999px",
-  padding: "4px 8px",
-  fontSize: "12px",
-  fontWeight: 800,
 };

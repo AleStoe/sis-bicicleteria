@@ -17,10 +17,10 @@ export default function VentaResumenCards({
         gap: "12px",
       }}
     >
-      <MetricCard label="Total venta" value={formatMoney(totalFinal)} />
+      <MetricCard label="Total final" value={formatMoney(totalFinal)} />
 
       <MetricCard
-        label="Pagado real"
+        label="Cobrado bruto"
         value={formatMoney(totalPagadoReal)}
         tone="success"
       />

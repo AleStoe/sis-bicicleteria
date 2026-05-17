@@ -3,6 +3,8 @@ import { useParams } from "react-router-dom";
 import VentaHeader from "../components/ventas/detalle/VentaHeader";
 import VentaResumenCards from "../components/ventas/detalle/VentaResumenCards";
 import VentaDocumentosPanel from "../components/ventas/detalle/VentaDocumentosPanel";
+import VentaPagosPanel from "../components/ventas/detalle/VentaPagosPanel";
+
 import {
   obtenerVenta,
   anularVenta,
@@ -333,6 +335,8 @@ const estaCerradaOperativamente =
         tieneDeuda={tieneDeuda}
         deuda={deuda}
       />
+
+      <VentaPagosPanel pagos={pagos} formatMoney={formatMoney} />
 
       <VentaAccionesPanel
         venta={venta}

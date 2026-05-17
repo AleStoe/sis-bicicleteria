@@ -55,6 +55,15 @@ class PagoResumenOutput(BaseModel):
     nota: str | None = None
     id_usuario: int
 
+    id_tarjeta_plan: int | None = None
+    tarjeta_plan_nombre: str | None = None
+    cuotas: int | None = None
+    entidad: str | None = None
+    monto_base: Decimal | None = None
+    monto_recargo_financiero: Decimal | None = None
+    porcentaje_recargo_aplicado: Decimal | None = None
+    monto_neto_liquidado: Decimal | None = None
+
 class PagoResponseBase(BaseModel):
     ok: bool
     pago_id: int

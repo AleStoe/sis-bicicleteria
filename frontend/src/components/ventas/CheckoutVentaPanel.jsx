@@ -37,9 +37,16 @@ export default function CheckoutVentaPanel({
     return items.reduce((acc, item) => acc + Number(item.cantidad || 0), 0);
   }, [items]);
 
-  const totalCalculado = Number(simulacion?.total_final ?? total ?? 0);
+  const simulacionActiva = previewSaldar || simulacion;
+
+  const totalCalculado = Number(simulacionActiva?.total_final ?? total ?? 0);
   const pagado = Number(simulacion?.total_pagos_cargados ?? 0);
-  const pendiente = Number(simulacion?.saldo_estimado ?? totalCalculado);
+
+  const pendiente = Number(
+    previewSaldar?.monto_sugerido_para_saldar ??
+      simulacion?.saldo_estimado ??
+      totalCalculado
+  );
 
   const planTarjetaSeleccionado = useMemo(() => {
     return planesTarjeta.find(
@@ -59,6 +66,18 @@ export default function CheckoutVentaPanel({
       cuotas: planTarjetaSeleccionado?.cuotas || 1,
       entidad: planTarjetaSeleccionado?.entidad || null,
     };
+  }
+
+  function calcularMontoFinalPago(montoBaseInput) {
+    if (medioPago !== "tarjeta") {
+      return montoBaseInput;
+    }
+
+    const porcentaje = Number(
+      planTarjetaSeleccionado?.porcentaje_recargo_cliente || 0
+    );
+
+    return Number((montoBaseInput * (1 + porcentaje / 100)).toFixed(2));
   }
 
   function buildPayloadSimulacion(
@@ -98,16 +117,11 @@ export default function CheckoutVentaPanel({
     sugerirSaldoConMedioPago = null,
     mostrarError = true
   ) {
-    if (items.length === 0) {
-      return null;
-    }
+    if (items.length === 0) return null;
 
     try {
       setSimulando(true);
-
-      if (mostrarError) {
-        setErrorLocal("");
-      }
+      if (mostrarError) setErrorLocal("");
 
       return await simularVenta(
         buildPayloadSimulacion(pagos, sugerirSaldoConMedioPago)
@@ -116,7 +130,6 @@ export default function CheckoutVentaPanel({
       if (mostrarError) {
         setErrorLocal(err.message || "No se pudo simular el total de la venta");
       }
-
       return null;
     } finally {
       setSimulando(false);
@@ -147,26 +160,40 @@ export default function CheckoutVentaPanel({
       return;
     }
 
-    setMonto(String(sugerido));
+    if (medioPago === "tarjeta") {
+      const porcentaje = Number(
+        planTarjetaSeleccionado?.porcentaje_recargo_cliente || 0
+      );
+
+      const factor = 1 + porcentaje / 100;
+      const baseSugerida = Number(sugerido) / factor;
+
+      setMonto(String(baseSugerida.toFixed(2)));
+    } else {
+      setMonto(String(sugerido));
+    }
+
     setErrorLocal("");
   }
 
   async function agregarPago() {
-    const montoNumber = Number(monto);
+    const montoBaseInput = Number(monto);
 
-    if (!Number.isFinite(montoNumber) || montoNumber <= 0) {
+    if (!Number.isFinite(montoBaseInput) || montoBaseInput <= 0) {
       setErrorLocal("El monto debe ser mayor a cero");
       return;
     }
 
     const datosFinancieros = getDatosFinancierosPago();
+    const montoFinalPago = calcularMontoFinalPago(montoBaseInput);
 
     const nuevosPagos = [
       ...pagosDraft,
       {
         temp_id: crypto.randomUUID(),
         medio_pago: medioPago,
-        monto: montoNumber,
+        monto: montoFinalPago,
+        monto_base_input: montoBaseInput,
         cuotas: datosFinancieros.cuotas,
         entidad: datosFinancieros.entidad,
         nota: null,
@@ -195,14 +222,10 @@ export default function CheckoutVentaPanel({
     async function cargarPlanesTarjeta() {
       try {
         const data = await listarTarjetaPlanes(true);
-
         setPlanesTarjeta(data);
 
         const primerPlan = data?.[0];
-
-        if (primerPlan) {
-          setPlanTarjetaId(String(primerPlan.id));
-        }
+        if (primerPlan) setPlanTarjetaId(String(primerPlan.id));
       } catch (err) {
         setErrorLocal(err.message || "No se pudieron cargar los planes de tarjeta");
       }
@@ -277,7 +300,7 @@ export default function CheckoutVentaPanel({
       />
 
       <CheckoutTotalesSimulacion
-        simulacion={simulacion}
+        simulacion={simulacionActiva}
         formatMoney={formatMoney}
         simulando={simulando}
       />

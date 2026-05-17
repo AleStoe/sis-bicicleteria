@@ -102,19 +102,34 @@ def obtener_pagos_por_venta(conn, venta_id: int):
         cur.execute(
             """
             SELECT
-                id,
-                fecha,
-                origen_tipo,
-                origen_id,
-                medio_pago,
-                monto_total_cobrado,
-                estado,
-                nota,
-                id_usuario
-            FROM pagos
-            WHERE origen_tipo = 'venta'
-              AND origen_id = %s
-            ORDER BY fecha, id
+                p.id,
+                p.fecha,
+                p.id_cliente,
+                p.origen_tipo,
+                p.origen_id,
+                p.medio_pago,
+                p.monto_total_cobrado,
+                p.estado,
+                p.nota,
+                p.id_usuario,
+
+                d.id_tarjeta_plan,
+                tp.nombre AS tarjeta_plan_nombre,
+                d.cuotas,
+                d.entidad,
+                d.monto_base,
+                d.monto_recargo_financiero,
+                d.porcentaje_recargo_aplicado,
+                d.monto_neto_liquidado
+
+            FROM pagos p
+            LEFT JOIN pagos_tarjeta_detalle d
+                ON d.id_pago = p.id
+            LEFT JOIN tarjeta_planes tp
+                ON tp.id = d.id_tarjeta_plan
+            WHERE p.origen_tipo = 'venta'
+              AND p.origen_id = %s
+            ORDER BY p.fecha, p.id
             """,
             (venta_id,),
         )

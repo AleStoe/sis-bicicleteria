@@ -20,6 +20,30 @@ export default function CheckoutAgregarPago({
   planTarjetaId,
   setPlanTarjetaId,
 }) {
+  const hayRecargo = Number(previewSaldar?.recargo_total || 0) > 0;
+  const hayDescuento = Number(previewSaldar?.descuento_total || 0) > 0;
+  const esTarjeta = medioPago === "tarjeta";
+
+  const planSeleccionado = planesTarjeta?.find(
+    (plan) => String(plan.id) === String(planTarjetaId)
+  );
+
+  const porcentajeTarjeta = Number(
+    planSeleccionado?.porcentaje_recargo_cliente || 0
+  );
+
+  const montoBaseIngresado = Number(monto || 0);
+
+  const totalTarjetaPreview =
+    esTarjeta && montoBaseIngresado > 0
+      ? montoBaseIngresado * (1 + porcentajeTarjeta / 100)
+      : 0;
+
+  const recargoTarjetaPreview =
+    esTarjeta && montoBaseIngresado > 0
+      ? totalTarjetaPreview - montoBaseIngresado
+      : 0;
+
   return (
     <div style={styles.payBox}>
       <div style={styles.payTitle}>Agregar pago</div>
@@ -37,7 +61,7 @@ export default function CheckoutAgregarPago({
           ))}
         </select>
 
-        {medioPago === "tarjeta" && (
+        {esTarjeta && (
           <div style={styles.cardPlanBox}>
             <label style={styles.cardPlanLabel}>Plan de tarjeta</label>
 
@@ -54,7 +78,7 @@ export default function CheckoutAgregarPago({
               {planesTarjeta.map((plan) => (
                 <option key={plan.id} value={plan.id}>
                   {plan.entidad ? `${plan.entidad} - ` : ""}
-                  {plan.cuotas} cuota(s) -{" "}
+                  {plan.cuotas} cuota(s) ·{" "}
                   {Number(plan.porcentaje_recargo_cliente || 0).toFixed(2)}%
                 </option>
               ))}
@@ -63,31 +87,53 @@ export default function CheckoutAgregarPago({
         )}
       </div>
 
-      {previewSaldar?.monto_sugerido_para_saldar != null && (
-        <div style={styles.previewBox}>
+      {esTarjeta && montoBaseIngresado > 0 && (
+        <div style={styles.previewBoxWarning}>
           <div style={styles.previewRow}>
-            <span>Total lista</span>
-            <strong>{formatMoney(previewSaldar.subtotal_base)}</strong>
+            <span>Monto base financiado</span>
+            <strong>{formatMoney(montoBaseIngresado)}</strong>
           </div>
 
           <div style={styles.previewRow}>
-            <span>
-              {Number(previewSaldar.recargo_total || 0) > 0
-                ? "Recargo estimado"
-                : "Descuento estimado"}
-            </span>
-
-            <strong>
-              {Number(previewSaldar.recargo_total || 0) > 0
-                ? formatMoney(previewSaldar.recargo_total)
-                : `- ${formatMoney(
-                    Number(previewSaldar.subtotal_base || 0) -
-                      Number(previewSaldar.monto_sugerido_para_saldar || 0)
-                  )}`}
+            <span>Recargo financiación</span>
+            <strong style={styles.warningText}>
+              + {formatMoney(recargoTarjetaPreview)}
             </strong>
           </div>
 
-          <div style={styles.previewRowTotal}>
+          <div style={styles.previewRowTotalWarning}>
+            <span>Total tarjeta a cobrar</span>
+            <strong>{formatMoney(totalTarjetaPreview)}</strong>
+          </div>
+        </div>
+      )}
+
+      {!esTarjeta && previewSaldar?.monto_sugerido_para_saldar != null && (
+        <div style={hayRecargo ? styles.previewBoxWarning : styles.previewBoxSuccess}>
+          <div style={styles.previewRow}>
+            <span>Precio lista</span>
+            <strong>{formatMoney(previewSaldar.subtotal_base)}</strong>
+          </div>
+
+          {hayRecargo && (
+            <div style={styles.previewRow}>
+              <span>Recargo financiación</span>
+              <strong style={styles.warningText}>
+                + {formatMoney(previewSaldar.recargo_total)}
+              </strong>
+            </div>
+          )}
+
+          {hayDescuento && !hayRecargo && (
+            <div style={styles.previewRow}>
+              <span>Descuento contado</span>
+              <strong style={styles.successText}>
+                - {formatMoney(previewSaldar.descuento_total)}
+              </strong>
+            </div>
+          )}
+
+          <div style={hayRecargo ? styles.previewRowTotalWarning : styles.previewRowTotalSuccess}>
             <span>Total a cobrar</span>
             <strong>
               {formatMoney(previewSaldar.monto_sugerido_para_saldar)}
@@ -101,7 +147,7 @@ export default function CheckoutAgregarPago({
           type="number"
           value={monto}
           onChange={(e) => setMonto(e.target.value)}
-          placeholder="Monto"
+          placeholder={esTarjeta ? "Monto base financiado" : "Monto a cobrar"}
           style={styles.input}
         />
 
@@ -120,8 +166,9 @@ export default function CheckoutAgregarPago({
       </div>
 
       <div style={styles.hint}>
-        El total, descuentos y saldo se recalculan automáticamente según el medio
-        y monto cargado.
+        {esTarjeta
+          ? "En tarjeta ingresá el monto base a financiar. El sistema suma el recargo y registra el total cobrado."
+          : "Ingresá el monto que realmente se cobra al cliente."}
       </div>
 
       {errorLocal && <div style={styles.localError}>{errorLocal}</div>}
@@ -163,9 +210,18 @@ const styles = {
     fontWeight: 800,
     color: "#344054",
   },
-  previewBox: {
+  previewBoxSuccess: {
     border: "1px solid #d1fadf",
     background: "#ecfdf3",
+    borderRadius: 10,
+    padding: 8,
+    marginBottom: 10,
+    display: "grid",
+    gap: 6,
+  },
+  previewBoxWarning: {
+    border: "1px solid #fedf89",
+    background: "#fffaeb",
     borderRadius: 10,
     padding: 8,
     marginBottom: 10,
@@ -179,7 +235,7 @@ const styles = {
     fontSize: 12,
     color: "#344054",
   },
-  previewRowTotal: {
+  previewRowTotalSuccess: {
     display: "flex",
     justifyContent: "space-between",
     gap: 10,
@@ -188,6 +244,22 @@ const styles = {
     color: "#067647",
     paddingTop: 6,
     borderTop: "1px solid #d1fadf",
+  },
+  previewRowTotalWarning: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 10,
+    fontSize: 14,
+    fontWeight: 900,
+    color: "#b54708",
+    paddingTop: 6,
+    borderTop: "1px solid #fedf89",
+  },
+  successText: {
+    color: "#067647",
+  },
+  warningText: {
+    color: "#b54708",
   },
   amountRow: {
     display: "grid",

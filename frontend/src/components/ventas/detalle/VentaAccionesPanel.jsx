@@ -70,20 +70,23 @@ export default function VentaAccionesPanel({
           )}
 
           {puedeDevolver && (
-            <Button
-              fullWidth
-              variant="outline"
-              onClick={onDevolverCompleta}
-              disabled={procesando}
-              style={{
-                borderColor: "#f3dc97",
-                color: "#8a6d00",
-                background: "#fff8e1",
-              }}
-            >
-              Devolver venta completa
-            </Button>
-          )}
+              <div style={dangerZoneStyle}>
+                <div style={dangerZoneText}>
+                  <strong>Operación destructiva</strong>
+                  <span>Devuelve stock y genera crédito al cliente. No revierte pagos.</span>
+                </div>
+
+                <Button
+                  fullWidth
+                  variant="outline"
+                  onClick={onDevolverCompleta}
+                  disabled={procesando}
+                  style={dangerReturnButtonStyle}
+                >
+                  ↩ Generar devolución completa y crédito
+                </Button>
+              </div>
+            )}
         </div>
       ) : !estaCerradaOperativamente ? (
         <div style={emptyActionsStyle}>
@@ -92,11 +95,6 @@ export default function VentaAccionesPanel({
         </div>
       ) : null}
 
-      {puedeDevolver && (
-        <div style={smallNoteStyle}>
-          Las devoluciones no revierten pagos: devuelven stock y generan crédito al cliente.
-        </div>
-      )}
     </Card>
   );
 }
@@ -142,4 +140,25 @@ const smallMutedStyle = {
   marginTop: 4,
   fontSize: 13,
   color: "#067647",
+};
+const dangerZoneStyle = {
+  border: "1px solid #fecdca",
+  background: "#fef3f2",
+  borderRadius: 12,
+  padding: 12,
+  display: "grid",
+  gap: 10,
+};
+
+const dangerZoneText = {
+  display: "grid",
+  gap: 3,
+  color: "#b42318",
+  fontSize: 13,
+};
+
+const dangerReturnButtonStyle = {
+  borderColor: "#fecdca",
+  color: "#b42318",
+  background: "#fff",
 };
