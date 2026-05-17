@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
+import { ArrowRight } from "lucide-react";
 import { formatMoney } from "../../../utils/formatters";
-import { Card, MetricCard, Badge } from "../../ui";
+import { Card, MetricCard, Badge, Button } from "../../ui";
 
 export default function VentaSituacionFinanciera({
   cubiertoNoPago,
@@ -22,48 +23,47 @@ export default function VentaSituacionFinanciera({
             </div>
 
             <div style={smallMutedStyle}>
-              Probablemente corresponde a crédito aplicado, ajuste financiero o compensación manual.
+              Corresponde a crédito aplicado, ajuste financiero o compensación manual.
             </div>
           </div>
         )}
 
-        {tieneDeuda ? (
+        {tieneDeuda && deuda ? (
           <div style={warningStyle}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+            <div style={headerRowStyle}>
               <div>
-                <strong>Venta con deuda abierta</strong>
+                <strong>Saldo formalizado en cuenta corriente</strong>
+                <div style={smallMutedStyle}>
+                  Esta venta tiene una deuda asociada. El cobro debe continuar desde Deudas.
+                </div>
                 <div style={smallMutedStyle}>ID deuda: #{deuda.id}</div>
               </div>
 
               <Badge variant="warning">Deuda abierta</Badge>
             </div>
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-                gap: "10px",
-              }}
-            >
+            <div style={metricsGridStyle}>
               <MetricCard
                 label="Saldo actual"
                 value={formatMoney(deuda.saldo_actual)}
                 tone="warning"
               />
 
-              <MetricCard
-                label="Estado"
-                value={deuda.estado}
-              />
+              <MetricCard label="Estado deuda" value={deuda.estado} />
             </div>
 
-            <Link to={`/deudas/${deuda.id}`} style={detailLinkStyle}>
-              Ver deuda
+            <Link to={`/deudas/${deuda.id}`} style={{ textDecoration: "none" }}>
+              <Button variant="outline">
+                <span style={buttonContentStyle}>
+                  Ir a deuda
+                  <ArrowRight size={16} />
+                </span>
+              </Button>
             </Link>
           </div>
         ) : (
           <div style={successStyle}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+            <div style={headerRowStyle}>
               <div>
                 <strong>Sin deuda pendiente</strong>
                 <div style={smallMutedStyle}>
@@ -106,15 +106,27 @@ const successStyle = {
   border: "1px solid #abefc6",
 };
 
+const headerRowStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 12,
+  alignItems: "flex-start",
+};
+
+const metricsGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+  gap: "10px",
+};
+
 const smallMutedStyle = {
   marginTop: "6px",
   color: "#667085",
   fontSize: "13px",
 };
 
-const detailLinkStyle = {
-  display: "inline-block",
-  textDecoration: "none",
-  fontWeight: 800,
-  color: "#175cd3",
+const buttonContentStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "8px",
 };

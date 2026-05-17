@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { formatMoney } from "../../../utils/formatters";
+import { Card, Button } from "../../ui";
 
 export default function DeudaOrigenPanel({ origen }) {
   if (!origen) {
@@ -14,7 +15,7 @@ export default function DeudaOrigenPanel({ origen }) {
   }
 
   return (
-    <section style={cardStyle}>
+    <Card style={{ marginBottom: "16px" }} bodyStyle={{ padding: "16px" }}>
       <div style={headerStyle}>
         <div>
           <h2 style={titleStyle}>Origen de la deuda</h2>
@@ -23,8 +24,8 @@ export default function DeudaOrigenPanel({ origen }) {
           </p>
         </div>
 
-        <Link to={`/ventas/${venta.id}`} style={linkBtnStyle}>
-          Ver venta
+        <Link to={`/ventas/${venta.id}`} style={{ textDecoration: "none" }}>
+          <Button variant="outline">Ver venta</Button>
         </Link>
       </div>
 
@@ -106,7 +107,7 @@ export default function DeudaOrigenPanel({ origen }) {
           </table>
         </div>
       )}
-    </section>
+    </Card>
   );
 }
 

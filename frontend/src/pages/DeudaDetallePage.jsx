@@ -123,9 +123,8 @@ export default function DeudaDetallePage() {
 }
 
 const pageStyle = {
-  padding: "24px",
-  background: "#f6f7fb",
-  minHeight: "100vh",
+  display: "grid",
+  gap: "16px",
 };
 
 const gridStyle = {
@@ -133,23 +132,20 @@ const gridStyle = {
   gridTemplateColumns: "minmax(360px, 1.4fr) minmax(280px, 0.8fr)",
   gap: "16px",
   alignItems: "start",
-  marginBottom: "16px",
 };
 
 const alertStyle = {
   background: "#fff1f0",
   color: "#b42318",
-  padding: "12px",
-  borderRadius: "10px",
+  padding: "12px 14px",
+  borderRadius: "12px",
   border: "1px solid #f4c7c3",
-  marginBottom: "16px",
 };
 
 const successStyle = {
-  background: "#e8fff0",
-  color: "#146c2e",
-  padding: "12px",
-  borderRadius: "10px",
-  border: "1px solid #b7ebc6",
-  marginBottom: "16px",
+  background: "#ecfdf3",
+  color: "#067647",
+  padding: "12px 14px",
+  borderRadius: "12px",
+  border: "1px solid #abefc6",
 };

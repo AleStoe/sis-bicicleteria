@@ -283,7 +283,10 @@ export default function VentaDetallePage() {
     0
   );
 
-  const estadosFinales = ["anulada", "devuelta", "devuelta_parcial"];
+const estadosFinales = ["anulada", "devuelta", "devuelta_parcial"];
+
+const tieneDeuda = situacion_financiera?.tiene_deuda;
+const deuda = situacion_financiera?.deuda_abierta;
 
 const puedeAnular = ["creada", "pagada_parcial", "pagada_total"].includes(
   venta.estado
@@ -299,13 +302,11 @@ const puedeDevolver = ["entregada", "devuelta_parcial"].includes(
 
 const puedeCobrar =
   saldoPendiente > 0 &&
+  !tieneDeuda &&
   !["anulada", "devuelta"].includes(venta.estado);
 
 const estaCerradaOperativamente =
   saldoPendiente <= 0 && venta.estado === "entregada";
-
-const tieneDeuda = situacion_financiera?.tiene_deuda;
-const deuda = situacion_financiera?.deuda_abierta;
 
   return (
     <div style={pageStyle}>

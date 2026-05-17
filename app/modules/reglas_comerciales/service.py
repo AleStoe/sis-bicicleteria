@@ -8,8 +8,9 @@ from app.shared.money import redondear_monto
 from .repository import (
     get_reglas_comerciales,
     get_reglas_activas_por_medios,
-    get_tarjeta_plan_activo
+    get_tarjeta_plan_activo,
 )
+
 
 def _dec(value) -> Decimal:
     return Decimal(str(value))
@@ -24,12 +25,28 @@ def listar_reglas_comerciales(solo_activas: bool = True):
         conn.close()
 
 
-def _calcular_monto_regla(regla: dict, subtotal_base: Decimal) -> Decimal:
+def _sumar_pagos(pagos) -> Decimal:
+    total = Decimal("0")
+
+    for pago in pagos:
+        total += _dec(pago.monto)
+
+    return redondear_monto(total)
+
+
+def _base_regla_por_pagos(pagos_aplicables, subtotal_base: Decimal) -> Decimal:
+    total_pagado = _sumar_pagos(pagos_aplicables)
+
+    # No permitimos que una regla calcule descuento/recargo sobre más que el subtotal.
+    return min(total_pagado, subtotal_base)
+
+
+def _calcular_monto_regla(regla: dict, base_regla: Decimal) -> Decimal:
     porcentaje = regla.get("porcentaje")
     monto_fijo = regla.get("monto_fijo")
 
     if porcentaje is not None:
-        return redondear_monto(subtotal_base * (_dec(porcentaje) / Decimal("100")))
+        return redondear_monto(base_regla * (_dec(porcentaje) / Decimal("100")))
 
     if monto_fijo is not None:
         return redondear_monto(_dec(monto_fijo))
@@ -37,8 +54,8 @@ def _calcular_monto_regla(regla: dict, subtotal_base: Decimal) -> Decimal:
     return Decimal("0")
 
 
-def _pago_cubre_total(pago, total: Decimal) -> bool:
-    return redondear_monto(_dec(pago.monto)) >= redondear_monto(total)
+def _pagos_cubren_total(pagos, total: Decimal) -> bool:
+    return _sumar_pagos(pagos) >= redondear_monto(total)
 
 
 def simular_reglas_comerciales(data):
@@ -59,7 +76,8 @@ def simular_reglas_comerciales(data):
             medio_regla = regla.get("medio_pago")
 
             pagos_aplicables = [
-                pago for pago in pagos
+                pago
+                for pago in pagos
                 if medio_regla is None or pago.medio_pago == medio_regla
             ]
 
@@ -67,10 +85,15 @@ def simular_reglas_comerciales(data):
                 continue
 
             if regla.get("requiere_pago_total"):
-                if not any(_pago_cubre_total(pago, subtotal_base) for pago in pagos_aplicables):
+                if not _pagos_cubren_total(pagos_aplicables, subtotal_base):
                     continue
 
-            monto_regla = _calcular_monto_regla(regla, subtotal_base)
+            base_regla = _base_regla_por_pagos(pagos_aplicables, subtotal_base)
+
+            if base_regla <= Decimal("0"):
+                continue
+
+            monto_regla = _calcular_monto_regla(regla, base_regla)
 
             if monto_regla <= Decimal("0"):
                 continue
@@ -148,11 +171,20 @@ def simular_reglas_comerciales(data):
     total_final = redondear_monto(
         subtotal_base - descuento_total + recargo_total
     )
+    total_pagos_cargados = _sumar_pagos(pagos)
 
+    saldo_estimado = redondear_monto(
+        total_final - total_pagos_cargados
+    )
+
+    if saldo_estimado < Decimal("0"):
+        saldo_estimado = Decimal("0")
     return {
         "subtotal_base": subtotal_base,
         "descuento_total": descuento_total,
         "recargo_total": recargo_total,
         "total_final": total_final,
+        "total_pagos_cargados": total_pagos_cargados,
+        "saldo_estimado": saldo_estimado,
         "reglas_aplicadas": reglas_aplicadas,
     }

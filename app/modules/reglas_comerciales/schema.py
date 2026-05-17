@@ -55,4 +55,6 @@ class SimularReglasOutput(BaseModel):
     descuento_total: Decimal
     recargo_total: Decimal
     total_final: Decimal
+    total_pagos_cargados: Decimal
+    saldo_estimado: Decimal
     reglas_aplicadas: list[ReglaAplicadaOutput]

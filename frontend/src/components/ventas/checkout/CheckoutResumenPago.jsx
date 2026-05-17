@@ -21,12 +21,12 @@ export default function CheckoutResumenPago({
 
       <div style={styles.statusGrid}>
         <div style={styles.paidBox}>
-          <span>Pagado</span>
+          <span>Pagos cargados</span>
           <strong>{formatMoney(pagado)}</strong>
         </div>
 
         <div style={pendiente > 0 ? styles.pendingBox : styles.okBox}>
-          <span>{pendiente > 0 ? "Pendiente" : "Venta saldada"}</span>
+          <span>{pendiente > 0 ? "Saldo estimado" : "Venta saldada"}</span>
           <strong>{formatMoney(pendiente)}</strong>
         </div>
       </div>

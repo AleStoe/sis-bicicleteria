@@ -1,122 +1,77 @@
-import { EstadoDeudaBadge } from "../../../pages/DeudasListPage";
 import { formatMoney } from "../../../utils/formatters";
-
-function Info({ label, value, full = false }) {
-  return (
-    <div
-      style={{
-        gridColumn: full ? "1 / -1" : "auto",
-        background: "#f9fafb",
-        border: "1px solid #eaecf0",
-        borderRadius: "12px",
-        padding: "12px",
-      }}
-    >
-      <div
-        style={{
-          fontSize: "13px",
-          color: "#667085",
-          marginBottom: "6px",
-        }}
-      >
-        {label}
-      </div>
-
-      <div style={{ fontWeight: 600 }}>
-        {value}
-      </div>
-    </div>
-  );
-}
+import { Card, MetricCard } from "../../ui";
+import { EstadoDeudaBadge } from "../../../pages/DeudasListPage";
 
 export default function DeudaResumenPanel({ deuda }) {
   return (
-    <div style={cardStyle}>
-      <h2 style={cardTitleStyle}>Resumen</h2>
-
+    <Card title="Resumen" subtitle="Estado general de la cuenta corriente">
       <div style={infoGridStyle}>
-        <Info
+        <MetricCard
           label="Estado"
           value={<EstadoDeudaBadge estado={deuda.estado} />}
         />
 
-        <Info
+        <MetricCard
           label="Saldo actual"
           value={formatMoney(deuda.saldo_actual)}
+          tone={Number(deuda.saldo_actual || 0) > 0 ? "danger" : "success"}
+          emphasize
         />
 
-        <Info
+        <MetricCard
           label="Cliente"
-          value={
-            <div>
-              <div>
-                {deuda.cliente_nombre || `Cliente #${deuda.id_cliente}`}
-              </div>
-
-              <div
-                style={{
-                  fontSize: "13px",
-                  color: "#667085",
-                  marginTop: "4px",
-                }}
-              >
-                {deuda.cliente_dni
-                  ? `DNI ${deuda.cliente_dni}`
-                  : ""}
-
-                {deuda.cliente_telefono
-                  ? ` · ${deuda.cliente_telefono}`
-                  : ""}
-              </div>
-            </div>
-          }
+          value={deuda.cliente_nombre || `Cliente #${deuda.id_cliente}`}
+          footer={[
+            deuda.cliente_dni ? `DNI ${deuda.cliente_dni}` : "",
+            deuda.cliente_telefono || "",
+          ]
+            .filter(Boolean)
+            .join(" · ")}
         />
 
-        <Info
+        <MetricCard
           label="Origen"
           value={`${deuda.origen_tipo} #${deuda.origen_id}`}
         />
 
-        <Info
+        <MetricCard
           label="Genera recargo"
           value={deuda.genera_recargo ? "Sí" : "No"}
         />
 
-        <Info
+        <MetricCard
           label="Tasa recargo"
           value={deuda.tasa_recargo || "-"}
         />
 
-        <Info
+        <MetricCard
           label="Próximo vencimiento"
           value={deuda.proximo_vencimiento || "-"}
         />
 
-        <Info
-          label="Observación"
-          value={deuda.observacion || "-"}
-          full
-        />
+        <div style={observacionStyle}>
+          <div style={{ color: "#667085", fontSize: 12, fontWeight: 700 }}>
+            Observación
+          </div>
+          <strong>{deuda.observacion || "-"}</strong>
+        </div>
       </div>
-    </div>
+    </Card>
   );
 }
 
-const cardStyle = {
-  background: "white",
-  borderRadius: "14px",
-  boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
-  padding: "16px",
-};
-
-const cardTitleStyle = {
-  marginTop: 0,
-  marginBottom: "14px",
-  fontSize: "20px",
-};
-
 const infoGridStyle = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
   gap: "12px",
+};
+
+const observacionStyle = {
+  gridColumn: "1 / -1",
+  background: "#f9fafb",
+  border: "1px solid #eaecf0",
+  borderRadius: 14,
+  padding: 14,
+  display: "grid",
+  gap: 6,
 };

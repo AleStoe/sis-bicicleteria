@@ -34,11 +34,13 @@ export default function CheckoutVentaPanel({
 
   const totalCalculado = Number(simulacion?.total_final ?? total ?? 0);
 
-  const pagado = useMemo(() => {
-    return pagosDraft.reduce((acc, pago) => acc + Number(pago.monto || 0), 0);
-  }, [pagosDraft]);
+  const pagado = Number(
+    simulacion?.total_pagos_cargados ?? 0
+  );
 
-  const pendiente = Math.max(0, totalCalculado - pagado);
+  const pendiente = Number(
+    simulacion?.saldo_estimado ?? totalCalculado
+  );
 
   function buildPayloadSimulacion(pagos = pagosDraft) {
     return {
