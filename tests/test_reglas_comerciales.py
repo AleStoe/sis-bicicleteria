@@ -240,8 +240,8 @@ def test_pago_mixto_efectivo_y_tarjeta_aplica_descuento_y_recargo(client):
     data = response.json()
 
     assert _dec(data["descuento_total"]) == Decimal("5000")
-    assert _dec(data["recargo_total"]) == Decimal("17500")
-    assert _dec(data["total_final"]) == Decimal("112500")
+    assert _dec(data["recargo_total"]) == Decimal("12962.96")
+    assert _dec(data["total_final"]) == Decimal("107962.96")
     assert len(data["reglas_aplicadas"]) == 2
 
 

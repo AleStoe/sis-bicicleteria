@@ -4,6 +4,7 @@ import CheckoutAgregarPago from "./checkout/CheckoutAgregarPago";
 import CheckoutPagosList from "./checkout/CheckoutPagosList";
 import CheckoutTotalesSimulacion from "./checkout/CheckoutTotalesSimulacion";
 import { simularVenta } from "../../services/ventasService";
+import { listarTarjetaPlanes } from "../../services/reglasComercialesService";
 
 function formatMoney(value) {
   return Number(value || 0).toLocaleString("es-AR", {
@@ -29,6 +30,8 @@ export default function CheckoutVentaPanel({
   const [simulacion, setSimulacion] = useState(null);
   const [simulando, setSimulando] = useState(false);
   const [previewSaldar, setPreviewSaldar] = useState(null);
+  const [planesTarjeta, setPlanesTarjeta] = useState([]);
+  const [planTarjetaId, setPlanTarjetaId] = useState("");
 
   const cantidadItems = useMemo(() => {
     return items.reduce((acc, item) => acc + Number(item.cantidad || 0), 0);
@@ -37,6 +40,26 @@ export default function CheckoutVentaPanel({
   const totalCalculado = Number(simulacion?.total_final ?? total ?? 0);
   const pagado = Number(simulacion?.total_pagos_cargados ?? 0);
   const pendiente = Number(simulacion?.saldo_estimado ?? totalCalculado);
+
+  const planTarjetaSeleccionado = useMemo(() => {
+    return planesTarjeta.find(
+      (plan) => String(plan.id) === String(planTarjetaId)
+    );
+  }, [planesTarjeta, planTarjetaId]);
+
+  function getDatosFinancierosPago() {
+    if (medioPago !== "tarjeta") {
+      return {
+        cuotas: null,
+        entidad: null,
+      };
+    }
+
+    return {
+      cuotas: planTarjetaSeleccionado?.cuotas || 1,
+      entidad: planTarjetaSeleccionado?.entidad || null,
+    };
+  }
 
   function buildPayloadSimulacion(
     pagos = pagosDraft,
@@ -62,6 +85,8 @@ export default function CheckoutVentaPanel({
       pagos: pagos.map((pago) => ({
         medio_pago: pago.medio_pago,
         monto: String(pago.monto),
+        cuotas: pago.cuotas || null,
+        entidad: pago.entidad || null,
         nota: pago.nota || null,
       })),
       sugerir_saldo_con_medio_pago: sugerirSaldoConMedioPago,
@@ -107,6 +132,7 @@ export default function CheckoutVentaPanel({
   async function sugerirMontoParaSaldar() {
     const data = await simularPagos(pagosDraft, {
       medio_pago: medioPago,
+      ...getDatosFinancierosPago(),
     });
 
     if (!data) return;
@@ -133,12 +159,16 @@ export default function CheckoutVentaPanel({
       return;
     }
 
+    const datosFinancieros = getDatosFinancierosPago();
+
     const nuevosPagos = [
       ...pagosDraft,
       {
         temp_id: crypto.randomUUID(),
         medio_pago: medioPago,
         monto: montoNumber,
+        cuotas: datosFinancieros.cuotas,
+        entidad: datosFinancieros.entidad,
         nota: null,
       },
     ];
@@ -160,6 +190,26 @@ export default function CheckoutVentaPanel({
     setPreviewSaldar(null);
     await recalcularSimulacion(nuevosPagos);
   }
+
+  useEffect(() => {
+    async function cargarPlanesTarjeta() {
+      try {
+        const data = await listarTarjetaPlanes(true);
+
+        setPlanesTarjeta(data);
+
+        const primerPlan = data?.[0];
+
+        if (primerPlan) {
+          setPlanTarjetaId(String(primerPlan.id));
+        }
+      } catch (err) {
+        setErrorLocal(err.message || "No se pudieron cargar los planes de tarjeta");
+      }
+    }
+
+    cargarPlanesTarjeta();
+  }, []);
 
   useEffect(() => {
     setPagosDraft([]);
@@ -186,6 +236,7 @@ export default function CheckoutVentaPanel({
         pagosDraft,
         {
           medio_pago: medioPago,
+          ...getDatosFinancierosPago(),
         },
         false
       );
@@ -200,13 +251,15 @@ export default function CheckoutVentaPanel({
     return () => {
       cancelado = true;
     };
-  }, [medioPago, pagosDraft, items, tipoPrecio]);
+  }, [medioPago, planTarjetaId, pagosDraft, items, tipoPrecio]);
 
   function finalizar() {
     onFinalizar?.({
       pagos: pagosDraft.map((pago) => ({
         medio_pago: pago.medio_pago,
         monto: String(pago.monto),
+        cuotas: pago.cuotas || null,
+        entidad: pago.entidad || null,
         nota: pago.nota || null,
       })),
       entregar_ahora: entregarAhora,
@@ -240,6 +293,9 @@ export default function CheckoutVentaPanel({
         formatMoney={formatMoney}
         errorLocal={errorLocal}
         simulando={simulando}
+        planesTarjeta={planesTarjeta}
+        planTarjetaId={planTarjetaId}
+        setPlanTarjetaId={setPlanTarjetaId}
       />
 
       <CheckoutPagosList

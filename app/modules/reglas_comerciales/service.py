@@ -138,7 +138,11 @@ def _simular_con_conn(conn, *, subtotal_base: Decimal, pagos):
         monto_pago = redondear_monto(_dec(pago.monto))
         porcentaje = _dec(plan["porcentaje_recargo_cliente"])
 
-        recargo = redondear_monto(monto_pago * (porcentaje / Decimal("100")))
+        factor = Decimal("1") + (porcentaje / Decimal("100"))
+
+        base_recargo = redondear_monto(monto_pago / factor)
+
+        recargo = redondear_monto(monto_pago - base_recargo)
 
         if recargo <= Decimal("0"):
             continue
@@ -185,9 +189,42 @@ def _calcular_monto_sugerido_para_saldar(
         pagos=pagos_actuales,
     )
 
-    if simulacion_actual["saldo_raw"] <= Decimal("0"):
+    saldo_actual = redondear_monto(simulacion_actual["saldo_raw"])
+
+    if saldo_actual <= Decimal("0"):
         return Decimal("0.00")
 
+    # Tarjeta: recargo comercial normal.
+    # Si el saldo actual es 1000 y el plan tiene 15%,
+    # el cliente debe pagar 1150, no 1176.47.
+    if sugerencia.medio_pago == "tarjeta":
+        cuotas = sugerencia.cuotas or 1
+        entidad = getattr(sugerencia, "entidad", None)
+
+        plan = get_tarjeta_plan_activo(
+            conn,
+            medio_pago=sugerencia.medio_pago,
+            cuotas=cuotas,
+            entidad=entidad,
+        )
+
+        if plan is None:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"No existe plan financiero activo para "
+                    f"{sugerencia.medio_pago} en {cuotas} cuota(s)"
+                ),
+            )
+
+        porcentaje = _dec(plan["porcentaje_recargo_cliente"])
+
+        return redondear_monto(
+            saldo_actual * (Decimal("1") + porcentaje / Decimal("100"))
+        )
+
+    # Efectivo/transferencia: se mantiene búsqueda porque el descuento
+    # depende del monto pagado y queremos calcular el monto justo a cobrar.
     def simular_con_monto(monto: Decimal):
         pago_sugerido = PagoSimulacionInput(
             medio_pago=sugerencia.medio_pago,
@@ -203,7 +240,7 @@ def _calcular_monto_sugerido_para_saldar(
         )
 
     bajo = Decimal("0")
-    alto = max(simulacion_actual["saldo_raw"], Decimal("1"))
+    alto = max(saldo_actual, Decimal("1"))
 
     while simular_con_monto(alto)["saldo_raw"] > Decimal("0"):
         alto = redondear_monto(alto * Decimal("2"))
@@ -224,7 +261,6 @@ def _calcular_monto_sugerido_para_saldar(
             alto = medio
 
     return redondear_monto(alto)
-
 
 def simular_reglas_comerciales(data):
     subtotal_base = redondear_monto(data.subtotal_base)

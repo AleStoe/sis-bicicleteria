@@ -16,6 +16,9 @@ export default function CheckoutAgregarPago({
   formatMoney,
   errorLocal,
   simulando,
+  planesTarjeta,
+  planTarjetaId,
+  setPlanTarjetaId,
 }) {
   return (
     <div style={styles.payBox}>
@@ -33,6 +36,31 @@ export default function CheckoutAgregarPago({
             </option>
           ))}
         </select>
+
+        {medioPago === "tarjeta" && (
+          <div style={styles.cardPlanBox}>
+            <label style={styles.cardPlanLabel}>Plan de tarjeta</label>
+
+            <select
+              value={planTarjetaId}
+              onChange={(e) => setPlanTarjetaId(e.target.value)}
+              style={styles.select}
+              disabled={!planesTarjeta?.length}
+            >
+              {!planesTarjeta?.length && (
+                <option value="">Sin planes activos</option>
+              )}
+
+              {planesTarjeta.map((plan) => (
+                <option key={plan.id} value={plan.id}>
+                  {plan.entidad ? `${plan.entidad} - ` : ""}
+                  {plan.cuotas} cuota(s) -{" "}
+                  {Number(plan.porcentaje_recargo_cliente || 0).toFixed(2)}%
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {previewSaldar?.monto_sugerido_para_saldar != null && (
@@ -43,13 +71,19 @@ export default function CheckoutAgregarPago({
           </div>
 
           <div style={styles.previewRow}>
-            <span>Descuento estimado</span>
+            <span>
+              {Number(previewSaldar.recargo_total || 0) > 0
+                ? "Recargo estimado"
+                : "Descuento estimado"}
+            </span>
+
             <strong>
-              -{" "}
-              {formatMoney(
-                Number(previewSaldar.subtotal_base || 0) -
-                  Number(previewSaldar.monto_sugerido_para_saldar || 0)
-              )}
+              {Number(previewSaldar.recargo_total || 0) > 0
+                ? formatMoney(previewSaldar.recargo_total)
+                : `- ${formatMoney(
+                    Number(previewSaldar.subtotal_base || 0) -
+                      Number(previewSaldar.monto_sugerido_para_saldar || 0)
+                  )}`}
             </strong>
           </div>
 
@@ -119,6 +153,16 @@ const styles = {
     fontSize: 14,
     background: "white",
   },
+  cardPlanBox: {
+    marginTop: 10,
+    display: "grid",
+    gap: 6,
+  },
+  cardPlanLabel: {
+    fontSize: 12,
+    fontWeight: 800,
+    color: "#344054",
+  },
   previewBox: {
     border: "1px solid #d1fadf",
     background: "#ecfdf3",
@@ -134,6 +178,16 @@ const styles = {
     gap: 10,
     fontSize: 12,
     color: "#344054",
+  },
+  previewRowTotal: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 10,
+    fontSize: 14,
+    fontWeight: 900,
+    color: "#067647",
+    paddingTop: 6,
+    borderTop: "1px solid #d1fadf",
   },
   amountRow: {
     display: "grid",
@@ -179,14 +233,4 @@ const styles = {
     padding: 8,
     fontSize: 13,
   },
-  previewRowTotal: {
-  display: "flex",
-  justifyContent: "space-between",
-  gap: 10,
-  fontSize: 14,
-  fontWeight: 900,
-  color: "#067647",
-  paddingTop: 6,
-  borderTop: "1px solid #d1fadf",
-},
 };
