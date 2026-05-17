@@ -12,9 +12,23 @@ export default function CheckoutPagosList({
       ) : (
         pagosDraft.map((pago) => (
           <div key={pago.temp_id} style={styles.paymentRow}>
-            <span>{renderMedio(pago.medio_pago)}</span>
+            <div>
+              <strong>{renderMedio(pago.medio_pago)}</strong>
 
-            <strong>{formatMoney(pago.monto)}</strong>
+              <div style={styles.paymentMeta}>
+                Base: {formatMoney(pago.monto_base ?? pago.monto)}
+              </div>
+
+              {pago.monto_total_cobrado != null && (
+                <div style={styles.paymentMeta}>
+                  Cobrado: {formatMoney(pago.monto_total_cobrado)}
+                </div>
+              )}
+            </div>
+
+            <strong>
+              {formatMoney(pago.monto_total_cobrado ?? pago.monto)}
+            </strong>
 
             <button
               type="button"
@@ -66,6 +80,12 @@ const styles = {
     alignItems: "center",
     padding: "7px 0",
     borderTop: "1px solid #f2f4f7",
+  },
+
+  paymentMeta: {
+    color: "#667085",
+    fontSize: 12,
+    marginTop: 2,
   },
 
   removePayment: {

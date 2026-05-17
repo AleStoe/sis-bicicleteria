@@ -14,6 +14,7 @@ from .repository import (
     insert_tarjeta_plan,
     update_tarjeta_plan,
 )
+
 from .schema import PagoSimulacionInput
 
 
@@ -30,18 +31,19 @@ def listar_reglas_comerciales(solo_activas: bool = True):
         conn.close()
 
 
-def _sumar_pagos(pagos) -> Decimal:
-    total = Decimal("0")
+def _monto_base_pago(pago) -> Decimal:
+    return redondear_monto(
+        _dec(
+            getattr(pago, "monto_base", None)
+            or getattr(pago, "monto", None)
+        )
+    )
 
-    for pago in pagos:
-        total += _dec(pago.monto)
 
-    return redondear_monto(total)
-
-
-def _base_regla_por_pagos(pagos_aplicables, subtotal_base: Decimal) -> Decimal:
-    total_pagado = _sumar_pagos(pagos_aplicables)
-    return min(total_pagado, subtotal_base)
+def _sumar_bases(pagos) -> Decimal:
+    return redondear_monto(
+        sum((_monto_base_pago(pago) for pago in pagos), Decimal("0"))
+    )
 
 
 def _calcular_monto_regla(regla: dict, base_regla: Decimal) -> Decimal:
@@ -49,7 +51,9 @@ def _calcular_monto_regla(regla: dict, base_regla: Decimal) -> Decimal:
     monto_fijo = regla.get("monto_fijo")
 
     if porcentaje is not None:
-        return redondear_monto(base_regla * (_dec(porcentaje) / Decimal("100")))
+        return redondear_monto(
+            base_regla * (_dec(porcentaje) / Decimal("100"))
+        )
 
     if monto_fijo is not None:
         return redondear_monto(_dec(monto_fijo))
@@ -57,123 +61,187 @@ def _calcular_monto_regla(regla: dict, base_regla: Decimal) -> Decimal:
     return Decimal("0")
 
 
-def _pagos_cubren_total(pagos, total: Decimal) -> bool:
-    return _sumar_pagos(pagos) >= redondear_monto(total)
-
-
 def _simular_con_conn(conn, *, subtotal_base: Decimal, pagos):
     descuento_total = Decimal("0")
     recargo_total = Decimal("0")
+    total_cobrado = Decimal("0")
+
     reglas_aplicadas = []
+    tramos_pago = []
+
+    pagos = pagos or []
+
+    total_base_asignada = _sumar_bases(pagos)
+
+    if total_base_asignada > subtotal_base:
+        raise HTTPException(
+            status_code=400,
+            detail="La suma de bases de pago supera el subtotal de la venta",
+        )
 
     medios_pago = list({pago.medio_pago for pago in pagos})
-    reglas = get_reglas_activas_por_medios(conn, medios_pago)
 
-    for regla in reglas:
-        medio_regla = regla.get("medio_pago")
-
-        pagos_aplicables = [
-            pago
-            for pago in pagos
-            if medio_regla is None or pago.medio_pago == medio_regla
-        ]
-
-        if not pagos_aplicables:
-            continue
-
-        base_regla = _base_regla_por_pagos(pagos_aplicables, subtotal_base)
-
-        if base_regla <= Decimal("0"):
-            continue
-
-        monto_regla = _calcular_monto_regla(regla, base_regla)
-
-        if monto_regla <= Decimal("0"):
-            continue
-
-        if regla["tipo"] == "descuento":
-            descuento_total = redondear_monto(descuento_total + monto_regla)
-        elif regla["tipo"] == "recargo":
-            recargo_total = redondear_monto(recargo_total + monto_regla)
-        else:
-            continue
-
-        reglas_aplicadas.append(
-            {
-                "id_regla_comercial": regla["id"],
-                "tipo": regla["tipo"],
-                "descripcion": regla["nombre"],
-                "medio_pago": medio_regla,
-                "porcentaje_aplicado": regla.get("porcentaje"),
-                "monto_aplicado": monto_regla,
-            }
-        )
-
-        if not regla.get("combinable", True):
-            break
+    reglas = get_reglas_activas_por_medios(
+        conn,
+        medios_pago,
+    )
 
     for pago in pagos:
-        if pago.medio_pago != "tarjeta":
-            continue
+        medio_pago = pago.medio_pago
+        monto_base = _monto_base_pago(pago)
 
-        cuotas = pago.cuotas or 1
-        entidad = getattr(pago, "entidad", None)
+        descuento = Decimal("0")
+        recargo = Decimal("0")
 
-        plan = get_tarjeta_plan_activo(
-            conn,
-            medio_pago=pago.medio_pago,
-            cuotas=cuotas,
-            entidad=entidad,
-        )
+        id_tarjeta_plan = None
+        porcentaje_recargo_aplicado = None
 
-        if plan is None:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"No existe plan financiero activo para "
-                    f"{pago.medio_pago} en {cuotas} cuota(s)"
-                ),
+        if medio_pago == "tarjeta":
+            cuotas = pago.cuotas or 1
+            entidad = getattr(pago, "entidad", None)
+
+            plan = get_tarjeta_plan_activo(
+                conn,
+                medio_pago=medio_pago,
+                cuotas=cuotas,
+                entidad=entidad,
             )
 
-        monto_pago = redondear_monto(_dec(pago.monto))
-        porcentaje = _dec(plan["porcentaje_recargo_cliente"])
+            if plan is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"No existe plan financiero activo para "
+                        f"{medio_pago} en {cuotas} cuota(s)"
+                    ),
+                )
 
-        factor = Decimal("1") + (porcentaje / Decimal("100"))
+            id_tarjeta_plan = plan["id"]
 
-        base_recargo = redondear_monto(monto_pago / factor)
+            porcentaje_recargo_aplicado = _dec(
+                plan["porcentaje_recargo_cliente"]
+            )
 
-        recargo = redondear_monto(monto_pago - base_recargo)
+            recargo = redondear_monto(
+                monto_base * (
+                    porcentaje_recargo_aplicado / Decimal("100")
+                )
+            )
 
-        if recargo <= Decimal("0"):
-            continue
+            if recargo > Decimal("0"):
+                reglas_aplicadas.append(
+                    {
+                        "id_regla_comercial": None,
+                        "id_tarjeta_plan": id_tarjeta_plan,
+                        "tipo": "recargo",
+                        "descripcion": plan["nombre"],
+                        "medio_pago": medio_pago,
+                        "porcentaje_aplicado": porcentaje_recargo_aplicado,
+                        "monto_base_aplicado": monto_base,
+                        "monto_aplicado": recargo,
+                    }
+                )
 
-        recargo_total = redondear_monto(recargo_total + recargo)
+        else:
+            for regla in reglas:
+                medio_regla = regla.get("medio_pago")
 
-        reglas_aplicadas.append(
+                if medio_regla is not None and medio_regla != medio_pago:
+                    continue
+
+                if (
+                    regla.get("requiere_pago_total")
+                    and total_base_asignada < subtotal_base
+                ):
+                    continue
+
+                monto_regla = _calcular_monto_regla(
+                    regla,
+                    monto_base,
+                )
+
+                if monto_regla <= Decimal("0"):
+                    continue
+
+                if regla["tipo"] == "descuento":
+                    descuento = redondear_monto(
+                        descuento + monto_regla
+                    )
+
+                elif regla["tipo"] == "recargo":
+                    recargo = redondear_monto(
+                        recargo + monto_regla
+                    )
+
+                else:
+                    continue
+
+                reglas_aplicadas.append(
+                    {
+                        "id_regla_comercial": regla["id"],
+                        "id_tarjeta_plan": None,
+                        "tipo": regla["tipo"],
+                        "descripcion": regla["nombre"],
+                        "medio_pago": medio_pago,
+                        "porcentaje_aplicado": regla.get("porcentaje"),
+                        "monto_base_aplicado": monto_base,
+                        "monto_aplicado": monto_regla,
+                    }
+                )
+
+                if not regla.get("combinable", True):
+                    break
+
+        monto_total_cobrado = redondear_monto(
+            monto_base - descuento + recargo
+        )
+
+        descuento_total = redondear_monto(
+            descuento_total + descuento
+        )
+
+        recargo_total = redondear_monto(
+            recargo_total + recargo
+        )
+
+        total_cobrado = redondear_monto(
+            total_cobrado + monto_total_cobrado
+        )
+
+        tramos_pago.append(
             {
-                "id_regla_comercial": None,
-                "id_tarjeta_plan": plan["id"],
-                "tipo": "recargo",
-                "descripcion": plan["nombre"],
-                "medio_pago": pago.medio_pago,
-                "porcentaje_aplicado": porcentaje,
-                "monto_aplicado": recargo,
+                "medio_pago": medio_pago,
+                "monto_base_aplicado": monto_base,
+                "descuento_aplicado": descuento,
+                "recargo_aplicado": recargo,
+                "monto_total_cobrado": monto_total_cobrado,
+                "cuotas": getattr(pago, "cuotas", None),
+                "entidad": getattr(pago, "entidad", None),
+                "id_tarjeta_plan": id_tarjeta_plan,
+                "porcentaje_recargo_aplicado": porcentaje_recargo_aplicado,
             }
-)
+        )
 
-    total_final = redondear_monto(subtotal_base - descuento_total + recargo_total)
-    total_pagos_cargados = _sumar_pagos(pagos)
-    saldo_raw = redondear_monto(total_final - total_pagos_cargados)
+    saldo_base_estimado = redondear_monto(
+        subtotal_base - total_base_asignada
+    )
+
+    total_final = redondear_monto(
+        total_cobrado + saldo_base_estimado
+    )
 
     return {
         "subtotal_base": subtotal_base,
         "descuento_total": descuento_total,
         "recargo_total": recargo_total,
         "total_final": total_final,
-        "total_pagos_cargados": total_pagos_cargados,
-        "saldo_raw": saldo_raw,
-        "saldo_estimado": max(saldo_raw, Decimal("0")),
+        "total_base_asignada": total_base_asignada,
+        "total_pagos_cargados": total_cobrado,
+        "saldo_base_estimado": saldo_base_estimado,
+        "saldo_estimado": saldo_base_estimado,
+        "saldo_raw": saldo_base_estimado,
         "reglas_aplicadas": reglas_aplicadas,
+        "tramos_pago": tramos_pago,
     }
 
 
@@ -183,91 +251,50 @@ def _calcular_monto_sugerido_para_saldar(
     subtotal_base: Decimal,
     pagos_actuales,
     sugerencia,
-) -> Decimal:
+):
     simulacion_actual = _simular_con_conn(
         conn,
         subtotal_base=subtotal_base,
         pagos=pagos_actuales,
     )
 
-    saldo_actual = redondear_monto(simulacion_actual["saldo_raw"])
+    saldo_base = redondear_monto(
+        simulacion_actual["saldo_base_estimado"]
+    )
 
-    if saldo_actual <= Decimal("0"):
-        return Decimal("0.00")
+    if saldo_base <= Decimal("0"):
+        return {
+            "monto_base": Decimal("0.00"),
+            "monto_total_cobrado": Decimal("0.00"),
+        }
 
-    # Tarjeta: recargo comercial normal.
-    # Si el saldo actual es 1000 y el plan tiene 15%,
-    # el cliente debe pagar 1150, no 1176.47.
-    if sugerencia.medio_pago == "tarjeta":
-        cuotas = sugerencia.cuotas or 1
-        entidad = getattr(sugerencia, "entidad", None)
+    pago_sugerido = PagoSimulacionInput(
+        medio_pago=sugerencia.medio_pago,
+        monto_base=saldo_base,
+        cuotas=sugerencia.cuotas,
+        entidad=sugerencia.entidad,
+    )
 
-        plan = get_tarjeta_plan_activo(
-            conn,
-            medio_pago=sugerencia.medio_pago,
-            cuotas=cuotas,
-            entidad=entidad,
-        )
+    simulacion = _simular_con_conn(
+        conn,
+        subtotal_base=subtotal_base,
+        pagos=[*pagos_actuales, pago_sugerido],
+    )
 
-        if plan is None:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"No existe plan financiero activo para "
-                    f"{sugerencia.medio_pago} en {cuotas} cuota(s)"
-                ),
-            )
+    tramo = simulacion["tramos_pago"][-1]
 
-        porcentaje = _dec(plan["porcentaje_recargo_cliente"])
+    return {
+        "monto_base": saldo_base,
+        "monto_total_cobrado": tramo["monto_total_cobrado"],
+    }
 
-        return redondear_monto(
-            saldo_actual * (Decimal("1") + porcentaje / Decimal("100"))
-        )
-
-    # Efectivo/transferencia: se mantiene búsqueda porque el descuento
-    # depende del monto pagado y queremos calcular el monto justo a cobrar.
-    def simular_con_monto(monto: Decimal):
-        pago_sugerido = PagoSimulacionInput(
-            medio_pago=sugerencia.medio_pago,
-            monto=max(redondear_monto(monto), Decimal("0.01")),
-            cuotas=sugerencia.cuotas,
-            entidad=sugerencia.entidad,
-        )
-
-        return _simular_con_conn(
-            conn,
-            subtotal_base=subtotal_base,
-            pagos=[*pagos_actuales, pago_sugerido],
-        )
-
-    bajo = Decimal("0")
-    alto = max(saldo_actual, Decimal("1"))
-
-    while simular_con_monto(alto)["saldo_raw"] > Decimal("0"):
-        alto = redondear_monto(alto * Decimal("2"))
-
-        if alto > subtotal_base * Decimal("10"):
-            raise HTTPException(
-                status_code=400,
-                detail="No se pudo calcular un monto sugerido razonable para saldar",
-            )
-
-    for _ in range(40):
-        medio = redondear_monto((bajo + alto) / Decimal("2"))
-        resultado = simular_con_monto(medio)
-
-        if resultado["saldo_raw"] > Decimal("0"):
-            bajo = medio
-        else:
-            alto = medio
-
-    return redondear_monto(alto)
 
 def simular_reglas_comerciales(data):
     subtotal_base = redondear_monto(data.subtotal_base)
     pagos = data.medios_pago or []
 
     conn = get_connection()
+
     try:
         resultado = _simular_con_conn(
             conn,
@@ -275,29 +302,38 @@ def simular_reglas_comerciales(data):
             pagos=pagos,
         )
 
+        monto_base_sugerido = None
         monto_sugerido = None
 
         if data.sugerir_saldo_con_medio_pago is not None:
-            monto_sugerido = _calcular_monto_sugerido_para_saldar(
+            sugerencia = _calcular_monto_sugerido_para_saldar(
                 conn,
                 subtotal_base=subtotal_base,
                 pagos_actuales=pagos,
                 sugerencia=data.sugerir_saldo_con_medio_pago,
             )
 
+            monto_base_sugerido = sugerencia["monto_base"]
+            monto_sugerido = sugerencia["monto_total_cobrado"]
+
         return {
             "subtotal_base": resultado["subtotal_base"],
             "descuento_total": resultado["descuento_total"],
             "recargo_total": resultado["recargo_total"],
             "total_final": resultado["total_final"],
+            "total_base_asignada": resultado["total_base_asignada"],
             "total_pagos_cargados": resultado["total_pagos_cargados"],
+            "saldo_base_estimado": resultado["saldo_base_estimado"],
             "saldo_estimado": resultado["saldo_estimado"],
+            "monto_base_sugerido_para_saldar": monto_base_sugerido,
             "monto_sugerido_para_saldar": monto_sugerido,
             "reglas_aplicadas": resultado["reglas_aplicadas"],
+            "tramos_pago": resultado["tramos_pago"],
         }
 
     finally:
         conn.close()
+
 
 def editar_regla_comercial(regla_id: int, data):
     conn = get_connection()
@@ -308,7 +344,10 @@ def editar_regla_comercial(regla_id: int, data):
         regla = update_regla_comercial(conn, regla_id, payload)
 
         if regla is None:
-            raise HTTPException(status_code=404, detail="Regla comercial no encontrada")
+            raise HTTPException(
+                status_code=404,
+                detail="Regla comercial no encontrada",
+            )
 
         conn.commit()
         return regla
@@ -321,7 +360,10 @@ def listar_tarjeta_planes(solo_activos: bool = False):
     conn = get_connection()
 
     try:
-        return get_tarjeta_planes(conn, solo_activos=solo_activos)
+        return get_tarjeta_planes(
+            conn,
+            solo_activos=solo_activos,
+        )
     finally:
         conn.close()
 
@@ -334,7 +376,9 @@ def crear_tarjeta_plan(data):
             conn,
             data.model_dump(),
         )
+
         conn.commit()
+
         return plan
 
     finally:
@@ -347,12 +391,20 @@ def editar_tarjeta_plan(plan_id: int, data):
     try:
         payload = data.model_dump(exclude_unset=True)
 
-        plan = update_tarjeta_plan(conn, plan_id, payload)
+        plan = update_tarjeta_plan(
+            conn,
+            plan_id,
+            payload,
+        )
 
         if plan is None:
-            raise HTTPException(status_code=404, detail="Plan de tarjeta no encontrado")
+            raise HTTPException(
+                status_code=404,
+                detail="Plan de tarjeta no encontrado",
+            )
 
         conn.commit()
+
         return plan
 
     finally:

@@ -505,6 +505,13 @@ def crear_venta(data):
             )
 
             reglas_aplicadas = resultado_reglas["reglas_aplicadas"]
+            tramos_pago = resultado_reglas.get("tramos_pago", [])
+
+            if len(tramos_pago) != len(pagos):
+                raise HTTPException(
+                    status_code=500,
+                    detail="Inconsistencia interna: la cantidad de tramos no coincide con la cantidad de pagos",
+                )
 
             credito_aplicado = Decimal("0")
 
@@ -666,53 +673,31 @@ def crear_venta(data):
                     saldo_despues_credito,
                     estado_venta,
                 )
-            for pago in pagos:
+            for pago, tramo in zip(pagos, tramos_pago):
+                monto_total_cobrado = redondear_monto(tramo["monto_total_cobrado"])
+                monto_base_aplicado = redondear_monto(tramo["monto_base_aplicado"])
+                recargo_aplicado = redondear_monto(tramo["recargo_aplicado"])
+
                 payload_pago = {
                     "id_cliente": data.id_cliente,
                     "origen_tipo": "venta",
                     "origen_id": venta_id,
-                    "medio_pago": pago.medio_pago,
-                    "monto": pago.monto,
-                    "cuotas": getattr(pago, "cuotas", None),
-                    "entidad": getattr(pago, "entidad", None),
-                    "nota": pago.nota,
+                    "medio_pago": tramo["medio_pago"],
+                    "monto": monto_total_cobrado,
+                    "cuotas": tramo.get("cuotas"),
+                    "entidad": tramo.get("entidad"),
+                    "nota": getattr(pago, "nota", None),
                     "id_usuario": data.id_usuario,
                 }
 
-                if pago.medio_pago == "tarjeta":
-                    monto_total_tarjeta = redondear_monto(pago.monto)
-
-                    regla_tarjeta = next(
-                        (
-                            regla
-                            for regla in reglas_aplicadas
-                            if regla["tipo"] == "recargo"
-                            and regla["medio_pago"] == "tarjeta"
-                        ),
-                        None,
-                    )
-
-                    porcentaje = (
-                        redondear_monto(regla_tarjeta["porcentaje_aplicado"])
-                        if regla_tarjeta and regla_tarjeta.get("porcentaje_aplicado") is not None
-                        else Decimal("0")
-                    )
-
-                    monto_recargo = (
-                        redondear_monto(regla_tarjeta["monto_aplicado"])
-                        if regla_tarjeta
-                        else Decimal("0")
-                    )
-
-                    monto_base = redondear_monto(monto_total_tarjeta - monto_recargo)
-
+                if tramo["medio_pago"] == "tarjeta":
                     payload_pago.update(
                         {
-                            "id_tarjeta_plan": regla_tarjeta.get("id_tarjeta_plan") if regla_tarjeta else None,
-                            "monto_base": monto_base,
-                            "monto_recargo_financiero": monto_recargo,
-                            "porcentaje_recargo_aplicado": porcentaje,
-                            "monto_neto_liquidado": monto_total_tarjeta,
+                            "id_tarjeta_plan": tramo.get("id_tarjeta_plan"),
+                            "monto_base": monto_base_aplicado,
+                            "monto_recargo_financiero": recargo_aplicado,
+                            "porcentaje_recargo_aplicado": tramo.get("porcentaje_recargo_aplicado"),
+                            "monto_neto_liquidado": monto_total_cobrado,
                         }
                     )
 
@@ -1636,15 +1621,38 @@ def simular_venta(data):
         )
 
         return {
-            "subtotal_base": redondear_monto(subtotal_total),
+            "subtotal_base": redondear_monto(resultado_reglas["subtotal_base"]),
             "descuento_total": redondear_monto(resultado_reglas["descuento_total"]),
             "recargo_total": redondear_monto(resultado_reglas["recargo_total"]),
             "total_final": redondear_monto(resultado_reglas["total_final"]),
-            "total_pagos_cargados": redondear_monto(resultado_reglas["total_pagos_cargados"]),
+
+            "total_base_asignada": redondear_monto(
+                resultado_reglas["total_base_asignada"]
+            ),
+
+            "total_pagos_cargados": redondear_monto(
+                resultado_reglas["total_pagos_cargados"]
+            ),
+
+            "saldo_base_estimado": redondear_monto(
+                resultado_reglas["saldo_base_estimado"]
+            ),
+
             "saldo_estimado": redondear_monto(resultado_reglas["saldo_estimado"]),
-            "monto_sugerido_para_saldar": resultado_reglas.get("monto_sugerido_para_saldar"),
+
+            "monto_base_sugerido_para_saldar": resultado_reglas.get(
+                "monto_base_sugerido_para_saldar"
+            ),
+
+            "monto_sugerido_para_saldar": resultado_reglas.get(
+                "monto_sugerido_para_saldar"
+            ),
+
             "reglas_aplicadas": resultado_reglas["reglas_aplicadas"],
+
+            "tramos_pago": resultado_reglas.get("tramos_pago", []),
         }
+        
 
     finally:
         conn.close()

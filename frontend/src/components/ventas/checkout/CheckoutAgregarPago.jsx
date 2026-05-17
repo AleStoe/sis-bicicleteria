@@ -20,29 +20,17 @@ export default function CheckoutAgregarPago({
   planTarjetaId,
   setPlanTarjetaId,
 }) {
-  const hayRecargo = Number(previewSaldar?.recargo_total || 0) > 0;
-  const hayDescuento = Number(previewSaldar?.descuento_total || 0) > 0;
   const esTarjeta = medioPago === "tarjeta";
 
-  const planSeleccionado = planesTarjeta?.find(
-    (plan) => String(plan.id) === String(planTarjetaId)
-  );
+  const tramoPreview = previewSaldar?.tramos_pago?.at?.(-1);
 
-  const porcentajeTarjeta = Number(
-    planSeleccionado?.porcentaje_recargo_cliente || 0
-  );
+  const montoBaseSugerido = previewSaldar?.monto_base_sugerido_para_saldar;
+  const montoSugeridoCobrado = previewSaldar?.monto_sugerido_para_saldar;
 
-  const montoBaseIngresado = Number(monto || 0);
-
-  const totalTarjetaPreview =
-    esTarjeta && montoBaseIngresado > 0
-      ? montoBaseIngresado * (1 + porcentajeTarjeta / 100)
-      : 0;
-
-  const recargoTarjetaPreview =
-    esTarjeta && montoBaseIngresado > 0
-      ? totalTarjetaPreview - montoBaseIngresado
-      : 0;
+  const descuentoPreview = Number(tramoPreview?.descuento_aplicado || 0);
+  const recargoPreview = Number(tramoPreview?.recargo_aplicado || 0);
+  const hayDescuento = descuentoPreview > 0;
+  const hayRecargo = recargoPreview > 0;
 
   return (
     <div style={styles.payBox}>
@@ -87,57 +75,50 @@ export default function CheckoutAgregarPago({
         )}
       </div>
 
-      {esTarjeta && montoBaseIngresado > 0 && (
-        <div style={styles.previewBoxWarning}>
+      {previewSaldar?.monto_sugerido_para_saldar != null && (
+        <div
+          style={
+            hayRecargo
+              ? styles.previewBoxWarning
+              : hayDescuento
+                ? styles.previewBoxSuccess
+                : styles.previewBoxNeutral
+          }
+        >
           <div style={styles.previewRow}>
-            <span>Monto base financiado</span>
-            <strong>{formatMoney(montoBaseIngresado)}</strong>
+            <span>Base sugerida</span>
+            <strong>{formatMoney(montoBaseSugerido)}</strong>
           </div>
 
-          <div style={styles.previewRow}>
-            <span>Recargo financiación</span>
-            <strong style={styles.warningText}>
-              + {formatMoney(recargoTarjetaPreview)}
-            </strong>
-          </div>
-
-          <div style={styles.previewRowTotalWarning}>
-            <span>Total tarjeta a cobrar</span>
-            <strong>{formatMoney(totalTarjetaPreview)}</strong>
-          </div>
-        </div>
-      )}
-
-      {!esTarjeta && previewSaldar?.monto_sugerido_para_saldar != null && (
-        <div style={hayRecargo ? styles.previewBoxWarning : styles.previewBoxSuccess}>
-          <div style={styles.previewRow}>
-            <span>Precio lista</span>
-            <strong>{formatMoney(previewSaldar.subtotal_base)}</strong>
-          </div>
+          {hayDescuento && (
+            <div style={styles.previewRow}>
+              <span>Descuento del tramo</span>
+              <strong style={styles.successText}>
+                - {formatMoney(descuentoPreview)}
+              </strong>
+            </div>
+          )}
 
           {hayRecargo && (
             <div style={styles.previewRow}>
-              <span>Recargo financiación</span>
+              <span>Recargo del tramo</span>
               <strong style={styles.warningText}>
-                + {formatMoney(previewSaldar.recargo_total)}
+                + {formatMoney(recargoPreview)}
               </strong>
             </div>
           )}
 
-          {hayDescuento && !hayRecargo && (
-            <div style={styles.previewRow}>
-              <span>Descuento contado</span>
-              <strong style={styles.successText}>
-                - {formatMoney(previewSaldar.descuento_total)}
-              </strong>
-            </div>
-          )}
-
-          <div style={hayRecargo ? styles.previewRowTotalWarning : styles.previewRowTotalSuccess}>
+          <div
+            style={
+              hayRecargo
+                ? styles.previewRowTotalWarning
+                : hayDescuento
+                  ? styles.previewRowTotalSuccess
+                  : styles.previewRowTotalNeutral
+            }
+          >
             <span>Total a cobrar</span>
-            <strong>
-              {formatMoney(previewSaldar.monto_sugerido_para_saldar)}
-            </strong>
+            <strong>{formatMoney(montoSugeridoCobrado)}</strong>
           </div>
         </div>
       )}
@@ -147,7 +128,7 @@ export default function CheckoutAgregarPago({
           type="number"
           value={monto}
           onChange={(e) => setMonto(e.target.value)}
-          placeholder={esTarjeta ? "Monto base financiado" : "Monto a cobrar"}
+          placeholder="Monto base"
           style={styles.input}
         />
 
@@ -166,9 +147,8 @@ export default function CheckoutAgregarPago({
       </div>
 
       <div style={styles.hint}>
-        {esTarjeta
-          ? "En tarjeta ingresá el monto base a financiar. El sistema suma el recargo y registra el total cobrado."
-          : "Ingresá el monto que realmente se cobra al cliente."}
+        Ingresá siempre el monto base del tramo. El backend calcula descuento,
+        recargo y total cobrado real.
       </div>
 
       {errorLocal && <div style={styles.localError}>{errorLocal}</div>}
@@ -228,6 +208,15 @@ const styles = {
     display: "grid",
     gap: 6,
   },
+  previewBoxNeutral: {
+    border: "1px solid #eaecf0",
+    background: "#ffffff",
+    borderRadius: 10,
+    padding: 8,
+    marginBottom: 10,
+    display: "grid",
+    gap: 6,
+  },
   previewRow: {
     display: "flex",
     justifyContent: "space-between",
@@ -254,6 +243,16 @@ const styles = {
     color: "#b54708",
     paddingTop: 6,
     borderTop: "1px solid #fedf89",
+  },
+  previewRowTotalNeutral: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 10,
+    fontSize: 14,
+    fontWeight: 900,
+    color: "#344054",
+    paddingTop: 6,
+    borderTop: "1px solid #eaecf0",
   },
   successText: {
     color: "#067647",

@@ -2,7 +2,7 @@ from decimal import Decimal
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 
 
 TipoReglaComercial = Literal["descuento", "recargo"]
@@ -30,16 +30,31 @@ class ReglaComercialOutput(BaseModel):
 
 class PagoSimulacionInput(BaseModel):
     medio_pago: MedioPagoRegla
-    monto: Decimal = Field(gt=0)
+
+    monto_base: Decimal | None = Field(default=None, gt=0)
+    monto: Decimal | None = Field(default=None, gt=0)
 
     cuotas: int | None = Field(default=None, gt=0)
     entidad: str | None = Field(default=None, max_length=80)
+    nota: str | None = None
+
+    @model_validator(mode="after")
+    def validar_monto_base(self):
+        if self.monto_base is None and self.monto is None:
+            raise ValueError("Debe informar monto_base")
+        return self
+
+    @property
+    def base(self) -> Decimal:
+        return self.monto_base if self.monto_base is not None else self.monto
+
 
 class SugerirSaldoConMedioPagoInput(BaseModel):
     medio_pago: MedioPagoRegla
     cuotas: int | None = Field(default=None, gt=0)
     entidad: str | None = Field(default=None, max_length=80)
-    
+
+
 class SimularReglasInput(BaseModel):
     subtotal_base: Decimal = Field(gt=0)
     medios_pago: list[PagoSimulacionInput] = Field(default_factory=list)
@@ -48,12 +63,25 @@ class SimularReglasInput(BaseModel):
 
 class ReglaAplicadaOutput(BaseModel):
     id_regla_comercial: int | None = None
+    id_tarjeta_plan: int | None = None
     tipo: str
     descripcion: str
     medio_pago: str | None = None
     porcentaje_aplicado: Decimal | None = None
+    monto_base_aplicado: Decimal | None = None
     monto_aplicado: Decimal
+
+
+class TramoPagoOutput(BaseModel):
+    medio_pago: str
+    monto_base_aplicado: Decimal
+    descuento_aplicado: Decimal
+    recargo_aplicado: Decimal
+    monto_total_cobrado: Decimal
+    cuotas: int | None = None
+    entidad: str | None = None
     id_tarjeta_plan: int | None = None
+    porcentaje_recargo_aplicado: Decimal | None = None
 
 
 class SimularReglasOutput(BaseModel):
@@ -61,15 +89,15 @@ class SimularReglasOutput(BaseModel):
     descuento_total: Decimal
     recargo_total: Decimal
     total_final: Decimal
+    total_base_asignada: Decimal
     total_pagos_cargados: Decimal
+    saldo_base_estimado: Decimal
     saldo_estimado: Decimal
+    monto_base_sugerido_para_saldar: Decimal | None = None
     monto_sugerido_para_saldar: Decimal | None = None
     reglas_aplicadas: list[ReglaAplicadaOutput]
+    tramos_pago: list[TramoPagoOutput]
 
-class SugerirSaldoConMedioPagoInput(BaseModel):
-    medio_pago: MedioPagoRegla
-    cuotas: int | None = Field(default=None, gt=0)
-    entidad: str | None = Field(default=None, max_length=80)
 
 class ReglaComercialUpdateInput(BaseModel):
     nombre: str | None = Field(default=None, min_length=3, max_length=120)

@@ -68,18 +68,6 @@ export default function CheckoutVentaPanel({
     };
   }
 
-  function calcularMontoFinalPago(montoBaseInput) {
-    if (medioPago !== "tarjeta") {
-      return montoBaseInput;
-    }
-
-    const porcentaje = Number(
-      planTarjetaSeleccionado?.porcentaje_recargo_cliente || 0
-    );
-
-    return Number((montoBaseInput * (1 + porcentaje / 100)).toFixed(2));
-  }
-
   function buildPayloadSimulacion(
     pagos = pagosDraft,
     sugerirSaldoConMedioPago = null
@@ -103,7 +91,7 @@ export default function CheckoutVentaPanel({
       })),
       pagos: pagos.map((pago) => ({
         medio_pago: pago.medio_pago,
-        monto: String(pago.monto),
+        monto_base: String(pago.monto_base),
         cuotas: pago.cuotas || null,
         entidad: pago.entidad || null,
         nota: pago.nota || null,
@@ -153,26 +141,14 @@ export default function CheckoutVentaPanel({
     setPreviewSaldar(data);
     setSimulacion(data);
 
-    const sugerido = data.monto_sugerido_para_saldar;
+    const baseSugerida = data.monto_base_sugerido_para_saldar;
 
-    if (sugerido === null || sugerido === undefined) {
-      setErrorLocal("No se pudo calcular el monto sugerido para saldar");
+    if (baseSugerida === null || baseSugerida === undefined) {
+      setErrorLocal("No se pudo calcular el monto base sugerido para saldar");
       return;
     }
 
-    if (medioPago === "tarjeta") {
-      const porcentaje = Number(
-        planTarjetaSeleccionado?.porcentaje_recargo_cliente || 0
-      );
-
-      const factor = 1 + porcentaje / 100;
-      const baseSugerida = Number(sugerido) / factor;
-
-      setMonto(String(baseSugerida.toFixed(2)));
-    } else {
-      setMonto(String(sugerido));
-    }
-
+    setMonto(String(Number(baseSugerida).toFixed(2)));
     setErrorLocal("");
   }
 
@@ -180,31 +156,42 @@ export default function CheckoutVentaPanel({
     const montoBaseInput = Number(monto);
 
     if (!Number.isFinite(montoBaseInput) || montoBaseInput <= 0) {
-      setErrorLocal("El monto debe ser mayor a cero");
+      setErrorLocal("El monto base debe ser mayor a cero");
       return;
     }
 
     const datosFinancieros = getDatosFinancierosPago();
-    const montoFinalPago = calcularMontoFinalPago(montoBaseInput);
 
-    const nuevosPagos = [
-      ...pagosDraft,
-      {
-        temp_id: crypto.randomUUID(),
-        medio_pago: medioPago,
-        monto: montoFinalPago,
-        monto_base_input: montoBaseInput,
-        cuotas: datosFinancieros.cuotas,
-        entidad: datosFinancieros.entidad,
-        nota: null,
-      },
-    ];
+    const pagoDraft = {
+      temp_id: crypto.randomUUID(),
+      medio_pago: medioPago,
+      monto_base: montoBaseInput,
+      cuotas: datosFinancieros.cuotas,
+      entidad: datosFinancieros.entidad,
+      nota: null,
+    };
+
+    const nuevosPagos = [...pagosDraft, pagoDraft];
 
     const nuevaSimulacion = await simularPagos(nuevosPagos);
 
     if (!nuevaSimulacion) return;
 
-    setPagosDraft(nuevosPagos);
+    const tramoNuevo =
+      nuevaSimulacion.tramos_pago?.[nuevaSimulacion.tramos_pago.length - 1];
+
+    const pagosConTramo = nuevosPagos.map((pago) => {
+      if (pago.temp_id !== pagoDraft.temp_id || !tramoNuevo) return pago;
+
+      return {
+        ...pago,
+        monto_total_cobrado: tramoNuevo.monto_total_cobrado,
+        descuento_aplicado: tramoNuevo.descuento_aplicado,
+        recargo_aplicado: tramoNuevo.recargo_aplicado,
+      };
+    });
+
+    setPagosDraft(pagosConTramo);
     setSimulacion(nuevaSimulacion);
     setPreviewSaldar(null);
     setMonto("");
@@ -280,7 +267,7 @@ export default function CheckoutVentaPanel({
     onFinalizar?.({
       pagos: pagosDraft.map((pago) => ({
         medio_pago: pago.medio_pago,
-        monto: String(pago.monto),
+        monto_base: String(pago.monto_base),
         cuotas: pago.cuotas || null,
         entidad: pago.entidad || null,
         nota: pago.nota || null,

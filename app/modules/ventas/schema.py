@@ -1,6 +1,6 @@
 from decimal import Decimal
 from typing import List, Optional, Literal
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 from app.modules.reglas_comerciales.schema import SugerirSaldoConMedioPagoInput
 
 MedioPagoVenta = Literal["efectivo", "transferencia", "mercadopago", "tarjeta"]
@@ -45,12 +45,26 @@ class VentaItemCreateInput(BaseModel):
 
 class VentaPagoCreateInput(BaseModel):
     medio_pago: MedioPagoVenta
-    monto: Decimal = Field(gt=0)
+
+    monto_base: Decimal | None = Field(default=None, gt=0)
+
+    # Compatibilidad temporal V1
+    monto: Decimal | None = Field(default=None, gt=0)
 
     cuotas: Optional[int] = Field(default=None, gt=0)
     entidad: Optional[str] = Field(default=None, max_length=80)
 
     nota: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validar_monto_base(self):
+        if self.monto_base is None and self.monto is None:
+            raise ValueError("Debe informar monto_base")
+        return self
+
+    @property
+    def base(self) -> Decimal:
+        return self.monto_base if self.monto_base is not None else self.monto
 
 class VentaCreateInput(BaseModel):
     id_cliente: int
@@ -218,7 +232,11 @@ class VentaSimulacionOut(BaseModel):
     descuento_total: Decimal
     recargo_total: Decimal
     total_final: Decimal
+    total_base_asignada: Decimal
     total_pagos_cargados: Decimal
+    saldo_base_estimado: Decimal
     saldo_estimado: Decimal
+    monto_base_sugerido_para_saldar: Decimal | None = None
     monto_sugerido_para_saldar: Decimal | None = None
     reglas_aplicadas: list = Field(default_factory=list)
+    tramos_pago: list = Field(default_factory=list)

@@ -7,9 +7,16 @@ export default function CheckoutTotalesSimulacion({
 
   return (
     <div style={styles.box}>
+      <Row label="Subtotal base" value={formatMoney(simulacion.subtotal_base)} />
+
       <Row
-        label="Subtotal base"
-        value={formatMoney(simulacion.subtotal_base)}
+        label="Base asignada"
+        value={formatMoney(simulacion.total_base_asignada ?? 0)}
+      />
+
+      <Row
+        label="Saldo base"
+        value={formatMoney(simulacion.saldo_base_estimado ?? 0)}
       />
 
       <Row
@@ -20,22 +27,20 @@ export default function CheckoutTotalesSimulacion({
 
       <Row
         label="Recargo aplicado"
-        value={formatMoney(simulacion.recargo_total)}
+        value={`+ ${formatMoney(simulacion.recargo_total)}`}
         tone="warning"
       />
 
       <div style={styles.separator} />
 
       <Row
-        label="Total final"
+        label="Total cobrado / a cobrar"
         value={formatMoney(simulacion.total_final)}
         strong
       />
 
       {simulando && (
-        <small style={styles.loading}>
-          Recalculando simulación...
-        </small>
+        <small style={styles.loading}>Recalculando simulación...</small>
       )}
     </div>
   );

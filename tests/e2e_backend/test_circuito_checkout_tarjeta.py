@@ -67,7 +67,7 @@ def _crear_venta_tarjeta_3_cuotas(client, seed_venta_basica):
             "pagos": [
                 {
                     "medio_pago": "tarjeta",
-                    "monto": "28106.00",
+                    "monto_base": "24440.00",
                     "cuotas": 3,
                     "entidad": None,
                     "nota": "Pago tarjeta 3 cuotas",
