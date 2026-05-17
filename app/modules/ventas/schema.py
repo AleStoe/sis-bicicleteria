@@ -1,7 +1,7 @@
 from decimal import Decimal
 from typing import List, Optional, Literal
 from pydantic import BaseModel, Field, ConfigDict
-
+from app.modules.reglas_comerciales.schema import SugerirSaldoConMedioPagoInput
 
 MedioPagoVenta = Literal["efectivo", "transferencia", "mercadopago", "tarjeta"]
 TipoPrecioVenta = Literal["minorista", "mayorista"]
@@ -210,6 +210,7 @@ class VentaSimulacionInput(BaseModel):
     tipo_precio: TipoPrecioVenta = "minorista"
     items: List[VentaItemCreateInput]
     pagos: List[VentaPagoCreateInput] = Field(default_factory=list)
+    sugerir_saldo_con_medio_pago: SugerirSaldoConMedioPagoInput | None = None
 
 
 class VentaSimulacionOut(BaseModel):
@@ -217,4 +218,7 @@ class VentaSimulacionOut(BaseModel):
     descuento_total: Decimal
     recargo_total: Decimal
     total_final: Decimal
+    total_pagos_cargados: Decimal
+    saldo_estimado: Decimal
+    monto_sugerido_para_saldar: Decimal | None = None
     reglas_aplicadas: list = Field(default_factory=list)

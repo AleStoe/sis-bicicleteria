@@ -487,6 +487,7 @@ def crear_venta(data):
                     {
                         "subtotal_base": subtotal_total,
                         "medios_pago": pagos,
+                        "sugerir_saldo_con_medio_pago": None,
                     },
                 )()
             )
@@ -1589,6 +1590,11 @@ def simular_venta(data):
                 {
                     "subtotal_base": subtotal_total,
                     "medios_pago": pagos,
+                    "sugerir_saldo_con_medio_pago": getattr(
+                        data,
+                        "sugerir_saldo_con_medio_pago",
+                        None,
+                    ),
                 },
             )()
         )
@@ -1598,6 +1604,9 @@ def simular_venta(data):
             "descuento_total": redondear_monto(resultado_reglas["descuento_total"]),
             "recargo_total": redondear_monto(resultado_reglas["recargo_total"]),
             "total_final": redondear_monto(resultado_reglas["total_final"]),
+            "total_pagos_cargados": redondear_monto(resultado_reglas["total_pagos_cargados"]),
+            "saldo_estimado": redondear_monto(resultado_reglas["saldo_estimado"]),
+            "monto_sugerido_para_saldar": resultado_reglas.get("monto_sugerido_para_saldar"),
             "reglas_aplicadas": resultado_reglas["reglas_aplicadas"],
         }
 

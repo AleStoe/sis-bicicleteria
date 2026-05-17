@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import CheckoutResumenPago from "./checkout/CheckoutResumenPago";
 import CheckoutAgregarPago from "./checkout/CheckoutAgregarPago";
 import CheckoutPagosList from "./checkout/CheckoutPagosList";
-import { simularVenta } from "../../services/ventasService";
 import CheckoutTotalesSimulacion from "./checkout/CheckoutTotalesSimulacion";
+import { simularVenta } from "../../services/ventasService";
 
 function formatMoney(value) {
   return Number(value || 0).toLocaleString("es-AR", {
@@ -28,22 +28,20 @@ export default function CheckoutVentaPanel({
   const [errorLocal, setErrorLocal] = useState("");
   const [simulacion, setSimulacion] = useState(null);
   const [simulando, setSimulando] = useState(false);
+  const [previewSaldar, setPreviewSaldar] = useState(null);
 
   const cantidadItems = useMemo(() => {
     return items.reduce((acc, item) => acc + Number(item.cantidad || 0), 0);
   }, [items]);
 
   const totalCalculado = Number(simulacion?.total_final ?? total ?? 0);
+  const pagado = Number(simulacion?.total_pagos_cargados ?? 0);
+  const pendiente = Number(simulacion?.saldo_estimado ?? totalCalculado);
 
-  const pagado = Number(
-    simulacion?.total_pagos_cargados ?? 0
-  );
-
-  const pendiente = Number(
-    simulacion?.saldo_estimado ?? totalCalculado
-  );
-
-  function buildPayloadSimulacion(pagos = pagosDraft) {
+  function buildPayloadSimulacion(
+    pagos = pagosDraft,
+    sugerirSaldoConMedioPago = null
+  ) {
     return {
       tipo_precio: tipoPrecio || "minorista",
       items: items.map((item) => ({
@@ -66,21 +64,34 @@ export default function CheckoutVentaPanel({
         monto: String(pago.monto),
         nota: pago.nota || null,
       })),
+      sugerir_saldo_con_medio_pago: sugerirSaldoConMedioPago,
     };
   }
 
-  async function simularPagos(pagos = pagosDraft) {
+  async function simularPagos(
+    pagos = pagosDraft,
+    sugerirSaldoConMedioPago = null,
+    mostrarError = true
+  ) {
     if (items.length === 0) {
       return null;
     }
 
     try {
       setSimulando(true);
-      setErrorLocal("");
 
-      return await simularVenta(buildPayloadSimulacion(pagos));
+      if (mostrarError) {
+        setErrorLocal("");
+      }
+
+      return await simularVenta(
+        buildPayloadSimulacion(pagos, sugerirSaldoConMedioPago)
+      );
     } catch (err) {
-      setErrorLocal(err.message || "No se pudo simular el total de la venta");
+      if (mostrarError) {
+        setErrorLocal(err.message || "No se pudo simular el total de la venta");
+      }
+
       return null;
     } finally {
       setSimulando(false);
@@ -91,6 +102,27 @@ export default function CheckoutVentaPanel({
     const data = await simularPagos(pagos);
     setSimulacion(data);
     return data;
+  }
+
+  async function sugerirMontoParaSaldar() {
+    const data = await simularPagos(pagosDraft, {
+      medio_pago: medioPago,
+    });
+
+    if (!data) return;
+
+    setPreviewSaldar(data);
+    setSimulacion(data);
+
+    const sugerido = data.monto_sugerido_para_saldar;
+
+    if (sugerido === null || sugerido === undefined) {
+      setErrorLocal("No se pudo calcular el monto sugerido para saldar");
+      return;
+    }
+
+    setMonto(String(sugerido));
+    setErrorLocal("");
   }
 
   async function agregarPago() {
@@ -115,18 +147,9 @@ export default function CheckoutVentaPanel({
 
     if (!nuevaSimulacion) return;
 
-    const totalFinal = Number(nuevaSimulacion.total_final || 0);
-    const totalPagos = Number(nuevaSimulacion.total_pagos_cargados || 0);
-
-    if (totalPagos > totalFinal) {
-      setErrorLocal(
-        `El pago supera el total final simulado. Total final: ${formatMoney(totalFinal)}`
-      );
-      return;
-    }
-
     setPagosDraft(nuevosPagos);
     setSimulacion(nuevaSimulacion);
+    setPreviewSaldar(null);
     setMonto("");
     setErrorLocal("");
   }
@@ -134,19 +157,50 @@ export default function CheckoutVentaPanel({
   async function quitarPago(tempId) {
     const nuevosPagos = pagosDraft.filter((pago) => pago.temp_id !== tempId);
     setPagosDraft(nuevosPagos);
+    setPreviewSaldar(null);
     await recalcularSimulacion(nuevosPagos);
   }
 
-   useEffect(() => {
+  useEffect(() => {
     setPagosDraft([]);
     setMonto("");
     setErrorLocal("");
     setSimulacion(null);
+    setPreviewSaldar(null);
 
     if (items.length > 0) {
       recalcularSimulacion([]);
     }
   }, [items, total, tipoPrecio]);
+
+  useEffect(() => {
+    let cancelado = false;
+
+    async function cargarPreview() {
+      if (items.length === 0) {
+        setPreviewSaldar(null);
+        return;
+      }
+
+      const data = await simularPagos(
+        pagosDraft,
+        {
+          medio_pago: medioPago,
+        },
+        false
+      );
+
+      if (cancelado || !data) return;
+
+      setPreviewSaldar(data);
+    }
+
+    cargarPreview();
+
+    return () => {
+      cancelado = true;
+    };
+  }, [medioPago, pagosDraft, items, tipoPrecio]);
 
   function finalizar() {
     onFinalizar?.({
@@ -181,7 +235,11 @@ export default function CheckoutVentaPanel({
         monto={monto}
         setMonto={setMonto}
         agregarPago={agregarPago}
+        sugerirMontoParaSaldar={sugerirMontoParaSaldar}
+        previewSaldar={previewSaldar}
+        formatMoney={formatMoney}
         errorLocal={errorLocal}
+        simulando={simulando}
       />
 
       <CheckoutPagosList
