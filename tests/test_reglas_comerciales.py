@@ -17,20 +17,6 @@ def _get_reglas_comerciales(conn):
         return cur.fetchall()
 
 
-def _get_reglas_aplicadas_venta(conn, venta_id: int):
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            SELECT *
-            FROM venta_reglas_aplicadas
-            WHERE id_venta = %s
-            ORDER BY id
-            """,
-            (venta_id,),
-        )
-        return cur.fetchall()
-
-
 def test_lista_reglas_comerciales_activas(client, db_conn):
     response = client.get("/reglas-comerciales")
 
@@ -48,7 +34,7 @@ def test_lista_reglas_comerciales_activas(client, db_conn):
     assert len(reglas_db) >= 2
 
 
-def test_simula_descuento_contado_efectivo(client):
+def test_simula_descuento_efectivo_sobre_monto_pagado(client):
     response = client.post(
         "/reglas-comerciales/simular",
         json={
@@ -70,14 +56,13 @@ def test_simula_descuento_contado_efectivo(client):
     assert _dec(data["descuento_total"]) == Decimal("10000")
     assert _dec(data["recargo_total"]) == Decimal("0")
     assert _dec(data["total_final"]) == Decimal("90000")
-
     assert len(data["reglas_aplicadas"]) == 1
     assert data["reglas_aplicadas"][0]["tipo"] == "descuento"
     assert data["reglas_aplicadas"][0]["medio_pago"] == "efectivo"
     assert _dec(data["reglas_aplicadas"][0]["monto_aplicado"]) == Decimal("10000")
 
 
-def test_simula_descuento_contado_transferencia(client):
+def test_simula_descuento_transferencia_sobre_monto_pagado(client):
     response = client.post(
         "/reglas-comerciales/simular",
         json={
@@ -99,12 +84,11 @@ def test_simula_descuento_contado_transferencia(client):
     assert _dec(data["descuento_total"]) == Decimal("5000")
     assert _dec(data["recargo_total"]) == Decimal("0")
     assert _dec(data["total_final"]) == Decimal("45000")
-
     assert len(data["reglas_aplicadas"]) == 1
     assert data["reglas_aplicadas"][0]["medio_pago"] == "transferencia"
 
 
-def test_pago_parcial_efectivo_no_aplica_descuento_contado(client):
+def test_pago_parcial_efectivo_aplica_descuento_sobre_monto_pagado(client):
     response = client.post(
         "/reglas-comerciales/simular",
         json={
@@ -123,10 +107,13 @@ def test_pago_parcial_efectivo_no_aplica_descuento_contado(client):
     data = response.json()
 
     assert _dec(data["subtotal_base"]) == Decimal("100000")
-    assert _dec(data["descuento_total"]) == Decimal("0")
+    assert _dec(data["descuento_total"]) == Decimal("5000")
     assert _dec(data["recargo_total"]) == Decimal("0")
-    assert _dec(data["total_final"]) == Decimal("100000")
-    assert len(data["reglas_aplicadas"]) == 0
+    assert _dec(data["total_final"]) == Decimal("95000")
+    assert _dec(data["total_pagos_cargados"]) == Decimal("50000")
+    assert _dec(data["saldo_estimado"]) == Decimal("45000")
+    assert len(data["reglas_aplicadas"]) == 1
+
 
 def test_mercadopago_no_aplica_descuento_contado(client):
     response = client.post(
@@ -181,12 +168,7 @@ def test_simular_rechaza_subtotal_cero(client):
         "/reglas-comerciales/simular",
         json={
             "subtotal_base": "0",
-            "medios_pago": [
-                {
-                    "medio_pago": "efectivo",
-                    "monto": "0",
-                }
-            ],
+            "medios_pago": [],
         },
     )
 
@@ -208,6 +190,7 @@ def test_simular_rechaza_medio_pago_invalido(client):
     )
 
     assert response.status_code == 422
+
 
 def test_tarjeta_una_cuota_no_aplica_recargo(client):
     response = client.post(
@@ -232,7 +215,8 @@ def test_tarjeta_una_cuota_no_aplica_recargo(client):
     assert _dec(data["recargo_total"]) == Decimal("0")
     assert _dec(data["total_final"]) == Decimal("100000")
 
-def test_pago_mixto_efectivo_y_tarjeta_no_aplica_descuento_contado(client):
+
+def test_pago_mixto_efectivo_y_tarjeta_aplica_descuento_y_recargo(client):
     response = client.post(
         "/reglas-comerciales/simular",
         json={
@@ -255,7 +239,117 @@ def test_pago_mixto_efectivo_y_tarjeta_no_aplica_descuento_contado(client):
 
     data = response.json()
 
-    assert _dec(data["descuento_total"]) == Decimal("0")
+    assert _dec(data["descuento_total"]) == Decimal("5000")
     assert _dec(data["recargo_total"]) == Decimal("17500")
-    assert _dec(data["total_final"]) == Decimal("117500")
-    assert len(data["reglas_aplicadas"]) == 1
+    assert _dec(data["total_final"]) == Decimal("112500")
+    assert len(data["reglas_aplicadas"]) == 2
+
+
+def test_sugerir_monto_para_saldar_efectivo(client):
+    response = client.post(
+        "/reglas-comerciales/simular",
+        json={
+            "subtotal_base": "1000",
+            "medios_pago": [],
+            "sugerir_saldo_con_medio_pago": {
+                "medio_pago": "efectivo",
+            },
+        },
+    )
+
+    assert response.status_code == 200, response.text
+
+    data = response.json()
+
+    assert _dec(data["monto_sugerido_para_saldar"]) == Decimal("909.09")
+
+
+def test_sugerir_monto_para_saldar_transferencia_con_pago_previo(client):
+    response = client.post(
+        "/reglas-comerciales/simular",
+        json={
+            "subtotal_base": "1000",
+            "medios_pago": [
+                {
+                    "medio_pago": "efectivo",
+                    "monto": "500",
+                }
+            ],
+            "sugerir_saldo_con_medio_pago": {
+                "medio_pago": "transferencia",
+            },
+        },
+    )
+
+    assert response.status_code == 200, response.text
+
+    data = response.json()
+
+    sugerido = _dec(data["monto_sugerido_para_saldar"])
+
+    assert sugerido == Decimal("450.00")
+
+
+def test_sugerir_monto_para_saldar_tarjeta_con_recargo(client):
+    response = client.post(
+        "/reglas-comerciales/simular",
+        json={
+            "subtotal_base": "1000",
+            "medios_pago": [],
+            "sugerir_saldo_con_medio_pago": {
+                "medio_pago": "tarjeta",
+                "cuotas": 6,
+            },
+        },
+    )
+
+    assert response.status_code == 200, response.text
+
+    data = response.json()
+
+    sugerido = _dec(data["monto_sugerido_para_saldar"])
+
+    assert sugerido > Decimal("1000")
+
+
+def test_sugerir_monto_para_saldar_medio_sin_descuento_ni_recargo(client):
+    response = client.post(
+        "/reglas-comerciales/simular",
+        json={
+            "subtotal_base": "1000",
+            "medios_pago": [],
+            "sugerir_saldo_con_medio_pago": {
+                "medio_pago": "mercadopago",
+            },
+        },
+    )
+
+    assert response.status_code == 200, response.text
+
+    data = response.json()
+
+    assert _dec(data["monto_sugerido_para_saldar"]) == Decimal("1000.00")
+
+
+def test_sugerir_monto_para_saldar_cuando_ya_esta_saldado(client):
+    response = client.post(
+        "/reglas-comerciales/simular",
+        json={
+            "subtotal_base": "1000",
+            "medios_pago": [
+                {
+                    "medio_pago": "efectivo",
+                    "monto": "1000",
+                }
+            ],
+            "sugerir_saldo_con_medio_pago": {
+                "medio_pago": "efectivo",
+            },
+        },
+    )
+
+    assert response.status_code == 200, response.text
+
+    data = response.json()
+
+    assert _dec(data["monto_sugerido_para_saldar"]) == Decimal("0")

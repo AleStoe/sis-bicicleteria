@@ -35,10 +35,15 @@ class PagoSimulacionInput(BaseModel):
     cuotas: int | None = Field(default=None, gt=0)
     entidad: str | None = Field(default=None, max_length=80)
 
-
+class SugerirSaldoConMedioPagoInput(BaseModel):
+    medio_pago: MedioPagoRegla
+    cuotas: int | None = Field(default=None, gt=0)
+    entidad: str | None = Field(default=None, max_length=80)
+    
 class SimularReglasInput(BaseModel):
     subtotal_base: Decimal = Field(gt=0)
     medios_pago: list[PagoSimulacionInput] = Field(default_factory=list)
+    sugerir_saldo_con_medio_pago: SugerirSaldoConMedioPagoInput | None = None
 
 
 class ReglaAplicadaOutput(BaseModel):
@@ -57,4 +62,10 @@ class SimularReglasOutput(BaseModel):
     total_final: Decimal
     total_pagos_cargados: Decimal
     saldo_estimado: Decimal
+    monto_sugerido_para_saldar: Decimal | None = None
     reglas_aplicadas: list[ReglaAplicadaOutput]
+
+class SugerirSaldoConMedioPagoInput(BaseModel):
+    medio_pago: MedioPagoRegla
+    cuotas: int | None = Field(default=None, gt=0)
+    entidad: str | None = Field(default=None, max_length=80)
