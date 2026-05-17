@@ -103,3 +103,145 @@ def get_tarjeta_plan_activo(conn, *, medio_pago: str, cuotas: int, entidad: str 
             (medio_pago, cuotas, entidad, entidad),
         )
         return cur.fetchone()
+    
+def update_regla_comercial(conn, regla_id: int, data: dict):
+    campos = []
+    params = []
+
+    for campo, valor in data.items():
+        if valor is not None:
+            campos.append(f"{campo} = %s")
+            params.append(valor)
+
+    if not campos:
+        return None
+
+    campos.append("updated_at = NOW()")
+    params.append(regla_id)
+
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            f"""
+            UPDATE reglas_comerciales
+            SET {", ".join(campos)}
+            WHERE id = %s
+            RETURNING
+                id,
+                nombre,
+                tipo,
+                medio_pago,
+                porcentaje,
+                monto_fijo,
+                requiere_pago_total,
+                combinable,
+                prioridad,
+                activa,
+                fecha_desde,
+                fecha_hasta,
+                created_at,
+                updated_at
+            """,
+            params,
+        )
+        return cur.fetchone()
+
+
+def get_tarjeta_planes(conn, solo_activos: bool = False):
+    with conn.cursor(row_factory=dict_row) as cur:
+        where_sql = "WHERE activa = TRUE" if solo_activos else ""
+
+        cur.execute(
+            f"""
+            SELECT
+                id,
+                nombre,
+                medio_pago,
+                entidad,
+                cuotas,
+                porcentaje_recargo_cliente,
+                porcentaje_costo_financiero,
+                activa,
+                fecha_desde,
+                fecha_hasta
+            FROM tarjeta_planes
+            {where_sql}
+            ORDER BY activa DESC, medio_pago ASC, entidad ASC NULLS FIRST, cuotas ASC, id ASC
+            """
+        )
+        return cur.fetchall()
+
+
+def insert_tarjeta_plan(conn, data: dict):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            INSERT INTO tarjeta_planes (
+                nombre,
+                medio_pago,
+                entidad,
+                cuotas,
+                porcentaje_recargo_cliente,
+                porcentaje_costo_financiero,
+                activa
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            RETURNING
+                id,
+                nombre,
+                medio_pago,
+                entidad,
+                cuotas,
+                porcentaje_recargo_cliente,
+                porcentaje_costo_financiero,
+                activa,
+                fecha_desde,
+                fecha_hasta
+            """,
+            (
+                data["nombre"],
+                data["medio_pago"],
+                data.get("entidad"),
+                data["cuotas"],
+                data["porcentaje_recargo_cliente"],
+                data["porcentaje_costo_financiero"],
+                data["activa"],
+            ),
+        )
+        return cur.fetchone()
+
+
+def update_tarjeta_plan(conn, plan_id: int, data: dict):
+    campos = []
+    params = []
+
+    for campo, valor in data.items():
+        if valor is not None:
+            campos.append(f"{campo} = %s")
+            params.append(valor)
+
+    if not campos:
+        return None
+
+    params.append(plan_id)
+
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            f"""
+            UPDATE tarjeta_planes
+            SET {", ".join(campos)}
+            WHERE id = %s
+            RETURNING
+                id,
+                nombre,
+                medio_pago,
+                entidad,
+                cuotas,
+                porcentaje_recargo_cliente,
+                porcentaje_costo_financiero,
+                activa,
+                fecha_desde,
+                fecha_hasta
+            """,
+            params,
+        )
+        return cur.fetchone()

@@ -15,6 +15,7 @@ import {
   Tags,
   Users,
   Wrench,
+  Settings2,
 } from "lucide-react";
 import { sidebarContainerStyle } from "../../styles/layout/appLayoutStyles";
 import {
@@ -35,6 +36,7 @@ const groups = [
       { to: "/ventas", label: "Ventas", icon: Receipt },
       { to: "/caja", label: "Caja", icon: DollarSign },
       { to: "/pagos", label: "Pagos", icon: CreditCard },
+      { to: "/configuracion-comercial", label: "Config. Comercial", icon: Settings2 },
     ],
   },
   {
@@ -47,6 +49,7 @@ const groups = [
       { to: "/catalogo", label: "Catálogo", icon: Tags },
       { to: "/precios", label: "Precios", icon: Calculator },
       { to: "/proveedores", label: "Proveedores", icon: HandCoins },
+      
     ],
   },
   {

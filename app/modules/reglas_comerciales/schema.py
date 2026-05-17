@@ -69,3 +69,46 @@ class SugerirSaldoConMedioPagoInput(BaseModel):
     medio_pago: MedioPagoRegla
     cuotas: int | None = Field(default=None, gt=0)
     entidad: str | None = Field(default=None, max_length=80)
+
+class ReglaComercialUpdateInput(BaseModel):
+    nombre: str | None = Field(default=None, min_length=3, max_length=120)
+    porcentaje: Decimal | None = Field(default=None, ge=0)
+    monto_fijo: Decimal | None = Field(default=None, ge=0)
+    requiere_pago_total: bool | None = None
+    combinable: bool | None = None
+    prioridad: int | None = Field(default=None, ge=0)
+    activa: bool | None = None
+
+
+class TarjetaPlanOutput(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    nombre: str
+    medio_pago: str
+    entidad: str | None = None
+    cuotas: int
+    porcentaje_recargo_cliente: Decimal
+    porcentaje_costo_financiero: Decimal
+    activa: bool
+    fecha_desde: datetime | None = None
+    fecha_hasta: datetime | None = None
+
+
+class TarjetaPlanCreateInput(BaseModel):
+    nombre: str = Field(min_length=3, max_length=120)
+    medio_pago: MedioPagoRegla = "tarjeta"
+    entidad: str | None = Field(default=None, max_length=80)
+    cuotas: int = Field(gt=0)
+    porcentaje_recargo_cliente: Decimal = Field(ge=0)
+    porcentaje_costo_financiero: Decimal = Field(default=Decimal("0"), ge=0)
+    activa: bool = True
+
+
+class TarjetaPlanUpdateInput(BaseModel):
+    nombre: str | None = Field(default=None, min_length=3, max_length=120)
+    entidad: str | None = Field(default=None, max_length=80)
+    cuotas: int | None = Field(default=None, gt=0)
+    porcentaje_recargo_cliente: Decimal | None = Field(default=None, ge=0)
+    porcentaje_costo_financiero: Decimal | None = Field(default=None, ge=0)
+    activa: bool | None = None

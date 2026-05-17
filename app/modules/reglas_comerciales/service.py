@@ -9,6 +9,10 @@ from .repository import (
     get_reglas_comerciales,
     get_reglas_activas_por_medios,
     get_tarjeta_plan_activo,
+    update_regla_comercial,
+    get_tarjeta_planes,
+    insert_tarjeta_plan,
+    update_tarjeta_plan,
 )
 from .schema import PagoSimulacionInput
 
@@ -254,6 +258,65 @@ def simular_reglas_comerciales(data):
             "monto_sugerido_para_saldar": monto_sugerido,
             "reglas_aplicadas": resultado["reglas_aplicadas"],
         }
+
+    finally:
+        conn.close()
+
+def editar_regla_comercial(regla_id: int, data):
+    conn = get_connection()
+
+    try:
+        payload = data.model_dump(exclude_unset=True)
+
+        regla = update_regla_comercial(conn, regla_id, payload)
+
+        if regla is None:
+            raise HTTPException(status_code=404, detail="Regla comercial no encontrada")
+
+        conn.commit()
+        return regla
+
+    finally:
+        conn.close()
+
+
+def listar_tarjeta_planes(solo_activos: bool = False):
+    conn = get_connection()
+
+    try:
+        return get_tarjeta_planes(conn, solo_activos=solo_activos)
+    finally:
+        conn.close()
+
+
+def crear_tarjeta_plan(data):
+    conn = get_connection()
+
+    try:
+        plan = insert_tarjeta_plan(
+            conn,
+            data.model_dump(),
+        )
+        conn.commit()
+        return plan
+
+    finally:
+        conn.close()
+
+
+def editar_tarjeta_plan(plan_id: int, data):
+    conn = get_connection()
+
+    try:
+        payload = data.model_dump(exclude_unset=True)
+
+        plan = update_tarjeta_plan(conn, plan_id, payload)
+
+        if plan is None:
+            raise HTTPException(status_code=404, detail="Plan de tarjeta no encontrado")
+
+        conn.commit()
+        return plan
 
     finally:
         conn.close()
