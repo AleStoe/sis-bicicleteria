@@ -14,9 +14,14 @@ import {
 import VentaItemsVendidos from "../components/ventas/detalle/VentaItemsVendidos";
 import { listarPagosDeVenta } from "../services/pagosService";
 import { CURRENT_USER_ID } from "../config/appConfig";
-import { formatMoney } from "./VentasListPage";
+import { formatMoney } from "../utils/formatters";
 import VentaAccionesPanel from "../components/ventas/detalle/VentaAccionesPanel";
 import VentaSituacionFinanciera from "../components/ventas/detalle/VentaSituacionFinanciera";
+import {
+  pageStyle,
+  alertStyle,
+  successStyle,
+} from "../styles/pages/ventaDetallePageStyles";
 
 export default function VentaDetallePage() {
   const params = useParams();
@@ -279,14 +284,28 @@ export default function VentaDetallePage() {
   );
 
   const estadosFinales = ["anulada", "devuelta", "devuelta_parcial"];
-  const puedeAnular = ["creada", "pagada_parcial", "pagada_total"].includes(
-    venta.estado
-  );
-  const puedeEntregar = !["entregada", ...estadosFinales].includes(venta.estado);
-  const puedeDevolver = ["entregada", "devuelta_parcial"].includes(venta.estado);
 
-  const tieneDeuda = situacion_financiera?.tiene_deuda;
-  const deuda = situacion_financiera?.deuda_abierta;
+const puedeAnular = ["creada", "pagada_parcial", "pagada_total"].includes(
+  venta.estado
+);
+
+const puedeEntregar = !["entregada", ...estadosFinales].includes(
+  venta.estado
+);
+
+const puedeDevolver = ["entregada", "devuelta_parcial"].includes(
+  venta.estado
+);
+
+const puedeCobrar =
+  saldoPendiente > 0 &&
+  !["anulada", "devuelta"].includes(venta.estado);
+
+const estaCerradaOperativamente =
+  saldoPendiente <= 0 && venta.estado === "entregada";
+
+const tieneDeuda = situacion_financiera?.tiene_deuda;
+const deuda = situacion_financiera?.deuda_abierta;
 
   return (
     <div style={pageStyle}>
@@ -317,9 +336,11 @@ export default function VentaDetallePage() {
       <VentaAccionesPanel
         venta={venta}
         procesando={procesando}
+        puedeCobrar={puedeCobrar}
         puedeEntregar={puedeEntregar}
         puedeAnular={puedeAnular}
         puedeDevolver={puedeDevolver}
+        estaCerradaOperativamente={estaCerradaOperativamente}
         onEntregar={handleEntregarVenta}
         onAnular={handleAnularVenta}
         onDevolverCompleta={handleDevolverVentaCompleta}
@@ -338,26 +359,3 @@ export default function VentaDetallePage() {
   );
 }
 
-const pageStyle = {
-  padding: "24px",
-  background: "#f6f7fb",
-  minHeight: "100vh",
-};
-
-const alertStyle = {
-  background: "#fff1f0",
-  color: "#b42318",
-  padding: "12px",
-  borderRadius: "10px",
-  border: "1px solid #f4c7c3",
-  marginBottom: "16px",
-};
-
-const successStyle = {
-  background: "#e8fff0",
-  color: "#146c2e",
-  padding: "12px",
-  borderRadius: "10px",
-  border: "1px solid #b7ebc6",
-  marginBottom: "16px",
-};

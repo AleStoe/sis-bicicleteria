@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
-import { formatMoney } from "../../../pages/VentasListPage";
+import { formatMoney } from "../../../utils/formatters";
+import { Card, MetricCard, Badge } from "../../ui";
 
 export default function VentaSituacionFinanciera({
   cubiertoNoPago,
@@ -7,112 +8,77 @@ export default function VentaSituacionFinanciera({
   deuda,
 }) {
   return (
-    <section style={cardStyle}>
-      <div style={headerStyle}>
-        <div>
-          <h2 style={titleStyle}>Situación financiera</h2>
-
-          <p style={subtitleStyle}>
-            Estado de deuda, crédito y cobertura financiera de la venta.
-          </p>
-        </div>
-      </div>
-
-      <div style={contentStyle}>
+    <Card
+      title="Situación financiera"
+      subtitle="Estado de deuda, crédito y cobertura financiera de la venta."
+    >
+      <div style={{ display: "grid", gap: "12px" }}>
         {cubiertoNoPago > 0 && (
           <div style={noteStyle}>
             <strong>Monto cubierto sin pago real registrado</strong>
 
-            <div style={{ marginTop: "6px" }}>
+            <div style={{ marginTop: "6px", fontWeight: 800 }}>
               {formatMoney(cubiertoNoPago)}
             </div>
 
             <div style={smallMutedStyle}>
-              Probablemente corresponde a crédito aplicado,
-              ajuste financiero o compensación manual.
+              Probablemente corresponde a crédito aplicado, ajuste financiero o compensación manual.
             </div>
           </div>
         )}
 
         {tieneDeuda ? (
           <div style={warningStyle}>
-            <div>
-              <strong>Venta con deuda abierta</strong>
-
-              <div style={metaStyle}>
-                ID deuda: #{deuda.id}
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+              <div>
+                <strong>Venta con deuda abierta</strong>
+                <div style={smallMutedStyle}>ID deuda: #{deuda.id}</div>
               </div>
+
+              <Badge variant="warning">Deuda abierta</Badge>
             </div>
 
-            <div style={deudaGridStyle}>
-              <Info
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                gap: "10px",
+              }}
+            >
+              <MetricCard
                 label="Saldo actual"
                 value={formatMoney(deuda.saldo_actual)}
+                tone="warning"
               />
 
-              <Info
+              <MetricCard
                 label="Estado"
                 value={deuda.estado}
               />
             </div>
 
-            <Link
-              to={`/deudas/${deuda.id}`}
-              style={detailLinkStyle}
-            >
+            <Link to={`/deudas/${deuda.id}`} style={detailLinkStyle}>
               Ver deuda
             </Link>
           </div>
         ) : (
           <div style={successStyle}>
-            <strong>Sin deuda pendiente</strong>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+              <div>
+                <strong>Sin deuda pendiente</strong>
+                <div style={smallMutedStyle}>
+                  La venta no tiene deuda abierta asociada.
+                </div>
+              </div>
 
-            <div style={smallMutedStyle}>
-              La venta no tiene deuda abierta asociada.
+              <Badge variant="success">OK</Badge>
             </div>
           </div>
         )}
       </div>
-    </section>
+    </Card>
   );
 }
-
-function Info({ label, value }) {
-  return (
-    <div style={infoCardStyle}>
-      <span style={infoLabelStyle}>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
-const cardStyle = {
-  background: "white",
-  borderRadius: "14px",
-  boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
-  padding: "16px",
-  marginBottom: "16px",
-};
-
-const headerStyle = {
-  marginBottom: "14px",
-};
-
-const titleStyle = {
-  margin: 0,
-  fontSize: "20px",
-};
-
-const subtitleStyle = {
-  margin: "5px 0 0",
-  color: "#667085",
-  fontSize: "13px",
-};
-
-const contentStyle = {
-  display: "grid",
-  gap: "12px",
-};
 
 const noteStyle = {
   background: "#fff8e1",
@@ -140,24 +106,10 @@ const successStyle = {
   border: "1px solid #abefc6",
 };
 
-const deudaGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-  gap: "10px",
-};
-
-const infoCardStyle = {
-  background: "white",
-  border: "1px solid rgba(0,0,0,0.08)",
-  borderRadius: "10px",
-  padding: "10px",
-  display: "grid",
-  gap: "4px",
-};
-
-const infoLabelStyle = {
-  fontSize: "12px",
+const smallMutedStyle = {
+  marginTop: "6px",
   color: "#667085",
+  fontSize: "13px",
 };
 
 const detailLinkStyle = {
@@ -165,15 +117,4 @@ const detailLinkStyle = {
   textDecoration: "none",
   fontWeight: 800,
   color: "#175cd3",
-};
-
-const metaStyle = {
-  marginTop: "4px",
-  fontSize: "13px",
-};
-
-const smallMutedStyle = {
-  marginTop: "6px",
-  color: "#667085",
-  fontSize: "13px",
 };

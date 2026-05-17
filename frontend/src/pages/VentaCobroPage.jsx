@@ -3,7 +3,8 @@ import { Link, useParams } from "react-router-dom";
 import PagoVentaPanel from "../components/pagos/PagoVentaPanel";
 import { obtenerVenta } from "../services/ventasService";
 import { listarPagosDeVenta } from "../services/pagosService";
-import { EstadoVentaBadge, formatDate, formatMoney } from "./VentasListPage";
+import { EstadoVentaBadge } from "./VentasListPage";
+import { formatDateTime, formatMoney } from "../utils/formatters";
 
 export default function VentaCobroPage() {
   const { ventaId } = useParams();
@@ -53,7 +54,7 @@ export default function VentaCobroPage() {
         <div>
           <h1 style={{ margin: 0 }}>Cobro venta #{venta.id}</h1>
           <p style={mutedStyle}>
-            {formatDate(venta.fecha)} · {venta.cliente_nombre} · {venta.sucursal_nombre}
+            {ormatDateTime(venta.fecha)} · {venta.cliente_nombre} · {venta.sucursal_nombre}
           </p>
         </div>
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { listarClientes } from "../services/clientesService";
+import { formatMoney } from "../utils/formatters";
 import {
   listarCreditosCliente,
   listarCreditosDisponiblesCliente,
@@ -213,13 +214,6 @@ export function EstadoCreditoBadge({ estado }) {
   );
 }
 
-export function formatMoney(value) {
-  return Number(value || 0).toLocaleString("es-AR", {
-    style: "currency",
-    currency: "ARS",
-    maximumFractionDigits: 2,
-  });
-}
 
 const pageStyle = { padding: "24px", background: "#f6f7fb", minHeight: "100vh" };
 const headerStyle = { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", gap: "12px", flexWrap: "wrap" };

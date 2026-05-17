@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import {
+  listarCatalogoPOS,
+  listarCategorias,
+  buscarCatalogoPOSExacto,
+} from "../services/catalogoService";
 import { listarClientes } from "../services/clientesService";
 import { crearVenta, entregarVenta } from "../services/ventasService";
 import { listarSerializadasDisponibles } from "../services/serializadasService";
@@ -7,7 +12,6 @@ import CarritoVentaPanel from "../components/ventas/CarritoVentaPanel";
 import ResumenVentaPanel from "../components/ventas/ResumenVentaPanel";
 import CheckoutVentaPanel from "../components/ventas/CheckoutVentaPanel";
 import CatalogoPOSPanel from "../components/ventas/catalogo/CatalogoPOSPanel";
-import { useCatalogoPOS } from "../hooks/useCatalogoPOS";
 import { CURRENT_USER_ID, CURRENT_SUCURSAL_ID } from "../config/appConfig";
 import { validarVentaAntesDeCrear } from "../validators/ventasValidator";
 import { buildVentaPayload } from "../builders/ventasPayloadBuilder";
@@ -20,6 +24,54 @@ import {
   puedeAgregarItemCatalogo,
 } from "../helpers/ventasItemsHelper";
 
+import {
+  pageStyle,
+  topBarStyle,
+  brandStyle,
+  bikeStyle,
+  topSubtleStyle,
+  topSearchWrapStyle,
+  topSearchStyle,
+  searchIconStyle,
+  topRightStyle,
+  topLinkStyle,
+  layoutStyle,
+  leftPanelStyle,
+  rightPanelStyle,
+  searchRowStyle,
+  searchStyle,
+  iconButtonStyle,
+  categoryRowStyle,
+  categoryStyle,
+  activeCategoryStyle,
+  catalogListStyle,
+  productRowStyle,
+  productRowBlockedStyle,
+  imageBoxStyle,
+  imageStyle,
+  productInfoStyle,
+  mutedStyle,
+  tagRowStyle,
+  tagStyle,
+  stockTagStyle,
+  serializableTagStyle,
+  serviceTagStyle,
+  dangerTagStyle,
+  productPriceStyle,
+  addBtnStyle,
+  addBtnDisabledStyle,
+  saleTopStyle,
+  clientLabelStyle,
+  clientSelectStyle,
+  fieldStyle,
+  textareaStyle,
+  checkStyle,
+  alertStyle,
+  successStyle,
+  emptyStyle,
+  posMessageStyle
+} from "../styles/pages/nuevaVentaPageStyles";
+
 const ID_USUARIO = CURRENT_USER_ID;
 const ID_SUCURSAL = CURRENT_SUCURSAL_ID;
 const DEFAULT_LIMIT = 80;
@@ -28,7 +80,12 @@ export default function NuevaVentaPage() {
   const navigate = useNavigate();
   const searchRef = useRef(null);
 
+  const [catalogo, setCatalogo] = useState([]);
+  const [categorias, setCategorias] = useState([]);
   const [clientes, setClientes] = useState([]);
+
+  const [query, setQuery] = useState("");
+  const [categoriaId, setCategoriaId] = useState("");
   const [clienteId, setClienteId] = useState("1");
   const [tipoPrecio, setTipoPrecio] = useState("minorista");
   const [items, setItems] = useState([]);
@@ -38,29 +95,23 @@ export default function NuevaVentaPage() {
   const [observaciones, setObservaciones] = useState("");
   const [usarCredito, setUsarCredito] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [buscando, setBuscando] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
   const [mensajePOS, setMensajePOS] = useState("");
 
-  const {
-    catalogo,
-    categorias,
-    query,
-    setQuery,
-    categoriaId,
-    setCategoriaId,
-    buscando,
-    cargarCatalogo,
-    buscarPorCodigoExacto,
-  } = useCatalogoPOS({
-    idSucursal: ID_SUCURSAL,
-    limit: DEFAULT_LIMIT,
-    setError,
-  });
   useEffect(() => {
     cargarInicial();
   }, []);
+
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      cargarCatalogo();
+    }, 250);
+
+    return () => clearTimeout(handle);
+  }, [query, categoriaId]);
 
   useEffect(() => {
     function onKeyDown(e) {
@@ -87,9 +138,18 @@ export default function NuevaVentaPage() {
       setLoading(true);
       setError("");
 
-      const clientesData = await listarClientes({ solo_activos: true });
+      const [categoriasData, clientesData, catalogoData] = await Promise.all([
+        listarCategorias(),
+        listarClientes({ solo_activos: true }),
+        listarCatalogoPOS({
+          id_sucursal: ID_SUCURSAL,
+          limit: DEFAULT_LIMIT,
+        }),
+      ]);
 
+      setCategorias(categoriasData || []);
       setClientes(clientesData || []);
+      setCatalogo(Array.isArray(catalogoData) ? catalogoData : catalogoData?.items || []);
 
       const consumidorFinal = (clientesData || []).find((c) => Number(c.id) === 1);
       if (consumidorFinal) {
@@ -107,6 +167,27 @@ export default function NuevaVentaPage() {
     }
   }
 
+  async function cargarCatalogo() {
+    try {
+      setBuscando(true);
+      setError("");
+
+      const data = await listarCatalogoPOS({
+        id_sucursal: ID_SUCURSAL,
+        query: query.trim() || undefined,
+        categoria_id: categoriaId || undefined,
+        limit: DEFAULT_LIMIT,
+        offset: 0,
+      });
+
+      setCatalogo(Array.isArray(data) ? data : data?.items || []);
+    } catch (err) {
+      setError(err.message || "No se pudo cargar el catálogo POS");
+    } finally {
+      setBuscando(false);
+    }
+  }
+
 async function handleBuscarEnter(e) {
   if (e.key !== "Enter") return;
 
@@ -119,7 +200,10 @@ async function handleBuscarEnter(e) {
   try {
     setError("");
 
-    const producto = await buscarProductoExacto(codigo);
+    const producto = await buscarCatalogoPOSExacto({
+      id_sucursal: ID_SUCURSAL,
+      codigo,
+    });
 
     if (!producto) {
       mostrarMensajePOS("No se encontró producto para ese código");
@@ -548,291 +632,3 @@ async function handleBuscarEnter(e) {
     </div>
   );
 }
-
-const pageStyle = {
-  minHeight: "100vh",
-  background: "#f5f7fb",
-  color: "#111827",
-};
-
-const topBarStyle = {
-  minHeight: "64px",
-  background: "#05080d",
-  color: "white",
-  display: "flex",
-  alignItems: "center",
-  gap: "18px",
-  padding: "0 20px",
-  boxShadow: "0 2px 16px rgba(0,0,0,.22)",
-};
-
-const brandStyle = {
-  display: "flex",
-  alignItems: "center",
-  gap: "10px",
-  minWidth: "300px",
-  fontSize: "18px",
-};
-
-const bikeStyle = { fontSize: "26px" };
-const topSubtleStyle = { fontSize: "12px", color: "#98a2b3", marginTop: "2px" };
-
-const topSearchWrapStyle = {
-  position: "relative",
-  flex: 1,
-  maxWidth: "520px",
-};
-
-const topSearchStyle = {
-  width: "100%",
-  boxSizing: "border-box",
-  background: "#111827",
-  color: "white",
-  border: "1px solid #344054",
-  borderRadius: "10px",
-  padding: "11px 38px 11px 13px",
-  outline: "none",
-};
-
-const searchIconStyle = {
-  position: "absolute",
-  right: "12px",
-  top: "50%",
-  transform: "translateY(-50%)",
-  color: "#d0d5dd",
-};
-
-const topRightStyle = {
-  marginLeft: "auto",
-  display: "flex",
-  alignItems: "center",
-  gap: "14px",
-  color: "#e5e7eb",
-  fontSize: "14px",
-};
-
-const topLinkStyle = {
-  color: "white",
-  textDecoration: "none",
-  border: "1px solid #475467",
-  borderRadius: "8px",
-  padding: "7px 10px",
-};
-
-const layoutStyle = {
-  display: "grid",
-  gridTemplateColumns: "minmax(520px, 1fr) minmax(440px, 560px)",
-  gap: "14px",
-  padding: "14px",
-};
-
-const leftPanelStyle = {
-  background: "white",
-  borderRadius: "14px",
-  padding: "14px",
-  boxShadow: "0 2px 10px rgba(16,24,40,.08)",
-  minWidth: 0,
-};
-
-const rightPanelStyle = {
-  background: "white",
-  borderRadius: "14px",
-  padding: "16px",
-  boxShadow: "0 2px 10px rgba(16,24,40,.08)",
-  alignSelf: "start",
-  position: "sticky",
-  top: "14px",
-};
-
-const searchRowStyle = { display: "flex", gap: "8px", marginBottom: "12px" };
-
-const searchStyle = {
-  flex: 1,
-  border: "1px solid #d0d5dd",
-  borderRadius: "10px",
-  padding: "11px 12px",
-};
-
-const iconButtonStyle = {
-  border: "1px solid #d0d5dd",
-  borderRadius: "10px",
-  background: "white",
-  padding: "0 14px",
-};
-
-const categoryRowStyle = {
-  display: "flex",
-  gap: "8px",
-  overflowX: "auto",
-  paddingBottom: "10px",
-  marginBottom: "8px",
-};
-
-const categoryStyle = {
-  whiteSpace: "nowrap",
-  border: "1px solid #d0d5dd",
-  borderRadius: "10px",
-  padding: "10px 12px",
-  background: "#f9fafb",
-  color: "#344054",
-  fontWeight: 700,
-};
-
-const activeCategoryStyle = {
-  ...categoryStyle,
-  background: "#0b5bd3",
-  color: "white",
-  borderColor: "#0b5bd3",
-};
-
-const catalogListStyle = {
-  display: "grid",
-  gap: "10px",
-  maxHeight: "calc(100vh - 210px)",
-  overflowY: "auto",
-  paddingRight: "4px",
-};
-
-const productRowStyle = {
-  display: "grid",
-  gridTemplateColumns: "82px 1fr 130px",
-  gap: "12px",
-  alignItems: "center",
-  border: "1px solid #eaecf0",
-  borderRadius: "12px",
-  padding: "10px",
-  background: "white",
-};
-
-const productRowBlockedStyle = {
-  ...productRowStyle,
-  opacity: 0.62,
-  background: "#f9fafb",
-};
-
-const imageBoxStyle = {
-  width: "82px",
-  height: "72px",
-  borderRadius: "10px",
-  background: "#f2f4f7",
-  display: "grid",
-  placeItems: "center",
-  overflow: "hidden",
-};
-
-const imageStyle = {
-  width: "100%",
-  height: "100%",
-  objectFit: "cover",
-};
-
-const productInfoStyle = { minWidth: 0, display: "grid", gap: "4px" };
-const mutedStyle = { color: "#667085", fontSize: "13px" };
-const tagRowStyle = { display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "2px" };
-const tagStyle = { background: "#eef4ff", color: "#175cd3", borderRadius: "999px", padding: "3px 8px", fontSize: "12px" };
-const stockTagStyle = { background: "#ecfdf3", color: "#067647", borderRadius: "999px", padding: "3px 8px", fontSize: "12px" };
-const serializableTagStyle = { background: "#fff8e1", color: "#8a6d00", borderRadius: "999px", padding: "3px 8px", fontSize: "12px" };
-const serviceTagStyle = { background: "#fef7c3", color: "#854a0e", borderRadius: "999px", padding: "3px 8px", fontSize: "12px" };
-const dangerTagStyle = { background: "#fee4e2", color: "#b42318", borderRadius: "999px", padding: "3px 8px", fontSize: "12px" };
-
-const productPriceStyle = {
-  display: "grid",
-  gap: "8px",
-  justifyItems: "end",
-  fontSize: "16px",
-};
-
-const addBtnStyle = {
-  width: "42px",
-  height: "34px",
-  borderRadius: "10px",
-  border: "none",
-  background: "#0b5bd3",
-  color: "white",
-  fontSize: "22px",
-  cursor: "pointer",
-};
-
-const addBtnDisabledStyle = {
-  ...addBtnStyle,
-  background: "#d0d5dd",
-  cursor: "not-allowed",
-};
-
-const saleTopStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  gap: "12px",
-  alignItems: "center",
-  marginBottom: "12px",
-};
-
-const clientLabelStyle = {
-  display: "flex",
-  alignItems: "center",
-  gap: "8px",
-  fontWeight: 700,
-};
-
-const clientSelectStyle = {
-  minWidth: "230px",
-  border: "1px solid #d0d5dd",
-  borderRadius: "10px",
-  padding: "10px",
-};
-
-const fieldStyle = {
-  display: "grid",
-  gap: "6px",
-  marginBottom: "10px",
-  fontWeight: 700,
-};
-
-const textareaStyle = {
-  minHeight: "56px",
-  border: "1px solid #d0d5dd",
-  borderRadius: "10px",
-  padding: "9px",
-  resize: "vertical",
-};
-
-const checkStyle = {
-  display: "flex",
-  alignItems: "center",
-  gap: "8px",
-  marginBottom: "12px",
-  color: "#344054",
-};
-
-const alertStyle = {
-  margin: "12px 14px 0",
-  background: "#fff1f0",
-  color: "#b42318",
-  border: "1px solid #fecdca",
-  padding: "10px 12px",
-  borderRadius: "10px",
-};
-
-const successStyle = {
-  margin: "12px 14px 0",
-  background: "#ecfdf3",
-  color: "#067647",
-  border: "1px solid #abefc6",
-  padding: "10px 12px",
-  borderRadius: "10px",
-};
-
-const emptyStyle = {
-  padding: "40px",
-  textAlign: "center",
-  color: "#667085",
-};
-const posMessageStyle = {
-  margin: "12px 14px 0",
-  background: "#111827",
-  color: "white",
-  padding: "12px 14px",
-  borderRadius: "10px",
-  fontWeight: 700,
-  boxShadow: "0 6px 24px rgba(0,0,0,.22)",
-};

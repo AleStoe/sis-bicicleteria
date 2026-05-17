@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { obtenerCredito, reintegrarCredito } from "../services/creditosService";
-import { EstadoCreditoBadge, formatMoney } from "./CreditosListPage";
+import { EstadoCreditoBadge } from "./CreditosListPage";
+import { formatMoney } from "../utils/formatters";
 
 const ID_USUARIO = 1;
 const ID_SUCURSAL = 1;

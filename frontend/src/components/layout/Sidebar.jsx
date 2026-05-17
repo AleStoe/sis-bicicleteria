@@ -1,88 +1,128 @@
 import { NavLink } from "react-router-dom";
+import {
+  Bike,
+  Boxes,
+  Calculator,
+  ClipboardList,
+  CreditCard,
+  DollarSign,
+  FileSearch,
+  Gauge,
+  HandCoins,
+  PackagePlus,
+  Receipt,
+  ShoppingCart,
+  Tags,
+  Users,
+  Wrench,
+} from "lucide-react";
+import { sidebarContainerStyle } from "../../styles/layout/appLayoutStyles";
+import {
+  sidebarHeaderStyle,
+  navSectionStyle,
+  navGroupTitleStyle,
+  navItemStyle,
+  navItemActiveStyle,
+  navIconStyle,
+  navItemLabelStyle,
+} from "../../styles/layout/sidebarStyles";
 
-function navStyle({ isActive }) {
-  return {
-    textDecoration: "none",
-    padding: "8px 10px",
-    borderRadius: "8px",
-    background: isActive ? "#e5e7eb" : "transparent",
-    fontWeight: isActive ? "bold" : "normal",
-    color: "#111827",
-  };
-}
-
-function Section({ title, children }) {
-  return (
-    <div style={{ display: "grid", gap: "6px" }}>
-      <div style={sectionTitleStyle}>{title}</div>
-      {children}
-    </div>
-  );
-}
+const groups = [
+  {
+    title: "Mostrador",
+    links: [
+      { to: "/ventas/nueva", label: "Nueva Venta", icon: ShoppingCart },
+      { to: "/ventas", label: "Ventas", icon: Receipt },
+      { to: "/caja", label: "Caja", icon: DollarSign },
+      { to: "/pagos", label: "Pagos", icon: CreditCard },
+    ],
+  },
+  {
+    title: "Operación",
+    links: [
+      { to: "/stock", label: "Stock", icon: Boxes },
+      { to: "/mercaderia/alta", label: "Alta mercadería", icon: PackagePlus },
+      { to: "/mercaderia/bicicletas/alta", label: "Alta bicicletas", icon: Bike },
+      { to: "/serializadas", label: "Serializadas", icon: ClipboardList },
+      { to: "/catalogo", label: "Catálogo", icon: Tags },
+      { to: "/precios", label: "Precios", icon: Calculator },
+      { to: "/proveedores", label: "Proveedores", icon: HandCoins },
+    ],
+  },
+  {
+    title: "Clientes",
+    links: [
+      { to: "/clientes", label: "Clientes", icon: Users },
+      { to: "/deudas", label: "Deudas", icon: FileSearch },
+      { to: "/creditos", label: "Créditos", icon: HandCoins },
+      { to: "/reservas", label: "Reservas", icon: ClipboardList },
+    ],
+  },
+  {
+    title: "Taller y control",
+    links: [
+      { to: "/taller", label: "Taller", icon: Wrench },
+      { to: "/auditoria", label: "Auditoría", icon: Gauge },
+    ],
+  },
+];
 
 export default function Sidebar() {
   return (
-    <aside style={sidebarStyle}>
-      <h2 style={titleStyle}>Sis Bicicletería</h2>
+    <aside style={sidebarContainerStyle}>
+      <div style={sidebarHeaderStyle}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div
+            style={{
+              width: 36,
+              height: 36,
+              display: "grid",
+              placeItems: "center",
+              borderRadius: 12,
+              background: "linear-gradient(135deg, #FF6A00, #ea5f00)",
+              boxShadow: "0 8px 22px rgba(255,106,0,.25)",
+            }}
+          >
+            <Bike size={22} color="white" strokeWidth={2.4} />
+          </div>
 
-      <nav style={navWrapStyle}>
-        <Section title="Ventas">
-          <NavLink to="/ventas/nueva" style={navStyle}>Nueva venta</NavLink>
-          <NavLink to="/ventas" style={navStyle}>Ventas</NavLink>
-          <NavLink to="/reservas" style={navStyle}>Reservas</NavLink>
-          <NavLink to="/deudas" style={navStyle}>Deudas</NavLink>
-          <NavLink to="/creditos" style={navStyle}>Créditos</NavLink>
-        </Section>
+          <div>
+            <h2 style={{ margin: 0, lineHeight: 1.05, fontSize: 20 }}>
+              Emprendimiento
+              <br />
+              Agus
+            </h2>
+            <div style={{ color: "#98a2b3", marginTop: 6, fontSize: 13 }}>
+              ERP / POS
+            </div>
+          </div>
+        </div>
+      </div>
 
-        <Section title="Operación">
-          <NavLink to="/taller" style={navStyle}>Taller</NavLink>
-          <NavLink to="/stock" style={navStyle}>Stock</NavLink>
-          <NavLink to="/serializadas" style={navStyle}>Bicis serializadas</NavLink>
-          <NavLink to="/mercaderia/alta" style={navStyle}>Alta mercadería</NavLink>
-          <NavLink to="/mercaderia/bicicletas/alta" style={navStyle}> Alta bicicletas</NavLink>
-        </Section>
+      <nav style={navSectionStyle}>
+        {groups.map((group) => (
+          <div key={group.title} style={{ display: "grid", gap: 6 }}>
+            <div style={navGroupTitleStyle}>{group.title}</div>
 
-        <Section title="Administración">
-          <NavLink to="/caja" style={navStyle}>Caja</NavLink>
-          <NavLink to="/pagos" style={navStyle}>Pagos</NavLink>
-          <NavLink to="/precios" style={navStyle}>Precios</NavLink>
-          <NavLink to="/catalogo" style={navStyle}>Catálogo</NavLink>
-          <NavLink to="/proveedores" style={navStyle}>Proveedores</NavLink>
-          <NavLink to="/clientes" style={navStyle}>Clientes</NavLink>
-        </Section>
+            {group.links.map((link) => {
+              const Icon = link.icon;
 
-        <Section title="Control">
-          <NavLink to="/auditoria" style={navStyle}>Auditoría</NavLink>
-        </Section>
+              return (
+                <NavLink
+                  key={link.to}
+                  to={link.to}
+                  style={({ isActive }) =>
+                    isActive ? navItemActiveStyle : navItemStyle
+                  }
+                >
+                  <Icon style={navIconStyle} size={18} strokeWidth={2.2} />
+                  <span style={navItemLabelStyle}>{link.label}</span>
+                </NavLink>
+              );
+            })}
+          </div>
+        ))}
       </nav>
     </aside>
   );
 }
-
-const sidebarStyle = {
-  width: "240px",
-  borderRight: "1px solid #ddd",
-  padding: "20px",
-  boxSizing: "border-box",
-  overflowY: "auto",
-};
-
-const titleStyle = {
-  marginTop: 0,
-  marginBottom: "20px",
-  fontSize: "20px",
-};
-
-const navWrapStyle = {
-  display: "grid",
-  gap: "20px",
-};
-
-const sectionTitleStyle = {
-  fontSize: "11px",
-  fontWeight: 900,
-  color: "#667085",
-  textTransform: "uppercase",
-  letterSpacing: ".06em",
-  marginBottom: "2px",
-};

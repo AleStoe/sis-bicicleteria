@@ -1,4 +1,4 @@
-import { formatMoney } from "../../../pages/VentasListPage";
+import { formatMoney } from "../../../utils/formatters";
 import VentaItemVendidoAcciones from "./VentaItemVendidoAcciones";
 
 export default function VentaItemVendidoCard({
