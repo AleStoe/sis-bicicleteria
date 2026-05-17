@@ -10,7 +10,6 @@ export default function CheckoutAgregarPago({
   setMedioPago,
   monto,
   setMonto,
-  cobrarTotal,
   agregarPago,
   errorLocal,
 }) {
@@ -41,28 +40,16 @@ export default function CheckoutAgregarPago({
           style={styles.input}
         />
 
-        <button
-          type="button"
-          onClick={cobrarTotal}
-          style={styles.secondary}
-        >
-          Total
-        </button>
-
-        <button
-          type="button"
-          onClick={agregarPago}
-          style={styles.addBtn}
-        >
+        <button type="button" onClick={agregarPago} style={styles.addBtn}>
           Agregar
         </button>
       </div>
 
-      {errorLocal && (
-        <div style={styles.localError}>
-          {errorLocal}
-        </div>
-      )}
+      <div style={styles.hint}>
+        El total, descuentos y saldo se recalculan automáticamente según el medio y monto cargado.
+      </div>
+
+      {errorLocal && <div style={styles.localError}>{errorLocal}</div>}
     </div>
   );
 }
@@ -97,7 +84,7 @@ const styles = {
 
   amountRow: {
     display: "grid",
-    gridTemplateColumns: "1fr 80px 100px",
+    gridTemplateColumns: "1fr 100px",
     gap: 8,
   },
 
@@ -108,15 +95,6 @@ const styles = {
     fontSize: 15,
   },
 
-  secondary: {
-    border: "1px solid #d0d5dd",
-    background: "white",
-    borderRadius: 10,
-    padding: "9px 10px",
-    fontWeight: 800,
-    cursor: "pointer",
-  },
-
   addBtn: {
     border: "none",
     background: "#0b5bd3",
@@ -125,6 +103,13 @@ const styles = {
     padding: "9px 10px",
     fontWeight: 900,
     cursor: "pointer",
+  },
+
+  hint: {
+    marginTop: 8,
+    color: "#667085",
+    fontSize: 12,
+    lineHeight: 1.35,
   },
 
   localError: {

@@ -3,6 +3,7 @@ import CheckoutResumenPago from "./checkout/CheckoutResumenPago";
 import CheckoutAgregarPago from "./checkout/CheckoutAgregarPago";
 import CheckoutPagosList from "./checkout/CheckoutPagosList";
 import { simularVenta } from "../../services/ventasService";
+import CheckoutTotalesSimulacion from "./checkout/CheckoutTotalesSimulacion";
 
 function formatMoney(value) {
   return Number(value || 0).toLocaleString("es-AR", {
@@ -68,9 +69,8 @@ export default function CheckoutVentaPanel({
     };
   }
 
-  async function recalcularSimulacion(pagos = pagosDraft) {
+  async function simularPagos(pagos = pagosDraft) {
     if (items.length === 0) {
-      setSimulacion(null);
       return null;
     }
 
@@ -78,9 +78,7 @@ export default function CheckoutVentaPanel({
       setSimulando(true);
       setErrorLocal("");
 
-      const data = await simularVenta(buildPayloadSimulacion(pagos));
-      setSimulacion(data);
-      return data;
+      return await simularVenta(buildPayloadSimulacion(pagos));
     } catch (err) {
       setErrorLocal(err.message || "No se pudo simular el total de la venta");
       return null;
@@ -89,16 +87,17 @@ export default function CheckoutVentaPanel({
     }
   }
 
+  async function recalcularSimulacion(pagos = pagosDraft) {
+    const data = await simularPagos(pagos);
+    setSimulacion(data);
+    return data;
+  }
+
   async function agregarPago() {
     const montoNumber = Number(monto);
 
     if (!Number.isFinite(montoNumber) || montoNumber <= 0) {
       setErrorLocal("El monto debe ser mayor a cero");
-      return;
-    }
-
-    if (montoNumber > pendiente) {
-      setErrorLocal("El pago no puede superar el saldo pendiente");
       return;
     }
 
@@ -112,11 +111,24 @@ export default function CheckoutVentaPanel({
       },
     ];
 
+    const nuevaSimulacion = await simularPagos(nuevosPagos);
+
+    if (!nuevaSimulacion) return;
+
+    const totalFinal = Number(nuevaSimulacion.total_final || 0);
+    const totalPagos = Number(nuevaSimulacion.total_pagos_cargados || 0);
+
+    if (totalPagos > totalFinal) {
+      setErrorLocal(
+        `El pago supera el total final simulado. Total final: ${formatMoney(totalFinal)}`
+      );
+      return;
+    }
+
     setPagosDraft(nuevosPagos);
+    setSimulacion(nuevaSimulacion);
     setMonto("");
     setErrorLocal("");
-
-    await recalcularSimulacion(nuevosPagos);
   }
 
   async function quitarPago(tempId) {
@@ -125,24 +137,7 @@ export default function CheckoutVentaPanel({
     await recalcularSimulacion(nuevosPagos);
   }
 
- async function cobrarTotal() {
-  const data = await recalcularSimulacion([
-    {
-      temp_id: "tmp-total",
-      medio_pago: medioPago,
-      monto: total,
-      nota: null,
-    },
-  ]);
-
-  const totalBackend = Number(data?.total_final ?? total ?? 0);
-  const montoParaSaldar = Math.max(0, totalBackend - pagado);
-
-  setMonto(String(montoParaSaldar));
-  setErrorLocal("");
-}
-
-  useEffect(() => {
+   useEffect(() => {
     setPagosDraft([]);
     setMonto("");
     setErrorLocal("");
@@ -174,33 +169,17 @@ export default function CheckoutVentaPanel({
         formatMoney={formatMoney}
       />
 
-      {simulacion && (
-        <div style={styles.simulationBox}>
-          <div>
-            <span>Subtotal</span>
-            <strong>{formatMoney(simulacion.subtotal_base)}</strong>
-          </div>
-
-          <div>
-            <span>Descuento</span>
-            <strong>{formatMoney(simulacion.descuento_total)}</strong>
-          </div>
-
-          <div>
-            <span>Recargo</span>
-            <strong>{formatMoney(simulacion.recargo_total)}</strong>
-          </div>
-
-          {simulando && <small>Recalculando...</small>}
-        </div>
-      )}
+      <CheckoutTotalesSimulacion
+        simulacion={simulacion}
+        formatMoney={formatMoney}
+        simulando={simulando}
+      />
 
       <CheckoutAgregarPago
         medioPago={medioPago}
         setMedioPago={setMedioPago}
         monto={monto}
         setMonto={setMonto}
-        cobrarTotal={cobrarTotal}
         agregarPago={agregarPago}
         errorLocal={errorLocal}
       />
@@ -245,15 +224,6 @@ const styles = {
     padding: 14,
     marginTop: 12,
     background: "#ffffff",
-  },
-  simulationBox: {
-    border: "1px solid #eaecf0",
-    borderRadius: 12,
-    padding: 10,
-    marginBottom: 12,
-    display: "grid",
-    gap: 6,
-    background: "#f9fafb",
   },
   checkRow: {
     display: "flex",
