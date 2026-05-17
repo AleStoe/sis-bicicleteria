@@ -152,13 +152,14 @@ def _simular_con_conn(conn, *, subtotal_base: Decimal, pagos):
         reglas_aplicadas.append(
             {
                 "id_regla_comercial": None,
+                "id_tarjeta_plan": plan["id"],
                 "tipo": "recargo",
                 "descripcion": plan["nombre"],
                 "medio_pago": pago.medio_pago,
                 "porcentaje_aplicado": porcentaje,
                 "monto_aplicado": recargo,
             }
-        )
+)
 
     total_final = redondear_monto(subtotal_base - descuento_total + recargo_total)
     total_pagos_cargados = _sumar_pagos(pagos)

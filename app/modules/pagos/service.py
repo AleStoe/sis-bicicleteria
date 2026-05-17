@@ -183,6 +183,8 @@ def registrar_pago(conn, data: dict):
                     "cuotas": cuotas,
                     "entidad": entidad,
                     "observacion": data.get("nota"),
+                    "id_tarjeta_plan": data.get("id_tarjeta_plan"),
+                    "porcentaje_recargo_aplicado": data.get("porcentaje_recargo_aplicado"),
                 },
             )
         insert_caja_movimiento(
@@ -287,6 +289,8 @@ def registrar_pago(conn, data: dict):
                 "cuotas": cuotas,
                 "entidad": entidad,
                 "observacion": data.get("nota"),
+                "id_tarjeta_plan": data.get("id_tarjeta_plan"),
+                "porcentaje_recargo_aplicado": data.get("porcentaje_recargo_aplicado"),
             },
         )
     insert_caja_movimiento(
@@ -354,6 +358,8 @@ def crear_pago(data):
                 "monto_base": getattr(data, "monto_base", None),
                 "monto_recargo_financiero": getattr(data, "monto_recargo_financiero", None),
                 "monto_neto_liquidado": getattr(data, "monto_neto_liquidado", None),
+                "id_tarjeta_plan": getattr(data, "id_tarjeta_plan", None),
+                "porcentaje_recargo_aplicado": getattr(data, "porcentaje_recargo_aplicado", None),
             }
 
             if hasattr(data, "id_sucursal"):

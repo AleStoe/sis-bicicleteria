@@ -15,6 +15,8 @@ class PagoCreateInput(BaseModel):
     monto_base: Decimal | None = Field(default=None, ge=0)
     monto_recargo_financiero: Decimal | None = Field(default=None, ge=0)
     monto_neto_liquidado: Decimal | None = Field(default=None, ge=0)
+    id_tarjeta_plan: int | None = Field(default=None, gt=0)
+    porcentaje_recargo_aplicado: Decimal | None = Field(default=None, ge=0)
 
 
 class PagoReversionInput(BaseModel):

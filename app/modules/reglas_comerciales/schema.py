@@ -53,6 +53,7 @@ class ReglaAplicadaOutput(BaseModel):
     medio_pago: str | None = None
     porcentaje_aplicado: Decimal | None = None
     monto_aplicado: Decimal
+    id_tarjeta_plan: int | None = None
 
 
 class SimularReglasOutput(BaseModel):

@@ -667,20 +667,56 @@ def crear_venta(data):
                     estado_venta,
                 )
             for pago in pagos:
-                pagos_service.registrar_pago(
-                    conn,
-                    {
-                        "id_cliente": data.id_cliente,
-                        "origen_tipo": "venta",
-                        "origen_id": venta_id,
-                        "medio_pago": pago.medio_pago,
-                        "monto": pago.monto,
-                        "cuotas": getattr(pago, "cuotas", None),
-                        "entidad": getattr(pago, "entidad", None),
-                        "nota": pago.nota,
-                        "id_usuario": data.id_usuario,
-                    },
-                )
+                payload_pago = {
+                    "id_cliente": data.id_cliente,
+                    "origen_tipo": "venta",
+                    "origen_id": venta_id,
+                    "medio_pago": pago.medio_pago,
+                    "monto": pago.monto,
+                    "cuotas": getattr(pago, "cuotas", None),
+                    "entidad": getattr(pago, "entidad", None),
+                    "nota": pago.nota,
+                    "id_usuario": data.id_usuario,
+                }
+
+                if pago.medio_pago == "tarjeta":
+                    monto_total_tarjeta = redondear_monto(pago.monto)
+
+                    regla_tarjeta = next(
+                        (
+                            regla
+                            for regla in reglas_aplicadas
+                            if regla["tipo"] == "recargo"
+                            and regla["medio_pago"] == "tarjeta"
+                        ),
+                        None,
+                    )
+
+                    porcentaje = (
+                        redondear_monto(regla_tarjeta["porcentaje_aplicado"])
+                        if regla_tarjeta and regla_tarjeta.get("porcentaje_aplicado") is not None
+                        else Decimal("0")
+                    )
+
+                    monto_recargo = (
+                        redondear_monto(regla_tarjeta["monto_aplicado"])
+                        if regla_tarjeta
+                        else Decimal("0")
+                    )
+
+                    monto_base = redondear_monto(monto_total_tarjeta - monto_recargo)
+
+                    payload_pago.update(
+                        {
+                            "id_tarjeta_plan": regla_tarjeta.get("id_tarjeta_plan") if regla_tarjeta else None,
+                            "monto_base": monto_base,
+                            "monto_recargo_financiero": monto_recargo,
+                            "porcentaje_recargo_aplicado": porcentaje,
+                            "monto_neto_liquidado": monto_total_tarjeta,
+                        }
+                    )
+
+                pagos_service.registrar_pago(conn, payload_pago)
             venta_actualizada = get_venta_for_update(conn, venta_id)
             saldo_pendiente = redondear_monto(venta_actualizada["saldo_pendiente"])
 

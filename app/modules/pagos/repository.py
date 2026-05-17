@@ -222,20 +222,24 @@ def insert_pago_tarjeta_detalle(conn, data: dict):
             """
             INSERT INTO pagos_tarjeta_detalle (
                 id_pago,
+                id_tarjeta_plan,
                 monto_base,
                 monto_recargo_financiero,
+                porcentaje_recargo_aplicado,
                 monto_neto_liquidado,
                 cuotas,
                 entidad,
                 observacion
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
             (
                 data["id_pago"],
+                data.get("id_tarjeta_plan"),
                 data["monto_base"],
                 data["monto_recargo_financiero"],
+                data.get("porcentaje_recargo_aplicado"),
                 data["monto_neto_liquidado"],
                 data["cuotas"],
                 data["entidad"],
