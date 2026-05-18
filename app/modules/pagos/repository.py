@@ -7,7 +7,12 @@ from decimal import Decimal
 
 def insert_pago(conn, data: dict):
     """
-    Inserta un pago genérico (venta, reserva, etc.)
+    Inserta un pago genérico.
+    V2:
+    - monto_total_cobrado: dinero real que entra a caja
+    - monto_base_aplicado: base comercial del tramo
+    - monto_descuento_aplicado: descuento congelado del tramo
+    - monto_recargo_aplicado: recargo congelado del tramo
     """
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
@@ -18,11 +23,14 @@ def insert_pago(conn, data: dict):
                 origen_id,
                 medio_pago,
                 monto_total_cobrado,
+                monto_base_aplicado,
+                monto_descuento_aplicado,
+                monto_recargo_aplicado,
                 estado,
                 nota,
                 id_usuario
             )
-            VALUES (%s, %s, %s, %s, %s, 'confirmado', %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'confirmado', %s, %s)
             RETURNING id
             """,
             (
@@ -31,6 +39,9 @@ def insert_pago(conn, data: dict):
                 data["origen_id"],
                 data["medio_pago"],
                 data["monto_total_cobrado"],
+                data.get("monto_base_aplicado", data["monto_total_cobrado"]),
+                data.get("monto_descuento_aplicado", Decimal("0")),
+                data.get("monto_recargo_aplicado", Decimal("0")),
                 data.get("nota"),
                 data["id_usuario"],
             ),
@@ -50,6 +61,9 @@ def get_pago_by_id_for_update(conn, pago_id: int):
                 origen_id,
                 medio_pago,
                 monto_total_cobrado,
+                monto_base_aplicado,
+                monto_descuento_aplicado,
+                monto_recargo_aplicado,
                 estado,
                 nota,
                 id_usuario
@@ -87,6 +101,9 @@ def get_pagos(conn):
                 origen_id,
                 medio_pago,
                 monto_total_cobrado,
+                monto_base_aplicado,
+                monto_descuento_aplicado,
+                monto_recargo_aplicado,
                 estado,
                 nota,
                 id_usuario
@@ -109,6 +126,9 @@ def obtener_pagos_por_venta(conn, venta_id: int):
                 p.origen_id,
                 p.medio_pago,
                 p.monto_total_cobrado,
+                p.monto_base_aplicado,
+                p.monto_descuento_aplicado,
+                p.monto_recargo_aplicado,
                 p.estado,
                 p.nota,
                 p.id_usuario,
@@ -216,6 +236,7 @@ def get_reversion_by_pago_original(conn, pago_id: int):
         )
         return cur.fetchone()
 
+
 def get_total_pagado_confirmado_por_venta(conn, venta_id: int) -> Decimal:
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
@@ -230,6 +251,7 @@ def get_total_pagado_confirmado_por_venta(conn, venta_id: int) -> Decimal:
         )
         row = cur.fetchone()
         return Decimal(str(row["total_pagado"]))
+
 
 def insert_pago_tarjeta_detalle(conn, data: dict):
     with conn.cursor(row_factory=dict_row) as cur:

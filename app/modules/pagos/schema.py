@@ -1,5 +1,6 @@
 from decimal import Decimal
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator
+
 
 class PagoCreateInput(BaseModel):
     id_sucursal: int | None = Field(default=None, gt=0)
@@ -7,21 +8,39 @@ class PagoCreateInput(BaseModel):
     origen_tipo: str
     origen_id: int
     medio_pago: str
-    monto: Decimal = Field(gt=0)
+
+    # V2: base comercial del tramo.
+    monto_base: Decimal | None = Field(default=None, gt=0)
+
+    # Compatibilidad temporal V1: cobrado real directo.
+    monto: Decimal | None = Field(default=None, gt=0)
+
     id_usuario: int = Field(gt=0)
     nota: str | None = None
+
     cuotas: int | None = Field(default=None, gt=0)
     entidad: str | None = Field(default=None, max_length=80)
-    monto_base: Decimal | None = Field(default=None, ge=0)
+
     monto_recargo_financiero: Decimal | None = Field(default=None, ge=0)
     monto_neto_liquidado: Decimal | None = Field(default=None, ge=0)
     id_tarjeta_plan: int | None = Field(default=None, gt=0)
     porcentaje_recargo_aplicado: Decimal | None = Field(default=None, ge=0)
 
+    @model_validator(mode="after")
+    def validar_monto(self):
+        if self.monto_base is None and self.monto is None:
+            raise ValueError("Debe informar monto_base")
+        return self
+
+    @property
+    def base(self) -> Decimal:
+        return self.monto_base if self.monto_base is not None else self.monto
+
 
 class PagoReversionInput(BaseModel):
     motivo: str = Field(min_length=3, max_length=500)
     id_usuario: int = Field(gt=0)
+
 
 class PagoCreateOutput(BaseModel):
     ok: bool
@@ -32,6 +51,7 @@ class PagoCreateOutput(BaseModel):
     estado_venta: str | None = None
     saldo_restante: Decimal | None = None
 
+
 class PagoReversionOutput(BaseModel):
     ok: bool
     pago_id_original: int
@@ -40,6 +60,7 @@ class PagoReversionOutput(BaseModel):
     estado_venta: str
     saldo_restante: Decimal
     reversion_id: int
+
 
 class PagoResumenOutput(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -50,7 +71,12 @@ class PagoResumenOutput(BaseModel):
     origen_tipo: str
     origen_id: int
     medio_pago: str
+
     monto_total_cobrado: Decimal
+    monto_base_aplicado: Decimal | None = None
+    monto_descuento_aplicado: Decimal | None = None
+    monto_recargo_aplicado: Decimal | None = None
+
     estado: str
     nota: str | None = None
     id_usuario: int
@@ -64,16 +90,19 @@ class PagoResumenOutput(BaseModel):
     porcentaje_recargo_aplicado: Decimal | None = None
     monto_neto_liquidado: Decimal | None = None
 
+
 class PagoResponseBase(BaseModel):
     ok: bool
     pago_id: int
     origen_tipo: str
     origen_id: int
 
+
 class PagoVentaResponse(PagoResponseBase):
     venta_id: int
     estado_venta: str
     saldo_restante: Decimal
+
 
 class PagoTallerResponse(PagoResponseBase):
     pass

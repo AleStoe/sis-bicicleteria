@@ -1,13 +1,18 @@
 from decimal import Decimal
-from app.shared.money import redondear_monto
+
 from fastapi import HTTPException
-from app.modules.authz.service import exigir_permiso_revertir_pago
+
+from app.shared.money import redondear_monto
 from app.db.connection import get_connection
+from app.modules.authz.service import exigir_permiso_revertir_pago
 from app.modules.auditoria import service as auditoria_service
 from app.modules.caja.repository import (
     get_caja_abierta_hoy_by_sucursal_for_update,
     insert_caja_movimiento,
 )
+from app.modules.reglas_comerciales.schema import PagoSimulacionInput
+from app.modules.reglas_comerciales.service import _simular_con_conn
+
 from .repository import (
     get_pago_by_id_for_update,
     get_reversion_by_pago_original,
@@ -39,6 +44,7 @@ from app.shared.constants import (
     CAJA_ORIGEN_PAGO,
 )
 
+
 def _obtener_caja_abierta_obligatoria(conn, id_sucursal: int):
     caja = get_caja_abierta_hoy_by_sucursal_for_update(conn, id_sucursal)
 
@@ -54,33 +60,76 @@ def _obtener_caja_abierta_obligatoria(conn, id_sucursal: int):
     return caja
 
 
-def registrar_pago(conn, data: dict):
-    """
-    Función transaccional reutilizable.
-    NO abre conexión.
-    NO hace commit.
-    Debe ejecutarse dentro de una transacción externa.
+def _to_decimal(value) -> Decimal | None:
+    if value is None:
+        return None
 
-    data esperado:
-    {
-        "id_sucursal": int,  # obligatorio para reserva / otros, no para venta
-        "id_cliente": int | None,
-        "origen_tipo": "venta" | "reserva" | "orden_taller" | "deuda_cliente",
-        "origen_id": int,
-        "medio_pago": str,
-        "monto": Decimal,
-        "nota": str | None,
-        "id_usuario": int
-    }
+    if isinstance(value, Decimal):
+        return value
+
+    return Decimal(str(value))
+
+
+def _calcular_tramo_pago_venta(conn, data: dict):
     """
-    
+    V2:
+    Si viene monto_base, se calcula un tramo financiero.
+    Si solo viene monto, se mantiene compatibilidad vieja: monto = cobrado real.
+    """
+
+    medio_pago = data["medio_pago"]
+
+    monto_base = _to_decimal(data.get("monto_base"))
+
+    if monto_base is None:
+        monto_cobrado = redondear_monto(_to_decimal(data.get("monto")))
+
+        return {
+            "medio_pago": medio_pago,
+            "monto_base_aplicado": monto_cobrado,
+            "descuento_aplicado": Decimal("0.00"),
+            "recargo_aplicado": Decimal("0.00"),
+            "monto_total_cobrado": monto_cobrado,
+            "cuotas": data.get("cuotas"),
+            "entidad": data.get("entidad"),
+            "id_tarjeta_plan": data.get("id_tarjeta_plan"),
+            "porcentaje_recargo_aplicado": data.get("porcentaje_recargo_aplicado"),
+        }
+
+    monto_base = redondear_monto(monto_base)
+
+    pago_simulado = PagoSimulacionInput(
+        medio_pago=medio_pago,
+        monto_base=monto_base,
+        cuotas=data.get("cuotas"),
+        entidad=data.get("entidad"),
+        nota=data.get("nota"),
+    )
+
+    simulacion = _simular_con_conn(
+        conn,
+        subtotal_base=monto_base,
+        pagos=[pago_simulado],
+    )
+
+    tramo = simulacion["tramos_pago"][0]
+
+    return {
+        "medio_pago": tramo["medio_pago"],
+        "monto_base_aplicado": redondear_monto(tramo["monto_base_aplicado"]),
+        "descuento_aplicado": redondear_monto(tramo["descuento_aplicado"]),
+        "recargo_aplicado": redondear_monto(tramo["recargo_aplicado"]),
+        "monto_total_cobrado": redondear_monto(tramo["monto_total_cobrado"]),
+        "cuotas": tramo.get("cuotas"),
+        "entidad": tramo.get("entidad"),
+        "id_tarjeta_plan": tramo.get("id_tarjeta_plan"),
+        "porcentaje_recargo_aplicado": tramo.get("porcentaje_recargo_aplicado"),
+    }
+
+
+def registrar_pago(conn, data: dict):
     medio_pago = data["medio_pago"]
     origen_tipo = data["origen_tipo"]
-
-    if not isinstance(data["monto"], Decimal):
-        raise ValueError("monto debe ser Decimal")
-
-    monto = redondear_monto(data["monto"])
 
     if medio_pago not in MEDIOS_PAGO_VALIDOS:
         raise HTTPException(
@@ -92,12 +141,6 @@ def registrar_pago(conn, data: dict):
         raise HTTPException(
             status_code=400,
             detail=f"Origen de pago inválido: {origen_tipo}",
-        )
-
-    if monto <= 0:
-        raise HTTPException(
-            status_code=400,
-            detail="El monto del pago debe ser mayor a 0",
         )
 
     # =====================================================
@@ -135,14 +178,26 @@ def registrar_pago(conn, data: dict):
                 detail=f"La venta {venta['id']} no tiene saldo pendiente",
             )
 
+        tramo = _calcular_tramo_pago_venta(conn, data)
+
+        monto = redondear_monto(tramo["monto_total_cobrado"])
+
+        if monto <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="El monto del pago debe ser mayor a 0",
+            )
+
         if monto > saldo_pendiente:
             raise HTTPException(
                 status_code=400,
-                detail="El monto del pago supera el saldo pendiente",
+                detail="El monto cobrado del tramo supera el saldo pendiente",
             )
 
         caja = _obtener_caja_abierta_obligatoria(conn, venta["id_sucursal"])
+
         saldo_restante = redondear_monto(saldo_pendiente - monto)
+
         nuevo_estado = (
             VENTA_ESTADO_PAGADA_TOTAL
             if saldo_restante == 0
@@ -157,36 +212,33 @@ def registrar_pago(conn, data: dict):
                 "origen_id": venta["id"],
                 "medio_pago": medio_pago,
                 "monto_total_cobrado": monto,
+                "monto_base_aplicado": tramo["monto_base_aplicado"],
+                "monto_descuento_aplicado": tramo["descuento_aplicado"],
+                "monto_recargo_aplicado": tramo["recargo_aplicado"],
                 "nota": data.get("nota"),
                 "id_usuario": data["id_usuario"],
             },
         )
-        if medio_pago == "tarjeta":
-            cuotas = data.get("cuotas") or 1
-            entidad = data.get("entidad") or "Sin especificar"
 
-            monto_base = redondear_monto(data.get("monto_base") or monto)
-            monto_recargo_financiero = redondear_monto(
-                data.get("monto_recargo_financiero") or Decimal("0")
-            )
-            monto_neto_liquidado = redondear_monto(
-                data.get("monto_neto_liquidado") or monto
-            )
+        if medio_pago == "tarjeta":
+            cuotas = tramo.get("cuotas") or data.get("cuotas") or 1
+            entidad = tramo.get("entidad") or data.get("entidad") or "Sin especificar"
 
             insert_pago_tarjeta_detalle(
                 conn,
                 {
                     "id_pago": pago_id,
-                    "monto_base": monto_base,
-                    "monto_recargo_financiero": monto_recargo_financiero,
-                    "monto_neto_liquidado": monto_neto_liquidado,
+                    "monto_base": tramo["monto_base_aplicado"],
+                    "monto_recargo_financiero": tramo["recargo_aplicado"],
+                    "monto_neto_liquidado": monto,
                     "cuotas": cuotas,
                     "entidad": entidad,
                     "observacion": data.get("nota"),
-                    "id_tarjeta_plan": data.get("id_tarjeta_plan"),
-                    "porcentaje_recargo_aplicado": data.get("porcentaje_recargo_aplicado"),
+                    "id_tarjeta_plan": tramo.get("id_tarjeta_plan"),
+                    "porcentaje_recargo_aplicado": tramo.get("porcentaje_recargo_aplicado"),
                 },
             )
+
         insert_caja_movimiento(
             conn,
             id_caja=caja["id"],
@@ -215,7 +267,11 @@ def registrar_pago(conn, data: dict):
             accion=AUDITORIA_ACCION_PAGO_REGISTRADO,
             detalle=(
                 f"Pago registrado para venta #{venta['id']}. "
-                f"medio={medio_pago}, monto={monto}, "
+                f"medio={medio_pago}, "
+                f"base={tramo['monto_base_aplicado']}, "
+                f"descuento={tramo['descuento_aplicado']}, "
+                f"recargo={tramo['recargo_aplicado']}, "
+                f"cobrado={monto}, "
                 f"saldo_restante={saldo_restante}, "
                 f"estado_venta={nuevo_estado}"
             ),
@@ -225,7 +281,10 @@ def registrar_pago(conn, data: dict):
                 "venta_id": venta["id"],
                 "cliente_id": venta["id_cliente"],
                 "medio_pago": medio_pago,
-                "monto": str(monto),
+                "monto_base_aplicado": str(tramo["monto_base_aplicado"]),
+                "monto_descuento_aplicado": str(tramo["descuento_aplicado"]),
+                "monto_recargo_aplicado": str(tramo["recargo_aplicado"]),
+                "monto_total_cobrado": str(monto),
                 "saldo_restante": str(saldo_restante),
                 "estado_venta": nuevo_estado,
             },
@@ -245,7 +304,17 @@ def registrar_pago(conn, data: dict):
 
     # =====================================================
     # CASO 2: PAGO DE RESERVA / OTROS ORÍGENES
+    # Mantiene compatibilidad: monto = cobrado real.
     # =====================================================
+
+    monto = redondear_monto(_to_decimal(data.get("monto")))
+
+    if monto <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="El monto del pago debe ser mayor a 0",
+        )
+
     if "id_sucursal" not in data:
         raise HTTPException(
             status_code=400,
@@ -263,10 +332,14 @@ def registrar_pago(conn, data: dict):
             "origen_id": data["origen_id"],
             "medio_pago": medio_pago,
             "monto_total_cobrado": monto,
+            "monto_base_aplicado": monto,
+            "monto_descuento_aplicado": Decimal("0.00"),
+            "monto_recargo_aplicado": Decimal("0.00"),
             "nota": data.get("nota"),
             "id_usuario": data["id_usuario"],
         },
     )
+
     if medio_pago == "tarjeta":
         cuotas = data.get("cuotas") or 1
         entidad = data.get("entidad") or "Sin especificar"
@@ -293,6 +366,7 @@ def registrar_pago(conn, data: dict):
                 "porcentaje_recargo_aplicado": data.get("porcentaje_recargo_aplicado"),
             },
         )
+
     insert_caja_movimiento(
         conn,
         id_caja=caja["id"],
@@ -338,9 +412,6 @@ def registrar_pago(conn, data: dict):
 
 
 def crear_pago(data):
-    """
-    Wrapper para endpoint / uso simple.
-    """
     conn = get_connection()
 
     try:
@@ -350,22 +421,23 @@ def crear_pago(data):
                 "origen_tipo": data.origen_tipo,
                 "origen_id": data.origen_id,
                 "medio_pago": data.medio_pago,
-                "monto": data.monto,
+                "monto": getattr(data, "monto", None),
+                "monto_base": getattr(data, "monto_base", None),
                 "nota": data.nota,
                 "id_usuario": data.id_usuario,
                 "cuotas": getattr(data, "cuotas", None),
                 "entidad": getattr(data, "entidad", None),
-                "monto_base": getattr(data, "monto_base", None),
                 "monto_recargo_financiero": getattr(data, "monto_recargo_financiero", None),
                 "monto_neto_liquidado": getattr(data, "monto_neto_liquidado", None),
                 "id_tarjeta_plan": getattr(data, "id_tarjeta_plan", None),
                 "porcentaje_recargo_aplicado": getattr(data, "porcentaje_recargo_aplicado", None),
             }
 
-            if hasattr(data, "id_sucursal"):
+            if getattr(data, "id_sucursal", None) is not None:
                 payload["id_sucursal"] = data.id_sucursal
 
             return registrar_pago(conn, payload)
+
     finally:
         conn.close()
 
@@ -376,7 +448,9 @@ def revertir_pago(pago_id: int, data):
     try:
         with conn.transaction():
             exigir_permiso_revertir_pago(conn, data.id_usuario)
+
             pago_original = get_pago_by_id_for_update(conn, pago_id)
+
             if pago_original is None:
                 raise HTTPException(status_code=404, detail=f"No existe el pago {pago_id}")
 
@@ -390,6 +464,7 @@ def revertir_pago(pago_id: int, data):
                 raise HTTPException(status_code=400, detail=f"El pago {pago_id} ya fue revertido")
 
             reversion_existente = get_reversion_by_pago_original(conn, pago_id)
+
             if reversion_existente is not None:
                 raise HTTPException(
                     status_code=400,
@@ -397,6 +472,7 @@ def revertir_pago(pago_id: int, data):
                 )
 
             venta = get_venta_for_update(conn, pago_original["origen_id"])
+
             if venta is None:
                 raise HTTPException(
                     status_code=404,
@@ -437,6 +513,9 @@ def revertir_pago(pago_id: int, data):
                     "origen_id": venta["id"],
                     "medio_pago": pago_original["medio_pago"],
                     "monto_total_cobrado": pago_original["monto_total_cobrado"],
+                    "monto_base_aplicado": pago_original["monto_base_aplicado"],
+                    "monto_descuento_aplicado": pago_original["monto_descuento_aplicado"],
+                    "monto_recargo_aplicado": pago_original["monto_recargo_aplicado"],
                     "nota": f"Reversión de pago #{pago_original['id']}: {data.motivo}",
                     "id_usuario": data.id_usuario,
                 },
@@ -510,12 +589,14 @@ def revertir_pago(pago_id: int, data):
             "saldo_restante": saldo_restante,
             "reversion_id": reversion_id,
         }
+
     finally:
         conn.close()
 
 
 def listar_pagos():
     conn = get_connection()
+
     try:
         return get_pagos(conn)
     finally:
@@ -524,6 +605,7 @@ def listar_pagos():
 
 def obtener_pagos_venta(venta_id: int):
     conn = get_connection()
+
     try:
         return obtener_pagos_por_venta(conn, venta_id)
     finally:
