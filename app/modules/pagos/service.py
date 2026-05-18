@@ -610,3 +610,138 @@ def obtener_pagos_venta(venta_id: int):
         return obtener_pagos_por_venta(conn, venta_id)
     finally:
         conn.close()
+
+def simular_pago_venta(data):
+    conn = get_connection()
+
+    try:
+        venta = get_venta_for_update(conn, data.venta_id)
+
+        if venta is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No existe la venta {data.venta_id}",
+            )
+
+        saldo_pendiente = redondear_monto(venta["saldo_pendiente"])
+
+        if saldo_pendiente <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="La venta no tiene saldo pendiente",
+            )
+
+        if data.monto_cobrado_objetivo is not None:
+            tramo = _resolver_base_para_cobrado_objetivo(
+                conn,
+                data,
+                saldo_pendiente,
+            )
+        else:
+            tramo = _calcular_tramo_pago_venta(
+                conn,
+                {
+                    "medio_pago": data.medio_pago,
+                    "monto_base": data.monto_base,
+                    "cuotas": data.cuotas,
+                    "entidad": data.entidad,
+                },
+            )
+
+        monto_total_cobrado = redondear_monto(
+            tramo["monto_total_cobrado"]
+        )
+
+        saldo_restante_estimado = redondear_monto(
+            saldo_pendiente - monto_total_cobrado
+        )
+
+        return {
+            "medio_pago": tramo["medio_pago"],
+            "monto_base_aplicado": tramo["monto_base_aplicado"],
+            "descuento_aplicado": tramo["descuento_aplicado"],
+            "recargo_aplicado": tramo["recargo_aplicado"],
+            "monto_total_cobrado": monto_total_cobrado,
+            "saldo_pendiente_actual": saldo_pendiente,
+            "saldo_restante_estimado": saldo_restante_estimado,
+            "cuotas": tramo.get("cuotas"),
+            "entidad": tramo.get("entidad"),
+            "id_tarjeta_plan": tramo.get("id_tarjeta_plan"),
+            "porcentaje_recargo_aplicado": tramo.get(
+                "porcentaje_recargo_aplicado"
+            ),
+        }
+
+    finally:
+        conn.close()
+
+def _resolver_base_para_cobrado_objetivo(conn, data, saldo_pendiente):
+    objetivo = redondear_monto(data.monto_cobrado_objetivo)
+
+    if objetivo > saldo_pendiente:
+        raise HTTPException(
+            status_code=400,
+            detail="El cobrado objetivo supera el saldo pendiente",
+        )
+
+    # Primero simulamos con base = objetivo solo para conocer
+    # el factor financiero del medio.
+    tramo_referencia = _calcular_tramo_pago_venta(
+        conn,
+        {
+            "medio_pago": data.medio_pago,
+            "monto_base": objetivo,
+            "cuotas": data.cuotas,
+            "entidad": data.entidad,
+        },
+    )
+
+    descuento_ref = redondear_monto(tramo_referencia["descuento_aplicado"])
+    recargo_ref = redondear_monto(tramo_referencia["recargo_aplicado"])
+
+    factor = Decimal("1")
+
+    if descuento_ref > 0:
+        factor = Decimal("1") - (descuento_ref / objetivo)
+
+    if recargo_ref > 0:
+        factor = Decimal("1") + (recargo_ref / objetivo)
+
+    if factor <= 0:
+        raise HTTPException(
+            status_code=500,
+            detail="Factor financiero inválido para simular pago",
+        )
+
+    base_calculada = redondear_monto(objetivo / factor)
+
+    tramo = _calcular_tramo_pago_venta(
+        conn,
+        {
+            "medio_pago": data.medio_pago,
+            "monto_base": base_calculada,
+            "cuotas": data.cuotas,
+            "entidad": data.entidad,
+        },
+    )
+
+    cobrado = redondear_monto(tramo["monto_total_cobrado"])
+
+    diferencia = redondear_monto(objetivo - cobrado)
+
+    # Ajuste de centavos: si por redondeo quedó a 0,01,
+    # corregimos la base en el sentido necesario.
+    if abs(diferencia) <= Decimal("0.01") and diferencia != 0:
+        tramo = _calcular_tramo_pago_venta(
+            conn,
+            {
+                "medio_pago": data.medio_pago,
+                "monto_base": redondear_monto(
+                    base_calculada + diferencia
+                ),
+                "cuotas": data.cuotas,
+                "entidad": data.entidad,
+            },
+        )
+
+    return tramo

@@ -8,6 +8,13 @@ export function listarPagosDeVenta(ventaId) {
   return apiRequest(`/pagos/ventas/${ventaId}/pagos`);
 }
 
+export function simularTramoPagoVenta(data) {
+  return apiRequest("/pagos/ventas/simular-tramo", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
 export function crearPago(data) {
   return apiRequest("/pagos/", {
     method: "POST",

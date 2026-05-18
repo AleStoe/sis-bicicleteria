@@ -7,8 +7,10 @@ from .schema import (
     PagoReversionInput,
     PagoReversionOutput,
     PagoResumenOutput,
+    PagoVentaSimulacionInput,
+    PagoVentaSimulacionOutput,
 )
-from .service import crear_pago, listar_pagos, obtener_pagos_venta, revertir_pago
+from .service import crear_pago, listar_pagos, obtener_pagos_venta, revertir_pago, simular_pago_venta
 
 router = APIRouter()
 
@@ -31,3 +33,12 @@ def pagos():
 @router.get("/ventas/{venta_id}/pagos", response_model=List[PagoResumenOutput])
 def pagos_por_venta(venta_id: int):
     return obtener_pagos_venta(venta_id)
+
+@router.post(
+    "/ventas/simular-tramo",
+    response_model=PagoVentaSimulacionOutput,
+)
+def simular_tramo_pago_venta(
+    data: PagoVentaSimulacionInput,
+):
+    return simular_pago_venta(data)

@@ -106,3 +106,36 @@ class PagoVentaResponse(PagoResponseBase):
 
 class PagoTallerResponse(PagoResponseBase):
     pass
+
+class PagoVentaSimulacionInput(BaseModel):
+    venta_id: int = Field(gt=0)
+    medio_pago: str
+
+    monto_base: Decimal | None = Field(default=None, gt=0)
+    monto_cobrado_objetivo: Decimal | None = Field(default=None, gt=0)
+
+    cuotas: int | None = Field(default=None, gt=0)
+    entidad: str | None = Field(default=None, max_length=80)
+
+    @model_validator(mode="after")
+    def validar_monto(self):
+        if self.monto_base is None and self.monto_cobrado_objetivo is None:
+            raise ValueError("Debe informar monto_base o monto_cobrado_objetivo")
+        return self
+
+
+class PagoVentaSimulacionOutput(BaseModel):
+    medio_pago: str
+
+    monto_base_aplicado: Decimal
+    descuento_aplicado: Decimal
+    recargo_aplicado: Decimal
+    monto_total_cobrado: Decimal
+
+    saldo_pendiente_actual: Decimal
+    saldo_restante_estimado: Decimal
+
+    cuotas: int | None = None
+    entidad: str | None = None
+    id_tarjeta_plan: int | None = None
+    porcentaje_recargo_aplicado: Decimal | None = None
