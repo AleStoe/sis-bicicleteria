@@ -784,6 +784,20 @@ def obtener_venta(venta_id: int):
             origen_tipo=ORIGEN_VENTA,
             origen_id=venta_id,
         )
+        total_final = redondear_monto(venta["total_final"])
+        saldo_pendiente = redondear_monto(venta["saldo_pendiente"])
+        total_pagado_confirmado = redondear_monto(
+            get_total_pagado_confirmado_por_venta(conn, venta_id)
+        )
+
+        monto_cubierto_sin_pago_real = redondear_monto(
+            total_final - total_pagado_confirmado - saldo_pendiente
+        )
+
+        # Tolerancia financiera por redondeo de centavos.
+        # No debe mostrarse como crédito/ajuste real.
+        if abs(monto_cubierto_sin_pago_real) <= Decimal("0.01"):
+            monto_cubierto_sin_pago_real = Decimal("0.00")
 
         situacion_financiera = {
             "tiene_deuda": deuda_abierta is not None,
@@ -798,6 +812,10 @@ def obtener_venta(venta_id: int):
                 if deuda_abierta is not None
                 else None
             ),
+            "total_final": total_final,
+            "total_pagado_confirmado": total_pagado_confirmado,
+            "saldo_pendiente": saldo_pendiente,
+            "monto_cubierto_sin_pago_real": monto_cubierto_sin_pago_real,
         }
 
         return {

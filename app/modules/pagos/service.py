@@ -198,6 +198,11 @@ def registrar_pago(conn, data: dict):
 
         saldo_restante = redondear_monto(saldo_pendiente - monto)
 
+        # Tolerancia financiera por redondeo de centavos.
+        # Evita que queden ventas en pagada_parcial por $0.01.
+        if abs(saldo_restante) <= Decimal("0.01"):
+            saldo_restante = Decimal("0.00")
+
         nuevo_estado = (
             VENTA_ESTADO_PAGADA_TOTAL
             if saldo_restante == 0
@@ -655,6 +660,11 @@ def simular_pago_venta(data):
         saldo_restante_estimado = redondear_monto(
             saldo_pendiente - monto_total_cobrado
         )
+
+        # Tolerancia financiera por redondeo.
+        # Evita saldos residuales de 0.01 / -0.01
+        if abs(saldo_restante_estimado) <= Decimal("0.01"):
+            saldo_restante_estimado = Decimal("0.00")
 
         return {
             "medio_pago": tramo["medio_pago"],
