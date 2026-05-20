@@ -1,3 +1,5 @@
+import { formatMoney } from "../../../utils/formatters";
+
 const MEDIOS_PAGO = [
   { value: "efectivo", label: "Efectivo" },
   { value: "transferencia", label: "Transferencia" },
@@ -13,7 +15,6 @@ export default function CheckoutAgregarPago({
   agregarPago,
   sugerirMontoParaSaldar,
   previewSaldar,
-  formatMoney,
   errorLocal,
   simulando,
   planesTarjeta,
@@ -24,58 +25,95 @@ export default function CheckoutAgregarPago({
 
   const tramoPreview = previewSaldar?.tramos_pago?.at?.(-1);
 
-  const montoBaseSugerido = previewSaldar?.monto_base_sugerido_para_saldar;
-  const montoSugeridoCobrado = previewSaldar?.monto_sugerido_para_saldar;
+  const montoBaseSugerido =
+    previewSaldar?.monto_base_sugerido_para_saldar;
 
-  const descuentoPreview = Number(tramoPreview?.descuento_aplicado || 0);
-  const recargoPreview = Number(tramoPreview?.recargo_aplicado || 0);
+  const montoSugeridoCobrado =
+    previewSaldar?.monto_sugerido_para_saldar;
+
+  const descuentoPreview = Number(
+    tramoPreview?.descuento_aplicado || 0
+  );
+
+  const recargoPreview = Number(
+    tramoPreview?.recargo_aplicado || 0
+  );
+
   const hayDescuento = descuentoPreview > 0;
   const hayRecargo = recargoPreview > 0;
 
+  const mostrarPreview =
+    Number(monto || 0) > 0 &&
+    previewSaldar?.monto_sugerido_para_saldar != null;
+
   return (
     <div style={styles.payBox}>
-      <div style={styles.payTitle}>Agregar pago</div>
+      <div style={styles.header}>
+        <div>
+          <div style={styles.payTitle}>Agregar pago</div>
 
-      <div style={styles.paymentControls}>
-        <select
-          value={medioPago}
-          onChange={(e) => setMedioPago(e.target.value)}
-          style={styles.select}
-        >
-          {MEDIOS_PAGO.map((medio) => (
-            <option key={medio.value} value={medio.value}>
-              {medio.label}
-            </option>
-          ))}
-        </select>
-
-        {esTarjeta && (
-          <div style={styles.cardPlanBox}>
-            <label style={styles.cardPlanLabel}>Plan de tarjeta</label>
-
-            <select
-              value={planTarjetaId}
-              onChange={(e) => setPlanTarjetaId(e.target.value)}
-              style={styles.select}
-              disabled={!planesTarjeta?.length}
-            >
-              {!planesTarjeta?.length && (
-                <option value="">Sin planes activos</option>
-              )}
-
-              {planesTarjeta.map((plan) => (
-                <option key={plan.id} value={plan.id}>
-                  {plan.entidad ? `${plan.entidad} - ` : ""}
-                  {plan.cuotas} cuota(s) ·{" "}
-                  {Number(plan.porcentaje_recargo_cliente || 0).toFixed(2)}%
-                </option>
-              ))}
-            </select>
+          <div style={styles.subtitle}>
+            El sistema calcula automáticamente descuentos,
+            recargos y total final según el medio de pago.
           </div>
-        )}
+        </div>
       </div>
 
-      {previewSaldar?.monto_sugerido_para_saldar != null && (
+      <div style={styles.paymentTabs}>
+        {MEDIOS_PAGO.map((medio) => {
+          const active = medioPago === medio.value;
+
+          return (
+            <button
+              key={medio.value}
+              type="button"
+              onClick={() => setMedioPago(medio.value)}
+              style={{
+                ...styles.tabButton,
+                ...(active ? styles.tabButtonActive : {}),
+              }}
+            >
+              {medio.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {esTarjeta && (
+        <div style={styles.cardPlanBox}>
+          <label style={styles.cardPlanLabel}>
+            Plan de financiación
+          </label>
+
+          <select
+            value={planTarjetaId}
+            onChange={(e) => setPlanTarjetaId(e.target.value)}
+            style={styles.select}
+            disabled={!planesTarjeta?.length}
+          >
+            {!planesTarjeta?.length && (
+              <option value="">
+                Sin planes activos
+              </option>
+            )}
+
+            {planesTarjeta.map((plan) => (
+              <option key={plan.id} value={plan.id}>
+                {plan.entidad
+                  ? `${plan.entidad} · `
+                  : ""}
+                {plan.cuotas} cuota(s) ·{" "}
+                {Number(
+                  plan.porcentaje_recargo_cliente || 0
+                ).toFixed(0)}
+                %
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+            
+      {mostrarPreview && (
         <div
           style={
             hayRecargo
@@ -86,13 +124,17 @@ export default function CheckoutAgregarPago({
           }
         >
           <div style={styles.previewRow}>
-            <span>Base sugerida</span>
-            <strong>{formatMoney(montoBaseSugerido)}</strong>
+            <span>Monto base</span>
+
+            <strong>
+              {formatMoney(montoBaseSugerido)}
+            </strong>
           </div>
 
           {hayDescuento && (
             <div style={styles.previewRow}>
-              <span>Descuento del tramo</span>
+              <span>Descuento aplicado</span>
+
               <strong style={styles.successText}>
                 - {formatMoney(descuentoPreview)}
               </strong>
@@ -101,7 +143,8 @@ export default function CheckoutAgregarPago({
 
           {hayRecargo && (
             <div style={styles.previewRow}>
-              <span>Recargo del tramo</span>
+              <span>Recargo financiación</span>
+
               <strong style={styles.warningText}>
                 + {formatMoney(recargoPreview)}
               </strong>
@@ -117,19 +160,35 @@ export default function CheckoutAgregarPago({
                   : styles.previewRowTotalNeutral
             }
           >
-            <span>Total a cobrar</span>
-            <strong>{formatMoney(montoSugeridoCobrado)}</strong>
+            <span>Cliente paga</span>
+
+            <strong>
+              {formatMoney(montoSugeridoCobrado)}
+            </strong>
           </div>
         </div>
       )}
 
+      <div style={styles.amountLabel}>
+        {esTarjeta
+          ? "Monto base financiado"
+          : "Monto"}
+      </div>
+
       <div style={styles.amountRow}>
         <input
-          type="number"
+          type="text"
+          inputMode="numeric"
           value={monto}
-          onChange={(e) => setMonto(e.target.value)}
-          placeholder="Monto base"
-          style={styles.input}
+          onChange={(e) => {
+            const value = e.target.value
+              .replace(",", ".")
+              .replace(/[^0-9.]/g, "");
+
+            setMonto(value);
+          }}
+          placeholder="Ingresar monto"
+          style={styles.amountInput}
         />
 
         <button
@@ -141,17 +200,20 @@ export default function CheckoutAgregarPago({
           {simulando ? "..." : "Saldar"}
         </button>
 
-        <button type="button" onClick={agregarPago} style={styles.addBtn}>
+        <button
+          type="button"
+          onClick={agregarPago}
+          style={styles.addBtn}
+        >
           Agregar
         </button>
       </div>
 
-      <div style={styles.hint}>
-        Ingresá siempre el monto base del tramo. El backend calcula descuento,
-        recargo y total cobrado real.
-      </div>
-
-      {errorLocal && <div style={styles.localError}>{errorLocal}</div>}
+      {errorLocal && (
+        <div style={styles.localError}>
+          {errorLocal}
+        </div>
+      )}
     </div>
   );
 }
@@ -159,149 +221,202 @@ export default function CheckoutAgregarPago({
 const styles = {
   payBox: {
     border: "1px solid #eaecf0",
-    borderRadius: 12,
-    padding: 10,
-    background: "#f9fafb",
+    borderRadius: 16,
+    padding: 14,
+    background: "#ffffff",
     marginBottom: 12,
+    display: "grid",
+    gap: 12,
   },
+
+  header: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+  },
+
   payTitle: {
     fontWeight: 900,
-    marginBottom: 8,
-    color: "#344054",
+    fontSize: 18,
+    color: "#111827",
   },
-  paymentControls: {
-    marginBottom: 10,
+
+  subtitle: {
+    marginTop: 4,
+    color: "#667085",
+    fontSize: 13,
+    lineHeight: 1.4,
   },
-  select: {
-    width: "100%",
+
+  paymentTabs: {
+    display: "flex",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+
+  tabButton: {
     border: "1px solid #d0d5dd",
-    borderRadius: 10,
-    padding: "10px 11px",
-    fontSize: 14,
-    background: "white",
+    background: "#ffffff",
+    color: "#344054",
+    borderRadius: 999,
+    padding: "9px 14px",
+    fontWeight: 800,
+    cursor: "pointer",
+    transition: "0.15s",
   },
+
+  tabButtonActive: {
+    border: "1px solid #0b5bd3",
+    background: "#eff6ff",
+    color: "#0b5bd3",
+  },
+
   cardPlanBox: {
-    marginTop: 10,
     display: "grid",
     gap: 6,
   },
+
   cardPlanLabel: {
     fontSize: 12,
     fontWeight: 800,
     color: "#344054",
   },
+
+  select: {
+    width: "100%",
+    border: "1px solid #d0d5dd",
+    borderRadius: 12,
+    padding: "11px 12px",
+    fontSize: 14,
+    background: "white",
+  },
+
   previewBoxSuccess: {
     border: "1px solid #d1fadf",
     background: "#ecfdf3",
-    borderRadius: 10,
-    padding: 8,
-    marginBottom: 10,
+    borderRadius: 14,
+    padding: 12,
     display: "grid",
-    gap: 6,
+    gap: 8,
   },
+
   previewBoxWarning: {
     border: "1px solid #fedf89",
     background: "#fffaeb",
-    borderRadius: 10,
-    padding: 8,
-    marginBottom: 10,
+    borderRadius: 14,
+    padding: 12,
     display: "grid",
-    gap: 6,
+    gap: 8,
   },
+
   previewBoxNeutral: {
     border: "1px solid #eaecf0",
-    background: "#ffffff",
-    borderRadius: 10,
-    padding: 8,
-    marginBottom: 10,
+    background: "#f9fafb",
+    borderRadius: 14,
+    padding: 12,
     display: "grid",
-    gap: 6,
+    gap: 8,
   },
+
   previewRow: {
     display: "flex",
     justifyContent: "space-between",
     gap: 10,
-    fontSize: 12,
+    fontSize: 13,
     color: "#344054",
   },
+
   previewRowTotalSuccess: {
     display: "flex",
     justifyContent: "space-between",
     gap: 10,
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: 900,
     color: "#067647",
-    paddingTop: 6,
+    paddingTop: 8,
     borderTop: "1px solid #d1fadf",
   },
+
   previewRowTotalWarning: {
     display: "flex",
     justifyContent: "space-between",
     gap: 10,
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: 900,
     color: "#b54708",
-    paddingTop: 6,
+    paddingTop: 8,
     borderTop: "1px solid #fedf89",
   },
+
   previewRowTotalNeutral: {
     display: "flex",
     justifyContent: "space-between",
     gap: 10,
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: 900,
     color: "#344054",
-    paddingTop: 6,
+    paddingTop: 8,
     borderTop: "1px solid #eaecf0",
   },
+
   successText: {
     color: "#067647",
   },
+
   warningText: {
     color: "#b54708",
   },
+
+  amountLabel: {
+    fontSize: 13,
+    fontWeight: 800,
+    color: "#344054",
+  },
+
   amountRow: {
     display: "grid",
-    gridTemplateColumns: "1fr 90px 100px",
+    gridTemplateColumns: "minmax(0, 1fr) auto auto",
     gap: 8,
+    alignItems: "stretch",
   },
-  input: {
-    border: "1px solid #d0d5dd",
-    borderRadius: 10,
-    padding: "10px 11px",
-    fontSize: 15,
+
+  amountInput: {
+    border: "2px solid #d0d5dd",
+    borderRadius: 14,
+    padding: "16px 14px",
+    fontSize: 28,
+    fontWeight: 900,
+    color: "#111827",
+    background: "#ffffff",
+    outline: "none",
   },
+
   saldarBtn: {
     border: "1px solid #0b5bd3",
     background: "white",
     color: "#0b5bd3",
-    borderRadius: 10,
-    padding: "9px 10px",
+    borderRadius: 12,
+    padding: "0 16px",
     fontWeight: 900,
     cursor: "pointer",
   },
+
   addBtn: {
     border: "none",
-    background: "#0b5bd3",
+    background: "#16a34a",
     color: "white",
-    borderRadius: 10,
-    padding: "9px 10px",
+    borderRadius: 12,
+    padding: "0 18px",
     fontWeight: 900,
     cursor: "pointer",
   },
-  hint: {
-    marginTop: 8,
-    color: "#667085",
-    fontSize: 12,
-    lineHeight: 1.35,
-  },
+
   localError: {
-    marginTop: 8,
     background: "#fff1f0",
     border: "1px solid #fecdca",
     color: "#b42318",
-    borderRadius: 8,
-    padding: 8,
+    borderRadius: 10,
+    padding: 10,
     fontSize: 13,
   },
 };

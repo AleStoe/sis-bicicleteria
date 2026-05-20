@@ -1,3 +1,5 @@
+import { formatDateTime, formatMoney } from "../../utils/formatters";
+
 export default function PagoVentaTabla({
   titulo,
   pagos,
@@ -5,8 +7,6 @@ export default function PagoVentaTabla({
   onRevertir,
   vacio,
   soloHistorial = false,
-  formatMoney,
-  formatDate,
 }) {
   return (
     <div style={styles.box}>
@@ -23,47 +23,29 @@ export default function PagoVentaTabla({
               <div style={styles.left}>
                 <div style={styles.topLine}>
                   <strong>#{pago.id}</strong>
-
                   <span style={styles.dot}>•</span>
-
-                  <span>{formatDate(pago.fecha)}</span>
-
+                  <span>{formatDateTime(pago.fecha)}</span>
                   <span style={styles.dot}>•</span>
-
                   <strong>{renderMedio(pago.medio_pago)}</strong>
                 </div>
 
                 <div style={styles.metaGrid}>
-                  <Meta
-                    label="Base"
-                    value={formatMoney(pago.monto_base_aplicado)}
-                  />
+                  <Meta label="Base" value={formatMoney(pago.monto_base_aplicado)} />
 
                   <Meta
                     label="Desc."
-                    value={`- ${formatMoney(
-                      pago.monto_descuento_aplicado
-                    )}`}
+                    value={`- ${formatMoney(pago.monto_descuento_aplicado)}`}
                     tone="success"
                   />
 
                   <Meta
                     label="Recargo"
-                    value={`+ ${formatMoney(
-                      pago.monto_recargo_aplicado
-                    )}`}
+                    value={`+ ${formatMoney(pago.monto_recargo_aplicado)}`}
                     tone="warning"
                   />
 
-                  <Meta
-                    label="Estado"
-                    value={pago.estado}
-                  />
-
-                  <Meta
-                    label="Nota"
-                    value={pago.nota || "-"}
-                  />
+                  <Meta label="Estado" value={pago.estado} />
+                  <Meta label="Nota" value={pago.nota || "-"} />
                 </div>
               </div>
 
@@ -82,9 +64,7 @@ export default function PagoVentaTabla({
                     Revertir
                   </button>
                 ) : (
-                  <span style={styles.muted}>
-                    Sin acciones
-                  </span>
+                  <span style={styles.muted}>Sin acciones</span>
                 )}
               </div>
             </div>
@@ -98,9 +78,7 @@ export default function PagoVentaTabla({
 function Meta({ label, value, tone }) {
   return (
     <div>
-      <span style={styles.metaLabel}>
-        {label}
-      </span>
+      <span style={styles.metaLabel}>{label}</span>
 
       <strong
         style={{
@@ -189,8 +167,7 @@ const styles = {
 
   metaGrid: {
     display: "grid",
-    gridTemplateColumns:
-      "repeat(auto-fit, minmax(110px, 1fr))",
+    gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))",
     gap: 10,
   },
 

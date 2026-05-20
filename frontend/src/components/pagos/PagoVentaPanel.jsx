@@ -341,7 +341,6 @@ export default function PagoVentaPanel({
         loading={loading}
         guardando={guardando}
         onRefrescar={cargarPagos}
-        formatMoney={formatMoney}
       />
 
       {mensaje && <div style={styles.success}> {mensaje}</div>}
@@ -372,7 +371,7 @@ export default function PagoVentaPanel({
       <PagoVentaPreview
         preview={preview}
         simulando={simulando}
-        formatMoney={formatMoney}
+        
       />
 
       <PagoVentaTabla
@@ -381,8 +380,6 @@ export default function PagoVentaPanel({
         guardando={guardando}
         onRevertir={handleRevertirPago}
         vacio="No hay pagos confirmados para esta venta."
-        formatMoney={formatMoney}
-        formatDate={formatDate}
       />
 
       {pagosRevertidos.length > 0 && (
@@ -405,8 +402,6 @@ export default function PagoVentaPanel({
               onRevertir={handleRevertirPago}
               vacio="No hay pagos revertidos."
               soloHistorial
-              formatMoney={formatMoney}
-              formatDate={formatDate}
             />
           )}
         </div>

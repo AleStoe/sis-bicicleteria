@@ -1,3 +1,5 @@
+import { formatMoney } from "../../utils/formatters";
+
 export default function PagoVentaResumen({
   saldo,
   estadoVenta,
@@ -7,7 +9,6 @@ export default function PagoVentaResumen({
   loading,
   guardando,
   onRefrescar,
-  formatMoney,
 }) {
   return (
     <>
@@ -15,7 +16,7 @@ export default function PagoVentaResumen({
         <div>
           <h2 style={styles.title}>Cobro</h2>
           <p style={styles.muted}>
-            Registrá tramos financieros V2 contra caja.
+            Registrá pagos y controlá el saldo de la venta.
           </p>
         </div>
 
@@ -32,12 +33,27 @@ export default function PagoVentaResumen({
       <div style={styles.heroGrid}>
         <div style={styles.saldoBox}>
           <span style={styles.mutedSmall}>Saldo pendiente</span>
-          <strong style={styles.saldoValue}>{formatMoney(saldo)}</strong>
-          <span style={styles.mutedSmall}>Estado: {estadoVenta || "-"}</span>
+
+          <strong style={styles.saldoValue}>
+            {formatMoney(saldo)}
+          </strong>
+
+          <span style={styles.mutedSmall}>
+            Estado: {estadoVenta || "-"}
+          </span>
         </div>
 
-        <Metric label="Pagado confirmado" value={formatMoney(totalConfirmado)} tone="ok" />
-        <Metric label="Pagos confirmados" value={pagosConfirmados.length} />
+        <Metric
+          label="Pagado"
+          value={formatMoney(totalConfirmado)}
+          tone="ok"
+        />
+
+        <Metric
+          label="Pagos"
+          value={pagosConfirmados.length}
+        />
+
         <Metric
           label="Revertidos"
           value={pagosRevertidos.length}
@@ -49,7 +65,12 @@ export default function PagoVentaResumen({
 }
 
 function Metric({ label, value, tone }) {
-  const style = tone === "ok" ? styles.metricOk : tone === "warn" ? styles.metricWarn : styles.metric;
+  const style =
+    tone === "ok"
+      ? styles.metricOk
+      : tone === "warn"
+        ? styles.metricWarn
+        : styles.metric;
 
   return (
     <div style={style}>
@@ -67,19 +88,23 @@ const styles = {
     gap: 12,
     marginBottom: 14,
   },
+
   title: {
     margin: 0,
     fontSize: 22,
   },
+
   muted: {
     margin: "6px 0 0",
     color: "#667085",
     fontSize: 14,
   },
+
   mutedSmall: {
     color: "#667085",
     fontSize: 13,
   },
+
   secondaryButton: {
     border: "1px solid #d0d5dd",
     background: "white",
@@ -89,12 +114,15 @@ const styles = {
     fontWeight: 700,
     cursor: "pointer",
   },
+
   heroGrid: {
     display: "grid",
-    gridTemplateColumns: "minmax(230px, 1.4fr) repeat(3, minmax(150px, 1fr))",
+    gridTemplateColumns:
+      "minmax(230px, 1.4fr) repeat(3, minmax(130px, 1fr))",
     gap: 10,
     marginBottom: 14,
   },
+
   saldoBox: {
     border: "1px solid #fecdca",
     borderRadius: 14,
@@ -104,10 +132,12 @@ const styles = {
     display: "grid",
     gap: 6,
   },
+
   saldoValue: {
     fontSize: 30,
     lineHeight: 1,
   },
+
   metric: {
     border: "1px solid #eaecf0",
     borderRadius: 14,
@@ -117,6 +147,7 @@ const styles = {
     background: "#f9fafb",
     color: "#344054",
   },
+
   metricOk: {
     border: "1px solid #abefc6",
     borderRadius: 14,
@@ -126,6 +157,7 @@ const styles = {
     background: "#ecfdf3",
     color: "#067647",
   },
+
   metricWarn: {
     border: "1px solid #f3dc97",
     borderRadius: 14,
