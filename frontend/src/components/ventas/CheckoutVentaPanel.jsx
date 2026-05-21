@@ -21,6 +21,8 @@ export default function CheckoutVentaPanel({
   guardando,
   onVaciar,
   onFinalizar,
+  onEstadoCheckoutChange,
+  mostrarPagosCargados = true,
 }) {
   const [pagosDraft, setPagosDraft] = useState([]);
   const [medioPago, setMedioPago] = useState("efectivo");
@@ -47,6 +49,19 @@ export default function CheckoutVentaPanel({
       simulacion?.saldo_estimado ??
       totalCalculado
   );
+
+  const pagadoBase = pagosDraft.reduce(
+    (acc, pago) => acc + Number(pago.monto_base || 0),
+    0
+  );
+
+  const pagadoCliente = pagosDraft.reduce(
+    (acc, pago) =>
+      acc + Number(pago.monto_total_cobrado ?? pago.monto_base ?? 0),
+    0
+  );
+
+  const saldoBasePendiente = Math.max(Number(total || 0) - pagadoBase, 0);
 
   const planTarjetaSeleccionado = useMemo(() => {
     return planesTarjeta.find(
@@ -263,6 +278,37 @@ export default function CheckoutVentaPanel({
     };
   }, [medioPago, planTarjetaId, pagosDraft, items, tipoPrecio]);
 
+  useEffect(() => {
+    onEstadoCheckoutChange?.({
+      pagosDraft,
+      simulacion: simulacionActiva,
+      precioLista: Number(total || 0),
+      totalCalculado,
+      pagadoBase,
+      pagadoCliente,
+      saldoBasePendiente,
+      pendienteActual: pendiente,
+      medioPago,
+      planTarjeta: planTarjetaSeleccionado || null,
+      entregarAhora,
+      simulando,
+    });
+  }, [
+    onEstadoCheckoutChange,
+    pagosDraft,
+    simulacionActiva,
+    total,
+    totalCalculado,
+    pagadoBase,
+    pagadoCliente,
+    saldoBasePendiente,
+    pendiente,
+    medioPago,
+    planTarjetaSeleccionado,
+    entregarAhora,
+    simulando,
+  ]);
+
   function finalizar() {
     onFinalizar?.({
       pagos: pagosDraft.map((pago) => ({
@@ -308,11 +354,13 @@ export default function CheckoutVentaPanel({
         setPlanTarjetaId={setPlanTarjetaId}
       />
 
-      <CheckoutPagosList
-        pagosDraft={pagosDraft}
-        quitarPago={quitarPago}
-        formatMoney={formatMoney}
-      />
+      {mostrarPagosCargados && (
+        <CheckoutPagosList
+          pagosDraft={pagosDraft}
+          quitarPago={quitarPago}
+          formatMoney={formatMoney}
+        />
+      )}
 
       <label style={styles.checkRow}>
         <input

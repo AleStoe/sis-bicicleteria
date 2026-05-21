@@ -9,9 +9,8 @@ import { listarClientes } from "../services/clientesService";
 import { crearVenta, entregarVenta } from "../services/ventasService";
 import { listarSerializadasDisponibles } from "../services/serializadasService";
 import CarritoVentaPanel from "../components/ventas/CarritoVentaPanel";
-import ResumenVentaPanel from "../components/ventas/ResumenVentaPanel";
-import CheckoutVentaPanel from "../components/ventas/CheckoutVentaPanel";
 import CatalogoPOSPanel from "../components/ventas/catalogo/CatalogoPOSPanel";
+import VentaCarritoSidebar from "../components/ventas/pos/VentaCarritoSidebar";
 import { CURRENT_USER_ID, CURRENT_SUCURSAL_ID } from "../config/appConfig";
 import { validarVentaAntesDeCrear } from "../validators/ventasValidator";
 import { buildVentaPayload } from "../builders/ventasPayloadBuilder";
@@ -504,6 +503,26 @@ async function handleBuscarEnter(e) {
     }
   }
 
+  function irACobrar() {
+    if (!validarVentaAntesDeFinalizar()) return;
+
+    navigate("/ventas/checkout", {
+      state: {
+        ventaDraft: {
+          clienteId,
+          cliente: getClienteSeleccionado(),
+          tipoPrecio,
+          items,
+          total,
+          observaciones,
+          usarCredito,
+          idUsuario: ID_USUARIO,
+          idSucursal: ID_SUCURSAL,
+        },
+      },
+    });
+  }
+
   if (loading) {
     return <p style={{ padding: "24px" }}>Cargando venta rápida...</p>;
   }
@@ -561,71 +580,27 @@ async function handleBuscarEnter(e) {
         />
 
         <aside style={rightPanelStyle}>
-          <div style={saleTopStyle}>
-            <h2 style={{ margin: 0 }}>Venta</h2>
-
-            <label style={clientLabelStyle}>
-              Cliente
-              <select value={clienteId} onChange={(e) => handleCambiarCliente(e.target.value)} style={clientSelectStyle}>
-                {clientes.map((cliente) => (
-                  <option key={cliente.id} value={cliente.id}>
-                    {cliente.nombre} #{cliente.id}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label style={clientLabelStyle}>
-              Precio
-              <select
-                value={tipoPrecio}
-                onChange={(e) => setTipoPrecio(e.target.value)}
-                style={clientSelectStyle}
-              >
-                <option value="minorista">Minorista</option>
-                <option value="mayorista">Mayorista</option>
-              </select>
-            </label>
-          </div>
-
-          <CarritoVentaPanel
+          <VentaCarritoSidebar
+            clientes={clientes}
+            clienteId={clienteId}
+            tipoPrecio={tipoPrecio}
             items={items}
+            total={total}
+            observaciones={observaciones}
+            usarCredito={usarCredito}
             serializadasPorVariante={serializadasPorVariante}
             cargandoSerializadas={cargandoSerializadas}
+            onCambiarCliente={handleCambiarCliente}
+            onCambiarTipoPrecio={setTipoPrecio}
             onCargarSerializadas={cargarSerializadasDisponibles}
             onSeleccionarSerializada={seleccionarSerializada}
             onCambiarCantidad={cambiarCantidad}
             onQuitarItem={quitarItem}
             onActualizarItem={actualizarItemCarrito}
-          />
-
-          <ResumenVentaPanel total={total} />
-
-          <label style={fieldStyle}>
-            <span>Observaciones</span>
-            <textarea
-              value={observaciones}
-              onChange={(e) => setObservaciones(e.target.value)}
-              placeholder="Opcional"
-              style={textareaStyle}
-            />
-          </label>
-
-          <label style={checkStyle}>
-            <input
-              type="checkbox"
-              checked={usarCredito}
-              onChange={(e) => setUsarCredito(e.target.checked)}
-            />
-            Aplicar crédito disponible si existe
-          </label>
-
-          <CheckoutVentaPanel
-            total={total}
-            tipoPrecio={tipoPrecio}
-            items={items}
-            guardando={guardando}
+            onObservacionesChange={setObservaciones}
+            onUsarCreditoChange={setUsarCredito}
             onVaciar={vaciarVenta}
-            onFinalizar={finalizarCheckout}
+            onIrACobrar={irACobrar}
           />
         </aside>
       </main>

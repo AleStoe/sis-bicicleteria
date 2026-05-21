@@ -1,86 +1,52 @@
 import { formatMoney } from "../../../utils/formatters";
 
-export default function CheckoutTotalesSimulacion({
-  simulacion,
-  simulando,
-}) {
+export default function CheckoutTotalesSimulacion({ simulacion, simulando }) {
   if (!simulacion) return null;
 
+  const descuento = Number(simulacion.descuento_total || 0);
+  const recargo = Number(simulacion.recargo_total || 0);
+
   return (
-    <div style={styles.box}>
-      <div style={styles.mainRow}>
-        <div>
-          <div style={styles.mainLabel}>Total a cobrar</div>
-          <div style={styles.mainHint}>Según pagos cargados</div>
-        </div>
+    <details style={styles.details}>
+      <summary style={styles.summary}>
+        Ver detalle de precio lista / ajustes
+        {simulando && <span style={styles.loading}>Recalculando...</span>}
+      </summary>
 
-        <strong style={styles.mainAmount}>
-          {formatMoney(simulacion.total_final)}
-        </strong>
+      <div style={styles.box}>
+        <Row label="Precio lista" value={formatMoney(simulacion.subtotal_base)} strong />
+
+        {descuento > 0 && (
+          <Row label="Descuentos por medio/regla" value={`- ${formatMoney(descuento)}`} tone="success" />
+        )}
+
+        {recargo > 0 && (
+          <Row label="Recargos / financiación" value={`+ ${formatMoney(recargo)}`} tone="warning" />
+        )}
+
+        <Row label="Precio final estimado" value={formatMoney(simulacion.total_final)} strong tone="primary" />
+
+        <div style={styles.separator} />
+
+        <Row label="Base asignada" value={formatMoney(simulacion.total_base_asignada ?? 0)} />
+        <Row label="Pagos cargados" value={formatMoney(simulacion.total_pagos_cargados ?? 0)} />
+        <Row label="Saldo estimado" value={formatMoney(simulacion.saldo_estimado ?? 0)} />
       </div>
-
-      <div style={styles.compactGrid}>
-        <Mini
-          label="Descuento"
-          value={`- ${formatMoney(simulacion.descuento_total)}`}
-          tone="success"
-        />
-
-        <Mini
-          label="Recargo"
-          value={`+ ${formatMoney(simulacion.recargo_total)}`}
-          tone="warning"
-        />
-
-        <Mini
-          label="Saldo base"
-          value={formatMoney(simulacion.saldo_base_estimado ?? 0)}
-        />
-      </div>
-
-      <details style={styles.details}>
-        <summary style={styles.summary}>Ver detalle financiero</summary>
-
-        <div style={styles.detailRows}>
-          <Row label="Subtotal base" value={formatMoney(simulacion.subtotal_base)} />
-
-          <Row
-            label="Base asignada"
-            value={formatMoney(simulacion.total_base_asignada ?? 0)}
-          />
-
-          <Row
-            label="Pagos cargados"
-            value={formatMoney(simulacion.total_pagos_cargados ?? 0)}
-          />
-
-          <Row
-            label="Saldo estimado"
-            value={formatMoney(simulacion.saldo_estimado ?? 0)}
-          />
-        </div>
-      </details>
-
-      {simulando && (
-        <small style={styles.loading}>Recalculando simulación...</small>
-      )}
-    </div>
+    </details>
   );
 }
 
-function Mini({ label, value, tone }) {
+function Row({ label, value, tone, strong }) {
   return (
-    <div style={styles.mini}>
-      <span style={styles.miniLabel}>{label}</span>
-
+    <div style={styles.row}>
+      <span style={styles.label}>{label}</span>
       <strong
         style={{
-          color:
-            tone === "success"
-              ? "#067647"
-              : tone === "warning"
-                ? "#b54708"
-                : "#111827",
+          ...styles.value,
+          ...(strong ? styles.strongValue : {}),
+          ...(tone === "success" ? styles.success : {}),
+          ...(tone === "warning" ? styles.warning : {}),
+          ...(tone === "primary" ? styles.primary : {}),
         }}
       >
         {value}
@@ -89,113 +55,59 @@ function Mini({ label, value, tone }) {
   );
 }
 
-function Row({ label, value }) {
-  return (
-    <div style={styles.row}>
-      <span style={styles.label}>{label}</span>
-      <strong style={styles.value}>{value}</strong>
-    </div>
-  );
-}
-
 const styles = {
-  box: {
-    border: "1px solid #eaecf0",
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 12,
-    display: "grid",
-    gap: 12,
-    background: "#f9fafb",
-  },
-
-  mainRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 12,
-    alignItems: "center",
-    padding: 12,
-    borderRadius: 12,
-    background: "#ffffff",
-    border: "1px solid #eaecf0",
-  },
-
-  mainLabel: {
-    fontSize: 14,
-    color: "#667085",
-    fontWeight: 800,
-  },
-
-  mainHint: {
-    fontSize: 12,
-    color: "#98a2b3",
-    marginTop: 2,
-  },
-
-  mainAmount: {
-    fontSize: 24,
-    color: "#111827",
-    whiteSpace: "nowrap",
-  },
-
-  compactGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
-    gap: 8,
-  },
-
-  mini: {
-    border: "1px solid #eaecf0",
-    borderRadius: 12,
-    padding: 10,
-    background: "#ffffff",
-    display: "grid",
-    gap: 4,
-  },
-
-  miniLabel: {
-    color: "#667085",
-    fontSize: 12,
-    fontWeight: 700,
-  },
-
   details: {
-    borderTop: "1px solid #eaecf0",
-    paddingTop: 8,
+    border: "1px solid #eaecf0",
+    borderRadius: 16,
+    padding: 12,
+    marginBottom: 12,
+    background: "#ffffff",
   },
-
   summary: {
     cursor: "pointer",
-    color: "#475467",
+    color: "#344054",
     fontSize: 13,
+    fontWeight: 950,
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  loading: {
+    color: "#667085",
+    fontSize: 12,
     fontWeight: 800,
   },
-
-  detailRows: {
+  box: {
     display: "grid",
-    gap: 8,
-    marginTop: 10,
+    gap: 9,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTop: "1px solid #eaecf0",
   },
-
   row: {
     display: "flex",
     justifyContent: "space-between",
     gap: 12,
     alignItems: "center",
   },
-
   label: {
     color: "#667085",
     fontSize: 13,
   },
-
   value: {
     color: "#111827",
     fontSize: 13,
+    whiteSpace: "nowrap",
   },
-
-  loading: {
-    color: "#667085",
-    fontSize: 12,
+  strongValue: {
+    fontSize: 15,
   },
+  separator: {
+    height: 1,
+    background: "#eaecf0",
+    margin: "2px 0",
+  },
+  success: { color: "#079455" },
+  warning: { color: "#b54708" },
+  primary: { color: "#0b5bd3" },
 };

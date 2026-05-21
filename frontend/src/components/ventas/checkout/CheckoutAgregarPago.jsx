@@ -1,10 +1,10 @@
 import { formatMoney } from "../../../utils/formatters";
 
 const MEDIOS_PAGO = [
-  { value: "efectivo", label: "Efectivo" },
-  { value: "transferencia", label: "Transferencia" },
-  { value: "mercadopago", label: "MercadoPago" },
-  { value: "tarjeta", label: "Tarjeta" },
+  { value: "efectivo", label: "Efectivo", icon: "💵", helper: "Precio contado" },
+  { value: "transferencia", label: "Transferencia", icon: "🏦", helper: "Precio contado" },
+  { value: "tarjeta", label: "Tarjeta", icon: "💳", helper: "Con financiación" },
+  { value: "mercadopago", label: "MercadoPago", icon: "📲", helper: "Pago digital" },
 ];
 
 export default function CheckoutAgregarPago({
@@ -22,44 +22,30 @@ export default function CheckoutAgregarPago({
   setPlanTarjetaId,
 }) {
   const esTarjeta = medioPago === "tarjeta";
+  const medioActivo = MEDIOS_PAGO.find((medio) => medio.value === medioPago);
 
   const tramoPreview = previewSaldar?.tramos_pago?.at?.(-1);
+  const montoBaseSugerido = previewSaldar?.monto_base_sugerido_para_saldar;
+  const montoSugeridoCobrado = previewSaldar?.monto_sugerido_para_saldar;
 
-  const montoBaseSugerido =
-    previewSaldar?.monto_base_sugerido_para_saldar;
-
-  const montoSugeridoCobrado =
-    previewSaldar?.monto_sugerido_para_saldar;
-
-  const descuentoPreview = Number(
-    tramoPreview?.descuento_aplicado || 0
-  );
-
-  const recargoPreview = Number(
-    tramoPreview?.recargo_aplicado || 0
-  );
-
+  const descuentoPreview = Number(tramoPreview?.descuento_aplicado || 0);
+  const recargoPreview = Number(tramoPreview?.recargo_aplicado || 0);
   const hayDescuento = descuentoPreview > 0;
   const hayRecargo = recargoPreview > 0;
-
-  const mostrarPreview =
-    Number(monto || 0) > 0 &&
-    previewSaldar?.monto_sugerido_para_saldar != null;
+  const mostrarPreview = previewSaldar?.monto_sugerido_para_saldar != null;
 
   return (
     <div style={styles.payBox}>
       <div style={styles.header}>
         <div>
-          <div style={styles.payTitle}>Agregar pago</div>
-
+          <div style={styles.payTitle}>Elegí cómo paga el cliente</div>
           <div style={styles.subtitle}>
-            El sistema calcula automáticamente descuentos,
-            recargos y total final según el medio de pago.
+            Primero se muestra el precio lista; al elegir medio, el sistema calcula el precio final real.
           </div>
         </div>
       </div>
 
-      <div style={styles.paymentTabs}>
+      <div style={styles.paymentGrid}>
         {MEDIOS_PAGO.map((medio) => {
           const active = medioPago === medio.value;
 
@@ -69,11 +55,13 @@ export default function CheckoutAgregarPago({
               type="button"
               onClick={() => setMedioPago(medio.value)}
               style={{
-                ...styles.tabButton,
-                ...(active ? styles.tabButtonActive : {}),
+                ...styles.methodCard,
+                ...(active ? styles.methodCardActive : {}),
               }}
             >
-              {medio.label}
+              <span style={styles.methodIcon}>{medio.icon}</span>
+              <span style={styles.methodText}>{medio.label}</span>
+              <small style={active ? styles.methodHelperActive : styles.methodHelper}>{medio.helper}</small>
             </button>
           );
         })}
@@ -81,38 +69,24 @@ export default function CheckoutAgregarPago({
 
       {esTarjeta && (
         <div style={styles.cardPlanBox}>
-          <label style={styles.cardPlanLabel}>
-            Plan de financiación
-          </label>
-
+          <label style={styles.cardPlanLabel}>Plan de tarjeta</label>
           <select
             value={planTarjetaId}
             onChange={(e) => setPlanTarjetaId(e.target.value)}
             style={styles.select}
             disabled={!planesTarjeta?.length}
           >
-            {!planesTarjeta?.length && (
-              <option value="">
-                Sin planes activos
-              </option>
-            )}
-
+            {!planesTarjeta?.length && <option value="">Sin planes activos</option>}
             {planesTarjeta.map((plan) => (
               <option key={plan.id} value={plan.id}>
-                {plan.entidad
-                  ? `${plan.entidad} · `
-                  : ""}
-                {plan.cuotas} cuota(s) ·{" "}
-                {Number(
-                  plan.porcentaje_recargo_cliente || 0
-                ).toFixed(0)}
-                %
+                {plan.entidad ? `${plan.entidad} · ` : ""}
+                {plan.cuotas} cuota(s) · {Number(plan.porcentaje_recargo_cliente || 0).toFixed(0)}%
               </option>
             ))}
           </select>
         </div>
       )}
-            
+
       {mostrarPreview && (
         <div
           style={
@@ -123,97 +97,66 @@ export default function CheckoutAgregarPago({
                 : styles.previewBoxNeutral
           }
         >
-          <div style={styles.previewRow}>
-            <span>Monto base</span>
+          <div style={styles.previewHeader}>
+            <span>{medioActivo?.icon} {medioActivo?.label}</span>
+            <strong>{hayRecargo ? "Precio financiación" : hayDescuento ? "Precio contado" : "Precio final"}</strong>
+          </div>
 
-            <strong>
-              {formatMoney(montoBaseSugerido)}
-            </strong>
+          <div style={styles.previewRow}>
+            <span>Base que se aplica</span>
+            <strong>{formatMoney(montoBaseSugerido)}</strong>
           </div>
 
           {hayDescuento && (
             <div style={styles.previewRow}>
-              <span>Descuento aplicado</span>
-
-              <strong style={styles.successText}>
-                - {formatMoney(descuentoPreview)}
-              </strong>
+              <span>Beneficio por medio de pago</span>
+              <strong style={styles.successText}>- {formatMoney(descuentoPreview)}</strong>
             </div>
           )}
 
           {hayRecargo && (
             <div style={styles.previewRow}>
-              <span>Recargo financiación</span>
-
-              <strong style={styles.warningText}>
-                + {formatMoney(recargoPreview)}
-              </strong>
+              <span>Costo financiero</span>
+              <strong style={styles.warningText}>+ {formatMoney(recargoPreview)}</strong>
             </div>
           )}
 
-          <div
-            style={
-              hayRecargo
-                ? styles.previewRowTotalWarning
-                : hayDescuento
-                  ? styles.previewRowTotalSuccess
-                  : styles.previewRowTotalNeutral
-            }
-          >
+          <div style={styles.previewTotalRow}>
             <span>Cliente paga</span>
-
-            <strong>
-              {formatMoney(montoSugeridoCobrado)}
-            </strong>
+            <strong>{formatMoney(montoSugeridoCobrado)}</strong>
           </div>
         </div>
       )}
 
-      <div style={styles.amountLabel}>
-        {esTarjeta
-          ? "Monto base financiado"
-          : "Monto"}
+      <div style={styles.amountHeader}>
+        <div>
+          <div style={styles.amountLabel}>{esTarjeta ? "Monto base a financiar" : "Monto base a cobrar"}</div>
+          <small style={styles.amountHint}>Usá “Saldar” para completar automáticamente lo que falta.</small>
+        </div>
+        <button type="button" onClick={sugerirMontoParaSaldar} disabled={simulando} style={styles.saldarBtn}>
+          {simulando ? "Calculando..." : "Saldar"}
+        </button>
       </div>
 
       <div style={styles.amountRow}>
         <input
           type="text"
-          inputMode="numeric"
+          inputMode="decimal"
           value={monto}
           onChange={(e) => {
-            const value = e.target.value
-              .replace(",", ".")
-              .replace(/[^0-9.]/g, "");
-
+            const value = e.target.value.replace(",", ".").replace(/[^0-9.]/g, "");
             setMonto(value);
           }}
-          placeholder="Ingresar monto"
+          placeholder="Ingresar monto base"
           style={styles.amountInput}
         />
-
-        <button
-          type="button"
-          onClick={sugerirMontoParaSaldar}
-          disabled={simulando}
-          style={styles.saldarBtn}
-        >
-          {simulando ? "..." : "Saldar"}
-        </button>
-
-        <button
-          type="button"
-          onClick={agregarPago}
-          style={styles.addBtn}
-        >
-          Agregar
-        </button>
       </div>
 
-      {errorLocal && (
-        <div style={styles.localError}>
-          {errorLocal}
-        </div>
-      )}
+      <button type="button" onClick={agregarPago} style={styles.addBtn}>
+        Cargar {medioActivo?.label || "pago"}
+      </button>
+
+      {errorLocal && <div style={styles.localError}>{errorLocal}</div>}
     </div>
   );
 }
@@ -221,202 +164,205 @@ export default function CheckoutAgregarPago({
 const styles = {
   payBox: {
     border: "1px solid #eaecf0",
-    borderRadius: 16,
-    padding: 14,
+    borderRadius: 22,
+    padding: 16,
     background: "#ffffff",
     marginBottom: 12,
     display: "grid",
-    gap: 12,
+    gap: 14,
   },
-
   header: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "flex-start",
   },
-
   payTitle: {
-    fontWeight: 900,
-    fontSize: 18,
+    fontWeight: 950,
+    fontSize: 19,
     color: "#111827",
   },
-
   subtitle: {
     marginTop: 4,
     color: "#667085",
     fontSize: 13,
     lineHeight: 1.4,
   },
-
-  paymentTabs: {
-    display: "flex",
-    gap: 8,
-    flexWrap: "wrap",
+  paymentGrid: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 10,
   },
-
-  tabButton: {
+  methodCard: {
     border: "1px solid #d0d5dd",
     background: "#ffffff",
-    color: "#344054",
-    borderRadius: 999,
-    padding: "9px 14px",
-    fontWeight: 800,
+    color: "#1f2937",
+    borderRadius: 18,
+    padding: "16px 12px",
+    minHeight: 92,
     cursor: "pointer",
-    transition: "0.15s",
+    display: "grid",
+    gridTemplateColumns: "auto 1fr",
+    columnGap: 10,
+    rowGap: 2,
+    alignItems: "center",
+    textAlign: "left",
+    boxShadow: "0 6px 18px rgba(16,24,40,0.05)",
   },
-
-  tabButtonActive: {
-    border: "1px solid #0b5bd3",
-    background: "#eff6ff",
-    color: "#0b5bd3",
+  methodCardActive: {
+    background: "linear-gradient(135deg, #ff6b00 0%, #f35b04 100%)",
+    borderColor: "#ff6b00",
+    color: "white",
+    boxShadow: "0 12px 26px rgba(255, 107, 0, 0.26)",
   },
-
+  methodIcon: {
+    fontSize: 30,
+    gridRow: "span 2",
+  },
+  methodText: {
+    fontSize: 17,
+    fontWeight: 950,
+  },
+  methodHelper: {
+    color: "#667085",
+    fontSize: 12,
+    fontWeight: 800,
+  },
+  methodHelperActive: {
+    color: "rgba(255,255,255,.86)",
+    fontSize: 12,
+    fontWeight: 800,
+  },
   cardPlanBox: {
+    border: "1px solid #eaecf0",
+    borderRadius: 14,
+    padding: 12,
+    background: "#f9fafb",
     display: "grid",
     gap: 6,
   },
-
   cardPlanLabel: {
-    fontSize: 12,
-    fontWeight: 800,
+    fontSize: 13,
+    fontWeight: 900,
     color: "#344054",
   },
-
   select: {
-    width: "100%",
     border: "1px solid #d0d5dd",
     borderRadius: 12,
-    padding: "11px 12px",
-    fontSize: 14,
-    background: "white",
-  },
-
-  previewBoxSuccess: {
-    border: "1px solid #d1fadf",
-    background: "#ecfdf3",
-    borderRadius: 14,
     padding: 12,
-    display: "grid",
-    gap: 8,
+    background: "#ffffff",
+    color: "#111827",
+    fontWeight: 800,
   },
-
+  previewBoxNeutral: {
+    border: "1px solid #d0d5dd",
+    borderRadius: 18,
+    padding: 14,
+    background: "#f9fafb",
+    display: "grid",
+    gap: 9,
+  },
+  previewBoxSuccess: {
+    border: "1px solid #abefc6",
+    borderRadius: 18,
+    padding: 14,
+    background: "#ecfdf3",
+    display: "grid",
+    gap: 9,
+  },
   previewBoxWarning: {
     border: "1px solid #fedf89",
+    borderRadius: 18,
+    padding: 14,
     background: "#fffaeb",
-    borderRadius: 14,
-    padding: 12,
     display: "grid",
-    gap: 8,
+    gap: 9,
   },
-
-  previewBoxNeutral: {
-    border: "1px solid #eaecf0",
-    background: "#f9fafb",
-    borderRadius: 14,
-    padding: 12,
-    display: "grid",
-    gap: 8,
+  previewHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 12,
+    color: "#111827",
+    fontWeight: 950,
+    paddingBottom: 8,
+    borderBottom: "1px solid rgba(16,24,40,0.08)",
   },
-
   previewRow: {
     display: "flex",
     justifyContent: "space-between",
-    gap: 10,
-    fontSize: 13,
+    gap: 12,
     color: "#344054",
+    fontSize: 14,
   },
-
-  previewRowTotalSuccess: {
+  previewTotalRow: {
     display: "flex",
     justifyContent: "space-between",
-    gap: 10,
-    fontSize: 16,
-    fontWeight: 900,
-    color: "#067647",
+    alignItems: "baseline",
+    gap: 12,
+    color: "#111827",
+    fontSize: 18,
+    fontWeight: 950,
     paddingTop: 8,
-    borderTop: "1px solid #d1fadf",
+    borderTop: "1px solid rgba(16,24,40,0.08)",
   },
-
-  previewRowTotalWarning: {
+  successText: { color: "#079455" },
+  warningText: { color: "#b54708" },
+  amountHeader: {
     display: "flex",
     justifyContent: "space-between",
-    gap: 10,
-    fontSize: 16,
-    fontWeight: 900,
-    color: "#b54708",
-    paddingTop: 8,
-    borderTop: "1px solid #fedf89",
+    gap: 12,
+    alignItems: "center",
   },
-
-  previewRowTotalNeutral: {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 10,
-    fontSize: 16,
-    fontWeight: 900,
-    color: "#344054",
-    paddingTop: 8,
-    borderTop: "1px solid #eaecf0",
-  },
-
-  successText: {
-    color: "#067647",
-  },
-
-  warningText: {
-    color: "#b54708",
-  },
-
   amountLabel: {
-    fontSize: 13,
-    fontWeight: 800,
     color: "#344054",
+    fontSize: 14,
+    fontWeight: 950,
   },
-
+  amountHint: {
+    color: "#667085",
+    fontSize: 12,
+  },
   amountRow: {
     display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) auto auto",
-    gap: 8,
-    alignItems: "stretch",
   },
-
   amountInput: {
-    border: "2px solid #d0d5dd",
-    borderRadius: 14,
+    border: "1px solid #d0d5dd",
+    borderRadius: 16,
     padding: "16px 14px",
-    fontSize: 28,
-    fontWeight: 900,
+    fontSize: 26,
+    fontWeight: 850,
     color: "#111827",
-    background: "#ffffff",
     outline: "none",
+    width: "100%",
+    boxSizing: "border-box",
   },
-
   saldarBtn: {
     border: "1px solid #0b5bd3",
-    background: "white",
+    background: "#eff6ff",
     color: "#0b5bd3",
     borderRadius: 12,
-    padding: "0 16px",
-    fontWeight: 900,
+    padding: "10px 13px",
+    fontWeight: 950,
     cursor: "pointer",
+    whiteSpace: "nowrap",
   },
-
   addBtn: {
     border: "none",
-    background: "#16a34a",
+    background: "linear-gradient(135deg, #12a15f 0%, #079455 100%)",
     color: "white",
-    borderRadius: 12,
-    padding: "0 18px",
-    fontWeight: 900,
+    borderRadius: 17,
+    padding: "16px 14px",
+    fontWeight: 950,
+    fontSize: 18,
     cursor: "pointer",
+    boxShadow: "0 12px 24px rgba(18, 161, 95, 0.22)",
   },
-
   localError: {
-    background: "#fff1f0",
     border: "1px solid #fecdca",
+    background: "#fff1f0",
     color: "#b42318",
-    borderRadius: 10,
+    borderRadius: 12,
     padding: 10,
+    fontWeight: 800,
     fontSize: 13,
   },
 };
