@@ -51,6 +51,42 @@ export function validarSerializadasDuplicadas(items = []) {
   return null;
 }
 
+export function validarMontoPago(monto) {
+  const montoNumerico = Number(monto);
+
+  if (!Number.isFinite(montoNumerico) || montoNumerico <= 0) {
+    return "El monto base debe ser mayor a cero";
+  }
+
+  return null;
+}
+
+export function validarPlanTarjeta({ medioPago, planTarjetaId, planesTarjeta = [] }) {
+  if (medioPago !== "tarjeta") return null;
+
+  if (!planesTarjeta.length) {
+    return "No hay planes de tarjeta activos";
+  }
+
+  if (!planTarjetaId) {
+    return "Seleccioná un plan de tarjeta";
+  }
+
+  return null;
+}
+
+export function validarCheckoutAntesDeFinalizar({ items = [], simulando }) {
+  if (!items.length) {
+    return "Agregá al menos un item";
+  }
+
+  if (simulando) {
+    return "Esperá a que termine la simulación antes de finalizar";
+  }
+
+  return null;
+}
+
 export function validarVentaBasica({ clienteId, items }) {
   return validarClienteVenta(clienteId) || validarItemsVenta(items);
 }
