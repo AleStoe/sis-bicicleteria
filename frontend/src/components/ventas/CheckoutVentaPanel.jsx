@@ -292,6 +292,7 @@ export default function CheckoutVentaPanel({
       planTarjeta: planTarjetaSeleccionado || null,
       entregarAhora,
       simulando,
+      quitarPago,
     });
   }, [
     onEstadoCheckoutChange,
@@ -307,6 +308,7 @@ export default function CheckoutVentaPanel({
     planTarjetaSeleccionado,
     entregarAhora,
     simulando,
+    quitarPago,
   ]);
 
   function finalizar() {

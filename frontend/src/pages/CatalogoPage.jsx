@@ -1,28 +1,52 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  cambiarEstadoVariante,
-  subirImagenCatalogo,
-  editarProducto,
-  editarVariante,
   listarCatalogoPOS,
   listarCategorias,
   listarMarcas,
-  obtenerFichaTecnicaProducto,
-  reemplazarFichaTecnicaProducto,
+  obtenerProducto,
+  obtenerVariante,
+  editarProducto,
+  editarVariante,
+  cambiarEstadoProducto,
+  cambiarEstadoVariante,
 } from "../services/catalogoService";
 import ProductImage from "../components/catalogo/ProductImage";
 import EstadoBadge from "../components/catalogo/EstadoBadge";
-import CodeLine from "../components/catalogo/CodeLine";
 import CatalogoDetalleModal from "../components/catalogo/CatalogoDetalleModal";
 
 const ID_SUCURSAL_DEFAULT = 1;
-const ID_USUARIO = 1;
-const LIMIT = 20;
+const LIMIT = 24;
+
+function formatNumber(value) {
+  return Number(value || 0).toLocaleString("es-AR", {
+    maximumFractionDigits: 3,
+  });
+}
+
+function formatMoney(value) {
+  return Number(value || 0).toLocaleString("es-AR", {
+    style: "currency",
+    currency: "ARS",
+    maximumFractionDigits: 2,
+  });
+}
+
+function getTituloItem(item) {
+  return [item.producto_nombre, item.nombre_variante].filter(Boolean).join(" - ");
+}
+
+function getMotivoTexto(item) {
+  if (item.disponible_para_venta) return "Listo para vender";
+  if (item.motivo_no_disponible === "sin_stock") return "Sin stock disponible";
+  if (item.motivo_no_disponible === "precio_no_definido") return "Falta definir precio";
+  return "Revisar antes de vender";
+}
 
 export default function CatalogoPage() {
-  const searchRef = useRef(null);
   const navigate = useNavigate();
+  const searchRef = useRef(null);
+
   const [items, setItems] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [marcas, setMarcas] = useState([]);
@@ -30,20 +54,16 @@ export default function CatalogoPage() {
   const [categoriaId, setCategoriaId] = useState("");
   const [offset, setOffset] = useState(0);
   const [total, setTotal] = useState(0);
-
   const [loading, setLoading] = useState(true);
-  const [procesando, setProcesando] = useState(false);
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
-
-  const [seleccionado, setSeleccionado] = useState(null);
   const [detalle, setDetalle] = useState(null);
-  const [form, setForm] = useState(null);
-  const [productoForm, setProductoForm] = useState(null);
-  const [imagenArchivo, setImagenArchivo] = useState(null);
-  const [imagenPreview, setImagenPreview] = useState("");
-  const [fichaTecnica, setFichaTecnica] = useState([]);
-  const [cargandoFicha, setCargandoFicha] = useState(false);
+  const [seleccionadoId, setSeleccionadoId] = useState(null);
+  const [productoDetalle, setProductoDetalle] = useState(null);
+  const [varianteDetalle, setVarianteDetalle] = useState(null);
+  const [cargandoDetalle, setCargandoDetalle] = useState(false);
+  const [guardandoEdicion, setGuardandoEdicion] = useState(false);
+
   useEffect(() => {
     cargarCategorias();
     cargarMarcas();
@@ -57,7 +77,7 @@ export default function CatalogoPage() {
     const timer = setTimeout(() => {
       setOffset(0);
       cargarCatalogo({ nextOffset: 0 });
-    }, 350);
+    }, 320);
 
     return () => clearTimeout(timer);
   }, [query]);
@@ -70,8 +90,7 @@ export default function CatalogoPage() {
       }
 
       if (e.key === "Escape") {
-        cerrarPanel();
-        cerrarDetalle();
+        setDetalle(null);
       }
     }
 
@@ -106,8 +125,8 @@ export default function CatalogoPage() {
 
       const data = await listarCatalogoPOS({
         id_sucursal: ID_SUCURSAL_DEFAULT,
-        query,
-        categoria_id: categoriaId,
+        query: query.trim() || undefined,
+        categoria_id: categoriaId || undefined,
         limit: LIMIT,
         offset: nextOffset,
       });
@@ -121,233 +140,67 @@ export default function CatalogoPage() {
     }
   }
 
-  function abrirPanel(item) {
-    setSeleccionado(item);
-
-    setProductoForm({
-      nombre: item.producto_nombre || "",
-      id_categoria: item.categoria_id || "",
-      id_marca: item.id_marca || "",
-    });
-
-    setForm({
-      nombre_variante: item.nombre_variante || "",
-      alicuota_iva: 21,
-      gravado: true,
-      permite_precio_libre: Boolean(item.permite_precio_libre),
-    });
-
-    setImagenArchivo(null);
-    setImagenPreview("");
-  }
-
-  function cerrarPanel() {
-    setSeleccionado(null);
-    setForm(null);
-    setProductoForm(null);
-    setImagenArchivo(null);
-    setImagenPreview("");
-    setFichaTecnica([]);
-    setCargandoFicha(false);
-  }
-
-  function abrirDetalle(item) {
-    setDetalle(item);
-  }
-
-  function cerrarDetalle() {
-    setDetalle(null);
-  }
-  function fichaVacia() {
-    return {
-      grupo: "",
-      clave: "",
-      valor: "",
-      orden: 0,
-    };
-  }
-
-  async function cargarFichaTecnicaProducto(productoId) {
-    if (!productoId) return;
-
-    try {
-      setCargandoFicha(true);
-
-      const data = await obtenerFichaTecnicaProducto(productoId);
-
-      setFichaTecnica(
-        (data || []).map((item, index) => ({
-          id: item.id,
-          grupo: item.grupo || "",
-          clave: item.clave || "",
-          valor: item.valor || "",
-          orden: item.orden ?? index + 1,
-        }))
-      );
-    } catch (err) {
-      setError(err.message || "No se pudo cargar la ficha técnica");
-      setFichaTecnica([]);
-    } finally {
-      setCargandoFicha(false);
-    }
-  }
-
-  function cambiarFichaTecnica(index, campo, valor) {
-    setFichaTecnica((actual) =>
-      actual.map((item, i) =>
-        i === index ? { ...item, [campo]: valor } : item
-      )
-    );
-  }
-
-  function agregarItemFichaTecnica() {
-    setFichaTecnica((actual) => [...actual, fichaVacia()]);
-  }
-
-  function quitarItemFichaTecnica(index) {
-    setFichaTecnica((actual) => actual.filter((_, i) => i !== index));
-  }
-
-  async function guardarFichaTecnica(e) {
-    e.preventDefault();
-
-    if (!seleccionado?.id_producto) return;
-
-    const items = fichaTecnica
-      .filter((item) => item.clave.trim() && item.valor.trim())
-      .map((item, index) => ({
-        grupo: item.grupo.trim() || "GENERAL",
-        clave: item.clave.trim(),
-        valor: item.valor.trim(),
-        orden: index + 1,
-      }));
-
-    try {
-      setProcesando(true);
-      setError("");
-      setMensaje("");
-
-      await reemplazarFichaTecnicaProducto(seleccionado.id_producto, {
-        items,
-      });
-
-      setMensaje("Ficha técnica actualizada correctamente.");
-      await cargarFichaTecnicaProducto(seleccionado.id_producto);
-    } catch (err) {
-      setError(err.message || "No se pudo guardar la ficha técnica");
-    } finally {
-      setProcesando(false);
-    }
-  }
-  async function guardarProducto(e) {
-    e.preventDefault();
-
-    if (!seleccionado || !productoForm) return;
-
-    try {
-      setProcesando(true);
-      setError("");
-      setMensaje("");
-
-      const payload = {
-        nombre: productoForm.nombre.trim(),
-        id_categoria: Number(productoForm.id_categoria),
-        id_marca: productoForm.id_marca ? Number(productoForm.id_marca) : null,
-      };
-
-      await editarProducto(seleccionado.id_producto, payload);
-
-      setMensaje("Producto actualizado correctamente.");
-      cerrarPanel();
-      await cargarCatalogo();
-    } catch (err) {
-      setError(err.message || "No se pudo actualizar el producto");
-    } finally {
-      setProcesando(false);
-    }
-  }
-
-  async function guardarVariante(e) {
-    e.preventDefault();
-
-    if (!seleccionado || !form) return;
-
-    try {
-      setProcesando(true);
-      setError("");
-      setMensaje("");
-
-      const payload = {
-        nombre_variante: form.nombre_variante.trim(),
-        alicuota_iva: Number(form.alicuota_iva || 21),
-        gravado: Boolean(form.gravado),
-        permite_precio_libre: Boolean(form.permite_precio_libre),
-      };
-
-      await editarVariante(seleccionado.id_variante, payload);
-
-      setMensaje("Variante actualizada correctamente.");
-      cerrarPanel();
-      await cargarCatalogo();
-    } catch (err) {
-      setError(err.message || "No se pudo actualizar la variante");
-    } finally {
-      setProcesando(false);
-    }
-  }
-
-  async function guardarImagen(e) {
-    e.preventDefault();
-
-    if (!seleccionado || !imagenArchivo) return;
-
-    try {
-      setProcesando(true);
-      setError("");
-      setMensaje("");
-
-      await subirImagenCatalogo({
-        archivo: imagenArchivo,
-        id_variante: seleccionado.id_variante,
-        es_principal: true,
-        orden: 0,
-      });
-
-      setMensaje("Imagen principal actualizada.");
-      cerrarPanel();
-      await cargarCatalogo();
-    } catch (err) {
-      setError(err.message || "No se pudo guardar la imagen");
-    } finally {
-      setProcesando(false);
-    }
-  }
-
-  async function toggleEstadoVariante() {
+  async function guardarProductoEditado(payload) {
     if (!seleccionado) return;
 
     try {
-      setProcesando(true);
+      setGuardandoEdicion(true);
       setError("");
       setMensaje("");
 
-      await cambiarEstadoVariante(seleccionado.id_variante, {
-        activo: !seleccionado.activo,
-        id_usuario: ID_USUARIO,
-      });
+      await editarProducto(seleccionado.id_producto, payload);
+      setMensaje("Producto actualizado correctamente");
+      await cargarCatalogo();
+      const producto = await obtenerProducto(seleccionado.id_producto);
+      setProductoDetalle(producto);
+    } catch (err) {
+      setError(err.message || "No se pudo actualizar el producto");
+    } finally {
+      setGuardandoEdicion(false);
+    }
+  }
 
-      setMensaje(
-        seleccionado.activo
-          ? "Variante desactivada correctamente."
-          : "Variante activada correctamente."
-      );
+  async function guardarVarianteEditada(payload) {
+    if (!seleccionado) return;
 
-      cerrarPanel();
+    try {
+      setGuardandoEdicion(true);
+      setError("");
+      setMensaje("");
+
+      await editarVariante(seleccionado.id_variante, payload);
+      setMensaje("Variante actualizada correctamente");
+      await cargarCatalogo();
+      const variante = await obtenerVariante(seleccionado.id_variante);
+      setVarianteDetalle(variante);
+    } catch (err) {
+      setError(err.message || "No se pudo actualizar la variante");
+    } finally {
+      setGuardandoEdicion(false);
+    }
+  }
+
+  async function cambiarEstadoSeleccionado(tipo, activo) {
+    if (!seleccionado) return;
+
+    try {
+      setGuardandoEdicion(true);
+      setError("");
+      setMensaje("");
+
+      if (tipo === "producto") {
+        await cambiarEstadoProducto(seleccionado.id_producto, { activo, id_usuario: 1 });
+        setMensaje(activo ? "Producto activado" : "Producto desactivado");
+      } else {
+        await cambiarEstadoVariante(seleccionado.id_variante, { activo, id_usuario: 1 });
+        setMensaje(activo ? "Variante activada" : "Variante desactivada");
+      }
+
       await cargarCatalogo();
     } catch (err) {
-      setError(err.message || "No se pudo cambiar el estado de la variante");
+      setError(err.message || "No se pudo cambiar el estado");
     } finally {
-      setProcesando(false);
+      setGuardandoEdicion(false);
     }
   }
 
@@ -356,14 +209,67 @@ export default function CatalogoPage() {
       (acc, item) => {
         acc.mostrados += 1;
         acc.stockDisponible += Number(item.stock_disponible || 0);
-        if (!item.disponible_para_venta) acc.alertas += 1;
+        acc.stockFisico += Number(item.stock_fisico || 0);
+        if (item.disponible_para_venta) acc.disponibles += 1;
         if (item.motivo_no_disponible === "sin_stock") acc.sinStock += 1;
         if (item.motivo_no_disponible === "precio_no_definido") acc.sinPrecio += 1;
+        if (item.serializable) acc.serializables += 1;
         return acc;
       },
-      { mostrados: 0, stockDisponible: 0, alertas: 0, sinStock: 0, sinPrecio: 0 }
+      {
+        mostrados: 0,
+        disponibles: 0,
+        stockDisponible: 0,
+        stockFisico: 0,
+        sinStock: 0,
+        sinPrecio: 0,
+        serializables: 0,
+      }
     );
   }, [items]);
+
+  const seleccionado = useMemo(() => {
+    return items.find((item) => item.id_variante === seleccionadoId) || items[0] || null;
+  }, [items, seleccionadoId]);
+
+
+  useEffect(() => {
+    if (!seleccionado) {
+      setProductoDetalle(null);
+      setVarianteDetalle(null);
+      return;
+    }
+
+    let cancelado = false;
+
+    async function cargarDetalleSeleccionado() {
+      try {
+        setCargandoDetalle(true);
+
+        const [producto, variante] = await Promise.all([
+          obtenerProducto(seleccionado.id_producto),
+          obtenerVariante(seleccionado.id_variante),
+        ]);
+
+        if (cancelado) return;
+
+        setProductoDetalle(producto);
+        setVarianteDetalle(variante);
+      } catch (err) {
+        if (!cancelado) {
+          setError(err.message || "No se pudo cargar el detalle para editar");
+        }
+      } finally {
+        if (!cancelado) setCargandoDetalle(false);
+      }
+    }
+
+    cargarDetalleSeleccionado();
+
+    return () => {
+      cancelado = true;
+    };
+  }, [seleccionado]);
 
   const paginaActual = Math.floor(offset / LIMIT) + 1;
   const totalPaginas = Math.max(1, Math.ceil(total / LIMIT));
@@ -381,410 +287,1073 @@ export default function CatalogoPage() {
   }
 
   return (
-    <div style={pageStyle}>
-      <div style={headerStyle}>
+    <div style={styles.page}>
+      <header style={styles.hero}>
         <div>
-          <h1 style={{ margin: 0 }}>Catálogo</h1>
-          <p style={mutedStyle}>
-            Productos, variantes, marcas, precios visibles y disponibilidad para venta.
+          <span style={styles.kicker}>Catálogo operativo</span>
+          <h1 style={styles.title}>Catálogo</h1>
+          <p style={styles.subtitle}>
+            Productos y variantes listos para POS, stock, imágenes, precios y alertas de venta.
           </p>
         </div>
 
-        <div style={actionsStyle}>
-          <button onClick={() => cargarCatalogo()}>Refrescar</button>
-          <button onClick={() => navigate("/mercaderia/alta")}>+ Producto</button>
+        <div style={styles.heroActions}>
+          <button type="button" onClick={() => cargarCatalogo()} style={styles.secondaryHeroButton}>
+            ↻ Refrescar
+          </button>
+          <button type="button" onClick={() => navigate("/mercaderia/alta")} style={styles.primaryHeroButton}>
+            ＋ Alta bicicleta
+          </button>
         </div>
-      </div>
+      </header>
 
-      {mensaje && <div style={successStyle}>{mensaje}</div>}
-      {error && <div style={alertStyle}>Error: {error}</div>}
+      {mensaje && <div style={styles.success}>{mensaje}</div>}
+      {error && <div style={styles.alert}>Error: {error}</div>}
 
-      <section style={metricGridStyle}>
-        <Metric label="Total filtrado" value={total} />
-        <Metric label="Mostrados" value={resumen.mostrados} />
-        <Metric label="Stock disponible" value={formatNumber(resumen.stockDisponible)} />
-        <Metric label="Alertas" value={resumen.alertas} danger={resumen.alertas > 0} />
-        <Metric label="Sin stock" value={resumen.sinStock} danger={resumen.sinStock > 0} />
-        <Metric label="Sin precio" value={resumen.sinPrecio} danger={resumen.sinPrecio > 0} />
+      <section style={styles.metricsGrid}>
+        <Metric label="Total filtrado" value={total} tone="dark" />
+        <Metric label="Disponibles" value={resumen.disponibles} tone="ok" />
+        <Metric label="Stock disponible" value={formatNumber(resumen.stockDisponible)} tone="info" />
+        <Metric label="Sin stock" value={resumen.sinStock} tone={resumen.sinStock > 0 ? "danger" : "muted"} />
+        <Metric label="Sin precio" value={resumen.sinPrecio} tone={resumen.sinPrecio > 0 ? "warning" : "muted"} />
+        <Metric label="Serializables" value={resumen.serializables} tone="orange" />
       </section>
 
-      <section style={cardStyle}>
-        <div style={filtersStyle}>
+      <section style={styles.filtersCard}>
+        <div style={styles.searchBox}>
+          <span>🔎</span>
           <input
             ref={searchRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar por producto, variante, marca, SKU, código de barras o proveedor...  / para enfocar"
-            style={inputStyle}
+            placeholder="Buscar por producto, variante, marca, SKU, código de barras o proveedor..."
+            style={styles.searchInput}
           />
-
-          <select
-            value={categoriaId}
-            onChange={(e) => {
-              setCategoriaId(e.target.value);
-              setOffset(0);
-            }}
-            style={inputStyle}
-          >
-            <option value="">Todas las categorías</option>
-            {categorias.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nombre}
-              </option>
-            ))}
-          </select>
+          <kbd style={styles.kbd}>/</kbd>
         </div>
+
+        <select
+          value={categoriaId}
+          onChange={(e) => {
+            setCategoriaId(e.target.value);
+            setOffset(0);
+          }}
+          style={styles.select}
+        >
+          <option value="">Todas las categorías</option>
+          {categorias.map((categoria) => (
+            <option key={categoria.id} value={categoria.id}>
+              {categoria.nombre}
+            </option>
+          ))}
+        </select>
       </section>
 
-      <div style={layoutStyle}>
-        <section style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
-          <div style={tableHeaderStyle}>
+      <main style={styles.layout}>
+        <section style={styles.catalogPanel}>
+          <div style={styles.panelHeader}>
             <div>
-              <h2 style={{ margin: 0, fontSize: "20px" }}>Listado</h2>
-              <p style={mutedSmallStyle}>
-                Página {paginaActual} de {totalPaginas} · {total} resultados
+              <h2 style={styles.panelTitle}>Listado</h2>
+              <p style={styles.panelSubtitle}>
+                Página {paginaActual} de {totalPaginas} · {total} resultado(s)
               </p>
             </div>
 
-            <div style={pagerStyle}>
-              <button disabled={!puedeAnterior} onClick={irAnterior}>
-                Anterior
+            <div style={styles.pager}>
+              <button type="button" disabled={!puedeAnterior} onClick={irAnterior} style={puedeAnterior ? styles.pagerButton : styles.pagerButtonDisabled}>
+                ← Anterior
               </button>
-              <button disabled={!puedeSiguiente} onClick={irSiguiente}>
-                Siguiente
+              <button type="button" disabled={!puedeSiguiente} onClick={irSiguiente} style={puedeSiguiente ? styles.pagerButton : styles.pagerButtonDisabled}>
+                Siguiente →
               </button>
             </div>
           </div>
 
           {loading ? (
-            <div style={{ padding: "18px" }}>Cargando catálogo...</div>
+            <div style={styles.empty}>Cargando catálogo...</div>
           ) : items.length === 0 ? (
-            <div style={{ padding: "18px" }}>No hay productos para mostrar.</div>
+            <div style={styles.empty}>No hay productos para mostrar.</div>
           ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table style={tableStyle}>
-                <thead style={{ background: "#f9fafb" }}>
-                  <tr>
-                    <th style={thStyle}>Imagen</th>
-                    <th style={thStyle}>Producto</th>
-                    <th style={thStyle}>Marca</th>
-                    <th style={thStyle}>Códigos</th>
-                    <th style={thStyle}>Stock</th>
-                    <th style={thStyle}>Precios</th>
-                    <th style={thStyle}>Estado</th>
-                    <th style={thStyle}>Acción</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {items.map((item) => (
-                    <tr
-                      key={item.id_variante}
-                      onDoubleClick={() => abrirDetalle(item)}
-                      style={{
-                        cursor: "pointer",
-                        borderTop: "1px solid #eee",
-                        background:
-                          seleccionado?.id_variante === item.id_variante
-                            ? "#f8fbff"
-                            : "white",
-                      }}
-                    >
-                      <td style={tdStyle}>
-                        <ProductImage url={item.imagen_principal} />
-                      </td>
-
-                      <td style={tdStyle}>
-                        <strong>{item.producto_nombre}</strong>
-                        <div>{item.nombre_variante}</div>
-                        <div style={mutedSmallStyle}>
-                          {item.categoria_nombre} · Variante #{item.id_variante}
-                        </div>
-                      </td>
-
-                      <td style={tdStyle}>
-                        {item.marca_nombre || "-"}
-                        <div style={mutedSmallStyle}>
-                          Prov: {item.proveedor_preferido_nombre || "-"}
-                        </div>
-                      </td>
-
-                      <td style={tdStyle}>
-                        <CodeLine label="SKU" value={item.sku} />
-                        <CodeLine label="EAN" value={item.codigo_barras} />
-                        <CodeLine label="Prov" value={item.codigo_proveedor} />
-                      </td>
-
-                      <td style={tdStyle}>
-                        <strong>{formatNumber(item.stock_disponible)}</strong>
-                        <div style={mutedSmallStyle}>
-                          Físico {formatNumber(item.stock_fisico)} · Res{" "}
-                          {formatNumber(item.stock_reservado)} · Pend{" "}
-                          {formatNumber(item.stock_vendido_pendiente_entrega)}
-                        </div>
-                      </td>
-
-                      <td style={tdStyle}>
-                        <strong>{formatMoney(item.precio_minorista)}</strong>
-                        <div style={mutedSmallStyle}>
-                          Mayorista: {formatMoney(item.precio_mayorista)}
-                        </div>
-                      </td>
-
-                      <td style={tdStyle}>
-                        <EstadoBadge item={item} />
-                      </td>
-
-                      <td style={tdStyle}>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-
-                            navigate(`/catalogo/productos/${item.id_producto}`);
-                          }}
-                        >
-                          Editar
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div style={styles.cardsGrid}>
+              {items.map((item) => (
+                <CatalogoCard
+                  key={item.id_variante}
+                  item={item}
+                  selected={seleccionado?.id_variante === item.id_variante}
+                  onSelect={() => setSeleccionadoId(item.id_variante)}
+                  onOpenDetail={() => setDetalle(item)}
+                  onEdit={() => setSeleccionadoId(item.id_variante)}
+                />
+              ))}
             </div>
           )}
         </section>
-      </div>
+
+        <aside style={styles.sidePanel}>
+          {seleccionado ? (
+            <PanelEdicionCatalogo
+              item={seleccionado}
+              categorias={categorias}
+              marcas={marcas}
+              productoDetalle={productoDetalle}
+              varianteDetalle={varianteDetalle}
+              cargando={cargandoDetalle}
+              guardando={guardandoEdicion}
+              onDetalle={() => setDetalle(seleccionado)}
+              onGuardarProducto={guardarProductoEditado}
+              onGuardarVariante={guardarVarianteEditada}
+              onCambiarEstado={cambiarEstadoSeleccionado}
+            />
+          ) : (
+            <section style={styles.sideCardDark}>
+              <h2 style={styles.sideTitle}>Sin selección</h2>
+              <p style={styles.sideMuted}>Elegí un producto para ver el resumen operativo.</p>
+            </section>
+          )}
+        </aside>
+      </main>
 
       {detalle && (
         <CatalogoDetalleModal
           item={detalle}
-          onClose={cerrarDetalle}
-          onEdit={() => {
-              navigate(`/catalogo/productos/${detalle.id_producto}`);
-            }}
+          onClose={() => setDetalle(null)}
+          onEdit={() => navigate(`/catalogo/productos/${detalle.id_producto}`)}
         />
       )}
     </div>
   );
 }
 
-function Metric({ label, value, danger = false }) {
+function CatalogoCard({ item, selected, onSelect, onOpenDetail, onEdit }) {
   return (
-    <div style={metricStyle}>
-      <span style={mutedSmallStyle}>{label}</span>
-      <strong style={{ ...metricValueStyle, color: danger ? "#b42318" : "#111827" }}>
-        {value}
-      </strong>
-    </div>
+    <article style={selected ? styles.cardSelected : styles.card} onClick={onSelect}>
+      <div style={styles.cardImageWrap} onDoubleClick={onOpenDetail}>
+        <ProductImage url={item.imagen_principal} size={96} />
+      </div>
+
+      <div style={styles.cardBody}>
+        <div style={styles.cardTop}>
+          <div style={styles.cardTitleWrap}>
+            <strong style={styles.cardTitle}>{item.producto_nombre}</strong>
+            <span style={styles.cardVariant}>{item.nombre_variante}</span>
+          </div>
+          <EstadoBadge item={item} />
+        </div>
+
+        <div style={styles.tagsRow}>
+          {item.marca_nombre && <span style={styles.tag}>{item.marca_nombre}</span>}
+          <span style={styles.tag}>{item.categoria_nombre}</span>
+          {item.serializable && <span style={styles.serialTag}>Serializable</span>}
+        </div>
+
+        <div style={styles.stockStrip}>
+          <div>
+            <span>Disponible</span>
+            <strong>{formatNumber(item.stock_disponible)}</strong>
+          </div>
+          <div>
+            <span>Físico</span>
+            <strong>{formatNumber(item.stock_fisico)}</strong>
+          </div>
+          <div>
+            <span>Reservado</span>
+            <strong>{formatNumber(item.stock_reservado)}</strong>
+          </div>
+        </div>
+
+        <div style={styles.priceGrid}>
+          <div style={styles.priceBox}>
+            <span>Minorista</span>
+            <strong>{formatMoney(item.precio_minorista)}</strong>
+          </div>
+          <div style={styles.priceBox}>
+            <span>Mayorista</span>
+            <strong>{formatMoney(item.precio_mayorista)}</strong>
+          </div>
+        </div>
+
+        <div style={styles.codesBox}>
+          <CodePill label="SKU" value={item.sku} />
+          <CodePill label="EAN" value={item.codigo_barras} />
+          <CodePill label="Prov" value={item.codigo_proveedor} />
+        </div>
+
+        <div style={styles.cardActions}>
+          <button type="button" onClick={(e) => { e.stopPropagation(); onOpenDetail(); }} style={styles.secondaryButton}>
+            Ver detalle
+          </button>
+          <button type="button" onClick={(e) => { e.stopPropagation(); onEdit(); }} style={styles.primaryButton}>
+            Editar
+          </button>
+        </div>
+      </div>
+    </article>
   );
 }
-function formatNumber(value) {
-  return Number(value || 0).toLocaleString("es-AR", {
-    maximumFractionDigits: 3,
-  });
+
+function PanelEdicionCatalogo({
+  item,
+  categorias,
+  marcas,
+  productoDetalle,
+  varianteDetalle,
+  cargando,
+  guardando,
+  onDetalle,
+  onGuardarProducto,
+  onGuardarVariante,
+  onCambiarEstado,
+}) {
+  const [tab, setTab] = useState("producto");
+  const [productoForm, setProductoForm] = useState({});
+  const [varianteForm, setVarianteForm] = useState({});
+
+  useEffect(() => {
+    const base = productoDetalle || item;
+
+    setProductoForm({
+      nombre: base.nombre || base.producto_nombre || "",
+      id_categoria: base.id_categoria || base.categoria_id || "",
+      id_marca: base.id_marca || "",
+      tipo_item: base.tipo_item || "producto",
+      stockeable: Boolean(base.stockeable),
+      serializable: Boolean(base.serializable),
+      rodado: base.rodado || "",
+      tipo_bicicleta: base.tipo_bicicleta || "",
+      material_cuadro: base.material_cuadro || "",
+    });
+  }, [productoDetalle, item]);
+
+  useEffect(() => {
+    const base = varianteDetalle || item;
+
+    setVarianteForm({
+      nombre_variante: base.nombre_variante || "",
+      talle: base.talle || "",
+      color: base.color || "",
+      codigo_proveedor: base.codigo_proveedor || "",
+      proveedor_preferido_id: base.proveedor_preferido_id || "",
+      alicuota_iva: base.alicuota_iva ?? "21.00",
+      gravado: base.gravado !== false,
+      precio_minorista: base.precio_minorista ?? "0",
+      precio_mayorista: base.precio_mayorista ?? "0",
+      permite_precio_libre: Boolean(base.permite_precio_libre),
+    });
+  }, [varianteDetalle, item]);
+
+  function updateProducto(campo, valor) {
+    setProductoForm((prev) => ({ ...prev, [campo]: valor }));
+  }
+
+  function updateVariante(campo, valor) {
+    setVarianteForm((prev) => ({ ...prev, [campo]: valor }));
+  }
+
+  function submitProducto(e) {
+    e.preventDefault();
+
+    onGuardarProducto({
+      ...productoForm,
+      id_categoria: Number(productoForm.id_categoria),
+      id_marca: productoForm.id_marca ? Number(productoForm.id_marca) : null,
+      rodado: productoForm.rodado?.trim() || null,
+      tipo_bicicleta: productoForm.tipo_bicicleta?.trim() || null,
+      material_cuadro: productoForm.material_cuadro?.trim() || null,
+    });
+  }
+
+  function submitVariante(e) {
+    e.preventDefault();
+
+    onGuardarVariante({
+      ...varianteForm,
+      proveedor_preferido_id: varianteForm.proveedor_preferido_id
+        ? Number(varianteForm.proveedor_preferido_id)
+        : null,
+      precio_minorista: String(varianteForm.precio_minorista || "0"),
+      precio_mayorista: String(varianteForm.precio_mayorista || "0"),
+      alicuota_iva: String(varianteForm.alicuota_iva || "21.00"),
+      talle: varianteForm.talle?.trim() || null,
+      color: varianteForm.color?.trim() || null,
+      codigo_proveedor: varianteForm.codigo_proveedor?.trim() || null,
+    });
+  }
+
+  return (
+    <section style={styles.editorPanel}>
+      <div style={styles.editorHeader}>
+        <span style={styles.sideKicker}>Edición contextual</span>
+        <h2 style={styles.sideTitle}>{item.producto_nombre}</h2>
+        <p style={styles.sideMuted}>{item.nombre_variante}</p>
+      </div>
+
+      <div style={styles.sideImageBoxSoft}>
+        <ProductImage url={item.imagen_principal} size={150} />
+      </div>
+
+      <div style={styles.statusBoxLight}>
+        <EstadoBadge item={item} />
+        <small>{getMotivoTexto(item)}</small>
+      </div>
+
+      <div style={styles.editorTabs}>
+        <button type="button" onClick={() => setTab("producto")} style={tab === "producto" ? styles.editorTabActive : styles.editorTab}>
+          Producto
+        </button>
+        <button type="button" onClick={() => setTab("variante")} style={tab === "variante" ? styles.editorTabActive : styles.editorTab}>
+          Variante
+        </button>
+        <button type="button" onClick={() => setTab("acciones")} style={tab === "acciones" ? styles.editorTabActive : styles.editorTab}>
+          Acciones
+        </button>
+      </div>
+
+      {cargando ? (
+        <div style={styles.editorLoading}>Cargando datos...</div>
+      ) : tab === "producto" ? (
+        <form onSubmit={submitProducto} style={styles.editorForm}>
+          <Field label="Nombre del producto">
+            <input value={productoForm.nombre || ""} onChange={(e) => updateProducto("nombre", e.target.value)} style={styles.editorInput} />
+          </Field>
+
+          <div style={styles.twoCols}>
+            <Field label="Categoría">
+              <select value={productoForm.id_categoria || ""} onChange={(e) => updateProducto("id_categoria", e.target.value)} style={styles.editorInput}>
+                <option value="">Seleccionar</option>
+                {categorias.map((cat) => (
+                  <option key={cat.id} value={cat.id}>{cat.nombre}</option>
+                ))}
+              </select>
+            </Field>
+
+            <Field label="Marca">
+              <select value={productoForm.id_marca || ""} onChange={(e) => updateProducto("id_marca", e.target.value)} style={styles.editorInput}>
+                <option value="">Sin marca</option>
+                {marcas.map((marca) => (
+                  <option key={marca.id} value={marca.id}>{marca.nombre}</option>
+                ))}
+              </select>
+            </Field>
+          </div>
+
+          <div style={styles.twoCols}>
+            <Field label="Tipo">
+              <select value={productoForm.tipo_item || "producto"} onChange={(e) => updateProducto("tipo_item", e.target.value)} style={styles.editorInput}>
+                <option value="producto">Producto</option>
+                <option value="servicio">Servicio</option>
+              </select>
+            </Field>
+
+            <Field label="Rodado">
+              <input value={productoForm.rodado || ""} onChange={(e) => updateProducto("rodado", e.target.value)} style={styles.editorInput} placeholder="Ej: 29" />
+            </Field>
+          </div>
+
+          <Field label="Tipo de bicicleta">
+            <input value={productoForm.tipo_bicicleta || ""} onChange={(e) => updateProducto("tipo_bicicleta", e.target.value)} style={styles.editorInput} placeholder="MTB, urbana, paseo..." />
+          </Field>
+
+          <Field label="Material cuadro">
+            <input value={productoForm.material_cuadro || ""} onChange={(e) => updateProducto("material_cuadro", e.target.value)} style={styles.editorInput} placeholder="Aluminio, acero..." />
+          </Field>
+
+          <label style={styles.editorCheck}>
+            <input type="checkbox" checked={Boolean(productoForm.stockeable)} onChange={(e) => updateProducto("stockeable", e.target.checked)} />
+            Maneja stock
+          </label>
+
+          <label style={styles.editorCheck}>
+            <input type="checkbox" checked={Boolean(productoForm.serializable)} onChange={(e) => updateProducto("serializable", e.target.checked)} />
+            Puede tener número de cuadro
+          </label>
+
+          <button type="submit" disabled={guardando} style={styles.orangeButtonFull}>
+            {guardando ? "Guardando..." : "Guardar producto"}
+          </button>
+        </form>
+      ) : tab === "variante" ? (
+        <form onSubmit={submitVariante} style={styles.editorForm}>
+          <Field label="Nombre de variante">
+            <input value={varianteForm.nombre_variante || ""} onChange={(e) => updateVariante("nombre_variante", e.target.value)} style={styles.editorInput} />
+          </Field>
+
+          <div style={styles.twoCols}>
+            <Field label="Color">
+              <input value={varianteForm.color || ""} onChange={(e) => updateVariante("color", e.target.value)} style={styles.editorInput} />
+            </Field>
+            <Field label="Talle">
+              <input value={varianteForm.talle || ""} onChange={(e) => updateVariante("talle", e.target.value)} style={styles.editorInput} />
+            </Field>
+          </div>
+
+          <Field label="Código proveedor">
+            <input value={varianteForm.codigo_proveedor || ""} onChange={(e) => updateVariante("codigo_proveedor", e.target.value)} style={styles.editorInput} />
+          </Field>
+
+          <div style={styles.twoCols}>
+            <Field label="Minorista">
+              <input type="number" value={varianteForm.precio_minorista || ""} onChange={(e) => updateVariante("precio_minorista", e.target.value)} style={styles.editorInput} />
+            </Field>
+            <Field label="Mayorista">
+              <input type="number" value={varianteForm.precio_mayorista || ""} onChange={(e) => updateVariante("precio_mayorista", e.target.value)} style={styles.editorInput} />
+            </Field>
+          </div>
+
+          <div style={styles.twoCols}>
+            <Field label="IVA %">
+              <input type="number" value={varianteForm.alicuota_iva || ""} onChange={(e) => updateVariante("alicuota_iva", e.target.value)} style={styles.editorInput} />
+            </Field>
+            <Field label="Proveedor ID">
+              <input type="number" value={varianteForm.proveedor_preferido_id || ""} onChange={(e) => updateVariante("proveedor_preferido_id", e.target.value)} style={styles.editorInput} />
+            </Field>
+          </div>
+
+          <label style={styles.editorCheck}>
+            <input type="checkbox" checked={Boolean(varianteForm.gravado)} onChange={(e) => updateVariante("gravado", e.target.checked)} />
+            Gravado
+          </label>
+
+          <label style={styles.editorCheck}>
+            <input type="checkbox" checked={Boolean(varianteForm.permite_precio_libre)} onChange={(e) => updateVariante("permite_precio_libre", e.target.checked)} />
+            Permite precio libre en venta
+          </label>
+
+          <button type="submit" disabled={guardando} style={styles.orangeButtonFull}>
+            {guardando ? "Guardando..." : "Guardar variante"}
+          </button>
+        </form>
+      ) : (
+        <div style={styles.editorForm}>
+          <div style={styles.sideInfoGridLight}>
+            <Info label="Producto" value={`#${item.id_producto}`} />
+            <Info label="Variante" value={`#${item.id_variante}`} />
+            <Info label="Stock disponible" value={formatNumber(item.stock_disponible)} />
+            <Info label="Pendiente entrega" value={formatNumber(item.stock_vendido_pendiente_entrega)} />
+          </div>
+
+          <button type="button" onClick={onDetalle} style={styles.secondaryButtonFull}>Ver detalle completo</button>
+          <button type="button" onClick={() => onCambiarEstado("producto", false)} disabled={guardando} style={styles.dangerButton}>Desactivar producto</button>
+          <button type="button" onClick={() => onCambiarEstado("variante", false)} disabled={guardando} style={styles.dangerButton}>Desactivar variante</button>
+        </div>
+      )}
+    </section>
+  );
 }
 
-function formatMoney(value) {
-  return Number(value || 0).toLocaleString("es-AR", {
-    style: "currency",
-    currency: "ARS",
-    maximumFractionDigits: 2,
-  });
-}
-function TextInput({ label, value, onChange, type = "text" }) {
+function Field({ label, children }) {
   return (
-    <label style={fieldStyle}>
-      <span style={labelStyle}>{label}</span>
-      <input
-        type={type}
-        value={value ?? ""}
-        onChange={(e) => onChange(e.target.value)}
-        style={inputStyle}
-      />
+    <label style={styles.editorField}>
+      <span>{label}</span>
+      {children}
     </label>
   );
 }
-const mutedSmallStyle = { color: "#667085", fontSize: "13px", marginTop: "4px" };
-const mutedStyle = { color: "#667085", margin: "6px 0 0" };
-const pageStyle = { padding: "24px", background: "#f6f7fb", minHeight: "100vh" };
-const headerStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: "12px",
-  marginBottom: "16px",
-  flexWrap: "wrap",
-};
-const actionsStyle = { display: "flex", gap: "10px", flexWrap: "wrap" };
-const alertStyle = {
-  background: "#fff1f0",
-  color: "#b42318",
-  padding: "12px",
-  borderRadius: "10px",
-  border: "1px solid #f4c7c3",
-  marginBottom: "16px",
-};
-const successStyle = {
-  background: "#e8fff0",
-  color: "#146c2e",
-  padding: "12px",
-  borderRadius: "10px",
-  border: "1px solid #b7ebc6",
-  marginBottom: "16px",
-};
-const metricGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
-  gap: "12px",
-  marginBottom: "16px",
-};
-const metricStyle = {
-  background: "white",
-  borderRadius: "14px",
-  boxShadow: "0 2px 10px rgba(0,0,0,.08)",
-  padding: "14px",
-  display: "grid",
-  gap: "6px",
-};
-const metricValueStyle = { fontSize: "22px" };
-const cardStyle = {
-  background: "white",
-  borderRadius: "14px",
-  boxShadow: "0 2px 10px rgba(0,0,0,.08)",
-  padding: "16px",
-  marginBottom: "16px",
-};
-const filtersStyle = {
-  display: "grid",
-  gridTemplateColumns: "minmax(260px, 1fr) 260px",
-  gap: "12px",
-};
-const inputStyle = {
-  width: "100%",
-  padding: "10px 12px",
-  borderRadius: "10px",
-  border: "1px solid #d0d5dd",
-  fontSize: "15px",
-  boxSizing: "border-box",
-};
-const layoutStyle = {
-  display: "grid",
-  gridTemplateColumns: "minmax(760px, 1fr) 380px",
-  gap: "16px",
-  alignItems: "start",
-};
-const tableHeaderStyle = {
-  padding: "16px 18px",
-  borderBottom: "1px solid #eee",
-  display: "flex",
-  justifyContent: "space-between",
-  gap: "12px",
-  alignItems: "center",
-};
-const pagerStyle = { display: "flex", gap: "8px" };
-const tableStyle = { width: "100%", borderCollapse: "collapse", minWidth: "1100px" };
-const thStyle = {
-  textAlign: "left",
-  padding: "12px 10px",
-  borderBottom: "1px solid #e5e7eb",
-};
-const tdStyle = { padding: "10px", verticalAlign: "top" };
-const sideStyle = { display: "grid", gap: "0" };
-const cardTitleStyle = { marginTop: 0, marginBottom: "6px", fontSize: "20px" };
-const panelHeaderStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  gap: "12px",
-  alignItems: "start",
-  marginBottom: "14px",
-};
-const formStyle = { display: "grid", gap: "10px" };
-const fieldStyle = { display: "flex", flexDirection: "column", gap: "7px" };
-const labelStyle = { fontWeight: "bold", fontSize: "14px" };
-const checkStyle = { display: "flex", gap: "8px", alignItems: "center" };
-const noteStyle = {
-  background: "#f9fafb",
-  borderLeft: "4px solid #111827",
-  padding: "10px",
-  borderRadius: "8px",
-  color: "#344054",
-  marginTop: "12px",
-};
-const identityBoxStyle = {
-  background: "#f9fafb",
-  border: "1px solid #e5e7eb",
-  borderRadius: "12px",
-  padding: "12px",
-  marginBottom: "14px",
-};
-const subTitleStyle = {
-  margin: "0 0 4px",
-  fontSize: "16px",
-};
-const separatorStyle = { height: "1px", background: "#eee", margin: "16px 0" };
-const imageStyle = {
-  width: "58px",
-  height: "58px",
-  objectFit: "cover",
-  borderRadius: "12px",
-  border: "1px solid #e5e7eb",
-};
-const imagePlaceholderStyle = {
-  width: "58px",
-  height: "58px",
-  borderRadius: "12px",
-  border: "1px dashed #d0d5dd",
-  display: "grid",
-  placeItems: "center",
-  color: "#667085",
-  fontSize: "11px",
-  textAlign: "center",
-  background: "#f9fafb",
-};
-const okPillStyle = {
-  background: "#ecfdf3",
-  color: "#067647",
-  borderRadius: "999px",
-  padding: "4px 8px",
-  fontWeight: "bold",
-  fontSize: "13px",
-};
-const warningPillStyle = {
-  background: "#fffaeb",
-  color: "#b54708",
-  borderRadius: "999px",
-  padding: "4px 8px",
-  fontWeight: "bold",
-  fontSize: "13px",
-};
-const dangerPillStyle = {
-  background: "#fff1f0",
-  color: "#b42318",
-  borderRadius: "999px",
-  padding: "4px 8px",
-  fontWeight: "bold",
-  fontSize: "13px",
-};
-const codeLineStyle = { fontSize: "13px", marginBottom: "3px", whiteSpace: "nowrap" };
-const dangerButtonStyle = {
-  width: "100%",
-  background: "#fff1f0",
-  color: "#b42318",
-  border: "1px solid #f4c7c3",
-  borderRadius: "10px",
-  padding: "10px 12px",
-  fontWeight: "bold",
-};
-const okButtonStyle = {
-  width: "100%",
-  background: "#ecfdf3",
-  color: "#067647",
-  border: "1px solid #b7ebc6",
-  borderRadius: "10px",
-  padding: "10px 12px",
-  fontWeight: "bold",
-};
 
-const infoLabelStyle = {
-  color: "#667085",
+function Metric({ label, value, tone }) {
+  return (
+    <div style={{ ...styles.metric, ...(styles.metricTones[tone] || {}) }}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function Info({ label, value }) {
+  return (
+    <div style={styles.infoBox}>
+      <span>{label}</span>
+      <strong>{value || "-"}</strong>
+    </div>
+  );
+}
+
+function CodePill({ label, value }) {
+  return (
+    <div style={styles.codePill}>
+      <span>{label}</span>
+      <strong>{value || "-"}</strong>
+    </div>
+  );
+}
+
+const styles = {
+  page: {
+    minHeight: "100vh",
+    padding: 20,
+    background: "#f1f5f9",
+    color: "#0f172a",
+  },
+  hero: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 16,
+    padding: 22,
+    borderRadius: 24,
+    background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
+    color: "white",
+    boxShadow: "0 18px 40px rgba(15, 23, 42, 0.18)",
+    marginBottom: 16,
+  },
+  kicker: {
+    display: "block",
+    color: "#fb923c",
+    fontSize: 12,
+    fontWeight: 1000,
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    marginBottom: 4,
+  },
+  title: {
+    margin: 0,
+    fontSize: 34,
+    fontWeight: 1000,
+    letterSpacing: "-0.03em",
+  },
+  subtitle: {
+    margin: "8px 0 0",
+    color: "#cbd5e1",
+    fontWeight: 700,
+  },
+  heroActions: {
+    display: "flex",
+    gap: 10,
+    flexWrap: "wrap",
+  },
+  primaryHeroButton: {
+    border: "none",
+    background: "#f97316",
+    color: "white",
+    borderRadius: 14,
+    padding: "12px 16px",
+    fontWeight: 1000,
+    cursor: "pointer",
+    boxShadow: "0 12px 24px rgba(249, 115, 22, 0.28)",
+  },
+  secondaryHeroButton: {
+    border: "1px solid rgba(255,255,255,.22)",
+    background: "rgba(255,255,255,.08)",
+    color: "white",
+    borderRadius: 14,
+    padding: "12px 16px",
+    fontWeight: 1000,
+    cursor: "pointer",
+  },
+  success: {
+    background: "#ecfdf5",
+    color: "#047857",
+    border: "1px solid #86efac",
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 14,
+    fontWeight: 800,
+  },
+  alert: {
+    background: "#fff1f0",
+    color: "#b42318",
+    border: "1px solid #fecdca",
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 14,
+    fontWeight: 800,
+  },
+  metricsGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+    gap: 12,
+    marginBottom: 16,
+  },
+  metric: {
+    background: "white",
+    border: "1px solid #e2e8f0",
+    borderRadius: 18,
+    padding: 14,
+    display: "grid",
+    gap: 5,
+    boxShadow: "0 10px 22px rgba(15, 23, 42, 0.06)",
+  },
+  metricTones: {
+    dark: { color: "#0f172a" },
+    ok: { color: "#047857", background: "#ecfdf5", borderColor: "#bbf7d0" },
+    info: { color: "#1d4ed8", background: "#eff6ff", borderColor: "#bfdbfe" },
+    warning: { color: "#b45309", background: "#fffbeb", borderColor: "#fde68a" },
+    danger: { color: "#b42318", background: "#fff1f0", borderColor: "#fecdca" },
+    muted: { color: "#475569", background: "#f8fafc" },
+    orange: { color: "#c2410c", background: "#fff7ed", borderColor: "#fed7aa" },
+  },
+  filtersCard: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) 260px",
+    gap: 12,
+    background: "white",
+    border: "1px solid #e2e8f0",
+    borderRadius: 20,
+    padding: 14,
+    marginBottom: 16,
+    boxShadow: "0 12px 28px rgba(15, 23, 42, 0.06)",
+  },
+  searchBox: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    border: "1px solid #cbd5e1",
+    borderRadius: 14,
+    padding: "0 12px",
+    background: "#f8fafc",
+  },
+  searchInput: {
+    flex: 1,
+    border: "none",
+    background: "transparent",
+    outline: "none",
+    padding: "13px 0",
+    fontSize: 15,
+    fontWeight: 700,
+    minWidth: 0,
+  },
+  kbd: {
+    border: "1px solid #cbd5e1",
+    borderRadius: 8,
+    padding: "3px 7px",
+    color: "#64748b",
+    background: "white",
+    fontWeight: 900,
+  },
+  select: {
+    width: "100%",
+    border: "1px solid #cbd5e1",
+    borderRadius: 14,
+    background: "white",
+    padding: "12px 13px",
+    fontWeight: 800,
+    color: "#0f172a",
+  },
+  layout: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) 370px",
+    gap: 16,
+    alignItems: "start",
+  },
+  catalogPanel: {
+    background: "white",
+    border: "1px solid #e2e8f0",
+    borderRadius: 22,
+    overflow: "hidden",
+    boxShadow: "0 16px 34px rgba(15, 23, 42, 0.08)",
+  },
+  panelHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    padding: 16,
+    borderBottom: "1px solid #e2e8f0",
+  },
+  panelTitle: {
+    margin: 0,
+    fontSize: 22,
+  },
+  panelSubtitle: {
+    margin: "4px 0 0",
+    color: "#64748b",
+    fontWeight: 700,
+    fontSize: 13,
+  },
+  pager: {
+    display: "flex",
+    gap: 8,
+  },
+  pagerButton: {
+    border: "1px solid #cbd5e1",
+    background: "white",
+    borderRadius: 12,
+    padding: "9px 12px",
+    fontWeight: 900,
+    cursor: "pointer",
+  },
+  pagerButtonDisabled: {
+    border: "1px solid #e2e8f0",
+    background: "#f8fafc",
+    color: "#94a3b8",
+    borderRadius: 12,
+    padding: "9px 12px",
+    fontWeight: 900,
+    cursor: "not-allowed",
+  },
+  empty: {
+    padding: 22,
+    color: "#64748b",
+    fontWeight: 900,
+  },
+  cardsGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(420px, 1fr))",
+    gap: 12,
+    padding: 16,
+  },
+  card: {
+    border: "1px solid #e2e8f0",
+    borderRadius: 20,
+    background: "white",
+    padding: 12,
+    display: "grid",
+    gridTemplateColumns: "112px minmax(0, 1fr)",
+    gap: 12,
+    cursor: "pointer",
+    boxShadow: "0 8px 18px rgba(15, 23, 42, 0.04)",
+  },
+  cardSelected: {
+    border: "1px solid #f97316",
+    borderRadius: 20,
+    background: "#fff7ed",
+    padding: 12,
+    display: "grid",
+    gridTemplateColumns: "112px minmax(0, 1fr)",
+    gap: 12,
+    cursor: "pointer",
+    boxShadow: "0 14px 28px rgba(249, 115, 22, 0.18)",
+  },
+  cardImageWrap: {
+    borderRadius: 18,
+    background: "#f8fafc",
+    display: "grid",
+    placeItems: "center",
+    minHeight: 112,
+  },
+  cardBody: {
+    minWidth: 0,
+    display: "grid",
+    gap: 10,
+  },
+  cardTop: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) auto",
+    gap: 10,
+    alignItems: "start",
+  },
+  cardTitleWrap: {
+    minWidth: 0,
+    display: "grid",
+    gap: 3,
+  },
+  cardTitle: {
+    fontSize: 15,
+    lineHeight: 1.25,
+  },
+  cardVariant: {
+    color: "#64748b",
+    fontSize: 13,
+    fontWeight: 800,
+  },
+  tagsRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  tag: {
+    background: "#f1f5f9",
+    color: "#334155",
+    borderRadius: 999,
+    padding: "5px 8px",
+    fontSize: 12,
+    fontWeight: 900,
+  },
+  serialTag: {
+    background: "#fff7ed",
+    color: "#c2410c",
+    borderRadius: 999,
+    padding: "5px 8px",
+    fontSize: 12,
+    fontWeight: 900,
+  },
+  stockStrip: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, 1fr)",
+    gap: 8,
+  },
+  priceGrid: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 8,
+  },
+  priceBox: {
+    background: "#f8fafc",
+    border: "1px solid #e2e8f0",
+    borderRadius: 12,
+    padding: 9,
+    display: "grid",
+    gap: 3,
+  },
+  codesBox: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gap: 6,
+  },
+  codePill: {
+    minWidth: 0,
+    border: "1px solid #e2e8f0",
+    borderRadius: 10,
+    padding: "6px 8px",
+    background: "white",
+    display: "grid",
+    gap: 2,
+    fontSize: 11,
+  },
+  cardActions: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 8,
+  },
+  secondaryButton: {
+    border: "1px solid #cbd5e1",
+    background: "white",
+    color: "#0f172a",
+    borderRadius: 12,
+    padding: "9px 10px",
+    fontWeight: 900,
+    cursor: "pointer",
+  },
+  primaryButton: {
+    border: "none",
+    background: "#0f172a",
+    color: "white",
+    borderRadius: 12,
+    padding: "9px 10px",
+    fontWeight: 900,
+    cursor: "pointer",
+  },
+
+  editorPanel: {
+    background: "white",
+    color: "#0f172a",
+    borderRadius: 22,
+    padding: 16,
+    border: "1px solid #e2e8f0",
+    boxShadow: "0 18px 40px rgba(15, 23, 42, 0.12)",
+  },
+  editorHeader: {
+    paddingBottom: 12,
+    borderBottom: "1px solid #e2e8f0",
+    marginBottom: 12,
+  },
+  sideImageBoxSoft: {
+    minHeight: 165,
+    borderRadius: 18,
+    background: "#f8fafc",
+    border: "1px solid #e2e8f0",
+    display: "grid",
+    placeItems: "center",
+    padding: 12,
+    marginBottom: 12,
+  },
+  statusBoxLight: {
+    background: "#f8fafc",
+    border: "1px solid #e2e8f0",
+    borderRadius: 16,
+    padding: 12,
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 12,
+  },
+  editorTabs: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, 1fr)",
+    gap: 8,
+    marginBottom: 12,
+  },
+  editorTab: {
+    border: "1px solid #cbd5e1",
+    background: "white",
+    color: "#334155",
+    borderRadius: 12,
+    padding: "9px 10px",
+    fontWeight: 1000,
+    cursor: "pointer",
+  },
+  editorTabActive: {
+    border: "1px solid #f97316",
+    background: "#fff7ed",
+    color: "#c2410c",
+    borderRadius: 12,
+    padding: "9px 10px",
+    fontWeight: 1000,
+    cursor: "pointer",
+  },
+  editorLoading: {
+    border: "1px dashed #cbd5e1",
+    borderRadius: 14,
+    padding: 16,
+    color: "#64748b",
+    fontWeight: 900,
+    textAlign: "center",
+  },
+  editorForm: {
+    display: "grid",
+    gap: 10,
+  },
+  editorField: {
+    display: "grid",
+    gap: 6,
+    fontSize: 12,
+    fontWeight: 1000,
+    color: "#334155",
+  },
+  editorInput: {
+    width: "100%",
+    border: "1px solid #cbd5e1",
+    borderRadius: 12,
+    padding: "10px 11px",
+    fontWeight: 800,
+    color: "#0f172a",
+    boxSizing: "border-box",
+    background: "white",
+  },
+  twoCols: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 8,
+  },
+  editorCheck: {
+    display: "flex",
+    gap: 8,
+    alignItems: "center",
+    color: "#334155",
+    fontWeight: 900,
+    fontSize: 13,
+  },
+  orangeButtonFull: {
+    width: "100%",
+    border: "none",
+    background: "#f97316",
+    color: "white",
+    borderRadius: 13,
+    padding: "12px 14px",
+    fontWeight: 1000,
+    cursor: "pointer",
+    boxShadow: "0 10px 20px rgba(249, 115, 22, 0.25)",
+  },
+  secondaryButtonFull: {
+    width: "100%",
+    border: "1px solid #cbd5e1",
+    background: "white",
+    color: "#0f172a",
+    borderRadius: 13,
+    padding: "12px 14px",
+    fontWeight: 1000,
+    cursor: "pointer",
+  },
+  dangerButton: {
+    width: "100%",
+    border: "1px solid #fecaca",
+    background: "#fff1f0",
+    color: "#b42318",
+    borderRadius: 13,
+    padding: "12px 14px",
+    fontWeight: 1000,
+    cursor: "pointer",
+  },
+  sideInfoGridLight: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 10,
+  },
+  sidePanel: {
+    display: "grid",
+    gap: 14,
+    position: "sticky",
+    top: 16,
+  },
+  sideCardDark: {
+    background: "#0f172a",
+    color: "white",
+    borderRadius: 22,
+    padding: 18,
+    boxShadow: "0 18px 40px rgba(15, 23, 42, 0.22)",
+  },
+  sideKicker: {
+    color: "#fb923c",
+    fontSize: 12,
+    fontWeight: 1000,
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+  },
+  sideTitle: {
+    margin: "8px 0 4px",
+    fontSize: 24,
+    lineHeight: 1.15,
+  },
+  sideMuted: {
+    margin: 0,
+    color: "#cbd5e1",
+    fontWeight: 700,
+  },
+  sideImageBox: {
+    marginTop: 14,
+    minHeight: 190,
+    borderRadius: 18,
+    background: "white",
+    display: "grid",
+    placeItems: "center",
+    padding: 12,
+  },
+  statusBox: {
+    marginTop: 14,
+    background: "#1e293b",
+    borderRadius: 16,
+    padding: 12,
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 10,
+  },
+  sideInfoGrid: {
+    marginTop: 14,
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 10,
+  },
+  infoBox: {
+    background: "#1e293b",
+    borderRadius: 14,
+    padding: 10,
+    display: "grid",
+    gap: 4,
+    color: "#cbd5e1",
+  },
+  sidePriceCard: {
+    marginTop: 14,
+    background: "rgba(249, 115, 22, 0.14)",
+    border: "1px solid rgba(251, 146, 60, 0.32)",
+    color: "#fed7aa",
+    borderRadius: 16,
+    padding: 14,
+    display: "grid",
+    gap: 4,
+  },
+  sideActions: {
+    marginTop: 14,
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 10,
+  },
+  secondaryDarkButton: {
+    border: "1px solid rgba(255,255,255,.18)",
+    background: "#1e293b",
+    color: "white",
+    borderRadius: 12,
+    padding: "11px 12px",
+    fontWeight: 1000,
+    cursor: "pointer",
+  },
+  orangeButton: {
+    border: "none",
+    background: "#f97316",
+    color: "white",
+    borderRadius: 12,
+    padding: "11px 12px",
+    fontWeight: 1000,
+    cursor: "pointer",
+  },
 };

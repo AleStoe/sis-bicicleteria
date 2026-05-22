@@ -250,7 +250,19 @@ export default function NuevaVentaCheckoutPage() {
                     >
                       <div style={styles.paymentTitleRow}>
                         <strong>{describirPago(pago)}</strong>
-                        <span>{formatMoney(pago.monto_total_cobrado ?? pago.monto_base)}</span>
+
+                        <div style={styles.paymentAmountActions}>
+                          <span>{formatMoney(pago.monto_total_cobrado ?? pago.monto_base)}</span>
+                          <button
+                            type="button"
+                            onClick={() => checkoutEstado?.quitarPago?.(pago.temp_id)}
+                            style={styles.removePaymentButton}
+                            title="Quitar este pago"
+                            aria-label="Quitar este pago"
+                          >
+                            ×
+                          </button>
+                        </div>
                       </div>
 
                       <div style={styles.paymentDetails}>
@@ -488,6 +500,23 @@ const styles = {
     gridTemplateColumns: "minmax(0, 1fr) auto",
     gap: 10,
     alignItems: "center",
+  },
+  paymentAmountActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    whiteSpace: "nowrap",
+  },
+  removePaymentButton: {
+    width: 26,
+    height: 26,
+    borderRadius: 999,
+    border: "1px solid rgba(248, 113, 113, 0.45)",
+    background: "rgba(248, 113, 113, 0.14)",
+    color: "#fecaca",
+    fontWeight: 1000,
+    cursor: "pointer",
+    lineHeight: 1,
   },
   paymentDetails: {
     display: "grid",

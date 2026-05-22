@@ -15,26 +15,27 @@ export default function EstadoBadge({ item }) {
 }
 
 const base = {
-  borderRadius: "999px",
-  padding: "4px 8px",
-  fontWeight: "bold",
-  fontSize: "13px",
+  borderRadius: 999,
+  padding: "5px 9px",
+  fontWeight: 1000,
+  fontSize: 12,
+  whiteSpace: "nowrap",
 };
 
 const styles = {
   ok: {
     ...base,
-    background: "#ecfdf3",
-    color: "#067647",
+    background: "#dcfce7",
+    color: "#047857",
   },
   warning: {
     ...base,
-    background: "#fffaeb",
-    color: "#b54708",
+    background: "#fef3c7",
+    color: "#b45309",
   },
   danger: {
     ...base,
-    background: "#fff1f0",
+    background: "#fee2e2",
     color: "#b42318",
   },
 };

@@ -10,33 +10,55 @@ function getImageUrl(url) {
   return `${API_BASE_URL}${url}`;
 }
 
-export default function ProductImage({ url }) {
+export default function ProductImage({ url, size = 58 }) {
+  const boxStyle = {
+    ...styles.box,
+    width: size,
+    height: size,
+  };
+
   if (!url) {
-    return <div style={styles.placeholder}>Sin imagen</div>;
+    return (
+      <div style={boxStyle}>
+        <span style={styles.placeholderIcon}>🚲</span>
+        <small style={styles.placeholderText}>Sin imagen</small>
+      </div>
+    );
   }
 
-  return <img src={getImageUrl(url)} alt="Producto" style={styles.image} />;
+  return (
+    <div style={boxStyle}>
+      <img src={getImageUrl(url)} alt="Producto" style={styles.image} />
+    </div>
+  );
 }
 
 const styles = {
-  image: {
-    width: "58px",
-    height: "58px",
-    objectFit: "cover",
-    borderRadius: "12px",
-    border: "1px solid #e5e7eb",
-    background: "#fff",
-  },
-  placeholder: {
-    width: "58px",
-    height: "58px",
-    borderRadius: "12px",
-    border: "1px dashed #d0d5dd",
+  box: {
+    borderRadius: 14,
+    border: "1px solid #e2e8f0",
+    background: "#ffffff",
     display: "grid",
     placeItems: "center",
-    color: "#667085",
-    fontSize: "11px",
+    overflow: "hidden",
+    padding: 6,
+    boxSizing: "border-box",
+  },
+  image: {
+    width: "100%",
+    height: "100%",
+    objectFit: "contain",
+    objectPosition: "center",
+    display: "block",
+  },
+  placeholderIcon: {
+    fontSize: 24,
+    lineHeight: 1,
+  },
+  placeholderText: {
+    color: "#64748b",
+    fontSize: 10,
+    fontWeight: 800,
     textAlign: "center",
-    background: "#f9fafb",
   },
 };
