@@ -1454,3 +1454,60 @@ def test_simular_venta_tarjeta_3_cuotas_aplica_plan_financiero(
     assert data["reglas_aplicadas"][0]["tipo"] == "recargo"
     assert data["reglas_aplicadas"][0]["medio_pago"] == "tarjeta"
     assert _to_decimal(data["reglas_aplicadas"][0]["porcentaje_aplicado"]) == Decimal("15.0000")
+
+
+def test_anular_venta_con_pago_tarjeta_confirmado_requiere_reversion(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    crear = _crear_venta_basica(client, seed_venta_basica)
+    assert crear.status_code == 200
+    venta_id = crear.json()["venta_id"]
+
+    abrir = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+    assert abrir.status_code == 200
+    caja_id = abrir.json()["caja_id"]
+
+    pago = client.post(
+        "/pagos/",
+        json={
+            "origen_tipo": "venta",
+            "origen_id": venta_id,
+            "medio_pago": "tarjeta",
+            "monto": seed_venta_basica["precio_venta"],
+            "cuotas": 1,
+            "entidad": "Test",
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "nota": "Pago tarjeta para bloqueo anulación",
+        },
+    )
+    assert pago.status_code == 200, pago.text
+
+    venta_antes = get_venta(db_conn, venta_id)
+    creditos_antes = get_creditos_by_cliente(db_conn, seed_venta_basica["cliente_id"])
+    movimientos_caja_antes = get_caja_movimientos(db_conn, caja_id)
+
+    anular = client.post(
+        f"/ventas/{venta_id}/anular",
+        json={
+            "motivo": "intento anular con tarjeta sin revertir",
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+
+    assert anular.status_code == 400
+    assert "Primero revertí/cancelá" in anular.json()["detail"]
+
+    venta_despues = get_venta(db_conn, venta_id)
+    creditos_despues = get_creditos_by_cliente(db_conn, seed_venta_basica["cliente_id"])
+    movimientos_caja_despues = get_caja_movimientos(db_conn, caja_id)
+
+    assert venta_despues["estado"] == venta_antes["estado"]
+    assert venta_despues["saldo_pendiente"] == venta_antes["saldo_pendiente"]
+    assert creditos_despues == creditos_antes
+    assert movimientos_caja_despues == movimientos_caja_antes

@@ -13,7 +13,10 @@ from app.db.connection import get_connection
 from app.modules.stock import service as stock_service
 from app.modules.creditos import service as creditos_service
 from app.modules.auditoria import service as auditoria_service
-from app.modules.pagos.repository import get_total_pagado_confirmado_por_venta
+from app.modules.pagos.repository import (
+    get_total_pagado_confirmado_por_venta,
+    get_pagos_confirmados_por_venta,
+)
 from app.modules.serializadas.repository import (
     get_bicicleta_serializada_for_update,
     update_bicicleta_serializada_estado,
@@ -1027,6 +1030,28 @@ def anular_venta(venta_id: int, data):
                         "id_bicicleta_serializada": item.get("id_bicicleta_serializada"),
                         "nota": f"Liberación por anulación de venta #{venta_id}",
                     },
+                )
+
+            pagos_confirmados = get_pagos_confirmados_por_venta(conn, venta_id)
+
+            medios_no_credito_automatico = {"tarjeta", "mercadopago"}
+            pagos_requieren_reversion = [
+                pago for pago in pagos_confirmados
+                if pago["medio_pago"] in medios_no_credito_automatico
+            ]
+
+            if pagos_requieren_reversion:
+                medios = ", ".join(
+                    sorted({pago["medio_pago"] for pago in pagos_requieren_reversion})
+                )
+
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "La venta tiene pagos confirmados por "
+                        f"{medios}. Primero revertí/cancelá esos pagos antes de anular, "
+                        "para evitar generar crédito comercial incorrecto."
+                    ),
                 )
 
             total_pagado = get_total_pagado_confirmado_por_venta(conn, venta_id)

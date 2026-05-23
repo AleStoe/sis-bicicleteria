@@ -284,3 +284,22 @@ def insert_pago_tarjeta_detalle(conn, data: dict):
             ),
         )
         return cur.fetchone()["id"]
+
+def get_pagos_confirmados_por_venta(conn, venta_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT
+                id,
+                medio_pago,
+                monto_total_cobrado,
+                estado
+            FROM pagos
+            WHERE origen_tipo = 'venta'
+              AND origen_id = %s
+              AND estado = 'confirmado'
+            ORDER BY id
+            """,
+            (venta_id,),
+        )
+        return cur.fetchall()
