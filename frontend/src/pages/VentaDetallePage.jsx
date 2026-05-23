@@ -129,15 +129,41 @@ export default function VentaDetallePage() {
     }
   }
 
+  function calcularFactorDevolucionActual() {
+    const subtotalBase = Number(data?.venta?.subtotal_base || 0);
+    const totalFinalVenta = Number(data?.venta?.total_final || 0);
+
+    if (!Number.isFinite(subtotalBase) || subtotalBase <= 0) return 1;
+    if (!Number.isFinite(totalFinalVenta) || totalFinalVenta < 0) return 1;
+
+    return totalFinalVenta / subtotalBase;
+  }
+
+  function calcularCreditoEstimadoItem(item, cantidad) {
+    const factor = calcularFactorDevolucionActual();
+    const precioUnitario = Number(
+      item?.precio_unitario_final ?? item?.precio_final ?? 0
+    );
+    const cantidadNumerica = Number(cantidad || 0);
+
+    if (!Number.isFinite(precioUnitario) || !Number.isFinite(cantidadNumerica)) {
+      return 0;
+    }
+
+    return Math.round(precioUnitario * cantidadNumerica * factor * 100) / 100;
+  }
+
   async function handleDevolverVentaCompleta() {
+    const totalEstimadoCredito = Number(data?.venta?.total_final || 0);
+
     const motivo = window.prompt(
-      "Motivo de devolución total de la venta. Se generará crédito al cliente, no devolución de efectivo:"
+      `Motivo de devolución total de la venta. Se generará crédito estimado por ${formatMoney(totalEstimadoCredito)}, no devolución de efectivo:`
     );
 
     if (!motivo || motivo.trim().length < 3) return;
 
     const confirmar = window.confirm(
-      "¿Confirmás la devolución TOTAL de esta venta? Se devolverá stock y se generará crédito al cliente."
+      `¿Confirmás la devolución TOTAL de esta venta? Se devolverá stock y se generará crédito estimado por ${formatMoney(totalEstimadoCredito)}.`
     );
 
     if (!confirmar) return;
@@ -191,8 +217,10 @@ export default function VentaDetallePage() {
 
     if (!motivo || motivo.trim().length < 3) return;
 
+    const creditoEstimado = calcularCreditoEstimadoItem(item, cantidad);
+
     const confirmar = window.confirm(
-      `¿Confirmás devolver ${cantidad} unidad(es) del item #${item.id}?`
+      `¿Confirmás devolver ${cantidad} unidad(es) del item #${item.id}?\n\nCrédito estimado: ${formatMoney(creditoEstimado)}`
     );
 
     if (!confirmar) return;
@@ -228,7 +256,11 @@ export default function VentaDetallePage() {
   async function handleDevolverSerializada(item) {
     if (!item.id_bicicleta_serializada) return;
 
-    const motivo = window.prompt("Motivo de devolución de bicicleta serializada:");
+    const creditoEstimado = calcularCreditoEstimadoItem(item, 1);
+
+    const motivo = window.prompt(
+      `Motivo de devolución de bicicleta serializada. Crédito estimado: ${formatMoney(creditoEstimado)}`
+    );
 
     if (!motivo || motivo.trim().length < 3) return;
 
@@ -245,7 +277,9 @@ export default function VentaDetallePage() {
 
       await cargarVenta();
 
-      setMensaje(`Devolución registrada. ID devolución: ${result.devolucion_id}`);
+      setMensaje(
+        `Devolución registrada. ID devolución: ${result.devolucion_id}. El crédito se calcula según el total real de la venta.`
+      );
     } catch (err) {
       setError(err.message || "No se pudo registrar la devolución serializada");
     } finally {
@@ -279,6 +313,8 @@ export default function VentaDetallePage() {
   const { venta, items = [], situacion_financiera } = data;
 
   const totalFinal = Number(venta.total_final || 0);
+  const subtotalBase = Number(venta.subtotal_base || 0);
+  const factorDevolucion = subtotalBase > 0 ? totalFinal / subtotalBase : 1;
   const saldoPendiente = Number(venta.saldo_pendiente || 0);
   const cubiertoNoPago = Math.max(
     totalFinal - totalPagadoReal - saldoPendiente,
@@ -356,6 +392,7 @@ const estaCerradaOperativamente =
       <VentaItemsVendidos
         venta={venta}
         items={items}
+        factorDevolucion={factorDevolucion}
         procesando={procesando}
         onDevolverItem={handleDevolverItem}
         onDevolverSerializada={handleDevolverSerializada}

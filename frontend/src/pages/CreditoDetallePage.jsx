@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { obtenerCredito, reintegrarCredito } from "../services/creditosService";
 import { EstadoCreditoBadge } from "./CreditosListPage";
 import { formatMoney } from "../utils/formatters";
+import { getCreditoContexto, getMovimientoCreditoLabel, getOrigenFinancieroLabel, getPoliticaCreditoGeneral } from "../utils/financials";
 
 const ID_USUARIO = 1;
 const ID_SUCURSAL = 1;
@@ -99,6 +100,8 @@ export default function CreditoDetallePage() {
 
   const credito = data.credito;
   const movimientos = data.movimientos || [];
+  const contextoCredito = getCreditoContexto(credito);
+  const politicaCredito = getPoliticaCreditoGeneral();
   const saldo = Number(credito.saldo_actual || 0);
   const puedeReintegrar = saldo > 0 && ["abierto", "aplicado_parcial"].includes(credito.estado);
 
@@ -108,7 +111,7 @@ export default function CreditoDetallePage() {
         <div>
           <h1 style={{ margin: 0 }}>Crédito #{credito.id}</h1>
           <p style={mutedStyle}>
-            Cliente #{credito.id_cliente} · Origen {credito.origen_tipo} #{credito.origen_id}
+            Cliente #{credito.id_cliente} · {getOrigenFinancieroLabel(credito.origen_tipo, credito.origen_id)}
           </p>
         </div>
 
@@ -121,6 +124,20 @@ export default function CreditoDetallePage() {
       {mensaje && <div style={successStyle}>{mensaje}</div>}
       {error && <div style={alertStyle}>Error: {error}</div>}
 
+      <section style={policyNoteStyle}>
+        <strong>{politicaCredito.titulo}</strong>
+        <span>{politicaCredito.descripcion}</span>
+      </section>
+
+      <section style={contextNoteStyle}>
+        <strong>{contextoCredito.titulo}</strong>
+        <span>{contextoCredito.descripcion}</span>
+        <small>
+          Los créditos históricos no se recalculan automáticamente. Si fueron generados antes de una corrección de reglas,
+          pueden conservar el monto original registrado.
+        </small>
+      </section>
+
       <div style={gridStyle}>
         <section style={cardStyle}>
           <h2 style={cardTitleStyle}>Resumen</h2>
@@ -128,7 +145,7 @@ export default function CreditoDetallePage() {
             <Info label="Estado" value={<EstadoCreditoBadge estado={credito.estado} />} />
             <Info label="Saldo actual" value={formatMoney(credito.saldo_actual)} />
             <Info label="Cliente" value={`#${credito.id_cliente}`} />
-            <Info label="Origen" value={`${credito.origen_tipo} #${credito.origen_id}`} />
+            <Info label="Origen" value={getOrigenFinancieroLabel(credito.origen_tipo, credito.origen_id)} />
             <Info label="Observación" value={credito.observacion || "-"} full />
           </div>
         </section>
@@ -216,10 +233,10 @@ export default function CreditoDetallePage() {
                 {movimientos.map((mov) => (
                   <tr key={mov.id} style={{ borderTop: "1px solid #eee" }}>
                     <td style={tdStyle}>#{mov.id}</td>
-                    <td style={tdStyle}>{mov.tipo_movimiento}</td>
+                    <td style={tdStyle}>{getMovimientoCreditoLabel(mov.tipo_movimiento)}</td>
                     <td style={tdStyle}>{formatMoney(mov.monto)}</td>
                     <td style={tdStyle}>
-                      {mov.origen_tipo ? `${mov.origen_tipo} #${mov.origen_id}` : "-"}
+                      {getOrigenFinancieroLabel(mov.origen_tipo, mov.origen_id)}
                     </td>
                     <td style={tdStyle}>{mov.nota || "-"}</td>
                     <td style={tdStyle}>#{mov.id_usuario}</td>
@@ -248,6 +265,26 @@ const headerStyle = { display: "flex", justifyContent: "space-between", gap: "12
 const actionsStyle = { display: "flex", gap: "10px", flexWrap: "wrap" };
 const mutedStyle = { margin: "6px 0 0", color: "#667085" };
 const gridStyle = { display: "grid", gridTemplateColumns: "minmax(360px, 1.4fr) minmax(300px, 0.8fr)", gap: "16px", alignItems: "start" };
+const policyNoteStyle = {
+  background: "#eef4ff",
+  border: "1px solid #b2ccff",
+  color: "#1849a9",
+  borderRadius: "14px",
+  padding: "14px 16px",
+  marginBottom: "12px",
+  display: "grid",
+  gap: "6px",
+};
+const contextNoteStyle = {
+  background: "#fff7ed",
+  border: "1px solid #fdba74",
+  color: "#9a3412",
+  borderRadius: "14px",
+  padding: "14px 16px",
+  marginBottom: "16px",
+  display: "grid",
+  gap: "6px",
+};
 const cardStyle = { background: "white", borderRadius: "14px", boxShadow: "0 2px 10px rgba(0,0,0,0.08)", padding: "16px", marginBottom: "16px" };
 const cardTitleStyle = { marginTop: 0, marginBottom: "14px", fontSize: "20px" };
 const infoGridStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "12px" };

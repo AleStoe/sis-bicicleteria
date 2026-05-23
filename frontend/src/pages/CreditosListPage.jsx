@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { listarClientes } from "../services/clientesService";
 import { formatMoney } from "../utils/formatters";
+import { getCreditoContexto, getOrigenFinancieroLabel, getPoliticaCreditoGeneral } from "../utils/financials";
 import {
   listarCreditosCliente,
   listarCreditosDisponiblesCliente,
@@ -74,6 +75,7 @@ export default function CreditosListPage() {
   }
 
   const totalSaldo = creditos.reduce((acc, credito) => acc + Number(credito.saldo_actual || 0), 0);
+  const politicaCredito = getPoliticaCreditoGeneral();
 
   return (
     <div style={pageStyle}>
@@ -81,7 +83,7 @@ export default function CreditosListPage() {
         <div>
           <h1 style={{ margin: 0 }}>Créditos</h1>
           <p style={mutedStyle}>
-            Saldos a favor de clientes generados por anulaciones, devoluciones o ajustes.
+            Saldos comerciales a favor del cliente. No reemplazan la reversión/cancelación de pagos electrónicos.
           </p>
         </div>
       </div>
@@ -132,6 +134,11 @@ export default function CreditosListPage() {
           <span style={mutedStyle}>Saldo total mostrado</span>
           <strong style={metricValueStyle}>{formatMoney(totalSaldo)}</strong>
         </div>
+
+        <div style={policyStyle}>
+          <strong>{politicaCredito.titulo}</strong>
+          <span>{politicaCredito.descripcion}</span>
+        </div>
       </section>
 
       <section style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
@@ -165,13 +172,15 @@ export default function CreditosListPage() {
                     <td style={tdStyle}>#{credito.id}</td>
                     <td style={tdStyle}>#{credito.id_cliente}</td>
                     <td style={tdStyle}>
-                      {credito.origen_tipo} #{credito.origen_id}
+                      {getOrigenFinancieroLabel(credito.origen_tipo, credito.origen_id)}
                     </td>
                     <td style={tdStyle}>{formatMoney(credito.saldo_actual)}</td>
                     <td style={tdStyle}>
                       <EstadoCreditoBadge estado={credito.estado} />
                     </td>
-                    <td style={tdStyle}>{credito.observacion || "-"}</td>
+                    <td style={tdStyle}>
+                      <CreditoContextoInline credito={credito} />
+                    </td>
                     <td style={tdStyle}>
                       <Link to={`/creditos/${credito.id}`} style={linkBtnStyle}>
                         Ver detalle
@@ -184,6 +193,19 @@ export default function CreditosListPage() {
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+function CreditoContextoInline({ credito }) {
+  const contexto = getCreditoContexto(credito);
+
+  return (
+    <div style={{ display: "grid", gap: 4, maxWidth: 360 }}>
+      <strong>{contexto.titulo}</strong>
+      <span style={{ color: "#667085", fontSize: 13 }}>
+        {credito.observacion || contexto.descripcion}
+      </span>
     </div>
   );
 }
@@ -228,6 +250,16 @@ const alertStyle = { background: "#fff1f0", color: "#b42318", padding: "12px", b
 const summaryGridStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px", marginBottom: "16px" };
 const metricStyle = { background: "white", borderRadius: "14px", boxShadow: "0 2px 10px rgba(0,0,0,.08)", padding: "16px", display: "grid", gap: "6px" };
 const metricValueStyle = { fontSize: "24px" };
+const policyStyle = {
+  background: "#fff7ed",
+  border: "1px solid #fdba74",
+  color: "#9a3412",
+  borderRadius: "14px",
+  padding: "16px",
+  display: "grid",
+  gap: "6px",
+  fontSize: "14px",
+};
 const tableHeaderStyle = { padding: "16px 18px", borderBottom: "1px solid #eee" };
 const tableStyle = { width: "100%", borderCollapse: "collapse", minWidth: "850px" };
 const thStyle = { textAlign: "left", padding: "12px 10px", borderBottom: "1px solid #e5e7eb" };
