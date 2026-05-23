@@ -29,6 +29,9 @@ export default function CheckoutVentaPanel({
     onFinalizar?.(payloadCheckout);
   }
 
+  const mostrarAdvertenciaEntregaConDeuda =
+    checkout.entregarAhora && Number(checkout.saldoBasePendiente || 0) > 0;
+
   return (
     <section style={styles.card}>
       <CheckoutResumenPago
@@ -76,6 +79,19 @@ export default function CheckoutVentaPanel({
         Entregar ahora
       </label>
 
+      {mostrarAdvertenciaEntregaConDeuda && (
+        <div style={styles.warningEntregaDeuda}>
+          <strong>⚠️ Entrega con saldo pendiente</strong>
+          <span>
+            Esta venta se finalizará con saldo pendiente. Si el backend lo
+            permite, al entregar ahora se generará deuda/cuenta corriente.
+          </span>
+          <small>
+            Saldo base pendiente: {formatMoney(checkout.saldoBasePendiente)}
+          </small>
+        </div>
+      )}
+
       <div style={styles.actions}>
         <button type="button" onClick={onVaciar} style={styles.clear}>
           Vaciar
@@ -107,6 +123,19 @@ const styles = {
     alignItems: "center",
     gap: 8,
     color: "#344054",
+    marginBottom: 12,
+  },
+  warningEntregaDeuda: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+    background: "#fff7ed",
+    border: "1px solid #fdba74",
+    color: "#9a3412",
+    padding: 12,
+    borderRadius: 10,
+    fontSize: 14,
+    lineHeight: 1.4,
     marginBottom: 12,
   },
   actions: {

@@ -373,5 +373,8 @@ export default function useCheckoutVenta({
     quitarPago,
     sugerirMontoParaSaldar,
     finalizarCheckout,
+    pagadoBase,
+    pagadoCliente,
+    saldoBasePendiente,
   };
 }
