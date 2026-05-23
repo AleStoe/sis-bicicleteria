@@ -352,6 +352,9 @@ def get_venta_for_update(conn, venta_id: int):
                 id_sucursal,
                 estado,
                 tipo_precio,
+                subtotal_base,
+                descuento_total,
+                recargo_total,
                 total_final,
                 saldo_pendiente,
                 id_reserva_origen

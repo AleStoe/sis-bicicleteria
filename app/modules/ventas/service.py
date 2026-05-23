@@ -1199,7 +1199,11 @@ def devolver_item_serializado_entregado(venta_id: int, data):
                 conn,
                 id_cliente=venta["id_cliente"],
                 id_venta=venta_id,
-                monto_credito=item_objetivo["precio_final"],
+                monto_credito=_calcular_monto_credito_devolucion_item(
+                    venta,
+                    item_objetivo,
+                    Decimal("1"),
+                ),
                 id_usuario=data.id_usuario,
             )
             auditoria_service.registrar_evento(
@@ -1294,7 +1298,13 @@ def devolver_venta(venta_id: int, data):
                         },
                     )
 
-                total_devolucion += to_decimal(item["subtotal"])
+                monto_item = _calcular_monto_credito_devolucion_item(
+                    venta,
+                    item,
+                    cantidad,
+                )
+
+                total_devolucion = redondear_monto(total_devolucion + monto_item)
 
             # generar crédito
             creditos_service.crear_credito_por_anulacion_venta(
@@ -1441,14 +1451,10 @@ def devolver_items(venta_id: int, data):
                         },
                     )
 
-                precio_unitario_final = to_decimal(
-                    item.get("precio_unitario_final")
-                    or item.get("precio_final")
-                    or 0
-                )
-
-                monto_item = redondear_monto(
-                    precio_unitario_final * cantidad_devuelta
+                monto_item = _calcular_monto_credito_devolucion_item(
+                    venta,
+                    item,
+                    cantidad_devuelta,
                 )
 
                 devolucion_id = insert_venta_item_devolucion(
@@ -1674,3 +1680,23 @@ def simular_venta(data):
 
     finally:
         conn.close()
+    
+
+def _calcular_monto_credito_devolucion_item(venta: dict, item: dict, cantidad_devuelta) -> Decimal:
+    subtotal_base = redondear_monto(to_decimal(venta.get("subtotal_base") or 0))
+    total_final = redondear_monto(to_decimal(venta.get("total_final") or 0))
+
+    if subtotal_base <= Decimal("0"):
+        return Decimal("0")
+
+    factor = total_final / subtotal_base
+
+    precio_unitario = to_decimal(
+        item.get("precio_unitario_final")
+        or item.get("precio_final")
+        or 0
+    )
+
+    monto = precio_unitario * to_decimal(cantidad_devuelta) * factor
+
+    return redondear_monto(monto)

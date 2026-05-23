@@ -57,7 +57,7 @@ export function buildVentaPayload({
     items: items.map(buildVentaItemPayload),
     pagos: pagos.map(buildPagoVentaPayload),
     observaciones: observaciones?.trim() || null,
-    usar_credito: pagos.length === 0 ? usarCredito : false,
+    usar_credito: Boolean(usarCredito),
     monto_credito_a_aplicar: null,
   };
 }

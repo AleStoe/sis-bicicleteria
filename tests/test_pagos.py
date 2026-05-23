@@ -1395,7 +1395,7 @@ def test_venta_con_tarjeta_6_cuotas_persiste_recargo(
             "pagos": [
                 {
                     "medio_pago": "tarjeta",
-                    "monto": 32994,
+                    "monto_base": seed_venta_basica["precio_venta"],
                     "cuotas": 6,
                     "entidad": "Mastercard",
                 }
