@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { listarPagos, revertirPago } from "../services/pagosService";
+import { formatMoney, formatDate } from "../utils/formatters";
 
 const ID_USUARIO = 1;
 
@@ -156,16 +157,6 @@ export default function PagosPage() {
       </section>
     </div>
   );
-}
-
-function formatMoney(value) {
-  const n = Number(value || 0);
-  return n.toLocaleString("es-AR", { style: "currency", currency: "ARS" });
-}
-
-function formatDate(value) {
-  if (!value) return "-";
-  return new Date(value).toLocaleString("es-AR");
 }
 
 const pageStyle = { padding: "24px", background: "#f6f7fb", minHeight: "100vh" };

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { listarAuditoriaEventos, obtenerAuditoriaEvento } from "../services/auditoriaService";
+import { formatDate } from "../utils/formatters";
 
 const LIMITS = [50, 100, 200, 500];
 
@@ -274,10 +275,6 @@ function AccionBadge({ accion }) {
   );
 }
 
-function formatDate(value) {
-  if (!value) return "-";
-  return new Date(value).toLocaleString("es-AR");
-}
 
 const pageStyle = { padding: "24px", background: "#f6f7fb", minHeight: "100vh" };
 const headerStyle = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", marginBottom: "16px", flexWrap: "wrap" };

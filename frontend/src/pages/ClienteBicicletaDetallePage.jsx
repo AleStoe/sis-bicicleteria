@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { obtenerHistorialBicicletaCliente } from "../services/clientesService";
-
+import { formatMoney } from "../utils/formatters";
+import { formatDate } from "../utils/formatters";
 export default function ClienteBicicletaDetallePage() {
   const { clienteId, bicicletaId } = useParams();
   const navigate = useNavigate();
@@ -197,18 +198,7 @@ function Info({ label, value, full = false }) {
   );
 }
 
-function formatMoney(value) {
-  return Number(value || 0).toLocaleString("es-AR", {
-    style: "currency",
-    currency: "ARS",
-    maximumFractionDigits: 2,
-  });
-}
 
-function formatDate(value) {
-  if (!value) return "-";
-  return new Date(value).toLocaleString("es-AR");
-}
 
 function colorEstado(estado) {
   switch (estado) {

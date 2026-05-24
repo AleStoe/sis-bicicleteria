@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { formatMoney, formatDate } from "../utils/formatters";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   obtenerCliente,
@@ -398,14 +399,6 @@ function renderCondicionIva(condicion) {
   };
 
   return map[condicion] || condicion || "-";
-}
-
-function formatMoney(value) {
-  return `$${Number(value || 0).toLocaleString("es-AR")}`;
-}
-
-function formatDate(value) {
-  return new Date(value).toLocaleString("es-AR");
 }
 
 function colorEstado(estado) {
