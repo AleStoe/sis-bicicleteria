@@ -8,6 +8,11 @@ import {
   getEstadoStock,
   calcularResumenStock,
 } from "../utils/stockUtils";
+import {
+  buildIngresoStockPayload,
+  buildAjusteStockPayload,
+} from "../builders/stockPayloadBuilder";
+
 import StockTable from "../components/stock/StockTable";
 const ID_USUARIO = CURRENT_USER_ID || 1;
 const ID_SUCURSAL_DEFAULT = CURRENT_SUCURSAL_ID || 1;
@@ -150,17 +155,10 @@ export default function StockPage() {
       setMensaje("");
       setUltimoIngreso(null);
 
-      const payload = {
-        ...ingresoForm,
-        id_sucursal: Number(ingresoForm.id_sucursal),
-        id_variante: Number(ingresoForm.id_variante),
-        id_proveedor: Number(ingresoForm.id_proveedor),
-        cantidad_ingresada: Number(ingresoForm.cantidad_ingresada),
-        costo_productos: Number(ingresoForm.costo_productos || 0),
-        gastos_adicionales: Number(ingresoForm.gastos_adicionales || 0),
-        observacion: ingresoForm.observacion.trim() || null,
-        id_usuario: ID_USUARIO,
-      };
+      const payload = buildIngresoStockPayload({
+        ingresoForm,
+        usuarioId: ID_USUARIO,
+      });
 
       const res = await crearIngresoStock(payload);
 
@@ -215,15 +213,10 @@ export default function StockPage() {
       setMensaje("");
       setUltimoIngreso(null);
 
-      const payload = {
-        ...ajusteForm,
-        id_sucursal: Number(ajusteForm.id_sucursal),
-        id_variante: Number(ajusteForm.id_variante),
-        cantidad: Number(ajusteForm.cantidad),
-        nota: ajusteForm.nota.trim(),
-        id_usuario: ID_USUARIO,
-        origen_id: ajusteForm.origen_id || null,
-      };
+      const payload = buildAjusteStockPayload({
+        ajusteForm,
+        usuarioId: ID_USUARIO,
+      });
 
       const res = await crearAjusteStock(payload);
 
