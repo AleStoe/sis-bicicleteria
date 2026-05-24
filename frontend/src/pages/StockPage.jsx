@@ -4,6 +4,11 @@ import { crearAjusteStock, crearIngresoStock, listarStock } from "../services/st
 import { listarProveedores } from "../services/proveedoresService";
 import { CURRENT_USER_ID, CURRENT_SUCURSAL_ID } from "../config/appConfig";
 import { formatMoney, formatNumber } from "../utils/formatters";
+import {
+  getEstadoStock,
+  calcularResumenStock,
+} from "../utils/stockUtils";
+import StockTable from "../components/stock/StockTable";
 const ID_USUARIO = CURRENT_USER_ID || 1;
 const ID_SUCURSAL_DEFAULT = CURRENT_SUCURSAL_ID || 1;
 
@@ -98,19 +103,6 @@ export default function StockPage() {
     setModoPanel("detalle");
   }
 
-  function estadoStock(item) {
-    const disponible = Number(item.stock_disponible || 0);
-    const fisico = Number(item.stock_fisico || 0);
-    const reservado = Number(item.stock_reservado || 0);
-    const pendiente = Number(item.stock_vendido_pendiente_entrega || 0);
-
-    if (fisico < reservado + pendiente) return "inconsistente";
-    if (disponible <= 0) return "sin_disponible";
-    if (pendiente > 0) return "pendiente";
-    if (reservado > 0) return "reservado";
-    return "ok";
-  }
-
   const stockFiltrado = useMemo(() => {
     const q = query.trim().toLowerCase();
 
@@ -127,44 +119,17 @@ export default function StockPage() {
         .toLowerCase();
 
       const coincideTexto = !q || texto.includes(q);
-      const estado = estadoStock(item);
+      const estado = getEstadoStock(item);
       const coincideEstado = filtroEstado === "todos" || filtroEstado === estado;
 
       return coincideTexto && coincideEstado;
     });
   }, [stock, query, filtroEstado]);
 
-  const resumen = useMemo(() => {
-    return stock.reduce(
-      (acc, item) => {
-        const estado = estadoStock(item);
-
-        acc.variantes += 1;
-        acc.stockFisico += Number(item.stock_fisico || 0);
-        acc.stockReservado += Number(item.stock_reservado || 0);
-        acc.stockPendiente += Number(item.stock_vendido_pendiente_entrega || 0);
-        acc.stockDisponible += Number(item.stock_disponible || 0);
-
-        if (estado === "sin_disponible") acc.sinDisponible += 1;
-        if (estado === "reservado") acc.reservados += 1;
-        if (estado === "pendiente") acc.pendientes += 1;
-        if (estado === "inconsistente") acc.inconsistentes += 1;
-
-        return acc;
-      },
-      {
-        variantes: 0,
-        stockFisico: 0,
-        stockReservado: 0,
-        stockPendiente: 0,
-        stockDisponible: 0,
-        sinDisponible: 0,
-        reservados: 0,
-        pendientes: 0,
-        inconsistentes: 0,
-      }
-    );
-  }, [stock]);
+  const resumen = useMemo(
+    () => calcularResumenStock(stock),
+    [stock]
+  );
 
   async function handleIngreso(e) {
     e.preventDefault();
@@ -363,264 +328,56 @@ export default function StockPage() {
           <div style={{ padding: "18px" }}>No hay stock para mostrar.</div>
         ) : (
           <div style={{ overflowX: "auto" }}>
-            <table style={tableStyle}>
-              <thead style={{ background: "#f9fafb" }}>
-                <tr>
-                  <th style={thStyle}>Producto</th>
-                  <th style={thStyle}>Sucursal</th>
-                  <th style={thStyle}>Físico</th>
-                  <th style={thStyle}>Reservado</th>
-                  <th style={thStyle}>Pendiente</th>
-                  <th style={thStyle}>Disponible</th>
-                  <th style={thStyle}>Estado</th>
-                  <th style={thStyle}>Acciones</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {stockFiltrado.map((item) => {
-                  const estado = estadoStock(item);
-
-                  return (
-                    <tr
-                      key={`${item.sucursal_id}-${item.variante_id}`}
-                      onClick={() => seleccionarItem(item, "detalle")}
-                      style={{
-                        borderTop: "1px solid #eee",
-                        cursor: "pointer",
-                        background:
-                          seleccionado?.variante_id === item.variante_id &&
-                          seleccionado?.sucursal_id === item.sucursal_id
-                            ? "#f8fbff"
-                            : "white",
-                      }}
-                    >
-                      <td style={tdStyle}>
-                        <strong>{item.producto_nombre}</strong>
-                        <div>{item.nombre_variante}</div>
-                        <div style={mutedSmallStyle}>
-                          SKU: {item.sku || "-"} · Variante #{item.variante_id}
-                        </div>
-                      </td>
-
-                      <td style={tdStyle}>{item.sucursal_nombre}</td>
-                      <td style={tdStyle}>{formatNumber(item.stock_fisico)}</td>
-                      <td style={tdStyle}>{formatNumber(item.stock_reservado)}</td>
-                      <td style={tdStyle}>{formatNumber(item.stock_vendido_pendiente_entrega)}</td>
-                      <td style={tdStyle}>
-                        <strong>{formatNumber(item.stock_disponible)}</strong>
-                      </td>
-                      <td style={tdStyle}>
-                        <EstadoBadge estado={estado} />
-                      </td>
-                      <td style={tdStyle}>
-                        <div style={rowActionsStyle}>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              seleccionarItem(item, "ingreso");
-                            }}
-                          >
-                            Ingreso
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              seleccionarItem(item, "ajuste");
-                            }}
-                          >
-                            Ajuste
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <StockTable
+              stockFiltrado={stockFiltrado}
+              seleccionado={seleccionado}
+              seleccionarItem={seleccionarItem}
+              EstadoBadge={EstadoBadge}
+              styles={{
+                table: tableStyle,
+                th: thStyle,
+                td: tdStyle,
+                mutedSmall: mutedSmallStyle,
+                rowActions: rowActionsStyle,
+              }}
+            />
           </div>
         )}
       </section>
 
       {seleccionado && (
-        <aside style={drawerOverlayStyle} onClick={cerrarPanel}>
-          <div style={drawerStyle} onClick={(e) => e.stopPropagation()}>
-            <div style={drawerHeaderStyle}>
-              <div>
-                <h2 style={{ margin: 0 }}>{seleccionado.producto_nombre}</h2>
-                <p style={mutedStyle}>{seleccionado.nombre_variante}</p>
-              </div>
-
-              <button onClick={cerrarPanel}>×</button>
-            </div>
-
-            <div style={drawerTabsStyle}>
-              <button
-                style={modoPanel === "detalle" ? activeTabStyle : tabStyle}
-                onClick={() => setModoPanel("detalle")}
-              >
-                Detalle
-              </button>
-              <button
-                style={modoPanel === "ingreso" ? activeTabStyle : tabStyle}
-                onClick={() => setModoPanel("ingreso")}
-              >
-                Ingreso
-              </button>
-              <button
-                style={modoPanel === "ajuste" ? activeTabStyle : tabStyle}
-                onClick={() => setModoPanel("ajuste")}
-              >
-                Ajuste
-              </button>
-            </div>
-
-            {modoPanel === "detalle" && (
-              <div style={drawerContentStyle}>
-                <InfoRow label="Sucursal" value={seleccionado.sucursal_nombre} />
-                <InfoRow label="SKU" value={seleccionado.sku || "-"} />
-                <InfoRow label="Variante ID" value={`#${seleccionado.variante_id}`} />
-                <InfoRow label="Stock físico" value={formatNumber(seleccionado.stock_fisico)} />
-                <InfoRow label="Reservado" value={formatNumber(seleccionado.stock_reservado)} />
-                <InfoRow
-                  label="Pendiente entrega"
-                  value={formatNumber(seleccionado.stock_vendido_pendiente_entrega)}
-                />
-                <InfoRow label="Disponible" value={formatNumber(seleccionado.stock_disponible)} />
-
-                <div style={drawerActionsStyle}>
-                  <button onClick={() => setModoPanel("ingreso")}>Registrar ingreso</button>
-                  <button onClick={() => setModoPanel("ajuste")}>Ajustar stock</button>
-                </div>
-
-                <div style={noteStyle}>
-                  El stock disponible se calcula como físico - reservado - pendiente de entrega.
-                </div>
-              </div>
-            )}
-
-            {modoPanel === "ingreso" && (
-              <form onSubmit={handleIngreso} style={drawerContentStyle}>
-                <TextInput
-                  label="Sucursal"
-                  value={ingresoForm.id_sucursal}
-                  onChange={(v) => setIngresoForm((p) => ({ ...p, id_sucursal: v }))}
-                />
-
-                <TextInput
-                  label="Variante"
-                  value={ingresoForm.id_variante}
-                  onChange={(v) => setIngresoForm((p) => ({ ...p, id_variante: v }))}
-                />
-
-                <label style={fieldStyle}>
-                  <span style={labelStyle}>Proveedor</span>
-                  <select
-                    value={ingresoForm.id_proveedor}
-                    onChange={(e) =>
-                      setIngresoForm((p) => ({ ...p, id_proveedor: e.target.value }))
-                    }
-                    style={inputStyle}
-                  >
-                    <option value="">Seleccionar proveedor...</option>
-                    {proveedores.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        #{p.id} - {p.nombre}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <TextInput
-                  label="Cantidad ingresada"
-                  type="number"
-                  value={ingresoForm.cantidad_ingresada}
-                  onChange={(v) =>
-                    setIngresoForm((p) => ({ ...p, cantidad_ingresada: v }))
-                  }
-                />
-
-                <TextInput
-                  label="Costo productos total"
-                  type="number"
-                  value={ingresoForm.costo_productos}
-                  onChange={(v) =>
-                    setIngresoForm((p) => ({ ...p, costo_productos: v }))
-                  }
-                />
-
-                <TextInput
-                  label="Gastos adicionales"
-                  type="number"
-                  value={ingresoForm.gastos_adicionales}
-                  onChange={(v) =>
-                    setIngresoForm((p) => ({ ...p, gastos_adicionales: v }))
-                  }
-                />
-
-                <label style={fieldStyle}>
-                  <span style={labelStyle}>Observación</span>
-                  <textarea
-                    value={ingresoForm.observacion}
-                    onChange={(e) =>
-                      setIngresoForm((p) => ({ ...p, observacion: e.target.value }))
-                    }
-                    style={textareaStyle}
-                    placeholder="Factura, remito, reposición..."
-                  />
-                </label>
-
-                <button type="submit" disabled={procesando}>
-                  {procesando ? "Guardando..." : "Registrar ingreso"}
-                </button>
-              </form>
-            )}
-
-            {modoPanel === "ajuste" && (
-              <form onSubmit={handleAjuste} style={drawerContentStyle}>
-                <TextInput
-                  label="Sucursal"
-                  value={ajusteForm.id_sucursal}
-                  onChange={(v) => setAjusteForm((p) => ({ ...p, id_sucursal: v }))}
-                />
-
-                <TextInput
-                  label="Variante"
-                  value={ajusteForm.id_variante}
-                  onChange={(v) => setAjusteForm((p) => ({ ...p, id_variante: v }))}
-                />
-
-                <TextInput
-                  label="Cantidad (+ suma / - resta)"
-                  type="number"
-                  value={ajusteForm.cantidad}
-                  onChange={(v) => setAjusteForm((p) => ({ ...p, cantidad: v }))}
-                />
-
-                <label style={fieldStyle}>
-                  <span style={labelStyle}>Motivo obligatorio</span>
-                  <textarea
-                    value={ajusteForm.nota}
-                    onChange={(e) =>
-                      setAjusteForm((p) => ({ ...p, nota: e.target.value }))
-                    }
-                    style={textareaStyle}
-                    placeholder="Conteo físico, diferencia detectada..."
-                  />
-                </label>
-
-                <button type="submit" disabled={procesando}>
-                  {procesando ? "Guardando..." : "Registrar ajuste"}
-                </button>
-
-                <div style={noteStyle}>
-                  Usá ajuste solo para diferencias reales de inventario. Ventas, reservas,
-                  entregas y taller tienen sus propios movimientos.
-                </div>
-              </form>
-            )}
-          </div>
-        </aside>
+        <StockDrawer
+          seleccionado={seleccionado}
+          cerrarPanel={cerrarPanel}
+          modoPanel={modoPanel}
+          setModoPanel={setModoPanel}
+          handleIngreso={handleIngreso}
+          handleAjuste={handleAjuste}
+          ingresoForm={ingresoForm}
+          setIngresoForm={setIngresoForm}
+          ajusteForm={ajusteForm}
+          setAjusteForm={setAjusteForm}
+          proveedores={proveedores}
+          procesando={procesando}
+          InfoRow={InfoRow}
+          TextInput={TextInput}
+          styles={{
+            overlay: drawerOverlayStyle,
+            drawer: drawerStyle,
+            header: drawerHeaderStyle,
+            muted: mutedStyle,
+            tabs: drawerTabsStyle,
+            tab: tabStyle,
+            activeTab: activeTabStyle,
+            content: drawerContentStyle,
+            actions: drawerActionsStyle,
+            note: noteStyle,
+            field: fieldStyle,
+            label: labelStyle,
+            input: inputStyle,
+            textarea: textareaStyle,
+          }}
+        />
       )}
     </div>
   );
