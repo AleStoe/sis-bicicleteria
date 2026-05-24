@@ -119,11 +119,16 @@ export default function NuevaVentaPage() {
         e.preventDefault();
         searchRef.current?.focus();
       }
+
+      if (e.key === "F4") {
+        e.preventDefault();
+        irACobrar();
+      }
     }
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [clienteId, items, tipoPrecio, observaciones]);
 
   function mostrarMensajePOS(texto) {
     setMensajePOS(texto);

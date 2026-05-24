@@ -2,9 +2,9 @@ import { formatMoney } from "../../../utils/formatters";
 
 const MEDIOS_PAGO = [
   { value: "efectivo", label: "Efectivo", icon: "💵", helper: "Contado" },
-  { value: "transferencia", label: "Transferencia", icon: "🏦", helper: "Contado" },
-  { value: "tarjeta", label: "Tarjeta", icon: "💳", helper: "Cuotas / recargo" },
-  { value: "mercadopago", label: "MercadoPago", icon: "📲", helper: "Digital" },
+  { value: "transferencia", label: "Transferencia", icon: "🏦", helper: "Banco" },
+  { value: "tarjeta", label: "Tarjeta", icon: "💳", helper: "Plan" },
+  { value: "mercadopago", label: "MercadoPago", icon: "📱", helper: "QR" },
 ];
 
 export default function CheckoutAgregarPago({
@@ -34,14 +34,18 @@ export default function CheckoutAgregarPago({
   const hayRecargo = recargoPreview > 0;
   const mostrarPreview = previewSaldar?.monto_sugerido_para_saldar != null;
 
+  const montoManual = Number(monto || 0);
+  const mostrarInstruccion = mostrarPreview || montoManual > 0;
+  const montoACobrarAhora = mostrarPreview
+    ? montoSugeridoCobrado
+    : montoManual;
+
   return (
     <div style={styles.payBox}>
       <div style={styles.header}>
         <div>
           <div style={styles.payTitle}>¿Cómo paga el cliente?</div>
-          <div style={styles.subtitle}>
-            Elegí un medio, tocá “Completar saldo” y el sistema te dice cuánto cobrar.
-          </div>
+          <div style={styles.subtitle}>Elegí cómo paga el cliente.</div>
         </div>
       </div>
 
@@ -61,29 +65,47 @@ export default function CheckoutAgregarPago({
             >
               <span style={styles.methodIcon}>{medio.icon}</span>
               <span style={styles.methodText}>{medio.label}</span>
-              <small style={active ? styles.methodHelperActive : styles.methodHelper}>{medio.helper}</small>
+              <small style={active ? styles.methodHelperActive : styles.methodHelper}>
+                {medio.helper}
+              </small>
             </button>
           );
         })}
       </div>
 
       {esTarjeta && (
-        <div style={styles.cardPlanBox}>
-          <label style={styles.cardPlanLabel}>Plan de tarjeta</label>
+        <label style={styles.planBox}>
+          <span style={styles.planLabel}>Plan de tarjeta</span>
           <select
-            value={planTarjetaId}
+            value={planTarjetaId || ""}
             onChange={(e) => setPlanTarjetaId(e.target.value)}
-            style={styles.select}
-            disabled={!planesTarjeta?.length}
+            style={styles.planSelect}
           >
-            {!planesTarjeta?.length && <option value="">Sin planes activos</option>}
-            {planesTarjeta.map((plan) => (
+            <option value="">Seleccionar plan...</option>
+            {(planesTarjeta || []).map((plan) => (
               <option key={plan.id} value={plan.id}>
-                {plan.entidad ? `${plan.entidad} · ` : ""}
-                {plan.cuotas} cuota(s) · {Number(plan.porcentaje_recargo_cliente || 0).toFixed(0)}%
+                {plan.nombre || `Plan #${plan.id}`}
               </option>
             ))}
           </select>
+        </label>
+      )}
+
+      {mostrarInstruccion && (
+        <div style={styles.operatorHint}>
+          <span style={styles.operatorHintLabel}>Qué cobrar ahora</span>
+          <strong>
+            Cobrá {formatMoney(montoACobrarAhora)} en {medioActivo?.label || "este medio"}
+          </strong>
+          {mostrarPreview ? (
+            <small>
+              Cubre {formatMoney(montoBaseSugerido)} de la venta.
+              {hayDescuento && ` Descuento aplicado: ${formatMoney(descuentoPreview)}.`}
+              {hayRecargo && ` Recargo aplicado: ${formatMoney(recargoPreview)}.`}
+            </small>
+          ) : (
+            <small>Pago parcial cargado manualmente.</small>
+          )}
         </div>
       )}
 
@@ -97,26 +119,29 @@ export default function CheckoutAgregarPago({
                 : styles.previewBoxNeutral
           }
         >
-          <div style={styles.previewHeader}>
-            <span>{medioActivo?.icon} {medioActivo?.label}</span>
-            <strong>{hayRecargo ? "Precio financiación" : hayDescuento ? "Precio contado" : "Precio final"}</strong>
+          <div style={styles.previewTitle}>
+            {hayRecargo
+              ? "Recargo aplicado"
+              : hayDescuento
+                ? "Beneficio aplicado"
+                : "Resumen del cobro"}
           </div>
 
           <div style={styles.previewRow}>
-            <span>Parte de la venta que cubre</span>
+            <span>Total cubierto</span>
             <strong>{formatMoney(montoBaseSugerido)}</strong>
           </div>
 
           {hayDescuento && (
             <div style={styles.previewRow}>
-              <span>Beneficio por medio de pago</span>
+              <span>Descuento</span>
               <strong style={styles.successText}>- {formatMoney(descuentoPreview)}</strong>
             </div>
           )}
 
           {hayRecargo && (
             <div style={styles.previewRow}>
-              <span>Costo financiero</span>
+              <span>Recargo</span>
               <strong style={styles.warningText}>+ {formatMoney(recargoPreview)}</strong>
             </div>
           )}
@@ -129,11 +154,16 @@ export default function CheckoutAgregarPago({
       )}
 
       <div style={styles.amountHeader}>
-        <div>
-          <div style={styles.amountLabel}>{esTarjeta ? "Parte de la venta a financiar" : "Parte de la venta a cubrir"}</div>
-          <small style={styles.amountHint}>No lo pienses: usá “Completar saldo” para cargar lo pendiente.</small>
+        <div style={styles.amountLabel}>
+          {esTarjeta ? "Monto a financiar" : "Monto a cobrar"}
         </div>
-        <button type="button" onClick={sugerirMontoParaSaldar} disabled={simulando} style={styles.saldarBtn}>
+
+        <button
+          type="button"
+          onClick={sugerirMontoParaSaldar}
+          disabled={simulando}
+          style={styles.saldarBtn}
+        >
           {simulando ? "Calculando..." : "Completar saldo"}
         </button>
       </div>
@@ -147,7 +177,7 @@ export default function CheckoutAgregarPago({
             const value = e.target.value.replace(",", ".").replace(/[^0-9.]/g, "");
             setMonto(value);
           }}
-          placeholder="Ej: 10000"
+          placeholder="$ 0"
           style={styles.amountInput}
         />
       </div>
@@ -163,206 +193,207 @@ export default function CheckoutAgregarPago({
 
 const styles = {
   payBox: {
-    border: "1px solid #eaecf0",
-    borderRadius: 22,
-    padding: 16,
-    background: "#ffffff",
-    marginBottom: 12,
+    background: "white",
+    borderRadius: 18,
+    border: "1px solid #e2e8f0",
+    padding: 14,
     display: "grid",
-    gap: 14,
+    gap: 12,
   },
   header: {
     display: "flex",
     justifyContent: "space-between",
-    alignItems: "flex-start",
+    gap: 12,
   },
   payTitle: {
+    fontSize: 20,
     fontWeight: 950,
-    fontSize: 19,
-    color: "#111827",
+    color: "#0f172a",
+    letterSpacing: "-0.03em",
   },
   subtitle: {
-    marginTop: 4,
-    color: "#667085",
+    marginTop: 2,
+    color: "#64748b",
     fontSize: 13,
-    lineHeight: 1.4,
+    fontWeight: 700,
   },
   paymentGrid: {
     display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: 10,
+    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+    gap: 8,
   },
   methodCard: {
-    border: "1px solid #d0d5dd",
-    background: "#ffffff",
-    color: "#1f2937",
-    borderRadius: 18,
-    padding: "16px 12px",
-    minHeight: 92,
-    cursor: "pointer",
+    border: "1px solid #e2e8f0",
+    background: "#f8fafc",
+    borderRadius: 14,
+    padding: "10px 8px",
     display: "grid",
-    gridTemplateColumns: "auto 1fr",
-    columnGap: 10,
-    rowGap: 2,
-    alignItems: "center",
-    textAlign: "left",
-    boxShadow: "0 6px 18px rgba(16,24,40,0.05)",
+    gap: 3,
+    justifyItems: "center",
+    cursor: "pointer",
+    color: "#334155",
   },
   methodCardActive: {
-    background: "linear-gradient(135deg, #ff6b00 0%, #f35b04 100%)",
-    borderColor: "#ff6b00",
-    color: "white",
-    boxShadow: "0 12px 26px rgba(255, 107, 0, 0.26)",
+    borderColor: "#f97316",
+    background: "#fff7ed",
+    boxShadow: "0 0 0 2px rgba(249, 115, 22, 0.16)",
+    color: "#9a3412",
   },
   methodIcon: {
-    fontSize: 30,
-    gridRow: "span 2",
+    fontSize: 22,
   },
   methodText: {
-    fontSize: 17,
     fontWeight: 950,
+    fontSize: 13,
   },
   methodHelper: {
-    color: "#667085",
-    fontSize: 12,
+    color: "#64748b",
     fontWeight: 800,
+    fontSize: 11,
   },
   methodHelperActive: {
-    color: "rgba(255,255,255,.86)",
-    fontSize: 12,
-    fontWeight: 800,
+    color: "#c2410c",
+    fontWeight: 900,
+    fontSize: 11,
   },
-  cardPlanBox: {
-    border: "1px solid #eaecf0",
-    borderRadius: 14,
-    padding: 12,
-    background: "#f9fafb",
+  planBox: {
     display: "grid",
     gap: 6,
   },
-  cardPlanLabel: {
+  planLabel: {
     fontSize: 13,
     fontWeight: 900,
-    color: "#344054",
+    color: "#334155",
   },
-  select: {
-    border: "1px solid #d0d5dd",
+  planSelect: {
+    width: "100%",
+    border: "1px solid #cbd5e1",
     borderRadius: 12,
-    padding: 12,
-    background: "#ffffff",
-    color: "#111827",
+    padding: "10px 12px",
     fontWeight: 800,
   },
-  previewBoxNeutral: {
-    border: "1px solid #d0d5dd",
-    borderRadius: 18,
-    padding: 14,
-    background: "#f9fafb",
+  operatorHint: {
+    borderRadius: 14,
+    padding: 12,
+    background: "#eff6ff",
+    border: "1px solid #bfdbfe",
+    color: "#1e3a8a",
     display: "grid",
-    gap: 9,
+    gap: 4,
+  },
+  operatorHintLabel: {
+    fontSize: 11,
+    fontWeight: 1000,
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    color: "#2563eb",
+  },
+  previewBoxNeutral: {
+    borderRadius: 14,
+    padding: 11,
+    background: "#f8fafc",
+    border: "1px solid #e2e8f0",
+    display: "grid",
+    gap: 7,
   },
   previewBoxSuccess: {
-    border: "1px solid #abefc6",
-    borderRadius: 18,
-    padding: 14,
-    background: "#ecfdf3",
+    borderRadius: 14,
+    padding: 11,
+    background: "#f8fafc",
+    border: "1px solid #cbd5e1",
     display: "grid",
-    gap: 9,
+    gap: 7,
   },
   previewBoxWarning: {
-    border: "1px solid #fedf89",
-    borderRadius: 18,
-    padding: 14,
-    background: "#fffaeb",
+    borderRadius: 14,
+    padding: 11,
+    background: "#fff7ed",
+    border: "1px solid #fdba74",
     display: "grid",
-    gap: 9,
+    gap: 7,
   },
-  previewHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 12,
-    color: "#111827",
-    fontWeight: 950,
-    paddingBottom: 8,
-    borderBottom: "1px solid rgba(16,24,40,0.08)",
+  previewTitle: {
+    fontSize: 12,
+    fontWeight: 1000,
+    textTransform: "uppercase",
+    letterSpacing: "0.06em",
+    color: "#475569",
   },
   previewRow: {
     display: "flex",
     justifyContent: "space-between",
-    gap: 12,
-    color: "#344054",
-    fontSize: 14,
+    gap: 10,
+    fontSize: 13,
+    fontWeight: 800,
+    color: "#334155",
   },
   previewTotalRow: {
     display: "flex",
     justifyContent: "space-between",
-    alignItems: "baseline",
-    gap: 12,
-    color: "#111827",
-    fontSize: 18,
-    fontWeight: 950,
+    gap: 10,
     paddingTop: 8,
-    borderTop: "1px solid rgba(16,24,40,0.08)",
+    borderTop: "1px solid rgba(15, 23, 42, 0.12)",
+    fontSize: 17,
+    fontWeight: 1000,
+    color: "#0f172a",
   },
-  successText: { color: "#079455" },
-  warningText: { color: "#b54708" },
+  successText: {
+    color: "#1d4ed8",
+  },
+  warningText: {
+    color: "#c2410c",
+  },
   amountHeader: {
     display: "flex",
-    justifyContent: "space-between",
-    gap: 12,
     alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
   },
   amountLabel: {
-    color: "#344054",
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: 950,
+    color: "#0f172a",
   },
-  amountHint: {
-    color: "#667085",
-    fontSize: 12,
+  saldarBtn: {
+    border: "none",
+    borderRadius: 14,
+    background: "#0f172a",
+    color: "white",
+    padding: "14px 18px",
+    fontSize: 15,
+    fontWeight: 900,
+    cursor: "pointer",
   },
   amountRow: {
     display: "grid",
   },
   amountInput: {
-    border: "1px solid #d0d5dd",
-    borderRadius: 16,
-    padding: "16px 14px",
-    fontSize: 26,
-    fontWeight: 850,
-    color: "#111827",
-    outline: "none",
     width: "100%",
     boxSizing: "border-box",
-  },
-  saldarBtn: {
-    border: "1px solid #0b5bd3",
-    background: "#eff6ff",
-    color: "#0b5bd3",
-    borderRadius: 12,
-    padding: "10px 13px",
+    border: "2px solid #cbd5e1",
+    borderRadius: 14,
+    padding: "14px 14px",
+    fontSize: 24,
     fontWeight: 950,
-    cursor: "pointer",
-    whiteSpace: "nowrap",
+    outline: "none",
   },
   addBtn: {
-    border: "none",
-    background: "linear-gradient(135deg, #12a15f 0%, #079455 100%)",
-    color: "white",
-    borderRadius: 17,
-    padding: "16px 14px",
+    border: "1px solid #bbf7d0",
+    borderRadius: 14,
+    background: "#ecfdf5",
+    color: "#047857",
+    padding: "12px 14px",
+    fontSize: 15,
     fontWeight: 950,
-    fontSize: 18,
     cursor: "pointer",
-    boxShadow: "0 12px 24px rgba(18, 161, 95, 0.22)",
   },
   localError: {
-    border: "1px solid #fecdca",
-    background: "#fff1f0",
-    color: "#b42318",
     borderRadius: 12,
+    background: "#fef2f2",
+    border: "1px solid #fecaca",
+    color: "#b91c1c",
     padding: 10,
-    fontWeight: 800,
     fontSize: 13,
+    fontWeight: 800,
   },
 };

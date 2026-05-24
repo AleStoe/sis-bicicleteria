@@ -58,10 +58,17 @@ const topSearchStyle = {
   boxSizing: "border-box",
   background: "#111827",
   color: colors.surface,
-  border: "1px solid #344054",
+
+  border: "2px solid #2563eb",
   borderRadius: radius.md,
+
   padding: "11px 38px 11px 13px",
+
   outline: "none",
+
+  height: "52px",
+  fontSize: "15px",
+  fontWeight: 800,
 };
 
 const searchIconStyle = {
@@ -168,12 +175,12 @@ const catalogListStyle = {
 
 const productRowStyle = {
   display: "grid",
-  gridTemplateColumns: "82px 1fr 130px",
+  gridTemplateColumns: "72px 1fr 120px",
   gap: spacing.md,
   alignItems: "center",
   border: "1px solid #eaecf0",
   borderRadius: radius.md,
-  padding: "10px",
+  padding: "8px",
   background: colors.surface,
 };
 
@@ -184,8 +191,8 @@ const productRowBlockedStyle = {
 };
 
 const imageBoxStyle = {
-  width: "82px",
-  height: "72px",
+  width: "72px",
+  height: "62px",
   borderRadius: radius.md,
   background: "#f2f4f7",
   display: "grid",

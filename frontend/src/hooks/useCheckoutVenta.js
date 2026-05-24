@@ -307,6 +307,9 @@ export default function useCheckoutVenta({
 
       if (cancelado || !data) return;
       setPreviewSaldar(data);
+      if (data.monto_base_sugerido_para_saldar != null) {
+        setMonto(String(data.monto_base_sugerido_para_saldar));
+      }
     }
 
     cargarPreview();

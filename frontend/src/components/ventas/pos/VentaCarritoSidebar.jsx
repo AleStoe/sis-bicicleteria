@@ -113,12 +113,16 @@ export default function VentaCarritoSidebar({
           checked={usarCredito}
           onChange={(e) => onUsarCreditoChange(e.target.checked)}
         />
-        Aplicar crédito disponible si existe
+        Usar saldo a favor
       </label>
-
+      {usarCredito && (
+        <div style={styles.creditHint}>
+          Se aplicará automáticamente al cobrar si el cliente tiene saldo disponible.
+        </div>
+      )}        
       <div style={styles.totalCard}>
         <div>
-          <span style={styles.totalLabel}>Precio lista</span>
+          <span style={styles.totalLabel}>Total a cobrar</span>
           <strong style={styles.totalValue}>{formatMoney(total)}</strong>
         </div>
 
@@ -128,7 +132,7 @@ export default function VentaCarritoSidebar({
           disabled={items.length === 0}
           style={items.length === 0 ? styles.payBtnDisabled : styles.payBtn}
         >
-          IR A COBRAR →
+          IR A COBRAR · F4 →
         </button>
       </div>
     </div>
@@ -241,7 +245,9 @@ const styles = {
   totalValue: {
     display: "block",
     marginTop: 4,
-    fontSize: 30,
+    fontSize: 34,
+    fontWeight: 950,
+    letterSpacing: "-0.04em",
     lineHeight: 1,
   },
   payBtn: {
@@ -267,4 +273,15 @@ const styles = {
     fontSize: 16,
     cursor: "not-allowed",
   },
+  creditHint: {
+  marginTop: -6,
+  marginBottom: 12,
+  padding: "8px 10px",
+  borderRadius: 10,
+  background: "#ecfdf3",
+  color: "#067647",
+  border: "1px solid #abefc6",
+  fontSize: 12,
+  fontWeight: 700,
+},
 };

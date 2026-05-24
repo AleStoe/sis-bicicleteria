@@ -75,23 +75,41 @@ export default function CheckoutVentaPanel({
         simulando={checkout.simulando}
       />
 
-      <div style={entregaConSaldo ? styles.debtWarning : styles.deliveryBox}>
-        <label style={styles.checkRow}>
-          <input
-            type="checkbox"
-            checked={checkout.entregarAhora}
-            onChange={(e) => checkout.setEntregarAhora(e.target.checked)}
-          />
-          <span>
-            <strong>Entregar ahora</strong>
-            <small>
-              {entregaConSaldo
-                ? "Se entregará con saldo pendiente y el backend formalizará deuda."
-                : "Marcá esto si el cliente se lleva la mercadería ahora."}
-            </small>
-          </span>
-        </label>
-      </div>
+      <button
+        type="button"
+        onClick={() => checkout.setEntregarAhora(!checkout.entregarAhora)}
+        style={
+          entregaConSaldo
+            ? styles.deliveryCardDebt
+            : checkout.entregarAhora
+              ? styles.deliveryCardActive
+              : styles.deliveryCard
+        }
+      >
+        <div style={styles.deliveryIcon}>
+          {checkout.entregarAhora ? "🚲" : "📦"}
+        </div>
+
+        <div style={styles.deliveryText}>
+          <strong>
+            {checkout.entregarAhora
+              ? "Entregar mercadería ahora"
+              : "Dejar pendiente de entrega"}
+          </strong>
+
+          <small>
+            {entregaConSaldo
+              ? "Atención: se entregará con saldo pendiente y se formalizará deuda."
+              : checkout.entregarAhora
+                ? "El cliente se lleva los productos en esta operación."
+                : "La venta queda creada, pero la mercadería no se entrega todavía."}
+          </small>
+        </div>
+
+        <span style={checkout.entregarAhora ? styles.deliveryStatusOn : styles.deliveryStatusOff}>
+          {checkout.entregarAhora ? "ACTIVO" : "PENDIENTE"}
+        </span>
+      </button>
 
       <div style={styles.actions}>
         <button type="button" onClick={onVaciar} style={styles.clear}>
@@ -190,4 +208,80 @@ const styles = {
     background: "#f97316",
     boxShadow: "0 12px 24px rgba(249,115,22,0.24)",
   },
+  deliveryCard: {
+  width: "100%",
+  border: "1px solid #dbe2ea",
+  borderRadius: 14,
+  background: "#f8fafc",
+  padding: 12,
+  display: "grid",
+  gridTemplateColumns: "34px minmax(0, 1fr) auto",
+  gap: 10,
+  alignItems: "center",
+  textAlign: "left",
+  cursor: "pointer",
+},
+
+deliveryCardActive: {
+  width: "100%",
+  border: "1px solid #bfdbfe",
+  borderRadius: 14,
+  background: "#eff6ff",
+  padding: 12,
+  display: "grid",
+  gridTemplateColumns: "34px minmax(0, 1fr) auto",
+  gap: 10,
+  alignItems: "center",
+  textAlign: "left",
+  cursor: "pointer",
+},
+
+deliveryCardDebt: {
+  width: "100%",
+  border: "1px solid #fdba74",
+  borderRadius: 14,
+  background: "#fff7ed",
+  padding: 12,
+  display: "grid",
+  gridTemplateColumns: "34px minmax(0, 1fr) auto",
+  gap: 10,
+  alignItems: "center",
+  textAlign: "left",
+  cursor: "pointer",
+},
+
+deliveryIcon: {
+  width: 34,
+  height: 34,
+  borderRadius: 10,
+  background: "white",
+  border: "1px solid #e2e8f0",
+  display: "grid",
+  placeItems: "center",
+  fontSize: 18,
+},
+
+deliveryText: {
+  display: "grid",
+  gap: 3,
+  color: "#0f172a",
+},
+
+deliveryStatusOn: {
+  borderRadius: 999,
+  padding: "5px 8px",
+  background: "#dbeafe",
+  color: "#1d4ed8",
+  fontSize: 11,
+  fontWeight: 1000,
+},
+
+deliveryStatusOff: {
+  borderRadius: 999,
+  padding: "5px 8px",
+  background: "#e2e8f0",
+  color: "#475569",
+  fontSize: 11,
+  fontWeight: 1000,
+},
 };

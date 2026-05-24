@@ -14,54 +14,42 @@ export default function CheckoutResumenPago({
     <div style={styles.box}>
       <div style={styles.header}>
         <div>
-          <span style={styles.kicker}>Cobro POS</span>
+          <span style={styles.kicker}>Resumen de cobro</span>
           <h3 style={styles.title}>
-            {estaSaldada ? "Venta saldada" : "Falta cubrir la venta"}
+            {estaSaldada ? "Venta cubierta" : "Falta cobrar"}
           </h3>
-
           <p style={styles.sub}>
-            {cantidadItems} item{cantidadItems === 1 ? "" : "s"} en el carrito.
+            {cantidadItems} item{cantidadItems === 1 ? "" : "s"} en la venta.
           </p>
         </div>
 
         <div style={estaSaldada ? styles.pillOk : styles.pillPending}>
-          {estaSaldada ? "OK" : "Pendiente"}
+          {estaSaldada ? "Cubierta" : "Pendiente"}
         </div>
       </div>
 
-      <div style={estaSaldada ? styles.heroOk : styles.heroPending}>
-        <span>{estaSaldada ? "Listo para finalizar" : "Base pendiente"}</span>
+      <div style={styles.totalLine}>
+        <span>Total venta</span>
+        <strong>{formatMoney(total)}</strong>
+      </div>
 
-        <strong>{estaSaldada ? formatMoney(0) : formatMoney(pendiente)}</strong>
+      <div style={styles.totalLine}>
+        <span>Pagos cargados</span>
+        <strong>{formatMoney(pagado)}</strong>
+      </div>
 
-        <small>
-          {estaSaldada
-            ? "Ya cargaste los pagos necesarios."
-            : "Elegí medio de pago y tocá “Completar saldo”."}
-        </small>
+      <div style={estaSaldada ? styles.amountOk : styles.amountPending}>
+        <span>{estaSaldada ? "Listo para finalizar" : "Falta cobrar"}</span>
+        <strong>{formatMoney(Math.max(Number(pendiente || 0), 0))}</strong>
       </div>
 
       {tieneSugerencia && (
         <div style={styles.cashHint}>
-          <span>Con el medio seleccionado, cobrale al cliente</span>
+          <span>Cliente paga con {getMedioLabel(medioPago)}</span>
           <strong>{formatMoney(montoCobroSugerido)}</strong>
-          <small>{getMedioLabel(medioPago)} · cálculo automático según reglas comerciales.</small>
+          <small>Calculado automáticamente según reglas comerciales.</small>
         </div>
       )}
-
-      <div style={styles.miniGrid}>
-        <Mini label="Precio lista" value={formatMoney(total)} />
-        <Mini label="Pagos cargados" value={formatMoney(pagado)} />
-      </div>
-    </div>
-  );
-}
-
-function Mini({ label, value }) {
-  return (
-    <div style={styles.mini}>
-      <span>{label}</span>
-      <strong>{value}</strong>
     </div>
   );
 }
@@ -74,15 +62,15 @@ function getMedioLabel(medio) {
     mercadopago: "MercadoPago",
   };
 
-  return labels[medio] || "Medio seleccionado";
+  return labels[medio] || "el medio seleccionado";
 }
 
 const styles = {
   box: {
-    border: "1px solid #e2e8f0",
-    borderRadius: 20,
-    padding: 16,
-    background: "#f8fafc",
+    border: "1px solid #dbe2ea",
+    borderRadius: 16,
+    padding: 14,
+    background: "white",
     marginBottom: 12,
   },
   header: {
@@ -90,11 +78,11 @@ const styles = {
     justifyContent: "space-between",
     gap: 12,
     alignItems: "flex-start",
-    marginBottom: 12,
+    marginBottom: 10,
   },
   kicker: {
     display: "block",
-    color: "#f97316",
+    color: "#64748b",
     fontSize: 11,
     fontWeight: 1000,
     textTransform: "uppercase",
@@ -103,75 +91,79 @@ const styles = {
   },
   title: {
     margin: 0,
-    fontSize: 23,
+    fontSize: 20,
     color: "#0f172a",
     letterSpacing: "-0.02em",
   },
   sub: {
-    margin: "4px 0 0",
-    color: "#475569",
-    fontSize: 13,
-    fontWeight: 800,
+    margin: "3px 0 0",
+    color: "#64748b",
+    fontSize: 12,
+    fontWeight: 700,
   },
   pillPending: {
     borderRadius: 999,
-    padding: "7px 10px",
+    padding: "6px 9px",
     background: "#fff7ed",
-    color: "#c2410c",
-    border: "1px solid #fed7aa",
-    fontSize: 12,
+    color: "#9a3412",
+    border: "1px solid #fdba74",
+    fontSize: 11,
     fontWeight: 1000,
   },
   pillOk: {
     borderRadius: 999,
-    padding: "7px 10px",
+    padding: "6px 9px",
     background: "#ecfdf5",
-    color: "#047857",
+    color: "#166534",
     border: "1px solid #86efac",
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: 1000,
   },
-  heroPending: {
-    borderRadius: 18,
-    padding: 18,
-    background: "#0f172a",
-    color: "white",
-    display: "grid",
-    gap: 5,
-    textAlign: "center",
+  totalLine: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 12,
+    padding: "7px 0",
+    borderTop: "1px solid #e2e8f0",
+    color: "#334155",
+    fontSize: 13,
+    fontWeight: 800,
   },
-  heroOk: {
-    borderRadius: 18,
-    padding: 18,
-    background: "#047857",
-    color: "white",
-    display: "grid",
-    gap: 5,
-    textAlign: "center",
+  amountPending: {
+    marginTop: 8,
+    borderRadius: 14,
+    padding: "12px 14px",
+    background: "#fff7ed",
+    border: "1px solid #fdba74",
+    color: "#9a3412",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+  },
+  amountOk: {
+    marginTop: 8,
+    borderRadius: 14,
+    padding: "12px 14px",
+    background: "#ecfdf5",
+    border: "1px solid #86efac",
+    color: "#166534",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
   },
   cashHint: {
     marginTop: 10,
-    borderRadius: 16,
-    padding: 14,
-    background: "#ecfdf5",
-    color: "#065f46",
-    border: "1px solid #86efac",
+    borderRadius: 12,
+    padding: 10,
+    background: "#eff6ff",
+    color: "#1d4ed8",
+    border: "1px solid #bfdbfe",
     display: "grid",
-    gap: 3,
+    gap: 2,
     textAlign: "center",
-  },
-  miniGrid: {
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: 10,
-    marginTop: 10,
-  },
-  mini: {
-    border: "1px solid #e2e8f0",
-    background: "#ffffff",
-    borderRadius: 14,
-    padding: 11,
-    display: "grid",
-    gap: 4,
+    fontSize: 13,
+    fontWeight: 800,
   },
 };

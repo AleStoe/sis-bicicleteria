@@ -31,7 +31,7 @@ export default function NuevaVentaTopBar({ searchRef, query, onQueryChange, onBu
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           onKeyDown={onBuscarEnter}
-          placeholder="Buscar producto, código o barra... (F2)"
+          placeholder="ESCANEAR PRODUCTO O CÓDIGO DE BARRAS · F2"
           style={topSearchStyle}
         />
         <span style={searchIconStyle}>⌕</span>
