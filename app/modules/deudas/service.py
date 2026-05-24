@@ -53,6 +53,11 @@ def _validar_venta_para_deuda(conn, id_venta: int, id_cliente: int):
             status_code=400,
             detail="La venta no pertenece al cliente indicado",
         )
+    if venta["estado"] != "entregada":
+        raise HTTPException(
+            status_code=400,
+            detail="Solo se puede generar deuda sobre ventas entregadas",
+        )
 
     deuda_existente = repository.get_deuda_abierta_by_origen(
         conn,

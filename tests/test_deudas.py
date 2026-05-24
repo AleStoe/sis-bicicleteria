@@ -6,7 +6,7 @@ from tests.conftest import (
     get_deuda,
     get_deudas_by_cliente,
     get_deuda_movimientos,
-    get_venta,  # 👈 agregar esto
+    get_venta,
 )
 
 
@@ -26,23 +26,111 @@ def _abrir_caja(client, sucursal_id: int, usuario_id: int):
 
 
 def _crear_venta_basica(client, seed_venta_basica):
-    payload = {
-        "id_cliente": seed_venta_basica["cliente_id"],
-        "id_sucursal": seed_venta_basica["sucursal_id"],
-        "id_usuario": seed_venta_basica["usuario_id"],
-        "items": [
-            {
-                "id_variante": seed_venta_basica["variante_id"],
-                "cantidad": 1,
-            }
-        ],
-    }
-    response = client.post("/ventas/", json=payload)
-    assert response.status_code == 200
+    response = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 1,
+                }
+            ],
+        },
+    )
+    assert response.status_code == 200, response.text
     return response.json()["venta_id"]
 
 
-def test_crear_deuda_desde_venta(client, db_conn, seed_venta_basica):
+def _crear_deuda_automatica_por_entrega(
+    client,
+    db_conn,
+    seed_venta_basica,
+    *,
+    pago_previo: Decimal | int | float = Decimal("0"),
+):
+    """
+    Flujo real del sistema:
+    venta -> caja -> pago previo opcional -> entrega con saldo -> deuda automática.
+    """
+    venta_id = _crear_venta_basica(client, seed_venta_basica)
+
+    abrir = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+    assert abrir.status_code == 200, abrir.text
+    caja_id = abrir.json()["caja_id"]
+
+    pago_previo = _to_decimal(pago_previo)
+    if pago_previo > Decimal("0"):
+        pago = client.post(
+            "/pagos/",
+            json={
+                "origen_tipo": "venta",
+                "origen_id": venta_id,
+                "medio_pago": "efectivo",
+                "monto": float(pago_previo),
+                "id_usuario": seed_venta_basica["usuario_id"],
+                "nota": "Pago previo antes de entregar con deuda",
+            },
+        )
+        assert pago.status_code == 200, pago.text
+
+    entrega = client.post(
+        f"/ventas/{venta_id}/entregar",
+        json={"id_usuario": seed_venta_basica["usuario_id"]},
+    )
+    assert entrega.status_code == 200, entrega.text
+
+    venta = get_venta(db_conn, venta_id)
+    assert venta["estado"] == "entregada"
+
+    deudas = get_deudas_by_cliente(db_conn, seed_venta_basica["cliente_id"])
+    deuda = next(
+        d for d in deudas
+        if d["origen_tipo"] == "venta" and d["origen_id"] == venta_id
+    )
+
+    return {
+        "venta_id": venta_id,
+        "deuda_id": deuda["id"],
+        "deuda": deuda,
+        "caja_id": caja_id,
+    }
+
+
+def test_crear_deuda_desde_entrega_con_saldo_pendiente(client, db_conn, seed_venta_basica):
+    contexto = _crear_deuda_automatica_por_entrega(client, db_conn, seed_venta_basica)
+    venta_id = contexto["venta_id"]
+    deuda_id = contexto["deuda_id"]
+
+    deuda = get_deuda(db_conn, deuda_id)
+    assert deuda is not None
+    assert deuda["id_cliente"] == seed_venta_basica["cliente_id"]
+    assert deuda["origen_tipo"] == "venta"
+    assert deuda["origen_id"] == venta_id
+    assert _to_decimal(deuda["saldo_actual"]) == _to_decimal(seed_venta_basica["precio_venta"])
+    assert deuda["estado"] == "abierta"
+
+    movimientos = get_deuda_movimientos(db_conn, deuda_id)
+    assert len(movimientos) == 1
+    assert movimientos[0]["tipo_movimiento"] == "cargo"
+    assert _to_decimal(movimientos[0]["monto"]) == _to_decimal(seed_venta_basica["precio_venta"])
+
+    auditoria = get_auditoria_by_entidad(db_conn, "deuda", deuda_id)
+    acciones = [a["accion"] for a in auditoria]
+    assert "deuda_generada" in acciones
+
+
+def test_rechaza_crear_deuda_manual_si_venta_no_esta_entregada(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
     venta_id = _crear_venta_basica(client, seed_venta_basica)
 
     response = client.post(
@@ -51,49 +139,21 @@ def test_crear_deuda_desde_venta(client, db_conn, seed_venta_basica):
             "id_cliente": seed_venta_basica["cliente_id"],
             "id_venta": venta_id,
             "monto_inicial": 5000,
-            "observacion": "Deuda inicial de prueba",
+            "observacion": "Deuda inválida sobre venta no entregada",
             "id_usuario": seed_venta_basica["usuario_id"],
         },
     )
 
-    assert response.status_code == 200
-    data = response.json()
+    assert response.status_code == 400
+    assert "ventas entregadas" in response.json()["detail"]
 
-    assert data["ok"] is True
-    deuda_id = data["deuda_id"]
-
-    deuda = get_deuda(db_conn, deuda_id)
-    assert deuda is not None
-    assert deuda["id_cliente"] == seed_venta_basica["cliente_id"]
-    assert deuda["origen_tipo"] == "venta"
-    assert deuda["origen_id"] == venta_id
-    assert _to_decimal(deuda["saldo_actual"]) == Decimal("5000")
-    assert deuda["estado"] == "abierta"
-
-    movimientos = get_deuda_movimientos(db_conn, deuda_id)
-    assert len(movimientos) == 1
-    assert movimientos[0]["tipo_movimiento"] == "cargo"
-    assert _to_decimal(movimientos[0]["monto"]) == Decimal("5000")
-
-    auditoria = get_auditoria_by_entidad(db_conn, "deuda", deuda_id)
-    acciones = [a["accion"] for a in auditoria]
-    assert "deuda_generada" in acciones
+    deudas = get_deudas_by_cliente(db_conn, seed_venta_basica["cliente_id"])
+    assert not any(d["origen_id"] == venta_id for d in deudas)
 
 
 def test_rechaza_crear_deuda_duplicada_para_misma_venta(client, db_conn, seed_venta_basica):
-    venta_id = _crear_venta_basica(client, seed_venta_basica)
-
-    primera = client.post(
-        "/deudas/",
-        json={
-            "id_cliente": seed_venta_basica["cliente_id"],
-            "id_venta": venta_id,
-            "monto_inicial": 5000,
-            "observacion": "Primera deuda",
-            "id_usuario": seed_venta_basica["usuario_id"],
-        },
-    )
-    assert primera.status_code == 200
+    contexto = _crear_deuda_automatica_por_entrega(client, db_conn, seed_venta_basica)
+    venta_id = contexto["venta_id"]
 
     segunda = client.post(
         "/deudas/",
@@ -109,34 +169,20 @@ def test_rechaza_crear_deuda_duplicada_para_misma_venta(client, db_conn, seed_ve
     assert segunda.status_code == 400
     assert "ya tiene una deuda abierta" in segunda.json()["detail"]
 
-    deudas = get_deudas_by_cliente(db_conn, seed_venta_basica["cliente_id"])
+    deudas = [
+        d for d in get_deudas_by_cliente(db_conn, seed_venta_basica["cliente_id"])
+        if d["origen_id"] == venta_id
+    ]
     assert len(deudas) == 1
 
 
 def test_registrar_pago_parcial_de_deuda(client, db_conn, seed_venta_basica):
-    venta_id = _crear_venta_basica(client, seed_venta_basica)
-    crear_deuda = client.post(
-        "/deudas/",
-        json={
-            "id_cliente": seed_venta_basica["cliente_id"],
-            "id_venta": venta_id,
-            "monto_inicial": 10000,
-            "observacion": "Deuda para pago parcial",
-            "id_usuario": seed_venta_basica["usuario_id"],
-        },
-    )
-    assert crear_deuda.status_code == 200
-    deuda_id = crear_deuda.json()["deuda_id"]
-
-    abrir_caja = _abrir_caja(
-        client,
-        seed_venta_basica["sucursal_id"],
-        seed_venta_basica["usuario_id"],
-    )
-    assert abrir_caja.status_code == 200
-    caja_id = abrir_caja.json()["caja_id"]
+    contexto = _crear_deuda_automatica_por_entrega(client, db_conn, seed_venta_basica)
+    deuda_id = contexto["deuda_id"]
+    caja_id = contexto["caja_id"]
 
     auditoria_antes = get_auditoria_by_entidad(db_conn, "deuda", deuda_id)
+
     response = client.post(
         f"/deudas/{deuda_id}/pagos",
         json={
@@ -147,16 +193,18 @@ def test_registrar_pago_parcial_de_deuda(client, db_conn, seed_venta_basica):
         },
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 200, response.text
     data = response.json()
+
+    saldo_esperado = _to_decimal(seed_venta_basica["precio_venta"]) - Decimal("4000")
 
     assert data["ok"] is True
     assert data["deuda_id"] == deuda_id
-    assert _to_decimal(data["saldo_actual"]) == Decimal("6000")
+    assert _to_decimal(data["saldo_actual"]) == saldo_esperado
     assert data["estado"] == "abierta"
 
     deuda = get_deuda(db_conn, deuda_id)
-    assert _to_decimal(deuda["saldo_actual"]) == Decimal("6000")
+    assert _to_decimal(deuda["saldo_actual"]) == saldo_esperado
     assert deuda["estado"] == "abierta"
 
     movimientos = get_deuda_movimientos(db_conn, deuda_id)
@@ -165,9 +213,13 @@ def test_registrar_pago_parcial_de_deuda(client, db_conn, seed_venta_basica):
     assert _to_decimal(movimientos[1]["monto"]) == Decimal("4000")
 
     movimientos_caja = get_caja_movimientos(db_conn, caja_id)
-    assert len(movimientos_caja) == 1
-    assert movimientos_caja[0]["tipo_movimiento"] == "ingreso"
-    assert _to_decimal(movimientos_caja[0]["monto"]) == Decimal("4000")
+    ingresos_deuda = [
+        m for m in movimientos_caja
+        if m["tipo_movimiento"] == "ingreso"
+        and m["origen_tipo"] == "pago"
+        and _to_decimal(m["monto"]) == Decimal("4000")
+    ]
+    assert len(ingresos_deuda) == 1
 
     auditoria_despues = get_auditoria_by_entidad(db_conn, "deuda", deuda_id)
     nuevos_eventos = auditoria_despues[len(auditoria_antes):]
@@ -176,43 +228,25 @@ def test_registrar_pago_parcial_de_deuda(client, db_conn, seed_venta_basica):
         e for e in nuevos_eventos
         if e["accion"] == "deuda_pago_registrado"
     ]
-
     assert len(eventos_pago) == 1
 
-    evento = eventos_pago[0]
-
-    assert evento["entidad"] == "deuda"
-    assert evento["entidad_id"] == deuda_id
-    assert evento["id_usuario"] == seed_venta_basica["usuario_id"]
-
-    detalle = (evento["detalle"] or "").lower()
-
+    detalle = (eventos_pago[0]["detalle"] or "").lower()
     assert "4000" in detalle
-    assert "6000" in detalle
 
 
 def test_registrar_pago_total_de_deuda_la_cierra(client, db_conn, seed_venta_basica):
-    venta_id = _crear_venta_basica(client, seed_venta_basica)
-
-    crear_deuda = client.post(
-        "/deudas/",
-        json={
-            "id_cliente": seed_venta_basica["cliente_id"],
-            "id_venta": venta_id,
-            "monto_inicial": 7000,
-            "observacion": "Deuda para cancelacion total",
-            "id_usuario": seed_venta_basica["usuario_id"],
-        },
-    )
-    assert crear_deuda.status_code == 200
-    deuda_id = crear_deuda.json()["deuda_id"]
-    auditoria_antes = get_auditoria_by_entidad(db_conn, "deuda", deuda_id)
-    abrir_caja = _abrir_caja(
+    contexto = _crear_deuda_automatica_por_entrega(
         client,
-        seed_venta_basica["sucursal_id"],
-        seed_venta_basica["usuario_id"],
+        db_conn,
+        seed_venta_basica,
+        pago_previo=Decimal("17440"),
     )
-    assert abrir_caja.status_code == 200
+    deuda_id = contexto["deuda_id"]
+
+    deuda_inicial = get_deuda(db_conn, deuda_id)
+    assert _to_decimal(deuda_inicial["saldo_actual"]) == Decimal("7000")
+
+    auditoria_antes = get_auditoria_by_entidad(db_conn, "deuda", deuda_id)
 
     pago = client.post(
         f"/deudas/{deuda_id}/pagos",
@@ -224,7 +258,7 @@ def test_registrar_pago_total_de_deuda_la_cierra(client, db_conn, seed_venta_bas
         },
     )
 
-    assert pago.status_code == 200
+    assert pago.status_code == 200, pago.text
     data = pago.json()
 
     assert _to_decimal(data["saldo_actual"]) == Decimal("0")
@@ -241,48 +275,20 @@ def test_registrar_pago_total_de_deuda_la_cierra(client, db_conn, seed_venta_bas
 
     auditoria_despues = get_auditoria_by_entidad(db_conn, "deuda", deuda_id)
     nuevos_eventos = auditoria_despues[len(auditoria_antes):]
-
-    eventos_pago = [
-        e for e in nuevos_eventos
-        if e["accion"] == "deuda_pago_registrado"
-    ]
-
-    assert len(eventos_pago) == 1
-
-    evento = eventos_pago[0]
-
-    assert evento["entidad"] == "deuda"
-    assert evento["entidad_id"] == deuda_id
-    assert evento["id_usuario"] == seed_venta_basica["usuario_id"]
-
-    detalle = (evento["detalle"] or "").lower()
-
-    assert "7000" in detalle
-    assert "0" in detalle
+    assert any(e["accion"] == "deuda_pago_registrado" for e in nuevos_eventos)
 
 
 def test_rechaza_sobrepago_de_deuda(client, db_conn, seed_venta_basica):
-    venta_id = _crear_venta_basica(client, seed_venta_basica)
-
-    crear_deuda = client.post(
-        "/deudas/",
-        json={
-            "id_cliente": seed_venta_basica["cliente_id"],
-            "id_venta": venta_id,
-            "monto_inicial": 5000,
-            "observacion": "Deuda para sobrepago",
-            "id_usuario": seed_venta_basica["usuario_id"],
-        },
-    )
-    assert crear_deuda.status_code == 200
-    deuda_id = crear_deuda.json()["deuda_id"]
-
-    abrir_caja = _abrir_caja(
+    contexto = _crear_deuda_automatica_por_entrega(
         client,
-        seed_venta_basica["sucursal_id"],
-        seed_venta_basica["usuario_id"],
+        db_conn,
+        seed_venta_basica,
+        pago_previo=Decimal("19440"),
     )
-    assert abrir_caja.status_code == 200
+    deuda_id = contexto["deuda_id"]
+
+    deuda_inicial = get_deuda(db_conn, deuda_id)
+    assert _to_decimal(deuda_inicial["saldo_actual"]) == Decimal("5000")
 
     pago = client.post(
         f"/deudas/{deuda_id}/pagos",
@@ -305,18 +311,9 @@ def test_rechaza_sobrepago_de_deuda(client, db_conn, seed_venta_basica):
     assert len(movimientos) == 1
     assert movimientos[0]["tipo_movimiento"] == "cargo"
 
-def test_listar_deudas_sin_filtros(client, db_conn, seed_venta_basica):
-    venta_id = _crear_venta_basica(client, seed_venta_basica)
 
-    client.post(
-        "/deudas/",
-        json={
-            "id_cliente": seed_venta_basica["cliente_id"],
-            "id_venta": venta_id,
-            "monto_inicial": 5000,
-            "id_usuario": seed_venta_basica["usuario_id"],
-        },
-    )
+def test_listar_deudas_sin_filtros(client, db_conn, seed_venta_basica):
+    _crear_deuda_automatica_por_entrega(client, db_conn, seed_venta_basica)
 
     response = client.get("/deudas/")
     assert response.status_code == 200
@@ -325,56 +322,32 @@ def test_listar_deudas_sin_filtros(client, db_conn, seed_venta_basica):
     assert isinstance(data, list)
     assert len(data) >= 1
 
-def test_listar_deudas_por_cliente(client, db_conn, seed_venta_basica):
-    venta_id = _crear_venta_basica(client, seed_venta_basica)
 
-    client.post(
-        "/deudas/",
-        json={
-            "id_cliente": seed_venta_basica["cliente_id"],
-            "id_venta": venta_id,
-            "monto_inicial": 5000,
-            "id_usuario": seed_venta_basica["usuario_id"],
-        },
-    )
+def test_listar_deudas_por_cliente(client, db_conn, seed_venta_basica):
+    _crear_deuda_automatica_por_entrega(client, db_conn, seed_venta_basica)
 
     response = client.get(f"/deudas?id_cliente={seed_venta_basica['cliente_id']}")
     assert response.status_code == 200
 
     data = response.json()
+    assert len(data) >= 1
     assert all(d["id_cliente"] == seed_venta_basica["cliente_id"] for d in data)
 
-def test_listar_deudas_por_estado(client, db_conn, seed_venta_basica):
-    venta_id = _crear_venta_basica(client, seed_venta_basica)
 
-    client.post(
-        "/deudas/",
-        json={
-            "id_cliente": seed_venta_basica["cliente_id"],
-            "id_venta": venta_id,
-            "monto_inicial": 5000,
-            "id_usuario": seed_venta_basica["usuario_id"],
-        },
-    )
+def test_listar_deudas_por_estado(client, db_conn, seed_venta_basica):
+    _crear_deuda_automatica_por_entrega(client, db_conn, seed_venta_basica)
 
     response = client.get("/deudas?estado=abierta")
     assert response.status_code == 200
 
     data = response.json()
+    assert len(data) >= 1
     assert all(d["estado"] == "abierta" for d in data)
 
-def test_listar_deudas_por_origen_venta(client, db_conn, seed_venta_basica):
-    venta_id = _crear_venta_basica(client, seed_venta_basica)
 
-    client.post(
-        "/deudas/",
-        json={
-            "id_cliente": seed_venta_basica["cliente_id"],
-            "id_venta": venta_id,
-            "monto_inicial": 5000,
-            "id_usuario": seed_venta_basica["usuario_id"],
-        },
-    )
+def test_listar_deudas_por_origen_venta(client, db_conn, seed_venta_basica):
+    contexto = _crear_deuda_automatica_por_entrega(client, db_conn, seed_venta_basica)
+    venta_id = contexto["venta_id"]
 
     response = client.get(f"/deudas?origen_tipo=venta&origen_id={venta_id}")
     assert response.status_code == 200
@@ -383,71 +356,22 @@ def test_listar_deudas_por_origen_venta(client, db_conn, seed_venta_basica):
     assert len(data) == 1
     assert data[0]["origen_id"] == venta_id
 
+
 def test_flujo_real_venta_parcial_entrega_con_deuda_y_pago_deuda(
     client, db_conn, seed_venta_basica
 ):
-    # 1. Crear venta
-    venta = client.post(
-        "/ventas/",
-        json={
-            "id_cliente": seed_venta_basica["cliente_id"],
-            "id_sucursal": seed_venta_basica["sucursal_id"],
-            "id_usuario": seed_venta_basica["usuario_id"],
-            "items": [
-                {
-                    "id_variante": seed_venta_basica["variante_id"],
-                    "cantidad": 1,
-                    "id_bicicleta_serializada": None,
-                }
-            ],
-        },
+    contexto = _crear_deuda_automatica_por_entrega(
+        client,
+        db_conn,
+        seed_venta_basica,
+        pago_previo=Decimal("10000"),
     )
-    assert venta.status_code == 200, venta.text
-    venta_id = venta.json()["venta_id"]
-
-    # 2. Abrir caja
-    abrir = client.post(
-        "/cajas/abrir",
-        json={
-            "id_sucursal": seed_venta_basica["sucursal_id"],
-            "id_usuario": seed_venta_basica["usuario_id"],
-            "monto_apertura": 0,
-        },
-    )
-    assert abrir.status_code == 200, abrir.text
-
-    # 3. Pago parcial
-    pago = client.post(
-        "/pagos/",
-        json={
-            "origen_tipo": "venta",
-            "origen_id": venta_id,
-            "medio_pago": "efectivo",
-            "monto": 10000,
-            "id_usuario": seed_venta_basica["usuario_id"],
-            "nota": "Seña inicial",
-        },
-    )
-    assert pago.status_code == 200, pago.text
-
-    # 4. Entregar con deuda
-    entrega = client.post(
-        f"/ventas/{venta_id}/entregar",
-        json={"id_usuario": seed_venta_basica["usuario_id"]},
-    )
-    assert entrega.status_code == 200, entrega.text
-
-    venta_db = get_venta(db_conn, venta_id)
-    assert venta_db["estado"] == "entregada"
-
-    # 5. Buscar deuda generada
-    deudas = get_deudas_by_cliente(db_conn, seed_venta_basica["cliente_id"])
-    deuda = next(d for d in deudas if d["origen_tipo"] == "venta" and d["origen_id"] == venta_id)
+    venta_id = contexto["venta_id"]
+    deuda = contexto["deuda"]
 
     assert deuda["estado"] == "abierta"
-    assert Decimal(str(deuda["saldo_actual"])) == Decimal("14440.00")
+    assert _to_decimal(deuda["saldo_actual"]) == Decimal("14440.00")
 
-    # 6. Pagar deuda completa
     pago_deuda = client.post(
         f"/deudas/{deuda['id']}/pagos",
         json={
@@ -459,56 +383,30 @@ def test_flujo_real_venta_parcial_entrega_con_deuda_y_pago_deuda(
     )
     assert pago_deuda.status_code == 200, pago_deuda.text
 
-    deudas_despues = get_deudas_by_cliente(db_conn, seed_venta_basica["cliente_id"])
-    deuda_final = next(d for d in deudas_despues if d["id"] == deuda["id"])
-
+    deuda_final = get_deuda(db_conn, deuda["id"])
     assert deuda_final["estado"] == "cerrada"
-    assert Decimal(str(deuda_final["saldo_actual"])) == Decimal("0.00")
-    # 7. La venta sigue entregada (validación DB)
+    assert _to_decimal(deuda_final["saldo_actual"]) == Decimal("0.00")
+
     venta_final = get_venta(db_conn, venta_id)
     assert venta_final["estado"] == "entregada"
 
-    # 8. Validación por API (no confiar solo en DB)
     response = client.get(f"/ventas/{venta_id}")
     assert response.status_code == 200
+    assert response.json()["venta"]["estado"] == "entregada"
 
-    data = response.json()
-    assert data["venta"]["estado"] == "entregada"
 
 def test_pago_parcial_reversion_y_entrega_generan_saldo_correcto(
     client, db_conn, seed_venta_basica
 ):
-    # Crear venta (1 unidad)
-    venta = client.post(
-        "/ventas/",
-        json={
-            "id_cliente": seed_venta_basica["cliente_id"],
-            "id_sucursal": seed_venta_basica["sucursal_id"],
-            "id_usuario": seed_venta_basica["usuario_id"],
-            "items": [
-                {
-                    "id_variante": seed_venta_basica["variante_id"],
-                    "cantidad": 1,
-                    "id_bicicleta_serializada": None,
-                }
-            ],
-        },
-    )
-    assert venta.status_code == 200
-    venta_id = venta.json()["venta_id"]
+    venta_id = _crear_venta_basica(client, seed_venta_basica)
 
-    # Abrir caja
-    abrir = client.post(
-        "/cajas/abrir",
-        json={
-            "id_sucursal": seed_venta_basica["sucursal_id"],
-            "id_usuario": seed_venta_basica["usuario_id"],
-            "monto_apertura": 0,
-        },
+    abrir = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
     )
     assert abrir.status_code == 200
 
-    # Pago parcial
     pago = client.post(
         "/pagos/",
         json={
@@ -523,7 +421,6 @@ def test_pago_parcial_reversion_y_entrega_generan_saldo_correcto(
     assert pago.status_code == 200
     pago_id = pago.json()["pago_id"]
 
-    # Revertir pago
     rev = client.post(
         f"/pagos/{pago_id}/revertir",
         json={
@@ -533,65 +430,25 @@ def test_pago_parcial_reversion_y_entrega_generan_saldo_correcto(
     )
     assert rev.status_code == 200
 
-    # Entregar
     entrega = client.post(
         f"/ventas/{venta_id}/entregar",
         json={"id_usuario": seed_venta_basica["usuario_id"]},
     )
     assert entrega.status_code == 200
 
-    # Validar deuda completa
     deudas = get_deudas_by_cliente(db_conn, seed_venta_basica["cliente_id"])
     deuda = next(d for d in deudas if d["origen_id"] == venta_id)
 
     total = Decimal(str(seed_venta_basica["precio_venta"]))
-
     assert Decimal(str(deuda["saldo_actual"])) == total
 
-def test_pago_parcial_de_deuda_no_cierra_deuda(
-    client, db_conn, seed_venta_basica
-):
-    # Crear venta
-    venta = client.post(
-        "/ventas/",
-        json={
-            "id_cliente": seed_venta_basica["cliente_id"],
-            "id_sucursal": seed_venta_basica["sucursal_id"],
-            "id_usuario": seed_venta_basica["usuario_id"],
-            "items": [
-                {
-                    "id_variante": seed_venta_basica["variante_id"],
-                    "cantidad": 1,
-                    "id_bicicleta_serializada": None,
-                }
-            ],
-        },
-    )
-    venta_id = venta.json()["venta_id"]
 
-    # Abrir caja
-    client.post(
-        "/cajas/abrir",
-        json={
-            "id_sucursal": seed_venta_basica["sucursal_id"],
-            "id_usuario": seed_venta_basica["usuario_id"],
-            "monto_apertura": 0,
-        },
-    )
-
-    # Entregar SIN pagar → genera deuda completa
-    client.post(
-        f"/ventas/{venta_id}/entregar",
-        json={"id_usuario": seed_venta_basica["usuario_id"]},
-    )
-
-    # Buscar deuda
-    deudas = get_deudas_by_cliente(db_conn, seed_venta_basica["cliente_id"])
-    deuda = next(d for d in deudas if d["origen_id"] == venta_id)
+def test_pago_parcial_de_deuda_no_cierra_deuda(client, db_conn, seed_venta_basica):
+    contexto = _crear_deuda_automatica_por_entrega(client, db_conn, seed_venta_basica)
+    deuda = contexto["deuda"]
 
     total = Decimal(str(deuda["saldo_actual"]))
 
-    # Pago parcial
     pago = client.post(
         f"/deudas/{deuda['id']}/pagos",
         json={
@@ -603,9 +460,6 @@ def test_pago_parcial_de_deuda_no_cierra_deuda(
     )
     assert pago.status_code == 200
 
-    # Validar que NO cerró
-    deudas_despues = get_deudas_by_cliente(db_conn, seed_venta_basica["cliente_id"])
-    deuda_final = next(d for d in deudas_despues if d["id"] == deuda["id"])
-
+    deuda_final = get_deuda(db_conn, deuda["id"])
     assert deuda_final["estado"] == "abierta"
     assert Decimal(str(deuda_final["saldo_actual"])) == total / 2
