@@ -72,8 +72,8 @@ def abrir_caja(data):
                 raise HTTPException(
                     status_code=400,
                     detail=(
-                        f"Ya hay una caja abierta para la sucursal {data.id_sucursal} "
-                        "en la fecha actual"
+                        f"Ya hay una caja abierta para la sucursal {data.id_sucursal}. "
+                        "Cerrá la caja abierta antes de abrir una nueva."
                     ),
                 )
 

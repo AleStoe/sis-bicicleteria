@@ -78,8 +78,8 @@ def get_caja_abierta_hoy_by_sucursal(conn, id_sucursal: int):
                 id_usuario_cierre
             FROM cajas
             WHERE id_sucursal = %s
-              AND fecha = CURRENT_DATE
               AND estado = 'abierta'
+            ORDER BY fecha DESC, id DESC
             LIMIT 1
             """,
             (id_sucursal,),
@@ -104,15 +104,14 @@ def get_caja_abierta_hoy_by_sucursal_for_update(conn, id_sucursal: int):
                 id_usuario_cierre
             FROM cajas
             WHERE id_sucursal = %s
-              AND fecha = CURRENT_DATE
               AND estado = 'abierta'
+            ORDER BY fecha DESC, id DESC
             LIMIT 1
             FOR UPDATE
             """,
             (id_sucursal,),
         )
         return cur.fetchone()
-
 
 def insert_caja(conn, id_sucursal: int, monto_apertura, id_usuario: int):
     with conn.cursor() as cur:
