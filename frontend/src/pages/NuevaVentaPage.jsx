@@ -483,10 +483,6 @@ async function handleBuscarEnter(e) {
       setGuardando(true);
       setError("");
       setMensaje("");
-      console.log("TOTAL FRONT", total);
-      console.log("PAGOS", JSON.stringify(pagos, null, 2));
-      console.log("ITEMS FRONT", JSON.stringify(items, null, 2));
-      console.log("PAYLOAD CREAR VENTA", JSON.stringify(payload, null, 2));
       const resultado = await crearVenta(payload);
 
       if (entregar_ahora) {
