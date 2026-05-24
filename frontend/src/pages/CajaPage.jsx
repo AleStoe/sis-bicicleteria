@@ -40,32 +40,43 @@ export default function CajaPage() {
     cargarCaja();
   }, []);
 
-  async function cargarCaja() {
-    try {
-      setLoading(true);
-      setError("");
-      setMensaje("");
+async function cargarCaja() {
+  try {
+    setLoading(true);
+    setError("");
+    setMensaje("");
 
-      const cajaAbierta = await obtenerCajaAbierta(ID_SUCURSAL);
-      const detalleCaja = await obtenerCajaDetalle(cajaAbierta.caja.id);
+    const cajaAbierta = await obtenerCajaAbierta(ID_SUCURSAL);
+    const detalleCaja = await obtenerCajaDetalle(cajaAbierta.caja.id);
 
-      setDetalle(detalleCaja);
-      setMontoReal(String(detalleCaja.efectivo_teorico ?? ""));
-    } catch (err) {
-      const msg = err.message || "";
+    setDetalle(detalleCaja);
+    setMontoReal(String(detalleCaja.efectivo_teorico ?? ""));
+  } catch (err) {
+    const msg = String(err?.message || "");
 
-      if (msg.toLowerCase().includes("no hay caja abierta")) {
-        setDetalle(null);
-        return;
-      }
-
+    if (
+      msg.toLowerCase().includes("no hay caja abierta") ||
+      msg.toLowerCase().includes("404")
+    ) {
       setDetalle(null);
-      setError(msg || "No se pudo cargar la caja");
-    } finally {
-      setLoading(false);
+      setError("");
+      return;
     }
-  }
 
+    setDetalle(null);
+
+    if (msg.toLowerCase().includes("failed to fetch")) {
+      setError(
+        "No se pudo conectar con el servidor. Revisá que el backend esté encendido."
+      );
+      return;
+    }
+
+    setError(msg || "No se pudo cargar la caja");
+  } finally {
+    setLoading(false);
+  }
+}
   async function handleAbrirCaja(e) {
     e.preventDefault();
     setError("");

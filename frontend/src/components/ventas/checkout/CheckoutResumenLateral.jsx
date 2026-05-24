@@ -27,31 +27,31 @@ export default function CheckoutResumenLateral({
       <h2 style={styles.summaryClient}>{clienteNombre}</h2>
 
       <div style={styles.summaryBox}>
-        <span>Precio lista</span>
+        <span>Precio de venta</span>
         <strong>{formatMoney(draft.total, { cents: true })}</strong>
       </div>
 
       <div style={styles.metricsGrid}>
         <div style={styles.metricBox}>
-          <span>Base cubierta</span>
+          <span>Venta cubierta</span>
           <strong>{formatMoney(baseCubierta, { cents: true })}</strong>
         </div>
 
         <div style={styles.metricBox}>
-          <span>Cliente paga</span>
+          <span>Cobrado al cliente</span>
           <strong>{formatMoney(clientePagoTotal, { cents: true })}</strong>
         </div>
       </div>
 
       <div style={ventaSaldada ? styles.statusBoxOk : styles.statusBox}>
-        <span>{ventaSaldada ? "Estado" : "Saldo base pendiente"}</span>
+        <span>{ventaSaldada ? "Estado" : "Falta cubrir"}</span>
         <strong>
           {ventaSaldada ? "Venta saldada" : formatMoney(saldoBasePendiente, { cents: true })}
         </strong>
         <small>
           {ventaSaldada
-            ? "La base de la venta está cubierta."
-            : "No es “falta cobrar”: cambia según el medio elegido."}
+            ? "La venta ya está cubierta."
+            : "Elegí el medio de pago para saber cuánto cobra el cliente."}
         </small>
       </div>
 
@@ -65,7 +65,7 @@ function PagosCargados({ pagosPanel, onQuitarPago }) {
   return (
     <div style={styles.paymentsBox}>
       <div style={styles.boxHeader}>
-        <strong>Pagos cargados</strong>
+        <strong>Pagos agregados</strong>
         <span>{pagosPanel.length}</span>
       </div>
 
@@ -102,10 +102,10 @@ function PagosCargados({ pagosPanel, onQuitarPago }) {
                 </div>
 
                 <div style={styles.paymentDetails}>
-                  <span>Base</span>
+                  <span>Cubre venta</span>
                   <strong>{formatMoney(pago.monto_base, { cents: true })}</strong>
 
-                  <span>Cliente paga</span>
+                  <span>Cobrado al cliente</span>
                   <strong>
                     {formatMoney(pago.monto_total_cobrado ?? pago.monto_base, { cents: true })}
                   </strong>
@@ -128,7 +128,7 @@ function PagosCargados({ pagosPanel, onQuitarPago }) {
           })}
         </div>
       ) : (
-        <p style={styles.emptyPayments}>Todavía no cargaste pagos.</p>
+        <p style={styles.emptyPayments}>Todavía no agregaste pagos.</p>
       )}
     </div>
   );

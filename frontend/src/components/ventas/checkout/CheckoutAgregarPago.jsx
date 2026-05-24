@@ -1,10 +1,10 @@
 import { formatMoney } from "../../../utils/formatters";
 
 const MEDIOS_PAGO = [
-  { value: "efectivo", label: "Efectivo", icon: "💵", helper: "Precio contado" },
-  { value: "transferencia", label: "Transferencia", icon: "🏦", helper: "Precio contado" },
-  { value: "tarjeta", label: "Tarjeta", icon: "💳", helper: "Con financiación" },
-  { value: "mercadopago", label: "MercadoPago", icon: "📲", helper: "Pago digital" },
+  { value: "efectivo", label: "Efectivo", icon: "💵", helper: "Contado" },
+  { value: "transferencia", label: "Transferencia", icon: "🏦", helper: "Contado" },
+  { value: "tarjeta", label: "Tarjeta", icon: "💳", helper: "Cuotas / recargo" },
+  { value: "mercadopago", label: "MercadoPago", icon: "📲", helper: "Digital" },
 ];
 
 export default function CheckoutAgregarPago({
@@ -38,9 +38,9 @@ export default function CheckoutAgregarPago({
     <div style={styles.payBox}>
       <div style={styles.header}>
         <div>
-          <div style={styles.payTitle}>Elegí cómo paga el cliente</div>
+          <div style={styles.payTitle}>¿Cómo paga el cliente?</div>
           <div style={styles.subtitle}>
-            Primero se muestra el precio lista; al elegir medio, el sistema calcula el precio final real.
+            Elegí un medio, tocá “Completar saldo” y el sistema te dice cuánto cobrar.
           </div>
         </div>
       </div>
@@ -103,7 +103,7 @@ export default function CheckoutAgregarPago({
           </div>
 
           <div style={styles.previewRow}>
-            <span>Base que se aplica</span>
+            <span>Parte de la venta que cubre</span>
             <strong>{formatMoney(montoBaseSugerido)}</strong>
           </div>
 
@@ -130,11 +130,11 @@ export default function CheckoutAgregarPago({
 
       <div style={styles.amountHeader}>
         <div>
-          <div style={styles.amountLabel}>{esTarjeta ? "Monto base a financiar" : "Monto base a cobrar"}</div>
-          <small style={styles.amountHint}>Usá “Saldar” para completar automáticamente lo que falta.</small>
+          <div style={styles.amountLabel}>{esTarjeta ? "Parte de la venta a financiar" : "Parte de la venta a cubrir"}</div>
+          <small style={styles.amountHint}>No lo pienses: usá “Completar saldo” para cargar lo pendiente.</small>
         </div>
         <button type="button" onClick={sugerirMontoParaSaldar} disabled={simulando} style={styles.saldarBtn}>
-          {simulando ? "Calculando..." : "Saldar"}
+          {simulando ? "Calculando..." : "Completar saldo"}
         </button>
       </div>
 
@@ -147,13 +147,13 @@ export default function CheckoutAgregarPago({
             const value = e.target.value.replace(",", ".").replace(/[^0-9.]/g, "");
             setMonto(value);
           }}
-          placeholder="Ingresar monto base"
+          placeholder="Ej: 10000"
           style={styles.amountInput}
         />
       </div>
 
       <button type="button" onClick={agregarPago} style={styles.addBtn}>
-        Cargar {medioActivo?.label || "pago"}
+        Agregar pago {medioActivo?.label || ""}
       </button>
 
       {errorLocal && <div style={styles.localError}>{errorLocal}</div>}

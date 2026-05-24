@@ -20,9 +20,14 @@ export default function NuevaVentaCheckoutPage() {
 
   const clienteNombre = useMemo(() => getClienteNombre(draft), [draft]);
 
-  const resumenCheckout = useMemo(() => {
-    return calcularResumenCheckout({ draft, checkoutEstado });
-  }, [draft, checkoutEstado]);
+  const resumenCheckout = useMemo(
+    () =>
+      calcularResumenCheckout({
+        draft,
+        checkoutEstado,
+      }),
+    [draft, checkoutEstado]
+  );
 
   if (!draft) {
     return (
@@ -30,9 +35,13 @@ export default function NuevaVentaCheckoutPage() {
         <section style={styles.emptyCard}>
           <h1 style={styles.emptyTitle}>No hay venta para cobrar</h1>
           <p style={styles.emptyText}>
-            Armá el carrito desde Nueva Venta y después entrá al checkout.
+            Armá el carrito desde Nueva Venta y después entrá al cobro.
           </p>
-          <button type="button" onClick={() => navigate("/ventas/nueva")} style={styles.orangeBtn}>
+          <button
+            type="button"
+            onClick={() => navigate("/ventas/nueva")}
+            style={styles.orangeBtn}
+          >
             Volver a Nueva Venta
           </button>
         </section>
@@ -84,13 +93,14 @@ export default function NuevaVentaCheckoutPage() {
     <div style={styles.page}>
       <header style={styles.header}>
         <button type="button" onClick={() => navigate(-1)} style={styles.backBtn}>
-          ← Volver al carrito
+          ← Carrito
         </button>
 
-        <div>
-          <h1 style={styles.title}>Cobro de venta</h1>
+        <div style={styles.headerText}>
+          <span style={styles.kicker}>Paso 2 de 2</span>
+          <h1 style={styles.title}>Cobrar venta</h1>
           <p style={styles.subtitle}>
-            Checkout separado para evitar confusión entre armado y pago.
+            Elegí el medio de pago, tocá “Completar saldo” y cargá el pago.
           </p>
         </div>
       </header>
@@ -134,35 +144,49 @@ const styles = {
     gap: 16,
     marginBottom: 18,
   },
+  headerText: {
+    minWidth: 0,
+  },
+  kicker: {
+    display: "block",
+    color: "#f97316",
+    fontSize: 12,
+    fontWeight: 1000,
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    marginBottom: 3,
+  },
   backBtn: {
     border: "1px solid #cbd5e1",
-    borderRadius: 12,
+    borderRadius: 14,
     background: "white",
     color: "#0f172a",
-    fontWeight: 900,
-    padding: "11px 14px",
+    fontWeight: 950,
+    padding: "12px 15px",
     cursor: "pointer",
+    boxShadow: "0 8px 18px rgba(15, 23, 42, 0.06)",
   },
   title: {
     margin: 0,
-    fontSize: 30,
+    fontSize: 32,
     color: "#0f172a",
+    letterSpacing: "-0.03em",
   },
   subtitle: {
     margin: "4px 0 0",
     color: "#64748b",
-    fontWeight: 700,
+    fontWeight: 750,
   },
   layout: {
     display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) 360px",
+    gridTemplateColumns: "minmax(520px, 1fr) 380px",
     gap: 18,
     alignItems: "start",
   },
   checkoutCard: {
     background: "white",
     border: "1px solid #e2e8f0",
-    borderRadius: 22,
+    borderRadius: 24,
     padding: 18,
     boxShadow: "0 16px 35px rgba(15, 23, 42, 0.08)",
   },

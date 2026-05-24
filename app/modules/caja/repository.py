@@ -103,10 +103,14 @@ def get_caja_abierta_hoy_by_sucursal_for_update(conn, id_sucursal: int):
                 id_usuario_apertura,
                 id_usuario_cierre
             FROM cajas
-            WHERE id_sucursal = %s
-              AND estado = 'abierta'
-            ORDER BY fecha DESC, id DESC
-            LIMIT 1
+            WHERE id = (
+                SELECT id
+                FROM cajas
+                WHERE id_sucursal = %s
+                  AND estado = 'abierta'
+                ORDER BY fecha DESC, id DESC
+                LIMIT 1
+            )
             FOR UPDATE
             """,
             (id_sucursal,),
