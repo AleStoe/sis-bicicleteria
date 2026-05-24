@@ -2,6 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { listarCatalogoPOS } from "../services/catalogoService";
 import { listarProveedores } from "../services/proveedoresService";
 import {
+  buildRecalculoProveedorPayload,
+  buildReglaPrecioPayload,
+} from "../builders/preciosPayloadBuilder";
+import {
+  calcularMargen,
+  calcularResumenMasivo,
+} from "../utils/preciosUtils";
+import {
   actualizarPrecioVariante,
   crearReglaPrecio,
   desactivarReglaPrecio,
@@ -269,11 +277,13 @@ export default function PreciosPage() {
       setError("");
       setMensaje("");
 
-      const data = await recalcularPreciosProveedor({
-        id_proveedor: Number(idProveedor),
-        tipo_cliente: tipoCliente,
-        aplicar: false,
-      });
+      await recalcularPreciosProveedor(
+        buildRecalculoProveedorPayload({
+          idProveedor,
+          tipoCliente,
+          aplicar: false,
+        })
+      );
 
       setPreview(data);
       setDesfasados(data?.items || []);
@@ -303,14 +313,15 @@ export default function PreciosPage() {
       setError("");
       setMensaje("");
 
-      const data = await recalcularPreciosProveedor({
-        id_proveedor: Number(idProveedor),
-        tipo_cliente: tipoCliente,
-        aplicar: true,
-        id_usuario: ID_USUARIO,
-        motivo: motivoMasivo.trim() || "Recalculo manual por proveedor",
-      });
-
+      await recalcularPreciosProveedor(
+        buildRecalculoProveedorPayload({
+          idProveedor,
+          tipoCliente,
+          aplicar: true,
+          usuarioId: ID_USUARIO,
+          motivo: motivoMasivo,
+        })
+      );
       setPreview(data);
       setDesfasados(data?.items || []);
       setMensaje(`Cambios aplicados: ${data.total_aplicados}`);
@@ -336,14 +347,7 @@ export default function PreciosPage() {
       setError("");
       setMensaje("");
 
-      await crearReglaPrecio({
-        nombre: reglaForm.nombre.trim(),
-        id_categoria: null,
-        id_marca: null,
-        tipo_cliente: reglaForm.tipo_cliente,
-        margen_porcentaje: reglaForm.margen_porcentaje,
-        redondeo_base: reglaForm.redondeo_base,
-      });
+      await crearReglaPrecio(buildReglaPrecioPayload(reglaForm));
 
       setMensaje("Regla creada correctamente.");
       setReglaForm((p) => ({ ...p, nombre: "" }));
@@ -377,21 +381,10 @@ export default function PreciosPage() {
     }
   }
 
-  const resumenMasivo = useMemo(() => {
-    const totalSubas = desfasados
-      .filter((i) => Number(i.diferencia) > 0)
-      .reduce((acc, i) => acc + Number(i.diferencia), 0);
-
-    const totalBajas = desfasados
-      .filter((i) => Number(i.diferencia) < 0)
-      .reduce((acc, i) => acc + Number(i.diferencia), 0);
-
-    return {
-      cantidad: desfasados.length,
-      subas: totalSubas,
-      bajas: totalBajas,
-    };
-  }, [desfasados]);
+  const resumenMasivo = useMemo(
+    () => calcularResumenMasivo(desfasados),
+    [desfasados]
+  );
 
   const margenMinorista = calcularMargen(
     varianteSeleccionada?.costo_promedio_vigente,
@@ -983,12 +976,6 @@ function InfoBox({ label, value }) {
   );
 }
 
-function calcularMargen(costo, precio) {
-  const c = Number(costo || 0);
-  const p = Number(precio || 0);
-  if (c <= 0) return 0;
-  return p / c - 1;
-}
 const styles = {
   page: {
     padding: "24px",
