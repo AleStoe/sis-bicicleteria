@@ -13,6 +13,7 @@ import {
   sugerirPrecioVariante,
 } from "../services/preciosService";
 import { CURRENT_USER_ID, CURRENT_SUCURSAL_ID } from "../config/appConfig";
+import { formatMoney, formatPercent, formatDate } from "../utils/formatters";
 
 const ID_USUARIO = CURRENT_USER_ID || 1;
 const ID_SUCURSAL = CURRENT_SUCURSAL_ID || 1;
@@ -988,25 +989,6 @@ function calcularMargen(costo, precio) {
   if (c <= 0) return 0;
   return p / c - 1;
 }
-
-function formatMoney(value) {
-  return Number(value || 0).toLocaleString("es-AR", {
-    style: "currency",
-    currency: "ARS",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
-
-function formatPercent(value) {
-  return `${(Number(value || 0) * 100).toFixed(2)}%`;
-}
-
-function formatDate(value) {
-  if (!value) return "-";
-  return new Date(value).toLocaleString("es-AR");
-}
-
 const styles = {
   page: {
     padding: "24px",

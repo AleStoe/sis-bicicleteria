@@ -6,6 +6,7 @@ import {
   listarVariantes,
   obtenerFichaTecnicaProducto,
 } from "../services/catalogoService";
+import { formatMoney } from "../utils/formatters";
 
 const TAB_GENERAL = "general";
 
@@ -288,14 +289,6 @@ function InfoCompact({ label, value }) {
       <strong>{value || "-"}</strong>
     </div>
   );
-}
-
-function formatMoney(value) {
-  return Number(value || 0).toLocaleString("es-AR", {
-    style: "currency",
-    currency: "ARS",
-    maximumFractionDigits: 2,
-  });
 }
 
 const tabBase = {

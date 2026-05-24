@@ -10,7 +10,8 @@ import {
   revertirEjecucionItemOrdenTaller,
   cancelarItemOrdenTaller,
 } from "../services/tallerService";
-import { EstadoBadge, formatDate, formatMoney } from "./TallerListPage";
+import { formatDate, formatMoney } from "../utils/formatters";
+import { EstadoBadge } from "./TallerListPage";
 
 const ESTADOS = [
   "ingresada",

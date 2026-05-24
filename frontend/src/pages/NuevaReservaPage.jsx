@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { listarClientes } from "../services/clientesService";
 import { listarCatalogoPOS } from "../services/catalogoService";
 import { crearReserva } from "../services/reservasService";
-import { formatMoney } from "./ReservasListPage";
+import { formatMoney } from "../utils/formatters";
 
 const ID_USUARIO = 1;
 const ID_SUCURSAL = 1;

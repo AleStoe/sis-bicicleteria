@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { listarReservas } from "../services/reservasService";
+import { formatMoney } from "../utils/formatters";
 
 const ESTADOS = ["", "activa", "vencida", "cancelada", "convertida_en_venta"];
 
@@ -188,19 +189,6 @@ export function EstadoReservaBadge({ estado }) {
       {estado}
     </span>
   );
-}
-
-export function formatMoney(value) {
-  return Number(value || 0).toLocaleString("es-AR", {
-    style: "currency",
-    currency: "ARS",
-    maximumFractionDigits: 2,
-  });
-}
-
-export function formatDate(value) {
-  if (!value) return "-";
-  return new Date(value).toLocaleString("es-AR");
 }
 
 const pageStyle = { padding: "24px", background: "#f6f7fb", minHeight: "100vh" };

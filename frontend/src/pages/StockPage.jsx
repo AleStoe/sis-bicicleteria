@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { crearAjusteStock, crearIngresoStock, listarStock } from "../services/stockService";
 import { listarProveedores } from "../services/proveedoresService";
 import { CURRENT_USER_ID, CURRENT_SUCURSAL_ID } from "../config/appConfig";
-
+import { formatMoney, formatNumber } from "../utils/formatters";
 const ID_USUARIO = CURRENT_USER_ID || 1;
 const ID_SUCURSAL_DEFAULT = CURRENT_SUCURSAL_ID || 1;
 
@@ -679,20 +679,6 @@ function TextInput({ label, value, onChange, type = "text" }) {
       />
     </label>
   );
-}
-
-function formatNumber(value) {
-  return Number(value || 0).toLocaleString("es-AR", {
-    maximumFractionDigits: 3,
-  });
-}
-
-function formatMoney(value) {
-  return Number(value || 0).toLocaleString("es-AR", {
-    style: "currency",
-    currency: "ARS",
-    maximumFractionDigits: 2,
-  });
 }
 
 const pageStyle = { padding: "24px", background: "#f6f7fb", minHeight: "100vh" };

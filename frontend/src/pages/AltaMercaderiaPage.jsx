@@ -13,6 +13,7 @@ import { crearIngresoStock } from "../services/stockService";
 import AltaMercaderiaProveedorSelect from "../components/mercaderia/alta/AltaMercaderiaProveedorSelect";
 import AltaMercaderiaIngresoFields from "../components/mercaderia/alta/AltaMercaderiaIngresoFields";
 import AltaMercaderiaImagenUpload from "../components/mercaderia/alta/AltaMercaderiaImagenUpload";
+import { formatMoney, formatNumber } from "../utils/formatters";
 
 const ID_USUARIO = 1;
 const ID_SUCURSAL_DEFAULT = 1;
@@ -716,19 +717,6 @@ function redondearPrecio(valor) {
   return Math.ceil(valor / 50) * 50;
 }
 
-function formatNumber(value) {
-  return Number(value || 0).toLocaleString("es-AR", {
-    maximumFractionDigits: 3,
-  });
-}
-
-function formatMoney(value) {
-  return Number(value || 0).toLocaleString("es-AR", {
-    style: "currency",
-    currency: "ARS",
-    maximumFractionDigits: 2,
-  });
-}
 
 const styles = {
   page: { padding: "24px", background: "#f6f7fb", minHeight: "100vh" },

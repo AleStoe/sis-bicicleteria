@@ -6,7 +6,8 @@ import {
   obtenerReserva,
   vencerReserva,
 } from "../services/reservasService";
-import { EstadoReservaBadge, formatDate, formatMoney } from "./ReservasListPage";
+import { formatDate, formatMoney } from "../utils/formatters";
+import { EstadoReservaBadge } from "./ReservasListPage";
 
 const ID_USUARIO = 1;
 

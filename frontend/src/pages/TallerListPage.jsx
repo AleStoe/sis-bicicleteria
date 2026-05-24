@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { listarOrdenesTaller } from "../services/tallerService";
+import { formatDate, formatMoney } from "../utils/formatters";
 
 export default function TallerListPage() {
   const [ordenes, setOrdenes] = useState([]);
@@ -153,15 +154,6 @@ export function EstadoBadge({ estado }) {
 
 function Alert({ children }) {
   return <div style={alertStyle}>Error: {children}</div>;
-}
-
-export function formatMoney(value) {
-  return `$${Number(value || 0).toLocaleString("es-AR")}`;
-}
-
-export function formatDate(value) {
-  if (!value) return "-";
-  return new Date(value).toLocaleString("es-AR");
 }
 
 function colorEstado(estado) {
