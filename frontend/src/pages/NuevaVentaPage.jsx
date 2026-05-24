@@ -84,6 +84,7 @@ export default function NuevaVentaPage() {
   const [clientes, setClientes] = useState([]);
 
   const [query, setQuery] = useState("");
+  const [codigoRapido, setCodigoRapido] = useState("");
   const [categoriaId, setCategoriaId] = useState("");
   const [clienteId, setClienteId] = useState("1");
   const [tipoPrecio, setTipoPrecio] = useState("minorista");
@@ -192,7 +193,7 @@ async function handleBuscarEnter(e) {
 
   e.preventDefault();
 
-  const codigo = query.trim();
+  const codigo = codigoRapido.trim();
 
   if (!codigo) return;
 
@@ -211,7 +212,7 @@ async function handleBuscarEnter(e) {
 
     await agregarItem(producto);
 
-    setQuery("");
+    setCodigoRapido("");
     mostrarMensajePOS(`${producto.producto_nombre} agregado`);
     setTimeout(() => {
       searchRef.current?.focus();
@@ -537,10 +538,10 @@ async function handleBuscarEnter(e) {
         <div style={topSearchWrapStyle}>
           <input
             ref={searchRef}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            value={codigoRapido}
+            onChange={(e) => setCodigoRapido(e.target.value)}
             onKeyDown={handleBuscarEnter}
-            placeholder="Buscar producto, código o barra... (F2)"
+            placeholder="Escanear o ingresar código rápido... (F2)"
             style={topSearchStyle}
           />
           <span style={searchIconStyle}>⌕</span>
