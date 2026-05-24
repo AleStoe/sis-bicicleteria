@@ -14,23 +14,9 @@ import {
 import ProductImage from "../components/catalogo/ProductImage";
 import EstadoBadge from "../components/catalogo/EstadoBadge";
 import CatalogoDetalleModal from "../components/catalogo/CatalogoDetalleModal";
-
+import { formatMoney, formatNumber } from "../utils/formatters";
 const ID_SUCURSAL_DEFAULT = 1;
 const LIMIT = 24;
-
-function formatNumber(value) {
-  return Number(value || 0).toLocaleString("es-AR", {
-    maximumFractionDigits: 3,
-  });
-}
-
-function formatMoney(value) {
-  return Number(value || 0).toLocaleString("es-AR", {
-    style: "currency",
-    currency: "ARS",
-    maximumFractionDigits: 2,
-  });
-}
 
 function getTituloItem(item) {
   return [item.producto_nombre, item.nombre_variante].filter(Boolean).join(" - ");
