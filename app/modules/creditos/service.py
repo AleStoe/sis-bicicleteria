@@ -440,3 +440,50 @@ def crear_credito_por_devolucion_venta(
     )
 
     return credito
+
+def simular_aplicacion_credito_a_venta(
+    conn,
+    *,
+    id_cliente: int | None,
+    total_a_cubrir: Decimal,
+    usar_credito: bool,
+    monto_credito_a_aplicar: Decimal | None,
+):
+    total_a_cubrir = Decimal(str(total_a_cubrir))
+
+    if not usar_credito or not id_cliente or total_a_cubrir <= Decimal("0"):
+        return {
+            "credito_disponible": Decimal("0"),
+            "credito_aplicado": Decimal("0"),
+            "total_a_cobrar": total_a_cubrir,
+            "saldo_credito_restante": Decimal("0"),
+        }
+
+    creditos = repository.get_creditos_disponibles_cliente(conn, id_cliente)
+
+    credito_disponible = sum(
+        Decimal(str(c["saldo_actual"])) for c in creditos
+    )
+
+    if monto_credito_a_aplicar is None:
+        credito_aplicado = min(credito_disponible, total_a_cubrir)
+    else:
+        credito_solicitado = Decimal(str(monto_credito_a_aplicar))
+
+        if credito_solicitado < Decimal("0"):
+            raise HTTPException(400, detail="El monto de crédito no puede ser negativo")
+
+        if credito_solicitado > credito_disponible:
+            raise HTTPException(400, detail="El cliente no tiene crédito suficiente")
+
+        if credito_solicitado > total_a_cubrir:
+            raise HTTPException(400, detail="El crédito no puede superar el saldo a cubrir")
+
+        credito_aplicado = credito_solicitado
+
+    return {
+        "credito_disponible": credito_disponible,
+        "credito_aplicado": credito_aplicado,
+        "total_a_cobrar": total_a_cubrir - credito_aplicado,
+        "saldo_credito_restante": credito_disponible - credito_aplicado,
+    }

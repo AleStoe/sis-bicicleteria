@@ -240,3 +240,36 @@ class VentaSimulacionOut(BaseModel):
     monto_sugerido_para_saldar: Decimal | None = None
     reglas_aplicadas: list = Field(default_factory=list)
     tramos_pago: list = Field(default_factory=list)
+
+class VentaSimulacionInput(BaseModel):
+    id_cliente: Optional[int] = None
+    tipo_precio: TipoPrecioVenta = "minorista"
+    items: List[VentaItemCreateInput]
+    pagos: List[VentaPagoCreateInput] = Field(default_factory=list)
+    sugerir_saldo_con_medio_pago: SugerirSaldoConMedioPagoInput | None = None
+    usar_credito: bool = True
+    monto_credito_a_aplicar: Optional[Decimal] = None
+
+
+class VentaSimulacionOut(BaseModel):
+    subtotal_base: Decimal
+    descuento_total: Decimal
+    recargo_total: Decimal
+    total_final: Decimal
+
+    total_base_asignada: Decimal
+    total_pagos_cargados: Decimal
+
+    saldo_base_estimado: Decimal
+    saldo_estimado: Decimal
+
+    credito_disponible: Decimal = Decimal("0")
+    credito_aplicado: Decimal = Decimal("0")
+    total_a_cobrar: Decimal
+    saldo_credito_restante: Decimal = Decimal("0")
+
+    monto_base_sugerido_para_saldar: Decimal | None = None
+    monto_sugerido_para_saldar: Decimal | None = None
+
+    reglas_aplicadas: list = Field(default_factory=list)
+    tramos_pago: list = Field(default_factory=list)

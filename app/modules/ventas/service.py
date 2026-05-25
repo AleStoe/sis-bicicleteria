@@ -655,7 +655,7 @@ def crear_venta(data):
                     conn,
                     id_cliente=data.id_cliente,
                     id_venta=venta_id,
-                    total_venta=total_final,
+                    total_venta=redondear_monto(resultado_reglas["saldo_estimado"]),
                     usar_credito=usar_credito,
                     monto_credito_a_aplicar=monto_credito_a_aplicar,
                     id_usuario=data.id_usuario,
@@ -1596,7 +1596,10 @@ def simular_venta(data):
 
     try:
         if not data.items:
-            raise HTTPException(status_code=400, detail="La venta debe tener al menos un item")
+            raise HTTPException(
+                status_code=400,
+                detail="La venta debe tener al menos un item",
+            )
 
         items_input = [
             {
@@ -1631,7 +1634,10 @@ def simular_venta(data):
             if precio_lista <= Decimal("0"):
                 raise HTTPException(
                     status_code=400,
-                    detail=f"La variante {item['id_variante']} no tiene precio {data.tipo_precio} configurado",
+                    detail=(
+                        f"La variante {item['id_variante']} no tiene precio "
+                        f"{data.tipo_precio} configurado"
+                    ),
                 )
 
             cantidad = to_decimal(item["cantidad"])
@@ -1669,6 +1675,39 @@ def simular_venta(data):
             )()
         )
 
+        saldo_estimado = redondear_monto(resultado_reglas["saldo_estimado"])
+
+        credito_disponible = Decimal("0")
+        credito_aplicado = Decimal("0")
+        total_a_cobrar = saldo_estimado
+        saldo_credito_restante = Decimal("0")
+
+        usar_credito = getattr(data, "usar_credito", True)
+        id_cliente = getattr(data, "id_cliente", None)
+        monto_credito_a_aplicar = getattr(data, "monto_credito_a_aplicar", None)
+
+        if usar_credito and id_cliente is not None and saldo_estimado > Decimal("0"):
+            resultado_credito = creditos_service.simular_aplicacion_credito_a_venta(
+                conn,
+                id_cliente=id_cliente,
+                total_a_cubrir=saldo_estimado,
+                usar_credito=usar_credito,
+                monto_credito_a_aplicar=monto_credito_a_aplicar,
+            )
+
+            credito_disponible = redondear_monto(
+                resultado_credito["credito_disponible"]
+            )
+            credito_aplicado = redondear_monto(
+                resultado_credito["credito_aplicado"]
+            )
+            total_a_cobrar = redondear_monto(
+                resultado_credito["total_a_cobrar"]
+            )
+            saldo_credito_restante = redondear_monto(
+                resultado_credito["saldo_credito_restante"]
+            )
+
         return {
             "subtotal_base": redondear_monto(resultado_reglas["subtotal_base"]),
             "descuento_total": redondear_monto(resultado_reglas["descuento_total"]),
@@ -1678,30 +1717,28 @@ def simular_venta(data):
             "total_base_asignada": redondear_monto(
                 resultado_reglas["total_base_asignada"]
             ),
-
             "total_pagos_cargados": redondear_monto(
                 resultado_reglas["total_pagos_cargados"]
             ),
-
             "saldo_base_estimado": redondear_monto(
                 resultado_reglas["saldo_base_estimado"]
             ),
+            "saldo_estimado": saldo_estimado,
 
-            "saldo_estimado": redondear_monto(resultado_reglas["saldo_estimado"]),
+            "credito_disponible": credito_disponible,
+            "credito_aplicado": credito_aplicado,
+            "total_a_cobrar": total_a_cobrar,
+            "saldo_credito_restante": saldo_credito_restante,
 
             "monto_base_sugerido_para_saldar": resultado_reglas.get(
                 "monto_base_sugerido_para_saldar"
             ),
-
             "monto_sugerido_para_saldar": resultado_reglas.get(
                 "monto_sugerido_para_saldar"
             ),
-
             "reglas_aplicadas": resultado_reglas["reglas_aplicadas"],
-
             "tramos_pago": resultado_reglas.get("tramos_pago", []),
         }
-        
 
     finally:
         conn.close()

@@ -1511,3 +1511,213 @@ def test_anular_venta_con_pago_tarjeta_confirmado_requiere_reversion(
     assert venta_despues["saldo_pendiente"] == venta_antes["saldo_pendiente"]
     assert creditos_despues == creditos_antes
     assert movimientos_caja_despues == movimientos_caja_antes
+
+def test_simular_venta_cliente_sin_credito_no_aplica(client, seed_venta_basica):
+    response = client.post(
+        "/ventas/simular",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "tipo_precio": "minorista",
+            "usar_credito": True,
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 1,
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200, response.text
+
+    data = response.json()
+
+    assert _to_decimal(data["credito_disponible"]) == Decimal("0")
+    assert _to_decimal(data["credito_aplicado"]) == Decimal("0")
+    assert _to_decimal(data["total_a_cobrar"]) == _to_decimal(data["saldo_estimado"])
+    assert _to_decimal(data["saldo_credito_restante"]) == Decimal("0")
+
+
+def test_simular_venta_cliente_con_credito_menor_al_total(
+    client, db_conn, seed_venta_basica
+):
+    _crear_credito_por_anulacion(
+        client,
+        db_conn,
+        seed_venta_basica,
+        Decimal("10000"),
+    )
+
+    response = client.post(
+        "/ventas/simular",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "tipo_precio": "minorista",
+            "usar_credito": True,
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 1,
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200, response.text
+
+    data = response.json()
+
+    assert _to_decimal(data["credito_disponible"]) == Decimal("10000")
+    assert _to_decimal(data["credito_aplicado"]) == Decimal("10000")
+    assert _to_decimal(data["total_a_cobrar"]) == (
+        _to_decimal(data["saldo_estimado"]) - Decimal("10000")
+    )
+    assert _to_decimal(data["saldo_credito_restante"]) == Decimal("0")
+
+
+def test_simular_venta_cliente_con_credito_mayor_al_total(
+    client, db_conn, seed_venta_basica
+):
+    monto_credito = _to_decimal(seed_venta_basica["precio_venta"])
+
+    _crear_credito_por_anulacion(
+        client,
+        db_conn,
+        seed_venta_basica,
+        monto_credito,
+    )
+
+    response = client.post(
+        "/ventas/simular",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "tipo_precio": "minorista",
+            "usar_credito": True,
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 1,
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200, response.text
+
+    data = response.json()
+    saldo_estimado = _to_decimal(data["saldo_estimado"])
+
+    assert _to_decimal(data["credito_disponible"]) == monto_credito
+    assert _to_decimal(data["credito_aplicado"]) == saldo_estimado
+    assert _to_decimal(data["total_a_cobrar"]) == Decimal("0")
+    assert _to_decimal(data["saldo_credito_restante"]) == Decimal("0")
+
+
+def test_simular_venta_credito_mas_pago_mixto_aplica_sobre_saldo_estimado(
+    client, db_conn, seed_venta_basica
+):
+    _crear_credito_por_anulacion(
+        client,
+        db_conn,
+        seed_venta_basica,
+        Decimal("5000"),
+    )
+
+    response = client.post(
+        "/ventas/simular",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "tipo_precio": "minorista",
+            "usar_credito": True,
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 1,
+                }
+            ],
+            "pagos": [
+                {
+                    "medio_pago": "efectivo",
+                    "monto": "10000",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200, response.text
+
+    data = response.json()
+
+    assert _to_decimal(data["credito_disponible"]) == Decimal("5000")
+    assert _to_decimal(data["credito_aplicado"]) == Decimal("5000")
+    assert _to_decimal(data["total_a_cobrar"]) == (
+        _to_decimal(data["saldo_estimado"]) - Decimal("5000")
+    )
+
+
+def test_simular_venta_rechaza_credito_manual_mayor_al_disponible(
+    client, db_conn, seed_venta_basica
+):
+    _crear_credito_por_anulacion(
+        client,
+        db_conn,
+        seed_venta_basica,
+        Decimal("5000"),
+    )
+
+    response = client.post(
+        "/ventas/simular",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "tipo_precio": "minorista",
+            "usar_credito": True,
+            "monto_credito_a_aplicar": "10000",
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 1,
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 400
+    assert "crédito suficiente" in response.json()["detail"]
+
+
+def test_simular_venta_rechaza_credito_manual_mayor_al_saldo(
+    client, db_conn, seed_venta_basica
+):
+    monto_credito = _to_decimal(seed_venta_basica["precio_venta"])
+
+    _crear_credito_por_anulacion(
+        client,
+        db_conn,
+        seed_venta_basica,
+        monto_credito,
+    )
+
+    response = client.post(
+        "/ventas/simular",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "tipo_precio": "minorista",
+            "usar_credito": True,
+            "monto_credito_a_aplicar": str(monto_credito),
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 1,
+                }
+            ],
+            "pagos": [
+                {
+                    "medio_pago": "efectivo",
+                    "monto": "1000",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 400
+    assert "no puede superar el saldo a cubrir" in response.json()["detail"]
