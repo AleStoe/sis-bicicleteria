@@ -221,27 +221,6 @@ class VentaDevolucionParcialOutput(BaseModel):
     credito_generado: Decimal
 
 class VentaSimulacionInput(BaseModel):
-    tipo_precio: TipoPrecioVenta = "minorista"
-    items: List[VentaItemCreateInput]
-    pagos: List[VentaPagoCreateInput] = Field(default_factory=list)
-    sugerir_saldo_con_medio_pago: SugerirSaldoConMedioPagoInput | None = None
-
-
-class VentaSimulacionOut(BaseModel):
-    subtotal_base: Decimal
-    descuento_total: Decimal
-    recargo_total: Decimal
-    total_final: Decimal
-    total_base_asignada: Decimal
-    total_pagos_cargados: Decimal
-    saldo_base_estimado: Decimal
-    saldo_estimado: Decimal
-    monto_base_sugerido_para_saldar: Decimal | None = None
-    monto_sugerido_para_saldar: Decimal | None = None
-    reglas_aplicadas: list = Field(default_factory=list)
-    tramos_pago: list = Field(default_factory=list)
-
-class VentaSimulacionInput(BaseModel):
     id_cliente: Optional[int] = None
     tipo_precio: TipoPrecioVenta = "minorista"
     items: List[VentaItemCreateInput]
