@@ -1,6 +1,7 @@
 from decimal import Decimal
-from pydantic import BaseModel
-from pydantic import Field
+
+from pydantic import BaseModel, Field
+
 
 class CreditoMovimientoResponse(BaseModel):
     id: int
@@ -26,6 +27,7 @@ class CreditoResponse(BaseModel):
 class CreditoDetalleResponse(BaseModel):
     credito: CreditoResponse
     movimientos: list[CreditoMovimientoResponse]
+
 
 class CreditoReintegroInput(BaseModel):
     monto: Decimal = Field(..., gt=0)
