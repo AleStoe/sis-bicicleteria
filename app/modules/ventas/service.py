@@ -647,7 +647,7 @@ def crear_venta(data):
                 except ValueError as e:
                     raise HTTPException(status_code=400, detail=str(e))
 
-            usar_credito = getattr(data, "usar_credito", True)
+            usar_credito = getattr(data, "usar_credito", False)
             monto_credito_a_aplicar = getattr(data, "monto_credito_a_aplicar", None)
 
             if usar_credito:
@@ -1713,7 +1713,7 @@ def simular_venta(data):
         total_a_cobrar = saldo_estimado
         saldo_credito_restante = Decimal("0")
 
-        usar_credito = getattr(data, "usar_credito", True)
+        usar_credito = getattr(data, "usar_credito", False)
         id_cliente = getattr(data, "id_cliente", None)
         monto_credito_a_aplicar = getattr(data, "monto_credito_a_aplicar", None)
 

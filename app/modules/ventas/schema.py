@@ -74,7 +74,7 @@ class VentaCreateInput(BaseModel):
     items: List[VentaItemCreateInput]
     pagos: List[VentaPagoCreateInput] = Field(default_factory=list)
     observaciones: Optional[str] = None
-    usar_credito: bool = True
+    usar_credito: bool = False
     monto_credito_a_aplicar: Optional[Decimal] = None
     
 
@@ -226,7 +226,7 @@ class VentaSimulacionInput(BaseModel):
     items: List[VentaItemCreateInput]
     pagos: List[VentaPagoCreateInput] = Field(default_factory=list)
     sugerir_saldo_con_medio_pago: SugerirSaldoConMedioPagoInput | None = None
-    usar_credito: bool = True
+    usar_credito: bool = False
     monto_credito_a_aplicar: Optional[Decimal] = None
 
 
