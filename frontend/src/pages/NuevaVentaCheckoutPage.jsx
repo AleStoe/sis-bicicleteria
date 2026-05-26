@@ -49,7 +49,12 @@ export default function NuevaVentaCheckoutPage() {
     );
   }
 
-  async function finalizarCheckout({ pagos = [], entregar_ahora }) {
+  async function finalizarCheckout(payloadCheckout) {
+    const {
+      pagos = [],
+      entregar_ahora,
+    } = payloadCheckout;
+
     const errorValidacion = validarVentaAntesDeCrear({
       clienteId: draft.clienteId,
       items: draft.items,
@@ -68,11 +73,15 @@ export default function NuevaVentaCheckoutPage() {
       items: draft.items,
       pagos,
       observaciones: draft.observaciones,
-      usarCredito: draft.usarCredito,
+      usarCredito: payloadCheckout?.usar_credito,
+      montoCreditoAAplicar: payloadCheckout?.monto_credito_a_aplicar,
     });
 
     try {
       setGuardando(true);
+      console.log("PAYLOAD FINAL VENTA CHECKOUT PAGE", payload);
+      console.log("PAYLOAD CHECKOUT RECIBIDO", payloadCheckout);
+      console.log("PAYLOAD FINAL VENTA CHECKOUT PAGE", payload);
       const resultado = await crearVenta(payload);
 
       if (entregar_ahora) {
@@ -110,6 +119,7 @@ export default function NuevaVentaCheckoutPage() {
           <CheckoutClienteVentaCard draft={draft} clienteNombre={clienteNombre} />
 
           <CheckoutVentaPanel
+            clienteId={draft.clienteId}
             total={draft.total}
             tipoPrecio={draft.tipoPrecio}
             items={draft.items}

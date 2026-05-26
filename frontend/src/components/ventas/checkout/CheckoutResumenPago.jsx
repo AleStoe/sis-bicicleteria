@@ -1,7 +1,17 @@
 export default function CheckoutResumenPago({
   total,
+  totalOriginal,
   pagado,
   pendiente,
+
+  usarCredito,
+  setUsarCredito,
+  montoCreditoAAplicar,
+  setMontoCreditoAAplicar,
+  creditoDisponible,
+  creditoAplicado,
+  saldoCreditoRestante,
+
   cantidadItems,
   formatMoney,
   montoCobroSugerido,
@@ -9,14 +19,16 @@ export default function CheckoutResumenPago({
 }) {
   const estaSaldada = Number(pendiente || 0) <= 0;
   const tieneSugerencia = montoCobroSugerido != null && !estaSaldada;
-
+  const totalLista = Number(totalOriginal ?? total ?? 0);
+  const totalConReglas = Number(total ?? 0);
+  const hayAjusteReglas = Math.abs(totalLista - totalConReglas) > 0.01;
   return (
     <div style={styles.box}>
       <div style={styles.header}>
         <div>
           <span style={styles.kicker}>Resumen de cobro</span>
           <h3 style={styles.title}>
-            {estaSaldada ? "Venta cubierta" : "Falta cobrar"}
+            {estaSaldada ? "Venta cubierta" : "Saldo pendiente"}
           </h3>
           <p style={styles.sub}>
             {cantidadItems} item{cantidadItems === 1 ? "" : "s"} en la venta.
@@ -30,22 +42,82 @@ export default function CheckoutResumenPago({
 
       <div style={styles.totalLine}>
         <span>Total venta</span>
-        <strong>{formatMoney(total)}</strong>
+        <strong>{formatMoney(totalLista)}</strong>
       </div>
 
+      {hayAjusteReglas && (
+        <div style={styles.totalLineMuted}>
+          <span>Total con reglas comerciales</span>
+          <strong>{formatMoney(totalConReglas)}</strong>
+        </div>
+      )}
+      {creditoDisponible > 0 && (
+        <div style={styles.creditBox}>
+          <div style={styles.creditHeader}>
+            <span>Crédito disponible</span>
+
+            <label style={styles.creditToggle}>
+              <input
+                type="checkbox"
+                checked={usarCredito}
+                onChange={(e) => setUsarCredito(e.target.checked)}
+              />
+              <span>Usar</span>
+            </label>
+          </div>
+
+          <strong style={styles.creditAvailable}>
+            {formatMoney(creditoDisponible)}
+          </strong>
+
+          {usarCredito && (
+            <>
+              <div style={styles.creditApplied}>
+                <span>Aplicado</span>
+                <strong>- {formatMoney(creditoAplicado)}</strong>
+              </div>
+
+              <label style={styles.creditManualBox}>
+                <span>Aplicar manualmente</span>
+
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={montoCreditoAAplicar}
+                  onChange={(e) => {
+                    const value = e.target.value
+                      .replace(",", ".")
+                      .replace(/[^0-9.]/g, "");
+
+                    setMontoCreditoAAplicar(value);
+                  }}
+                  placeholder="Automático"
+                  style={styles.creditInput}
+                />
+              </label>
+
+              {saldoCreditoRestante > 0 && (
+                <small style={styles.creditRemaining}>
+                  Quedan {formatMoney(saldoCreditoRestante)} disponibles.
+                </small>
+              )}
+            </>
+          )}
+        </div>
+      )}
       <div style={styles.totalLine}>
         <span>Pagos cargados</span>
         <strong>{formatMoney(pagado)}</strong>
       </div>
 
       <div style={estaSaldada ? styles.amountOk : styles.amountPending}>
-        <span>{estaSaldada ? "Listo para finalizar" : "Falta cobrar"}</span>
+        <span>{estaSaldada ? "Listo para finalizar" : "Saldo de venta pendiente"}</span>
         <strong>{formatMoney(Math.max(Number(pendiente || 0), 0))}</strong>
       </div>
 
       {tieneSugerencia && (
         <div style={styles.cashHint}>
-          <span>Cliente paga con {getMedioLabel(medioPago)}</span>
+          <span>Para saldar en {getMedioLabel(medioPago)}</span>
           <strong>{formatMoney(montoCobroSugerido)}</strong>
           <small>Calculado automáticamente según reglas comerciales.</small>
         </div>
@@ -166,4 +238,78 @@ const styles = {
     fontSize: 13,
     fontWeight: 800,
   },
+  creditBox: {
+  marginTop: 10,
+  border: "1px solid #bfdbfe",
+  background: "#eff6ff",
+  borderRadius: 14,
+  padding: 12,
+  display: "grid",
+  gap: 10,
+},
+
+creditHeader: {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 10,
+  fontWeight: 900,
+  color: "#1e3a8a",
+},
+
+creditToggle: {
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+  fontSize: 13,
+  fontWeight: 800,
+  color: "#1d4ed8",
+},
+
+creditAvailable: {
+  fontSize: 22,
+  fontWeight: 1000,
+  color: "#0f172a",
+},
+
+creditApplied: {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 10,
+  fontSize: 14,
+  fontWeight: 900,
+  color: "#047857",
+},
+
+creditManualBox: {
+  display: "grid",
+  gap: 6,
+},
+
+creditInput: {
+  width: "100%",
+  boxSizing: "border-box",
+  border: "1px solid #bfdbfe",
+  borderRadius: 12,
+  padding: "10px 12px",
+  fontWeight: 900,
+  background: "white",
+},
+
+creditRemaining: {
+  color: "#475569",
+  fontSize: 12,
+  fontWeight: 700,
+},
+totalLineMuted: {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 12,
+  padding: "7px 0",
+  borderTop: "1px solid #e2e8f0",
+  color: "#64748b",
+  fontSize: 12,
+  fontWeight: 800,
+},
 };

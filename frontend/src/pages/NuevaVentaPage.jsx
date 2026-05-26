@@ -467,7 +467,11 @@ async function handleBuscarEnter(e) {
     return true;
   }
 
-  function crearPayloadVenta(pagos = []) {
+  function crearPayloadVenta({
+    pagos = [],
+    usar_credito = usarCredito,
+    monto_credito_a_aplicar = null,
+  } = {}) {
     return buildVentaPayload({
       clienteId,
       sucursalId: ID_SUCURSAL,
@@ -476,19 +480,30 @@ async function handleBuscarEnter(e) {
       items,
       pagos,
       observaciones,
-      usarCredito,
+      usarCredito: usar_credito,
+      montoCreditoAAplicar: monto_credito_a_aplicar,
     });
   }
 
-  async function finalizarCheckout({ pagos = [], entregar_ahora }) {
+  async function finalizarCheckout({
+    pagos = [],
+    entregar_ahora,
+    usar_credito = usarCredito,
+    monto_credito_a_aplicar = null,
+  }) {
     if (!validarVentaAntesDeFinalizar()) return;
 
-    const payload = crearPayloadVenta(pagos);
+    const payload = crearPayloadVenta({
+      pagos,
+      usar_credito,
+      monto_credito_a_aplicar,
+    });
 
     try {
       setGuardando(true);
       setError("");
       setMensaje("");
+      console.log("PAYLOAD FINAL VENTA", payload);
       const resultado = await crearVenta(payload);
 
       if (entregar_ahora) {

@@ -10,7 +10,7 @@ export function calcularCantidadItems(items = []) {
 export function calcularResumenCheckout({ draft, checkoutEstado }) {
   const pagosPanel = checkoutEstado?.pagosDraft || [];
 
-  const baseCubierta = pagosPanel.reduce(
+  const basePagosCubierta = pagosPanel.reduce(
     (acc, pago) => acc + Number(pago.monto_base || 0),
     0
   );
@@ -21,12 +21,24 @@ export function calcularResumenCheckout({ draft, checkoutEstado }) {
     0
   );
 
+  const creditoAplicado = Number(checkoutEstado?.creditoAplicado || 0);
+  const creditoDisponible = Number(checkoutEstado?.creditoDisponible || 0);
+  const saldoCreditoRestante = Number(checkoutEstado?.saldoCreditoRestante || 0);
+
+  const baseCubierta = basePagosCubierta + creditoAplicado;
+
   const saldoBasePendiente = Number(
-    checkoutEstado?.saldoBasePendiente ?? draft?.total ?? 0
+    checkoutEstado?.pendienteActual ??
+      checkoutEstado?.totalACobrar ??
+      Math.max(Number(draft?.total || 0) - baseCubierta, 0)
   );
 
   return {
     pagosPanel,
+    basePagosCubierta,
+    creditoAplicado,
+    creditoDisponible,
+    saldoCreditoRestante,
     baseCubierta,
     clientePagoTotal,
     saldoBasePendiente,

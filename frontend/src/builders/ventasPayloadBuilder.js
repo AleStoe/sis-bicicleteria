@@ -15,27 +15,28 @@ export function buildVentaItemPayload(item) {
   };
 }
 
-export function buildPagoVentaPayload(pago) {
-  return {
-    medio_pago: pago.medio_pago,
-    monto_base: String(pago.monto_base),
-    cuotas: pago.cuotas || null,
-    entidad: pago.entidad || null,
-    nota: pago.nota || null,
-  };
-}
-
 export function buildVentaSimulacionPayload({
+  clienteId,
   tipoPrecio,
   items,
   pagos = [],
   sugerirSaldoConMedioPago = null,
+  usarCredito = true,
+  montoCreditoAAplicar = null,
 }) {
   return {
+    id_cliente: clienteId ? Number(clienteId) : null,
     tipo_precio: tipoPrecio || "minorista",
     items: items.map(buildVentaItemPayload),
     pagos: pagos.map(buildPagoVentaPayload),
     sugerir_saldo_con_medio_pago: sugerirSaldoConMedioPago,
+    usar_credito: Boolean(usarCredito),
+    monto_credito_a_aplicar:
+      montoCreditoAAplicar !== null &&
+      montoCreditoAAplicar !== undefined &&
+      String(montoCreditoAAplicar).trim() !== ""
+        ? String(montoCreditoAAplicar)
+        : null,
   };
 }
 
@@ -47,7 +48,8 @@ export function buildVentaPayload({
   items,
   pagos = [],
   observaciones,
-  usarCredito,
+  usarCredito = true,
+  montoCreditoAAplicar = null,
 }) {
   return {
     id_cliente: Number(clienteId),
@@ -58,6 +60,21 @@ export function buildVentaPayload({
     pagos: pagos.map(buildPagoVentaPayload),
     observaciones: observaciones?.trim() || null,
     usar_credito: Boolean(usarCredito),
-    monto_credito_a_aplicar: null,
+    monto_credito_a_aplicar:
+      montoCreditoAAplicar !== null &&
+      montoCreditoAAplicar !== undefined &&
+      String(montoCreditoAAplicar).trim() !== ""
+        ? String(montoCreditoAAplicar)
+        : null,
+  };
+}
+
+export function buildPagoVentaPayload(pago) {
+  return {
+    medio_pago: pago.medio_pago,
+    monto_base: String(pago.monto_base),
+    cuotas: pago.cuotas || null,
+    entidad: pago.entidad || null,
+    nota: pago.nota || null,
   };
 }

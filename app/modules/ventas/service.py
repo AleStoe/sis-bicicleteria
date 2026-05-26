@@ -705,8 +705,39 @@ def crear_venta(data):
                     )
 
                 pagos_service.registrar_pago(conn, payload_pago)
-            venta_actualizada = get_venta_for_update(conn, venta_id)
-            saldo_pendiente = redondear_monto(venta_actualizada["saldo_pendiente"])
+
+
+            total_pagado_confirmado = redondear_monto(
+                get_total_pagado_confirmado_por_venta(conn, venta_id)
+            )
+
+            saldo_pendiente = redondear_monto(
+                total_final - total_pagado_confirmado - credito_aplicado
+            )
+
+            if saldo_pendiente < Decimal("0"):
+                saldo_pendiente = Decimal("0")
+
+            if saldo_pendiente == Decimal("0"):
+                estado_venta = "pagada_total"
+            elif saldo_pendiente < total_final:
+                estado_venta = "pagada_parcial"
+            else:
+                estado_venta = "creada"
+
+            update_venta_saldo_y_estado(
+                conn,
+                venta_id,
+                saldo_pendiente,
+                estado_venta,
+            )
+
+            saldo_pendiente = redondear_monto(
+                total_final - total_pagado_confirmado - credito_aplicado
+            )
+
+            if saldo_pendiente < Decimal("0"):
+                saldo_pendiente = Decimal("0")
 
             if saldo_pendiente == Decimal("0"):
                 estado_venta = "pagada_total"

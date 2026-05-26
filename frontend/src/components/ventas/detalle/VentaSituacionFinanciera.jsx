@@ -16,14 +16,15 @@ export default function VentaSituacionFinanciera({
       <div style={{ display: "grid", gap: "12px" }}>
         {cubiertoNoPago > 0 && (
           <div style={noteStyle}>
-            <strong>Monto cubierto sin pago real registrado</strong>
+
+            <strong>Crédito aplicado a esta venta</strong>
 
             <div style={{ marginTop: "6px", fontWeight: 800 }}>
               {formatMoney(cubiertoNoPago)}
             </div>
 
             <div style={smallMutedStyle}>
-              Corresponde a crédito aplicado, ajuste financiero o compensación manual.
+              Esta venta fue cubierta con crédito del cliente. No representa ingreso de caja.
             </div>
           </div>
         )}
@@ -81,11 +82,11 @@ export default function VentaSituacionFinanciera({
 }
 
 const noteStyle = {
-  background: "#fff8e1",
-  color: "#8a6d00",
+  background: "#eff6ff",
+  color: "#1d4ed8",
   padding: "14px",
   borderRadius: "12px",
-  border: "1px solid #f3dc97",
+  border: "1px solid #bfdbfe",
 };
 
 const warningStyle = {

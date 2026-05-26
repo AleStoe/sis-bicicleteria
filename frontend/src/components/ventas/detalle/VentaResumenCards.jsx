@@ -26,9 +26,9 @@ export default function VentaResumenCards({
       />
 
       <MetricCard
-        label="Crédito / ajuste"
+        label="Crédito aplicado"
         value={formatMoney(cubiertoNoPago)}
-        tone={cubiertoNoPago > 0 ? "warning" : "default"}
+        tone={cubiertoNoPago > 0 ? "success" : "default"}
       />
 
       <MetricCard

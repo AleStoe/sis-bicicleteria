@@ -6,6 +6,7 @@ import useCheckoutVenta from "../../hooks/useCheckoutVenta";
 import { formatMoney } from "../../utils/formatters";
 
 export default function CheckoutVentaPanel({
+   clienteId,
   total,
   tipoPrecio,
   items,
@@ -14,8 +15,10 @@ export default function CheckoutVentaPanel({
   onFinalizar,
   onEstadoCheckoutChange,
   mostrarPagosCargados = true,
+  
 }) {
   const checkout = useCheckoutVenta({
+    clienteId,
     total,
     tipoPrecio,
     items,
@@ -39,28 +42,38 @@ export default function CheckoutVentaPanel({
     <section style={styles.card}>
       <CheckoutResumenPago
         total={checkout.totalCalculado}
+        totalOriginal={total}
         pagado={checkout.pagado}
         pendiente={checkout.pendiente}
         cantidadItems={checkout.cantidadItems}
         formatMoney={formatMoney}
         montoCobroSugerido={montoCobroSugerido}
         medioPago={checkout.medioPago}
+        usarCredito={checkout.usarCredito}
+        setUsarCredito={checkout.setUsarCredito}
+        montoCreditoAAplicar={checkout.montoCreditoAAplicar}
+        setMontoCreditoAAplicar={checkout.setMontoCreditoAAplicar}
+        creditoDisponible={checkout.creditoDisponible}
+        creditoAplicado={checkout.creditoAplicado}
+        saldoCreditoRestante={checkout.saldoCreditoRestante}
       />
 
-      <CheckoutAgregarPago
-        medioPago={checkout.medioPago}
-        setMedioPago={checkout.setMedioPago}
-        monto={checkout.monto}
-        setMonto={checkout.setMonto}
-        agregarPago={checkout.agregarPago}
-        sugerirMontoParaSaldar={checkout.sugerirMontoParaSaldar}
-        previewSaldar={checkout.previewSaldar}
-        errorLocal={checkout.errorLocal}
-        simulando={checkout.simulando}
-        planesTarjeta={checkout.planesTarjeta}
-        planTarjetaId={checkout.planTarjetaId}
-        setPlanTarjetaId={checkout.setPlanTarjetaId}
-      />
+      {!ventaSaldada && (
+        <CheckoutAgregarPago
+          medioPago={checkout.medioPago}
+          setMedioPago={checkout.setMedioPago}
+          monto={checkout.monto}
+          setMonto={checkout.setMonto}
+          agregarPago={checkout.agregarPago}
+          sugerirMontoParaSaldar={checkout.sugerirMontoParaSaldar}
+          previewSaldar={checkout.previewSaldar}
+          errorLocal={checkout.errorLocal}
+          simulando={checkout.simulando}
+          planesTarjeta={checkout.planesTarjeta}
+          planTarjetaId={checkout.planTarjetaId}
+          setPlanTarjetaId={checkout.setPlanTarjetaId}
+        />
+      )}
 
       {mostrarPagosCargados && (
         <CheckoutPagosList

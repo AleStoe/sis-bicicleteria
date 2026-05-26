@@ -15,6 +15,8 @@ export default function CheckoutResumenLateral({
 }) {
   const {
     pagosPanel,
+    basePagosCubierta,
+    creditoAplicado,
     baseCubierta,
     clientePagoTotal,
     saldoBasePendiente,
@@ -42,10 +44,15 @@ export default function CheckoutResumenLateral({
 
       <div style={styles.metricsGrid}>
         <div style={styles.metricBox}>
-          <span>Cubierto</span>
+          <span>Cubierto total</span>
           <strong>{formatMoney(baseCubierta, { cents: true })}</strong>
         </div>
-
+        {creditoAplicado > 0 && (
+          <div style={styles.creditMiniBox}>
+            <span>Crédito aplicado</span>
+            <strong>- {formatMoney(creditoAplicado, { cents: true })}</strong>
+          </div>
+        )}
         <div style={styles.metricBox}>
           <span>Cobrado</span>
           <strong>{formatMoney(clientePagoTotal, { cents: true })}</strong>
@@ -386,4 +393,17 @@ const styles = {
     fontSize: 12,
     fontWeight: 800,
   },
+  creditMiniBox: {
+  marginTop: 8,
+  background: "#eff6ff",
+  border: "1px solid #bfdbfe",
+  borderRadius: 12,
+  padding: 10,
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 10,
+  color: "#1d4ed8",
+  fontSize: 12,
+  fontWeight: 900,
+},
 };

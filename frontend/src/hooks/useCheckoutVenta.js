@@ -20,9 +20,11 @@ function crearTempId() {
 }
 
 export default function useCheckoutVenta({
+  clienteId,
   total,
   tipoPrecio,
   items,
+  usarCreditoInicial = true,
   onEstadoCheckoutChange,
 }) {
   const [pagosDraft, setPagosDraft] = useState([]);
@@ -35,7 +37,8 @@ export default function useCheckoutVenta({
   const [previewSaldar, setPreviewSaldar] = useState(null);
   const [planesTarjeta, setPlanesTarjeta] = useState([]);
   const [planTarjetaId, setPlanTarjetaId] = useState("");
-
+  const [usarCredito, setUsarCredito] = useState(usarCreditoInicial);
+  const [montoCreditoAAplicar, setMontoCreditoAAplicar] = useState("");
   const simulacionSeqRef = useRef(0);
 
   const cantidadItems = useMemo(() => {
@@ -53,7 +56,9 @@ export default function useCheckoutVenta({
   const pagado = Number(simulacion?.total_pagos_cargados ?? 0);
 
   const pendiente = Number(
-    previewSaldar?.monto_sugerido_para_saldar ??
+    previewSaldar?.total_a_cobrar ??
+      simulacion?.total_a_cobrar ??
+      previewSaldar?.monto_sugerido_para_saldar ??
       simulacion?.saldo_estimado ??
       totalCalculado
   );
@@ -97,10 +102,13 @@ export default function useCheckoutVenta({
 
         const data = await simularVenta(
           buildVentaSimulacionPayload({
+            clienteId,
             tipoPrecio,
             items,
             pagos,
             sugerirSaldoConMedioPago,
+            usarCredito,
+            montoCreditoAAplicar,
           })
         );
 
@@ -118,7 +126,14 @@ export default function useCheckoutVenta({
         }
       }
     },
-    [items, pagosDraft, tipoPrecio]
+    [
+      clienteId,
+      items,
+      pagosDraft,
+      tipoPrecio,
+      usarCredito,
+      montoCreditoAAplicar,
+    ]
   );
 
   const recalcularSimulacion = useCallback(
@@ -251,11 +266,29 @@ export default function useCheckoutVenta({
       return null;
     }
 
+    const creditoAplicadoActual = Number(simulacionActiva?.credito_aplicado ?? 0);
+
     return {
       pagos: pagosDraft.map(buildPagoVentaPayload),
       entregar_ahora: entregarAhora,
+      usar_credito: usarCredito && creditoAplicadoActual > 0,
+      monto_credito_a_aplicar:
+        montoCreditoAAplicar !== null &&
+        montoCreditoAAplicar !== undefined &&
+        String(montoCreditoAAplicar).trim() !== ""
+          ? String(montoCreditoAAplicar)
+          : null,
     };
-  }, [entregarAhora, items, pagosDraft, simulando]);
+  }, [
+    entregarAhora,
+    items,
+    pagosDraft,
+    simulando,
+    usarCredito,
+    montoCreditoAAplicar,
+    simulacionActiva,
+    pendiente,
+  ]);
 
   useEffect(() => {
     async function cargarPlanesTarjeta() {
@@ -279,13 +312,15 @@ export default function useCheckoutVenta({
     setErrorLocal("");
     setSimulacion(null);
     setPreviewSaldar(null);
+    setMontoCreditoAAplicar("");
+    setUsarCredito(true);
 
     if (items.length > 0) {
       recalcularSimulacion([]);
     }
     // Se reinicia intencionalmente al cambiar el carrito/tipo de precio.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, total, tipoPrecio]);
+  }, [clienteId, items, total, tipoPrecio]);
 
   useEffect(() => {
     let cancelado = false;
@@ -334,6 +369,15 @@ export default function useCheckoutVenta({
       entregarAhora,
       simulando,
       quitarPago,
+
+      usarCredito,
+      setUsarCredito,
+      montoCreditoAAplicar,
+      setMontoCreditoAAplicar,
+      creditoDisponible: Number(simulacionActiva?.credito_disponible ?? 0),
+      creditoAplicado: Number(simulacionActiva?.credito_aplicado ?? 0),
+      saldoCreditoRestante: Number(simulacionActiva?.saldo_credito_restante ?? 0),
+      totalACobrar: Number(simulacionActiva?.total_a_cobrar ?? pendiente),
     });
   }, [
     entregarAhora,
@@ -350,6 +394,9 @@ export default function useCheckoutVenta({
     simulando,
     total,
     totalCalculado,
+
+    usarCredito,
+    montoCreditoAAplicar,
   ]);
 
   return {
@@ -379,5 +426,14 @@ export default function useCheckoutVenta({
     pagadoBase,
     pagadoCliente,
     saldoBasePendiente,
+
+    usarCredito,
+    setUsarCredito,
+    montoCreditoAAplicar,
+    setMontoCreditoAAplicar,
+    creditoDisponible: Number(simulacionActiva?.credito_disponible ?? 0),
+    creditoAplicado: Number(simulacionActiva?.credito_aplicado ?? 0),
+    saldoCreditoRestante: Number(simulacionActiva?.saldo_credito_restante ?? 0),
+    totalACobrar: Number(simulacionActiva?.total_a_cobrar ?? pendiente),
   };
 }
