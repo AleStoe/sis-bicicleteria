@@ -1261,6 +1261,7 @@ def devolver_item_serializado_entregado(venta_id: int, data):
                     Decimal("1"),
                 ),
                 id_usuario=data.id_usuario,
+                
             )
             auditoria_service.registrar_evento(
                 conn,
@@ -1363,13 +1364,25 @@ def devolver_venta(venta_id: int, data):
                 total_devolucion = redondear_monto(total_devolucion + monto_item)
 
             # generar crédito
-            creditos_service.crear_credito_por_anulacion_venta(
+            resultado_deuda = deudas_service.cancelar_deuda_por_devolucion_venta(
                 conn,
-                id_cliente=venta["id_cliente"],
                 id_venta=venta_id,
-                monto_credito=total_devolucion,
                 id_usuario=data.id_usuario,
             )
+
+            monto_credito = _calcular_credito_neto_por_devolucion(
+                total_devolucion,
+                resultado_deuda["monto_cancelado"],
+            )
+
+            if monto_credito > Decimal("0"):
+                creditos_service.crear_credito_por_devolucion_venta(
+                    conn,
+                    id_cliente=venta["id_cliente"],
+                    id_venta=venta_id,
+                    monto_credito=monto_credito,
+                    id_usuario=data.id_usuario,
+                )
 
             # actualizar estado
             update_venta_saldo_y_estado(
@@ -1793,3 +1806,17 @@ def _calcular_monto_credito_devolucion_item(venta: dict, item: dict, cantidad_de
     monto = precio_unitario * to_decimal(cantidad_devuelta) * factor
 
     return redondear_monto(monto)
+
+def _calcular_credito_neto_por_devolucion(
+    monto_devolucion: Decimal,
+    monto_deuda_cancelada: Decimal,
+) -> Decimal:
+    monto_devolucion = redondear_monto(to_decimal(monto_devolucion))
+    monto_deuda_cancelada = redondear_monto(to_decimal(monto_deuda_cancelada))
+
+    credito_neto = monto_devolucion - monto_deuda_cancelada
+
+    if credito_neto <= Decimal("0"):
+        return Decimal("0")
+
+    return redondear_monto(credito_neto)

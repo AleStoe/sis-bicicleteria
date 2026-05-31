@@ -4,27 +4,92 @@ import { formatMoney } from "../../../utils/formatters";
 import { Card, MetricCard, Badge, Button } from "../../ui";
 
 export default function VentaSituacionFinanciera({
-  cubiertoNoPago,
+  venta,
+  coberturaNoCobrada = 0,
+  creditoAplicadoReal = 0,
+  creditoGeneradoDevolucion = 0,
+  deudaCanceladaPorDevolucion = 0,
   tieneDeuda,
   deuda,
 }) {
+  const estado = venta?.estado;
+  const esDevuelta = estado === "devuelta" || estado === "devuelta_parcial";
+
+  const mostrarDeudaCancelada =
+    esDevuelta && deudaCanceladaPorDevolucion > 0;
+
+  const mostrarCreditoAplicado =
+    creditoAplicadoReal > 0;
+
+  const mostrarCreditoGenerado =
+    esDevuelta && creditoGeneradoDevolucion > 0;
+
+  const mostrarCoberturaGenerica =
+    coberturaNoCobrada > 0 &&
+    !mostrarDeudaCancelada &&
+    !mostrarCreditoAplicado &&
+    !mostrarCreditoGenerado;
+
   return (
     <Card
       title="Situación financiera"
       subtitle="Estado de deuda, crédito y cobertura financiera de la venta."
     >
       <div style={{ display: "grid", gap: "12px" }}>
-        {cubiertoNoPago > 0 && (
-          <div style={noteStyle}>
-
-            <strong>Crédito aplicado a esta venta</strong>
+        {mostrarDeudaCancelada && (
+          <div style={devolucionStyle}>
+            <strong>Deuda cancelada por devolución</strong>
 
             <div style={{ marginTop: "6px", fontWeight: 800 }}>
-              {formatMoney(cubiertoNoPago)}
+              {formatMoney(deudaCanceladaPorDevolucion)}
             </div>
 
             <div style={smallMutedStyle}>
-              Esta venta fue cubierta con crédito del cliente. No representa ingreso de caja.
+              La venta fue devuelta. Este importe no fue cobrado ni generado como crédito:
+              corresponde a deuda pendiente que se canceló por la devolución.
+            </div>
+          </div>
+        )}
+
+        {mostrarCreditoAplicado && (
+          <div style={noteStyle}>
+            <strong>Crédito aplicado a esta venta</strong>
+
+            <div style={{ marginTop: "6px", fontWeight: 800 }}>
+              {formatMoney(creditoAplicadoReal)}
+            </div>
+
+            <div style={smallMutedStyle}>
+              El cliente usó crédito disponible para cubrir parte o la totalidad de esta venta.
+              No representa ingreso de caja.
+            </div>
+          </div>
+        )}
+
+        {mostrarCreditoGenerado && (
+          <div style={noteStyle}>
+            <strong>Crédito generado por devolución</strong>
+
+            <div style={{ marginTop: "6px", fontWeight: 800 }}>
+              {formatMoney(creditoGeneradoDevolucion)}
+            </div>
+
+            <div style={smallMutedStyle}>
+              La devolución generó saldo a favor porque existían pagos reales o crédito previo aplicado.
+            </div>
+          </div>
+        )}
+
+        {mostrarCoberturaGenerica && (
+          <div style={neutralStyle}>
+            <strong>Cobertura financiera no cobrada</strong>
+
+            <div style={{ marginTop: "6px", fontWeight: 800 }}>
+              {formatMoney(coberturaNoCobrada)}
+            </div>
+
+            <div style={smallMutedStyle}>
+              Este importe no representa ingreso de caja. Revisar pagos, deuda o ajustes asociados.
             </div>
           </div>
         )}
@@ -87,6 +152,22 @@ const noteStyle = {
   padding: "14px",
   borderRadius: "12px",
   border: "1px solid #bfdbfe",
+};
+
+const devolucionStyle = {
+  background: "#fff7ed",
+  color: "#9a3412",
+  padding: "14px",
+  borderRadius: "12px",
+  border: "1px solid #fed7aa",
+};
+
+const neutralStyle = {
+  background: "#f8fafc",
+  color: "#334155",
+  padding: "14px",
+  borderRadius: "12px",
+  border: "1px solid #cbd5e1",
 };
 
 const warningStyle = {

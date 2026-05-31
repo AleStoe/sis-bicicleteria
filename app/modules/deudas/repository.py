@@ -74,8 +74,22 @@ def get_deuda_abierta_by_origen(conn, origen_tipo: str, origen_id: int):
             (origen_tipo, origen_id),
         )
         return cur.fetchone()
-
-
+    
+def get_deuda_abierta_by_origen_for_update(conn, origen_tipo: str, origen_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT *
+            FROM deudas_cliente
+            WHERE origen_tipo = %s
+              AND origen_id = %s
+              AND estado = 'abierta'
+            FOR UPDATE
+            """,
+            (origen_tipo, origen_id),
+        )
+        return cur.fetchone()
+    
 def get_deudas(conn):
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
@@ -169,7 +183,7 @@ def insert_deuda_movimiento(conn, data: dict):
 
 
 def update_deuda_saldo_y_estado(conn, deuda_id: int, saldo_actual, estado: str):
-    with conn.cursor() as cur:
+    with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
             UPDATE deudas_cliente
@@ -178,9 +192,11 @@ def update_deuda_saldo_y_estado(conn, deuda_id: int, saldo_actual, estado: str):
                 estado = %s,
                 updated_at = NOW()
             WHERE id = %s
+            RETURNING *
             """,
             (saldo_actual, estado, deuda_id),
         )
+        return cur.fetchone()
     
 def get_deudas_filtradas(
     conn,

@@ -190,11 +190,39 @@ export default function VentaDetallePage() {
     }
   }
 
+  function getCantidadDisponibleDevolucion(item) {
+    const cantidadVendida = Number(item?.cantidad || 0);
+    const cantidadDevuelta = Number(
+      item?.cantidad_devuelta ??
+        item?.cantidad_devuelta_total ??
+        item?.cantidad_ya_devuelta ??
+        item?.devuelto_cantidad ??
+        0
+    );
+
+    const cantidadDisponibleBackend = item?.cantidad_disponible_devolucion;
+
+    if (cantidadDisponibleBackend !== undefined && cantidadDisponibleBackend !== null) {
+      const disponible = Number(cantidadDisponibleBackend);
+      return Number.isFinite(disponible) ? Math.max(disponible, 0) : 0;
+    }
+
+    if (!Number.isFinite(cantidadVendida)) return 0;
+    if (!Number.isFinite(cantidadDevuelta)) return Math.max(cantidadVendida, 0);
+
+    return Math.max(cantidadVendida - cantidadDevuelta, 0);
+  }
+
   async function handleDevolverItem(item) {
-    const cantidadMaxima = Number(item.cantidad || 0);
+    const cantidadMaxima = getCantidadDisponibleDevolucion(item);
+
+    if (cantidadMaxima <= 0) {
+      setError("Este item no tiene cantidad disponible para devolver");
+      return;
+    }
 
     const cantidadRaw = window.prompt(
-      `Cantidad a devolver del item #${item.id}. Máximo: ${cantidadMaxima}`
+      `Cantidad a devolver del item #${item.id}. Disponible para devolver: ${cantidadMaxima}`
     );
 
     if (!cantidadRaw) return;
@@ -207,7 +235,7 @@ export default function VentaDetallePage() {
     }
 
     if (cantidad > cantidadMaxima) {
-      setError("La cantidad a devolver no puede superar la cantidad vendida");
+      setError("La cantidad a devolver no puede superar la cantidad disponible para devolución");
       return;
     }
 
@@ -321,27 +349,41 @@ export default function VentaDetallePage() {
     0
   );
 
-const estadosFinales = ["anulada", "devuelta", "devuelta_parcial"];
+const estadosFinales = ["anulada", "devuelta"];
+const estadosAnulables = ["creada", "pagada_parcial", "pagada_total"];
+const estadosEntregables = ["creada", "pagada_parcial", "pagada_total"];
+const estadosCobrables = ["creada", "pagada_parcial", "pagada_total"];
+const estadosDevolvibles = ["entregada", "devuelta_parcial"];
 
 const tieneDeuda = situacion_financiera?.tiene_deuda;
 const deuda = situacion_financiera?.deuda_abierta;
+const resumenFinanciero = situacion_financiera?.resumen || {};
 
-const puedeAnular = ["creada", "pagada_parcial", "pagada_total"].includes(
-  venta.estado
+const creditoAplicadoReal = Number(
+  resumenFinanciero.credito_aplicado_real ?? 0
 );
 
-const puedeEntregar = !["entregada", ...estadosFinales].includes(
-  venta.estado
+const creditoGeneradoDevolucion = Number(
+  resumenFinanciero.credito_generado_devolucion ?? 0
 );
 
-const puedeDevolver = ["entregada", "devuelta_parcial"].includes(
-  venta.estado
+const deudaCanceladaPorDevolucion = Number(
+  resumenFinanciero.deuda_cancelada_por_devolucion ?? 0
 );
+
+const coberturaNoCobrada = Number(
+  resumenFinanciero.cobertura_no_cobrada ?? cubiertoNoPago
+);
+const puedeAnular = estadosAnulables.includes(venta.estado);
+
+const puedeEntregar = estadosEntregables.includes(venta.estado);
+
+const puedeDevolver = estadosDevolvibles.includes(venta.estado);
 
 const puedeCobrar =
   saldoPendiente > 0 &&
   !tieneDeuda &&
-  !["anulada", "devuelta"].includes(venta.estado);
+  estadosCobrables.includes(venta.estado);
 
 const estaCerradaOperativamente =
   saldoPendiente <= 0 && venta.estado === "entregada";
@@ -367,7 +409,11 @@ const estaCerradaOperativamente =
       />
 
       <VentaSituacionFinanciera
-        cubiertoNoPago={cubiertoNoPago}
+        venta={venta}
+        coberturaNoCobrada={coberturaNoCobrada}
+        creditoAplicadoReal={creditoAplicadoReal}
+        creditoGeneradoDevolucion={creditoGeneradoDevolucion}
+        deudaCanceladaPorDevolucion={deudaCanceladaPorDevolucion}
         tieneDeuda={tieneDeuda}
         deuda={deuda}
       />
