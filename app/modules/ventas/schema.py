@@ -172,9 +172,23 @@ class VentaDeudaAbiertaResumenOutput(BaseModel):
     origen_id: int
 
 
+class VentaResumenFinancieroOutput(BaseModel):
+    credito_aplicado_real: Decimal = Decimal("0.00")
+    credito_generado_devolucion: Decimal = Decimal("0.00")
+    deuda_cancelada_por_devolucion: Decimal = Decimal("0.00")
+    cobertura_no_cobrada: Decimal = Decimal("0.00")
+
+
 class VentaSituacionFinancieraOutput(BaseModel):
     tiene_deuda: bool
     deuda_abierta: Optional[VentaDeudaAbiertaResumenOutput] = None
+    total_final: Decimal = Decimal("0.00")
+    total_pagado_confirmado: Decimal = Decimal("0.00")
+    saldo_pendiente: Decimal = Decimal("0.00")
+    monto_cubierto_sin_pago_real: Decimal = Decimal("0.00")
+    resumen: VentaResumenFinancieroOutput = Field(
+        default_factory=VentaResumenFinancieroOutput
+    )
 
 class VentaDetalleOutput(BaseModel):
     venta: VentaDetalleCabeceraOutput

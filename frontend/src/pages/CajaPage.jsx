@@ -17,9 +17,10 @@ import CajaEgresoCard from "../components/caja/CajaEgresoCard";
 import CajaAjusteCard from "../components/caja/CajaAjusteCard";
 import CajaCierreCard from "../components/caja/CajaCierreCard";
 import CajaMovimientosTable from "../components/caja/CajaMovimientosTable";
+import { CURRENT_USER_ID } from "../config/appConfig";
 
 const ID_SUCURSAL = 1;
-const ID_USUARIO = 1;
+const ID_USUARIO = CURRENT_USER_ID;
 
 export default function CajaPage() {
   const [loading, setLoading] = useState(true);
@@ -130,6 +131,16 @@ async function cargarCaja() {
       return;
     }
 
+    const confirmado = window.confirm(
+      `Vas a registrar un EGRESO de ${formatCurrency(monto)}.
+
+Motivo: ${nota}
+
+Esta operación impacta en caja. ¿Confirmás?`
+    );
+
+    if (!confirmado) return;
+
     try {
       setProcesando(true);
 
@@ -170,6 +181,17 @@ async function cargarCaja() {
       setError("La nota debe tener al menos 3 caracteres");
       return;
     }
+
+    const direccionTexto = ajuste.direccion === "positivo" ? "POSITIVO" : "NEGATIVO";
+    const confirmado = window.confirm(
+      `Vas a registrar un AJUSTE ${direccionTexto} de ${formatCurrency(monto)}.
+
+Motivo: ${nota}
+
+Los ajustes deben usarse solo para corregir diferencias reales de caja. ¿Confirmás?`
+    );
+
+    if (!confirmado) return;
 
     try {
       setProcesando(true);
@@ -212,7 +234,14 @@ async function cargarCaja() {
       return;
     }
 
-    const confirmado = window.confirm("¿Seguro que querés cerrar la caja?");
+    const confirmado = window.confirm(
+      `¿Seguro que querés cerrar la caja?
+
+Efectivo teórico: ${formatCurrency(detalle.efectivo_teorico)}
+Efectivo contado: ${formatCurrency(cierreReal)}
+
+Después del cierre no deberías registrar más movimientos en esta caja.`
+    );
     if (!confirmado) return;
 
     try {

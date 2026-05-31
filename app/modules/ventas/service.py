@@ -23,6 +23,9 @@ from app.modules.serializadas.repository import (
     insert_bicicleta_cliente,    
 )
 from app.modules.creditos.service import crear_credito_por_devolucion_venta
+from app.modules.deudas import service as deudas_service
+from app.modules.deudas import repository as deudas_repository
+from app.modules.creditos import repository as creditos_repository
 from app.shared.money import redondear_monto
 from .repository import (
     get_cliente_by_id,
@@ -818,10 +821,26 @@ def obtener_venta(venta_id: int):
             origen_tipo=ORIGEN_VENTA,
             origen_id=venta_id,
         )
+
         total_final = redondear_monto(venta["total_final"])
         saldo_pendiente = redondear_monto(venta["saldo_pendiente"])
+
         total_pagado_confirmado = redondear_monto(
             get_total_pagado_confirmado_por_venta(conn, venta_id)
+        )
+
+        credito_aplicado_real = redondear_monto(
+            creditos_repository.get_total_credito_aplicado_a_venta(
+                conn,
+                venta_id,
+            )
+        )
+
+        credito_generado_devolucion = redondear_monto(
+            creditos_repository.get_total_credito_generado_por_venta(
+                conn,
+                venta_id,
+            )
         )
 
         monto_cubierto_sin_pago_real = redondear_monto(
@@ -832,6 +851,13 @@ def obtener_venta(venta_id: int):
         # No debe mostrarse como crédito/ajuste real.
         if abs(monto_cubierto_sin_pago_real) <= Decimal("0.01"):
             monto_cubierto_sin_pago_real = Decimal("0.00")
+
+        deuda_cancelada_por_devolucion = redondear_monto(
+            deudas_repository.get_total_deuda_cancelada_por_devolucion_venta(
+                conn,
+                venta_id,
+            )
+        )
 
         situacion_financiera = {
             "tiene_deuda": deuda_abierta is not None,
@@ -850,6 +876,12 @@ def obtener_venta(venta_id: int):
             "total_pagado_confirmado": total_pagado_confirmado,
             "saldo_pendiente": saldo_pendiente,
             "monto_cubierto_sin_pago_real": monto_cubierto_sin_pago_real,
+            "resumen": {
+                "credito_aplicado_real": credito_aplicado_real,
+                "credito_generado_devolucion": credito_generado_devolucion,
+                "deuda_cancelada_por_devolucion": deuda_cancelada_por_devolucion,
+                "cobertura_no_cobrada": monto_cubierto_sin_pago_real,
+            },
         }
 
         return {

@@ -213,3 +213,33 @@ def get_credito_by_id_for_update(conn, credito_id: int):
             (credito_id,),
         )
         return cur.fetchone()
+
+def get_total_credito_aplicado_a_venta(conn, venta_id: int) -> Decimal:
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT COALESCE(SUM(monto), 0) AS total
+            FROM credito_movimientos
+            WHERE origen_tipo = 'venta'
+              AND origen_id = %s
+              AND tipo_movimiento = 'aplicacion_a_venta'
+            """,
+            (venta_id,),
+        )
+        row = cur.fetchone()
+        return Decimal(str(row["total"] or 0))
+
+def get_total_credito_generado_por_venta(conn, venta_id: int) -> Decimal:
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT COALESCE(SUM(monto), 0) AS total
+            FROM credito_movimientos
+            WHERE origen_tipo = 'venta'
+              AND origen_id = %s
+              AND tipo_movimiento = 'credito_generado'
+            """,
+            (venta_id,),
+        )
+        row = cur.fetchone()
+        return Decimal(str(row["total"] or 0))

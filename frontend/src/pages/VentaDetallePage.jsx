@@ -359,6 +359,10 @@ const tieneDeuda = situacion_financiera?.tiene_deuda;
 const deuda = situacion_financiera?.deuda_abierta;
 const resumenFinanciero = situacion_financiera?.resumen || {};
 
+const deudaCanceladaPorDevolucion = Number(
+  resumenFinanciero.deuda_cancelada_por_devolucion ?? 0
+);
+
 const creditoAplicadoReal = Number(
   resumenFinanciero.credito_aplicado_real ?? 0
 );
@@ -367,9 +371,6 @@ const creditoGeneradoDevolucion = Number(
   resumenFinanciero.credito_generado_devolucion ?? 0
 );
 
-const deudaCanceladaPorDevolucion = Number(
-  resumenFinanciero.deuda_cancelada_por_devolucion ?? 0
-);
 
 const coberturaNoCobrada = Number(
   resumenFinanciero.cobertura_no_cobrada ?? cubiertoNoPago

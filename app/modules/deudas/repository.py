@@ -1,5 +1,5 @@
 from psycopg.rows import dict_row
-
+from decimal import Decimal
 
 def get_cliente_by_id(conn, cliente_id: int):
     with conn.cursor(row_factory=dict_row) as cur:
@@ -326,3 +326,27 @@ def get_venta_items_origen_by_venta_id(conn, venta_id: int):
             (venta_id,),
         )
         return cur.fetchall()
+
+def get_total_deuda_cancelada_por_devolucion_venta(conn, venta_id: int) -> Decimal:
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT COALESCE(SUM(dm.monto), 0) AS total
+            FROM deuda_movimientos dm
+            JOIN deudas_cliente d ON d.id = dm.id_deuda
+            WHERE d.origen_tipo = 'venta'
+              AND d.origen_id = %s
+              AND dm.tipo_movimiento = 'pago'
+              AND (
+                    dm.nota ILIKE %s
+                 OR dm.nota ILIKE %s
+              )
+            """,
+            (
+                venta_id,
+                "%devolución%",
+                "%devolucion%",
+            ),
+        )
+        row = cur.fetchone()
+        return Decimal(str(row["total"] or 0))
