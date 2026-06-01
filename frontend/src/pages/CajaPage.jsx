@@ -18,6 +18,7 @@ import CajaAjusteCard from "../components/caja/CajaAjusteCard";
 import CajaCierreCard from "../components/caja/CajaCierreCard";
 import CajaMovimientosTable from "../components/caja/CajaMovimientosTable";
 import { CURRENT_USER_ID } from "../config/appConfig";
+import { ConfirmModal } from "../components/ui/ConfirmModal";
 
 const ID_SUCURSAL = 1;
 const ID_USUARIO = CURRENT_USER_ID;
@@ -36,6 +37,23 @@ export default function CajaPage() {
     direccion: "positivo",
     nota: "",
   });
+  const [confirmConfig, setConfirmConfig] = useState(null);
+
+  function pedirConfirmacion(config) {
+    return new Promise((resolve) => {
+      setConfirmConfig({
+        ...config,
+        onConfirm: () => {
+          setConfirmConfig(null);
+          resolve(true);
+        },
+        onCancel: () => {
+          setConfirmConfig(null);
+          resolve(false);
+        },
+      });
+    });
+  }
 
   useEffect(() => {
     cargarCaja();
@@ -131,15 +149,19 @@ async function cargarCaja() {
       return;
     }
 
-    const confirmado = window.confirm(
-      `Vas a registrar un EGRESO de ${formatCurrency(monto)}.
+    const confirmado = await pedirConfirmacion({
+    title: "Registrar egreso",
+    message: `Vas a registrar un EGRESO de ${formatCurrency(monto)}.
 
-Motivo: ${nota}
+  Motivo: ${nota}
 
-Esta operación impacta en caja. ¿Confirmás?`
-    );
+  Esta operación impacta en caja. ¿Confirmás?`,
+    confirmText: "Registrar egreso",
+    cancelText: "Cancelar",
+    variant: "danger",
+  });
 
-    if (!confirmado) return;
+  if (!confirmado) return;
 
     try {
       setProcesando(true);
@@ -183,15 +205,19 @@ Esta operación impacta en caja. ¿Confirmás?`
     }
 
     const direccionTexto = ajuste.direccion === "positivo" ? "POSITIVO" : "NEGATIVO";
-    const confirmado = window.confirm(
-      `Vas a registrar un AJUSTE ${direccionTexto} de ${formatCurrency(monto)}.
+    const confirmado = await pedirConfirmacion({
+    title: "Registrar ajuste de caja",
+    message: `Vas a registrar un AJUSTE ${direccionTexto} de ${formatCurrency(monto)}.
 
-Motivo: ${nota}
+  Motivo: ${nota}
 
-Los ajustes deben usarse solo para corregir diferencias reales de caja. ¿Confirmás?`
-    );
+  Los ajustes deben usarse solo para corregir diferencias reales de caja. ¿Confirmás?`,
+    confirmText: "Registrar ajuste",
+    cancelText: "Cancelar",
+    variant: "warning",
+  });
 
-    if (!confirmado) return;
+  if (!confirmado) return;
 
     try {
       setProcesando(true);
@@ -234,15 +260,20 @@ Los ajustes deben usarse solo para corregir diferencias reales de caja. ¿Confir
       return;
     }
 
-    const confirmado = window.confirm(
-      `¿Seguro que querés cerrar la caja?
+    const confirmado = await pedirConfirmacion({
+    title: "Cerrar caja",
+    message: `¿Seguro que querés cerrar la caja?
 
-Efectivo teórico: ${formatCurrency(detalle.efectivo_teorico)}
-Efectivo contado: ${formatCurrency(cierreReal)}
+  Efectivo teórico: ${formatCurrency(detalle.efectivo_teorico)}
+  Efectivo contado: ${formatCurrency(cierreReal)}
 
-Después del cierre no deberías registrar más movimientos en esta caja.`
-    );
-    if (!confirmado) return;
+  Después del cierre no deberías registrar más movimientos en esta caja.`,
+    confirmText: "Cerrar caja",
+    cancelText: "Cancelar",
+    variant: "danger",
+  });
+
+  if (!confirmado) return;
 
     try {
       setProcesando(true);
@@ -354,8 +385,20 @@ Después del cierre no deberías registrar más movimientos en esta caja.`
             movimientos={detalle.movimientos ?? []}
             formatCurrency={formatCurrency}
           />
+          
         </>
+          
       )}
+      <ConfirmModal
+        open={Boolean(confirmConfig)}
+        title={confirmConfig?.title}
+        message={confirmConfig?.message}
+        confirmText={confirmConfig?.confirmText}
+        cancelText={confirmConfig?.cancelText}
+        variant={confirmConfig?.variant}
+        onConfirm={confirmConfig?.onConfirm}
+        onCancel={confirmConfig?.onCancel}
+      />
     </div>
   );
 }

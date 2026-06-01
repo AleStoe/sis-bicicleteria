@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { formatMoney, formatDate } from "../utils/formatters";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { ConfirmModal } from "../components/ui/ConfirmModal";
 import {
   obtenerCliente,
   desactivarCliente,
@@ -16,7 +17,24 @@ export default function ClienteDetallePage() {
   const [bicicletas, setBicicletas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [confirmConfig, setConfirmConfig] = useState(null);
 
+  function pedirConfirmacion(config) {
+    return new Promise((resolve) => {
+      setConfirmConfig({
+        ...config,
+        onConfirm: () => {
+          setConfirmConfig(null);
+          resolve(true);
+        },
+        onCancel: () => {
+          setConfirmConfig(null);
+          resolve(false);
+        },
+      });
+    });
+  }
+  
   useEffect(() => {
     cargarTodo();
   }, [clienteId]);
@@ -41,9 +59,13 @@ export default function ClienteDetallePage() {
   }
 
   async function handleActivar() {
-    const confirmar = window.confirm(
-      "¿Seguro que querés activar este cliente?"
-    );
+    const confirmar = await pedirConfirmacion({
+      title: "Activar cliente",
+      message: "¿Seguro que querés activar este cliente?",
+      confirmText: "Activar",
+      cancelText: "Cancelar",
+      variant: "info",
+    });
 
     if (!confirmar) return;
 
@@ -57,9 +79,13 @@ export default function ClienteDetallePage() {
   }
 
   async function handleDesactivar() {
-    const confirmar = window.confirm(
-      "¿Seguro que querés desactivar este cliente?"
-    );
+    const confirmar = await pedirConfirmacion({
+      title: "Desactivar cliente",
+      message: "¿Seguro que querés desactivar este cliente?",
+      confirmText: "Desactivar",
+      cancelText: "Cancelar",
+      variant: "warning",
+    });
 
     if (!confirmar) return;
 
@@ -344,7 +370,17 @@ export default function ClienteDetallePage() {
           </div>
         )}
       </section>
-    </div>
+       <ConfirmModal
+          open={Boolean(confirmConfig)}
+          title={confirmConfig?.title}
+          message={confirmConfig?.message}
+          confirmText={confirmConfig?.confirmText}
+          cancelText={confirmConfig?.cancelText}
+          variant={confirmConfig?.variant}
+          onConfirm={confirmConfig?.onConfirm}
+          onCancel={confirmConfig?.onCancel}
+        />
+      </div>
   );
 }
 

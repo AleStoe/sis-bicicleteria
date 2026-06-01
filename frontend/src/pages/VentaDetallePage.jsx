@@ -4,6 +4,8 @@ import VentaHeader from "../components/ventas/detalle/VentaHeader";
 import VentaResumenCards from "../components/ventas/detalle/VentaResumenCards";
 import VentaDocumentosPanel from "../components/ventas/detalle/VentaDocumentosPanel";
 import VentaPagosPanel from "../components/ventas/detalle/VentaPagosPanel";
+import { ConfirmModal } from "../components/ui/ConfirmModal";
+import { PromptModal } from "../components/ui/PromptModal";
 
 import {
   obtenerVenta,
@@ -35,7 +37,40 @@ export default function VentaDetallePage() {
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
   const [procesando, setProcesando] = useState(false);
+  const [confirmConfig, setConfirmConfig] = useState(null);
+  const [promptConfig, setPromptConfig] = useState(null);
 
+  function pedirConfirmacion(config) {
+    return new Promise((resolve) => {
+      setConfirmConfig({
+        ...config,
+        onConfirm: () => {
+          setConfirmConfig(null);
+          resolve(true);
+        },
+        onCancel: () => {
+          setConfirmConfig(null);
+          resolve(false);
+        },
+      });
+    });
+  }
+
+  function pedirPrompt(config) {
+    return new Promise((resolve) => {
+      setPromptConfig({
+        ...config,
+        onConfirm: (value) => {
+          setPromptConfig(null);
+          resolve(value);
+        },
+        onCancel: () => {
+          setPromptConfig(null);
+          resolve(null);
+        },
+      });
+    });
+  }
   useEffect(() => {
     cargarTodo();
   }, [ventaId]);
@@ -78,9 +113,14 @@ export default function VentaDetallePage() {
   }
 
   async function handleEntregarVenta() {
-    const confirmar = window.confirm(
-      "¿Confirmás la entrega de esta venta? Si tiene saldo pendiente, el backend exigirá permiso y creará deuda."
-    );
+    const confirmar = await pedirConfirmacion({
+      title: "Entregar venta",
+      message:
+        "¿Confirmás la entrega de esta venta? Si tiene saldo pendiente, el backend exigirá permiso y creará deuda.",
+      confirmText: "Entregar venta",
+      cancelText: "Cancelar",
+      variant: "warning",
+    });
 
     if (!confirmar) return;
 
@@ -101,7 +141,15 @@ export default function VentaDetallePage() {
   }
 
   async function handleAnularVenta() {
-    const motivo = window.prompt("Motivo de anulación de la venta:");
+    const motivo = await pedirPrompt({
+      title: "Anular venta",
+      label: "Motivo de anulación",
+      required: true,
+      minLength: 3,
+      confirmText: "Anular venta",
+    });
+
+    if (!motivo || motivo.trim().length < 3) return;
 
     if (!motivo || motivo.trim().length < 3) return;
 
@@ -156,15 +204,24 @@ export default function VentaDetallePage() {
   async function handleDevolverVentaCompleta() {
     const totalEstimadoCredito = Number(data?.venta?.total_final || 0);
 
-    const motivo = window.prompt(
-      `Motivo de devolución total de la venta. Se generará crédito estimado por ${formatMoney(totalEstimadoCredito)}, no devolución de efectivo:`
-    );
+    const motivo = await pedirPrompt({
+      title: "Devolución total",
+      label: "Motivo de devolución",
+      message: `Se generará crédito estimado por ${formatMoney(totalEstimadoCredito)}, no devolución de efectivo.`,
+      required: true,
+      minLength: 3,
+      confirmText: "Continuar",
+    });
 
     if (!motivo || motivo.trim().length < 3) return;
 
-    const confirmar = window.confirm(
-      `¿Confirmás la devolución TOTAL de esta venta? Se devolverá stock y se generará crédito estimado por ${formatMoney(totalEstimadoCredito)}.`
-    );
+    const confirmar = await pedirConfirmacion({
+      title: "Confirmar devolución total",
+      message: `¿Confirmás la devolución TOTAL de esta venta? Se devolverá stock y se generará crédito estimado por ${formatMoney(totalEstimadoCredito)}.`,
+      confirmText: "Devolver venta",
+      cancelText: "Cancelar",
+      variant: "danger",
+    });
 
     if (!confirmar) return;
 
@@ -221,9 +278,27 @@ export default function VentaDetallePage() {
       return;
     }
 
-    const cantidadRaw = window.prompt(
-      `Cantidad a devolver del item #${item.id}. Disponible para devolver: ${cantidadMaxima}`
-    );
+    const cantidadRaw = await pedirPrompt({
+      title: "Devolver item",
+      label: "Cantidad a devolver",
+      message: `Item #${item.id}. Disponible para devolver: ${cantidadMaxima}`,
+      inputType: "number",
+      required: true,
+      confirmText: "Continuar",
+      validate: (value) => {
+        const cantidad = Number(value);
+
+        if (!Number.isFinite(cantidad) || cantidad <= 0) {
+          return "La cantidad a devolver debe ser mayor a 0";
+        }
+
+        if (cantidad > cantidadMaxima) {
+          return "La cantidad a devolver no puede superar la cantidad disponible";
+        }
+
+        return "";
+      },
+    });
 
     if (!cantidadRaw) return;
 
@@ -239,17 +314,28 @@ export default function VentaDetallePage() {
       return;
     }
 
-    const motivo = window.prompt(
-      "Motivo de devolución parcial. Se generará crédito al cliente:"
-    );
+    const motivo = await pedirPrompt({
+      title: "Motivo de devolución parcial",
+      label: "Motivo",
+      message: "Se generará crédito al cliente.",
+      required: true,
+      minLength: 3,
+      confirmText: "Continuar",
+    });
 
     if (!motivo || motivo.trim().length < 3) return;
 
     const creditoEstimado = calcularCreditoEstimadoItem(item, cantidad);
 
-    const confirmar = window.confirm(
-      `¿Confirmás devolver ${cantidad} unidad(es) del item #${item.id}?\n\nCrédito estimado: ${formatMoney(creditoEstimado)}`
-    );
+    const confirmar = await pedirConfirmacion({
+      title: "Confirmar devolución parcial",
+      message: `¿Confirmás devolver ${cantidad} unidad(es) del item #${item.id}?
+
+    Crédito estimado: ${formatMoney(creditoEstimado)}`,
+      confirmText: "Devolver item",
+      cancelText: "Cancelar",
+      variant: "warning",
+    });
 
     if (!confirmar) return;
 
@@ -286,9 +372,14 @@ export default function VentaDetallePage() {
 
     const creditoEstimado = calcularCreditoEstimadoItem(item, 1);
 
-    const motivo = window.prompt(
-      `Motivo de devolución de bicicleta serializada. Crédito estimado: ${formatMoney(creditoEstimado)}`
-    );
+    const motivo = await pedirPrompt({
+      title: "Devolución serializada",
+      label: "Motivo",
+      message: `Crédito estimado: ${formatMoney(creditoEstimado)}`,
+      required: true,
+      minLength: 3,
+      confirmText: "Registrar devolución",
+    });
 
     if (!motivo || motivo.trim().length < 3) return;
 
@@ -443,6 +534,34 @@ const estaCerradaOperativamente =
         procesando={procesando}
         onDevolverItem={handleDevolverItem}
         onDevolverSerializada={handleDevolverSerializada}
+      />
+
+      <ConfirmModal
+        open={Boolean(confirmConfig)}
+        title={confirmConfig?.title}
+        message={confirmConfig?.message}
+        confirmText={confirmConfig?.confirmText}
+        cancelText={confirmConfig?.cancelText}
+        variant={confirmConfig?.variant}
+        onConfirm={confirmConfig?.onConfirm}
+        onCancel={confirmConfig?.onCancel}
+      />
+
+      <PromptModal
+        open={Boolean(promptConfig)}
+        title={promptConfig?.title}
+        message={promptConfig?.message}
+        label={promptConfig?.label}
+        defaultValue={promptConfig?.defaultValue}
+        placeholder={promptConfig?.placeholder}
+        inputType={promptConfig?.inputType}
+        confirmText={promptConfig?.confirmText}
+        cancelText={promptConfig?.cancelText}
+        required={promptConfig?.required}
+        minLength={promptConfig?.minLength}
+        validate={promptConfig?.validate}
+        onConfirm={promptConfig?.onConfirm}
+        onCancel={promptConfig?.onCancel}
       />
     </div>
   );

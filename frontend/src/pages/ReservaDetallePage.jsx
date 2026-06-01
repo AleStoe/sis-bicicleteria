@@ -8,6 +8,8 @@ import {
 } from "../services/reservasService";
 import { formatDate, formatMoney } from "../utils/formatters";
 import { EstadoReservaBadge } from "./ReservasListPage";
+import { ConfirmModal } from "../components/ui/ConfirmModal";
+import { PromptModal } from "../components/ui/PromptModal";
 
 const ID_USUARIO = 1;
 
@@ -20,6 +22,40 @@ export default function ReservaDetallePage() {
   const [procesando, setProcesando] = useState(false);
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
+  const [confirmConfig, setConfirmConfig] = useState(null);
+  const [promptConfig, setPromptConfig] = useState(null);
+
+  function pedirConfirmacion(config) {
+    return new Promise((resolve) => {
+      setConfirmConfig({
+        ...config,
+        onConfirm: () => {
+          setConfirmConfig(null);
+          resolve(true);
+        },
+        onCancel: () => {
+          setConfirmConfig(null);
+          resolve(false);
+        },
+      });
+    });
+  }
+
+  function pedirPrompt(config) {
+    return new Promise((resolve) => {
+      setPromptConfig({
+        ...config,
+        onConfirm: (value) => {
+          setPromptConfig(null);
+          resolve(value);
+        },
+        onCancel: () => {
+          setPromptConfig(null);
+          resolve(null);
+        },
+      });
+    });
+  }
 
   useEffect(() => {
     cargarReserva();
@@ -40,7 +76,15 @@ export default function ReservaDetallePage() {
   }
 
   async function handleVencer() {
-    const detalle = window.prompt("Detalle de vencimiento:", "Reserva vencida manualmente");
+    const detalle = await pedirPrompt({
+      title: "Marcar reserva vencida",
+      label: "Detalle de vencimiento",
+      defaultValue: "Reserva vencida manualmente",
+      required: true,
+      minLength: 3,
+      confirmText: "Marcar vencida",
+    });
+
     if (detalle === null) return;
 
     try {
@@ -63,10 +107,23 @@ export default function ReservaDetallePage() {
   }
 
   async function handleCancelar() {
-    const motivo = window.prompt("Motivo de cancelación:");
+    const motivo = await pedirPrompt({
+      title: "Cancelar reserva",
+      label: "Motivo de cancelación",
+      required: true,
+      minLength: 3,
+      confirmText: "Continuar",
+    });
+
     if (!motivo || !motivo.trim()) return;
 
-    const senaPerdida = window.confirm("¿La seña queda perdida?");
+    const senaPerdida = await pedirConfirmacion({
+      title: "Seña de la reserva",
+      message: "¿La seña queda perdida?",
+      confirmText: "Sí, queda perdida",
+      cancelText: "No, devolver seña",
+      variant: "warning",
+    });
 
     try {
       setProcesando(true);
@@ -89,7 +146,13 @@ export default function ReservaDetallePage() {
   }
 
   async function handleConvertir() {
-    const observaciones = window.prompt("Observaciones para la venta:", `Venta generada desde reserva #${reservaId}`);
+    const observaciones = await pedirPrompt({
+      title: "Convertir reserva en venta",
+      label: "Observaciones para la venta",
+      defaultValue: `Venta generada desde reserva #${reservaId}`,
+      confirmText: "Convertir a venta",
+    });
+
     if (observaciones === null) return;
 
     try {
@@ -254,6 +317,33 @@ export default function ReservaDetallePage() {
           )}
         </section>
       </div>
+      <ConfirmModal
+        open={Boolean(confirmConfig)}
+        title={confirmConfig?.title}
+        message={confirmConfig?.message}
+        confirmText={confirmConfig?.confirmText}
+        cancelText={confirmConfig?.cancelText}
+        variant={confirmConfig?.variant}
+        onConfirm={confirmConfig?.onConfirm}
+        onCancel={confirmConfig?.onCancel}
+      />
+
+      <PromptModal
+        open={Boolean(promptConfig)}
+        title={promptConfig?.title}
+        message={promptConfig?.message}
+        label={promptConfig?.label}
+        defaultValue={promptConfig?.defaultValue}
+        placeholder={promptConfig?.placeholder}
+        inputType={promptConfig?.inputType}
+        confirmText={promptConfig?.confirmText}
+        cancelText={promptConfig?.cancelText}
+        required={promptConfig?.required}
+        minLength={promptConfig?.minLength}
+        validate={promptConfig?.validate}
+        onConfirm={promptConfig?.onConfirm}
+        onCancel={promptConfig?.onCancel}
+      />
     </div>
   );
 }

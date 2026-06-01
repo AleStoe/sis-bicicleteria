@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { listarPagos, revertirPago } from "../services/pagosService";
 import { formatMoney, formatDate } from "../utils/formatters";
+import { PromptModal } from "../components/ui/PromptModal";
 
 const ID_USUARIO = 1;
 
@@ -12,7 +13,23 @@ export default function PagosPage() {
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
   const [filtro, setFiltro] = useState("");
+  const [promptConfig, setPromptConfig] = useState(null);
 
+  function pedirPrompt(config) {
+    return new Promise((resolve) => {
+      setPromptConfig({
+        ...config,
+        onConfirm: (value) => {
+          setPromptConfig(null);
+          resolve(value);
+        },
+        onCancel: () => {
+          setPromptConfig(null);
+          resolve(null);
+        },
+      });
+    });
+  }
   useEffect(() => {
     cargarPagos();
   }, []);
@@ -54,7 +71,14 @@ export default function PagosPage() {
   }, [pagos, filtro]);
 
   async function handleRevertirPago(pago) {
-    const motivo = window.prompt("Motivo de reversión del pago:");
+    const motivo = await pedirPrompt({
+      title: "Revertir pago",
+      label: "Motivo de reversión",
+      required: true,
+      minLength: 3,
+      confirmText: "Revertir pago",
+    });
+
     if (!motivo || !motivo.trim()) return;
 
     try {
@@ -155,6 +179,22 @@ export default function PagosPage() {
           </table>
         </div>
       </section>
+      <PromptModal
+        open={Boolean(promptConfig)}
+        title={promptConfig?.title}
+        message={promptConfig?.message}
+        label={promptConfig?.label}
+        defaultValue={promptConfig?.defaultValue}
+        placeholder={promptConfig?.placeholder}
+        inputType={promptConfig?.inputType}
+        confirmText={promptConfig?.confirmText}
+        cancelText={promptConfig?.cancelText}
+        required={promptConfig?.required}
+        minLength={promptConfig?.minLength}
+        validate={promptConfig?.validate}
+        onConfirm={promptConfig?.onConfirm}
+        onCancel={promptConfig?.onCancel}
+      />
     </div>
   );
 }

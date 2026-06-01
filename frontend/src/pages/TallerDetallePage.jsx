@@ -12,6 +12,7 @@ import {
 } from "../services/tallerService";
 import { formatDate, formatMoney } from "../utils/formatters";
 import { EstadoBadge } from "./TallerListPage";
+import { PromptModal } from "../components/ui/PromptModal";
 
 const ESTADOS = [
   "ingresada",
@@ -33,9 +34,26 @@ export default function TallerDetallePage() {
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
+  const [promptConfig, setPromptConfig] = useState(null);
   const [nuevoEstado, setNuevoEstado] = useState("");
   const [busquedaVariante, setBusquedaVariante] = useState("");
   const [itemForm, setItemForm] = useState({ id_variante: "", cantidad: "1", precio_unitario: "" });
+ 
+  function pedirPrompt(config) {
+    return new Promise((resolve) => {
+      setPromptConfig({
+        ...config,
+        onConfirm: (value) => {
+          setPromptConfig(null);
+          resolve(value);
+        },
+        onCancel: () => {
+          setPromptConfig(null);
+          resolve(null);
+        },
+      });
+    });
+  }
 
   useEffect(() => {
     cargarTodo();
@@ -167,7 +185,14 @@ export default function TallerDetallePage() {
   }
 
   async function revertirItem(item) {
-    const motivo = window.prompt("Motivo de la reversión");
+    const motivo = await pedirPrompt({
+      title: "Revertir ejecución",
+      label: "Motivo de la reversión",
+      required: true,
+      minLength: 3,
+      confirmText: "Revertir",
+    });
+
     if (!motivo || !motivo.trim()) return;
 
     try {
@@ -184,7 +209,13 @@ export default function TallerDetallePage() {
     }
   }
   async function handleCancelarItem(item) {
-    const motivo = window.prompt("Motivo de cancelación");
+    const motivo = await pedirPrompt({
+      title: "Cancelar item",
+      label: "Motivo de cancelación",
+      required: true,
+      minLength: 3,
+      confirmText: "Cancelar item",
+    });
 
     if (!motivo || !motivo.trim()) return;
 
@@ -394,6 +425,22 @@ export default function TallerDetallePage() {
           </div>
         )}
       </section>
+      <PromptModal
+        open={Boolean(promptConfig)}
+        title={promptConfig?.title}
+        message={promptConfig?.message}
+        label={promptConfig?.label}
+        defaultValue={promptConfig?.defaultValue}
+        placeholder={promptConfig?.placeholder}
+        inputType={promptConfig?.inputType}
+        confirmText={promptConfig?.confirmText}
+        cancelText={promptConfig?.cancelText}
+        required={promptConfig?.required}
+        minLength={promptConfig?.minLength}
+        validate={promptConfig?.validate}
+        onConfirm={promptConfig?.onConfirm}
+        onCancel={promptConfig?.onCancel}
+      />
     </div>
   );
 }

@@ -6,6 +6,7 @@ import CheckoutResumenLateral from "../components/ventas/checkout/CheckoutResume
 import { crearVenta, entregarVenta } from "../services/ventasService";
 import { buildVentaPayload } from "../builders/ventasPayloadBuilder";
 import { validarVentaAntesDeCrear } from "../validators/ventasValidator";
+import { useToast } from "../hooks/useToast";
 import {
   calcularResumenCheckout,
   getClienteNombre,
@@ -61,7 +62,7 @@ export default function NuevaVentaCheckoutPage() {
     });
 
     if (errorValidacion) {
-      alert(errorValidacion);
+      toast.error(errorValidacion);
       return;
     }
 
@@ -92,7 +93,7 @@ export default function NuevaVentaCheckoutPage() {
 
       navigate(`/ventas/${resultado.venta_id}`);
     } catch (err) {
-      alert(err.message || "No se pudo finalizar la venta");
+      toast.error(err.message || "No se pudo finalizar la venta");
     } finally {
       setGuardando(false);
     }

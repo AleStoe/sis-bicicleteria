@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { listarCatalogoPOS } from "../services/catalogoService";
 import { listarProveedores } from "../services/proveedoresService";
 import RecalculoMasivoPanel from "../components/precios/RecalculoMasivoPanel";
+import { ConfirmModal } from "../components/ui/ConfirmModal";
 import {
   buildRecalculoProveedorPayload,
   buildReglaPrecioPayload,
@@ -68,7 +69,23 @@ export default function PreciosPage() {
   const [procesando, setProcesando] = useState(false);
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
+  const [confirmConfig, setConfirmConfig] = useState(null);
 
+  function pedirConfirmacion(config) {
+    return new Promise((resolve) => {
+      setConfirmConfig({
+        ...config,
+        onConfirm: () => {
+          setConfirmConfig(null);
+          resolve(true);
+        },
+        onCancel: () => {
+          setConfirmConfig(null);
+          resolve(false);
+        },
+      });
+    });
+  }
   useEffect(() => {
     cargarInicial();
     setTimeout(() => buscarRef.current?.focus(), 100);
@@ -305,9 +322,15 @@ export default function PreciosPage() {
       return;
     }
 
-    if (!window.confirm("¿Aplicar cambios de precio al proveedor seleccionado?")) {
-      return;
-    }
+    const confirmado = await pedirConfirmacion({
+      title: "Aplicar cambios de precio",
+      message: "¿Aplicar cambios de precio al proveedor seleccionado?",
+      confirmText: "Aplicar cambios",
+      cancelText: "Cancelar",
+      variant: "warning",
+    });
+
+    if (!confirmado) return;
 
     try {
       setProcesando(true);
@@ -364,7 +387,15 @@ export default function PreciosPage() {
   }
 
   async function desactivarRegla(reglaId) {
-    if (!window.confirm("¿Desactivar esta regla de precio?")) return;
+    const confirmado = await pedirConfirmacion({
+      title: "Desactivar regla de precio",
+      message: "¿Desactivar esta regla de precio?",
+      confirmText: "Desactivar",
+      cancelText: "Cancelar",
+      variant: "danger",
+    });
+
+    if (!confirmado) return;
 
     try {
       setProcesando(true);
@@ -499,6 +530,16 @@ export default function PreciosPage() {
           styles={styles}
         />
       )}
+      <ConfirmModal
+        open={Boolean(confirmConfig)}
+        title={confirmConfig?.title}
+        message={confirmConfig?.message}
+        confirmText={confirmConfig?.confirmText}
+        cancelText={confirmConfig?.cancelText}
+        variant={confirmConfig?.variant}
+        onConfirm={confirmConfig?.onConfirm}
+        onCancel={confirmConfig?.onCancel}
+      />
     </div>
   );
 }
