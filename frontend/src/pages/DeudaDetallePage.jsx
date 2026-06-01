@@ -1,12 +1,57 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
-import { obtenerDeuda, registrarPagoDeuda } from "../services/deudasService";
+import {
+  obtenerDeuda,
+  registrarPagoDeuda,
+  simularPagoDeuda,
+} from "../services/deudasService";
 import DeudaHeader from "../components/deudas/detalle/DeudaHeader";
 import DeudaResumenPanel from "../components/deudas/detalle/DeudaResumenPanel";
 import DeudaPagoPanel from "../components/deudas/detalle/DeudaPagoPanel";
 import DeudaMovimientosTable from "../components/deudas/detalle/DeudaMovimientosTable";
 import DeudaOrigenPanel from "../components/deudas/detalle/DeudaOrigenPanel";
+
+const PAGO_FORM_INICIAL = {
+  monto_base: "",
+  medio_pago: "efectivo",
+  cuotas: "1",
+  entidad: "",
+  nota: "",
+};
+
+function normalizarMonto(value) {
+  if (value === undefined || value === null || String(value).trim() === "") {
+    return null;
+  }
+
+  const numero = Number(value);
+
+  if (!Number.isFinite(numero)) {
+    return null;
+  }
+
+  return numero;
+}
+
+function buildPagoPayload(pagoForm) {
+  const montoBase = normalizarMonto(pagoForm.monto_base);
+
+  return {
+    monto_base: montoBase,
+    medio_pago: pagoForm.medio_pago,
+    cuotas:
+      pagoForm.medio_pago === "tarjeta"
+        ? Number(pagoForm.cuotas || 1)
+        : null,
+    entidad:
+      pagoForm.medio_pago === "tarjeta" && pagoForm.entidad.trim()
+        ? pagoForm.entidad.trim()
+        : null,
+    nota: pagoForm.nota.trim() || null,
+    id_usuario: 1,
+  };
+}
 
 export default function DeudaDetallePage() {
   const { deudaId } = useParams();
@@ -14,18 +59,26 @@ export default function DeudaDetallePage() {
   const [detalle, setDetalle] = useState(null);
   const [loading, setLoading] = useState(true);
   const [guardando, setGuardando] = useState(false);
+  const [simulando, setSimulando] = useState(false);
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
+  const [previewPago, setPreviewPago] = useState(null);
 
-  const [pagoForm, setPagoForm] = useState({
-    monto: "",
-    medio_pago: "efectivo",
-    nota: "",
-  });
+  const [pagoForm, setPagoForm] = useState(PAGO_FORM_INICIAL);
 
   useEffect(() => {
     cargarDetalle();
   }, [deudaId]);
+
+  useEffect(() => {
+    setPreviewPago(null);
+    setMensaje("");
+  }, [
+    pagoForm.monto_base,
+    pagoForm.medio_pago,
+    pagoForm.cuotas,
+    pagoForm.entidad,
+  ]);
 
   async function cargarDetalle() {
     try {
@@ -41,19 +94,63 @@ export default function DeudaDetallePage() {
     }
   }
 
-  async function registrarPago(e) {
-    e.preventDefault();
+  function validarPagoLocal() {
+    const montoBase = normalizarMonto(pagoForm.monto_base);
+    const saldo = normalizarMonto(detalle?.deuda?.saldo_actual) || 0;
 
-    const monto = Number(pagoForm.monto);
-    const saldo = Number(detalle?.deuda?.saldo_actual || 0);
+    if (!montoBase || montoBase <= 0) {
+      return "El monto base debe ser mayor a cero";
+    }
 
-    if (!monto || monto <= 0) {
-      setError("El monto debe ser mayor a cero");
+    if (montoBase > saldo) {
+      return "El monto base no puede superar el saldo actual de la deuda";
+    }
+
+    if (pagoForm.medio_pago === "tarjeta" && Number(pagoForm.cuotas || 0) <= 0) {
+      return "Las cuotas deben ser mayores a cero";
+    }
+
+    return "";
+  }
+
+  async function previsualizarPago() {
+    const errorValidacion = validarPagoLocal();
+
+    if (errorValidacion) {
+      setError(errorValidacion);
+      setPreviewPago(null);
       return;
     }
 
-    if (monto > saldo) {
-      setError("El pago no puede superar el saldo actual");
+    try {
+      setSimulando(true);
+      setError("");
+      setMensaje("");
+
+      const payload = buildPagoPayload(pagoForm);
+      const preview = await simularPagoDeuda(deudaId, payload);
+
+      setPreviewPago(preview);
+    } catch (err) {
+      setPreviewPago(null);
+      setError(err.message || "No se pudo simular el pago");
+    } finally {
+      setSimulando(false);
+    }
+  }
+
+  async function registrarPago(e) {
+    e.preventDefault();
+
+    const errorValidacion = validarPagoLocal();
+
+    if (errorValidacion) {
+      setError(errorValidacion);
+      return;
+    }
+
+    if (!previewPago) {
+      setError("Primero generá el preview del backend antes de confirmar el pago");
       return;
     }
 
@@ -62,18 +159,12 @@ export default function DeudaDetallePage() {
       setError("");
       setMensaje("");
 
-      await registrarPagoDeuda(deudaId, {
-        monto,
-        medio_pago: pagoForm.medio_pago,
-        nota: pagoForm.nota.trim() || null,
-        id_usuario: 1,
-      });
+      const payload = buildPagoPayload(pagoForm);
 
-      setPagoForm({
-        monto: "",
-        medio_pago: "efectivo",
-        nota: "",
-      });
+      await registrarPagoDeuda(deudaId, payload);
+
+      setPagoForm(PAGO_FORM_INICIAL);
+      setPreviewPago(null);
 
       await cargarDetalle();
 
@@ -110,8 +201,11 @@ export default function DeudaDetallePage() {
           deuda={deuda}
           pagoForm={pagoForm}
           setPagoForm={setPagoForm}
+          previewPago={previewPago}
+          previsualizarPago={previsualizarPago}
           registrarPago={registrarPago}
           guardando={guardando}
+          simulando={simulando}
         />
       </section>
 
@@ -129,7 +223,7 @@ const pageStyle = {
 
 const gridStyle = {
   display: "grid",
-  gridTemplateColumns: "minmax(360px, 1.4fr) minmax(280px, 0.8fr)",
+  gridTemplateColumns: "minmax(360px, 1.4fr) minmax(320px, 0.8fr)",
   gap: "16px",
   alignItems: "start",
 };

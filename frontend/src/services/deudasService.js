@@ -21,6 +21,13 @@ export function obtenerDeuda(deudaId) {
   return apiRequest(`/deudas/${deudaId}`);
 }
 
+export function simularPagoDeuda(deudaId, data) {
+  return apiRequest(`/deudas/${deudaId}/pagos/preview`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
 export function registrarPagoDeuda(deudaId, data) {
   return apiRequest(`/deudas/${deudaId}/pagos`, {
     method: "POST",

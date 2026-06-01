@@ -656,7 +656,7 @@ def revertir_pago(pago_id: int, data):
             total_final = redondear_monto(venta["total_final"])
 
             saldo_restante = redondear_monto(
-                saldo_pendiente + tramo_original["monto_base_aplicado"]
+                saldo_pendiente + tramo_original["monto_total_cobrado"]
             )
 
             if saldo_restante > total_final:
