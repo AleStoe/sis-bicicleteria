@@ -18,7 +18,7 @@ export default function NuevaVentaCheckoutPage() {
   const draft = state?.ventaDraft;
   const [checkoutEstado, setCheckoutEstado] = useState(null);
   const [guardando, setGuardando] = useState(false);
-
+  const toast = useToast();
   const clienteNombre = useMemo(() => getClienteNombre(draft), [draft]);
 
   const resumenCheckout = useMemo(
