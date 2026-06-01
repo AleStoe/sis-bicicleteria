@@ -199,6 +199,7 @@ class VentaDevolucionSerializadaInput(BaseModel):
     id_bicicleta_serializada: int = Field(gt=0)
     motivo: str = Field(min_length=3, max_length=500)
     id_usuario: int = Field(gt=0)
+    modo_devolucion: str = Field(default="credito_comercial")
 
 
 class VentaDevolucionSerializadaOutput(BaseModel):
@@ -211,6 +212,7 @@ class VentaDevolucionSerializadaOutput(BaseModel):
 class VentaDevolucionInput(BaseModel):
     motivo: str
     id_usuario: int
+    modo_devolucion: str = Field(default="credito_comercial")
 
 
 class VentaDevolucionOutput(BaseModel):
@@ -227,7 +229,7 @@ class VentaDevolucionParcialInput(BaseModel):
     items: List[VentaDevolucionItemInput]
     motivo: str
     id_usuario: int
-
+    modo_devolucion: str = Field(default="credito_comercial")
 
 class VentaDevolucionParcialOutput(BaseModel):
     ok: bool

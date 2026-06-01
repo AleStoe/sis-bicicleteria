@@ -57,6 +57,9 @@ from app.shared.constants import (
     AUDITORIA_ACCION_VENTA_ENTREGA_CON_DEUDA,
     AUDITORIA_ACCION_VENTA_DEVOLUCION_CREADA,
     ORIGEN_VENTA,
+    MODOS_DEVOLUCION_VALIDOS,
+    MODO_DEVOLUCION_CREDITO_COMERCIAL,
+    MODO_DEVOLUCION_REVERSION_PAGO_EXTERNO,
 )
 from app.modules.deudas import service as deudas_service
 
@@ -119,6 +122,47 @@ def _consolidar_items(items):
             consolidados[clave]["cantidad"] += cantidad
 
     return list(consolidados.values())
+
+def _obtener_modo_devolucion(data) -> str:
+    modo = getattr(data, "modo_devolucion", MODO_DEVOLUCION_CREDITO_COMERCIAL)
+
+    if modo not in MODOS_DEVOLUCION_VALIDOS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Modo de devolución inválido: {modo}",
+        )
+
+    return modo
+def _resolver_credito_por_devolucion(
+    conn,
+    *,
+    venta,
+    venta_id: int,
+    monto_credito: Decimal,
+    id_usuario: int,
+    modo_devolucion: str,
+):
+    if monto_credito <= Decimal("0"):
+        return None
+
+    if modo_devolucion == MODO_DEVOLUCION_CREDITO_COMERCIAL:
+        return creditos_service.crear_credito_por_devolucion_venta(
+            conn,
+            id_cliente=venta["id_cliente"],
+            id_venta=venta_id,
+            monto_credito=monto_credito,
+            id_usuario=id_usuario,
+        )
+
+    if modo_devolucion == MODO_DEVOLUCION_REVERSION_PAGO_EXTERNO:
+        # Por ahora: no crear crédito.
+        # Falta paso siguiente: marcar pagos externos como devueltos_externo.
+        return None
+
+    raise HTTPException(
+        status_code=400,
+        detail=f"Modo de devolución inválido: {modo_devolucion}",
+    )
 
 def _validar_cliente(conn, id_cliente: int):
     cliente = get_cliente_by_id(conn, id_cliente)
@@ -1205,6 +1249,8 @@ def devolver_item_serializado_entregado(venta_id: int, data):
                     ),
                 )
 
+            modo_devolucion = _obtener_modo_devolucion(data)
+
             items = get_venta_items_detallados_by_venta_id(conn, venta_id)
 
             if not items:
@@ -1283,17 +1329,17 @@ def devolver_item_serializado_entregado(venta_id: int, data):
                     ),
                 },
             )
-            crear_credito_por_devolucion_venta(
+            _resolver_credito_por_devolucion(
                 conn,
-                id_cliente=venta["id_cliente"],
-                id_venta=venta_id,
+                venta=venta,
+                venta_id=venta_id,
                 monto_credito=_calcular_monto_credito_devolucion_item(
                     venta,
                     item_objetivo,
                     Decimal("1"),
                 ),
                 id_usuario=data.id_usuario,
-                
+                modo_devolucion=modo_devolucion,
             )
             auditoria_service.registrar_evento(
                 conn,
@@ -1353,6 +1399,8 @@ def devolver_venta(venta_id: int, data):
                     detail="Solo se pueden devolver ventas entregadas",
                 )
 
+            modo_devolucion = _obtener_modo_devolucion(data)
+
             items = get_venta_items_detallados_by_venta_id(conn, venta_id)
 
             if not items:
@@ -1407,14 +1455,14 @@ def devolver_venta(venta_id: int, data):
                 resultado_deuda["monto_cancelado"],
             )
 
-            if monto_credito > Decimal("0"):
-                creditos_service.crear_credito_por_devolucion_venta(
-                    conn,
-                    id_cliente=venta["id_cliente"],
-                    id_venta=venta_id,
-                    monto_credito=monto_credito,
-                    id_usuario=data.id_usuario,
-                )
+            _resolver_credito_por_devolucion(
+                conn,
+                venta=venta,
+                venta_id=venta_id,
+                monto_credito=monto_credito,
+                id_usuario=data.id_usuario,
+                modo_devolucion=modo_devolucion,
+            )
 
             # actualizar estado
             update_venta_saldo_y_estado(
@@ -1467,6 +1515,8 @@ def devolver_items(venta_id: int, data):
                     status_code=400,
                     detail="Solo se pueden devolver items de ventas entregadas",
                 )
+
+            modo_devolucion = _obtener_modo_devolucion(data)
 
             if not data.items:
                 raise HTTPException(
@@ -1594,14 +1644,14 @@ def devolver_items(venta_id: int, data):
 
                 total_devolucion = redondear_monto(total_devolucion + monto_item)
 
-            if total_devolucion > Decimal("0"):
-                creditos_service.crear_credito_por_devolucion_venta(
-                    conn,
-                    id_cliente=venta["id_cliente"],
-                    id_venta=venta_id,
-                    monto_credito=total_devolucion,
-                    id_usuario=data.id_usuario,
-                )
+            _resolver_credito_por_devolucion(
+                conn,
+                venta=venta,
+                venta_id=venta_id,
+                monto_credito=total_devolucion,
+                id_usuario=data.id_usuario,
+                modo_devolucion=modo_devolucion,
+            )
 
             items_actualizados = get_venta_items_detallados_by_venta_id(conn, venta_id)
 

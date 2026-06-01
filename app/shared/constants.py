@@ -15,13 +15,20 @@ VENTA_ESTADO_ENTREGADA = "entregada"
 VENTA_ESTADO_ANULADA = "anulada"
 
 ORIGEN_VENTA = "venta"
+MODO_DEVOLUCION_CREDITO_COMERCIAL = "credito_comercial"
+MODO_DEVOLUCION_REVERSION_PAGO_EXTERNO = "reversion_pago_externo"
+
+MODOS_DEVOLUCION_VALIDOS = {
+    MODO_DEVOLUCION_CREDITO_COMERCIAL,
+    MODO_DEVOLUCION_REVERSION_PAGO_EXTERNO,
+}
 
 # =========================
 # PAGOS
 # =========================
 PAGO_ESTADO_CONFIRMADO = "confirmado"
 PAGO_ESTADO_REVERTIDO = "revertido"
-
+PAGO_ESTADO_DEVUELTO_EXTERNO = "devuelto_externo"
 MEDIOS_PAGO_VALIDOS = {
     "efectivo",
     "transferencia",
@@ -140,6 +147,7 @@ AUDITORIA_ACCION_CREDITO_APLICADO = "credito_aplicado"
 
 AUDITORIA_ACCION_DEUDA_GENERADA = "deuda_generada"
 AUDITORIA_ACCION_DEUDA_PAGO_REGISTRADO = "deuda_pago_registrado"
+AUDITORIA_ACCION_PAGO_DEVUELTO_EXTERNO = "pago_devuelto_externo"
 
 # =========================
 # AUTHZ - ROLES
