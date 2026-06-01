@@ -116,7 +116,7 @@ def test_venta_tarjeta_3_cuotas_registra_recargo_pago_y_caja(
     ]
 
     assert len(ingresos_tarjeta) == 1
-    assert _dec(ingresos_tarjeta[0]["monto"]) == Decimal("28106.00")
+    assert _dec(ingresos_tarjeta[0]["monto"]) == Decimal("24440.00")
 
     reglas = _get_reglas_aplicadas(db_conn, venta_id)
 

@@ -135,6 +135,32 @@ def calcular_tramo_financiero_pago(conn, data: dict):
     return _calcular_tramo_pago_venta(conn, data)
 
 
+def _calcular_monto_caja_para_pago(medio_pago: str, tramo: dict) -> Decimal:
+    """
+    Monto que impacta caja como ingreso/egreso real.
+
+    Para tarjeta, el recargo financiero lo paga el cliente pero no representa
+    plata neta para el local; por eso caja debe tomar la base cubierta.
+    Para efectivo/transferencia/MP, caja toma el total cobrado luego de reglas.
+    """
+
+    if medio_pago == "tarjeta":
+        return redondear_monto(tramo["monto_base_aplicado"])
+
+    return redondear_monto(tramo["monto_total_cobrado"])
+
+
+def _nota_caja_pago(origen_label: str, medio_pago: str, tramo: dict) -> str:
+    if medio_pago != "tarjeta":
+        return origen_label
+
+    return (
+        f"{origen_label} | tarjeta neto_caja={redondear_monto(tramo['monto_base_aplicado'])} "
+        f"recargo_financiero={redondear_monto(tramo['recargo_aplicado'])} "
+        f"total_cliente={redondear_monto(tramo['monto_total_cobrado'])}"
+    )
+
+
 def resolver_tramo_financiero_para_cobrado_objetivo(
     conn,
     *,
@@ -275,6 +301,8 @@ def registrar_pago(conn, data: dict):
         tramo = _calcular_tramo_pago_venta(conn, data)
 
         monto = redondear_monto(tramo["monto_total_cobrado"])
+        monto_base_aplicado = redondear_monto(tramo["monto_base_aplicado"])
+        monto_caja = _calcular_monto_caja_para_pago(medio_pago, tramo)
 
         if monto <= 0:
             raise HTTPException(
@@ -329,7 +357,7 @@ def registrar_pago(conn, data: dict):
                     "id_pago": pago_id,
                     "monto_base": tramo["monto_base_aplicado"],
                     "monto_recargo_financiero": tramo["recargo_aplicado"],
-                    "monto_neto_liquidado": monto,
+                    "monto_neto_liquidado": monto_caja,
                     "cuotas": cuotas,
                     "entidad": entidad,
                     "observacion": data.get("nota"),
@@ -343,10 +371,10 @@ def registrar_pago(conn, data: dict):
             id_caja=caja["id"],
             tipo_movimiento=CAJA_MOVIMIENTO_INGRESO,
             submedio=medio_pago,
-            monto=monto,
+            monto=monto_caja,
             origen_tipo=CAJA_ORIGEN_PAGO,
             origen_id=pago_id,
-            nota=f"Pago venta #{venta['id']}",
+            nota=_nota_caja_pago(f"Pago venta #{venta['id']}", medio_pago, tramo),
             id_usuario=data["id_usuario"],
         )
 
@@ -384,6 +412,7 @@ def registrar_pago(conn, data: dict):
                 "monto_descuento_aplicado": str(tramo["descuento_aplicado"]),
                 "monto_recargo_aplicado": str(tramo["recargo_aplicado"]),
                 "monto_total_cobrado": str(monto),
+                "monto_caja": str(monto_caja),
                 "saldo_restante": str(saldo_restante),
                 "estado_venta": nuevo_estado,
             },
@@ -429,11 +458,17 @@ def registrar_pago(conn, data: dict):
         descuento_aplicado = Decimal("0.00")
         recargo_aplicado = Decimal("0.00")
         tramo = {
+            "monto_base_aplicado": monto_base_aplicado,
+            "descuento_aplicado": descuento_aplicado,
+            "recargo_aplicado": recargo_aplicado,
+            "monto_total_cobrado": monto,
             "cuotas": data.get("cuotas"),
             "entidad": data.get("entidad"),
             "id_tarjeta_plan": data.get("id_tarjeta_plan"),
             "porcentaje_recargo_aplicado": data.get("porcentaje_recargo_aplicado"),
         }
+
+    monto_caja = _calcular_monto_caja_para_pago(medio_pago, tramo)
 
     if monto <= 0:
         raise HTTPException(
@@ -467,7 +502,7 @@ def registrar_pago(conn, data: dict):
                 "id_pago": pago_id,
                 "monto_base": monto_base_aplicado,
                 "monto_recargo_financiero": recargo_aplicado,
-                "monto_neto_liquidado": monto,
+                "monto_neto_liquidado": monto_caja,
                 "cuotas": cuotas,
                 "entidad": entidad,
                 "observacion": data.get("nota"),
@@ -481,10 +516,10 @@ def registrar_pago(conn, data: dict):
         id_caja=caja["id"],
         tipo_movimiento=CAJA_MOVIMIENTO_INGRESO,
         submedio=medio_pago,
-        monto=monto,
+        monto=monto_caja,
         origen_tipo=CAJA_ORIGEN_PAGO,
         origen_id=pago_id,
-        nota=f"Pago {origen_tipo} #{data['origen_id']}",
+        nota=_nota_caja_pago(f"Pago {origen_tipo} #{data['origen_id']}", medio_pago, tramo),
         id_usuario=data["id_usuario"],
     )
 
@@ -512,6 +547,7 @@ def registrar_pago(conn, data: dict):
             "monto_descuento_aplicado": str(descuento_aplicado),
             "monto_recargo_aplicado": str(recargo_aplicado),
             "monto_total_cobrado": str(monto),
+            "monto_caja": str(monto_caja),
         },
         origen_tipo=origen_tipo,
         origen_id=data["origen_id"],
@@ -526,6 +562,7 @@ def registrar_pago(conn, data: dict):
         "descuento_aplicado": descuento_aplicado,
         "recargo_aplicado": recargo_aplicado,
         "monto_total_cobrado": monto,
+        "monto_caja": monto_caja,
     }
 
 
@@ -606,9 +643,21 @@ def revertir_pago(pago_id: int, data):
 
             saldo_pendiente = redondear_monto(venta["saldo_pendiente"])
             monto_original = redondear_monto(pago_original["monto_total_cobrado"])
+            tramo_original = {
+                "monto_base_aplicado": redondear_monto(pago_original["monto_base_aplicado"]),
+                "descuento_aplicado": redondear_monto(pago_original["monto_descuento_aplicado"]),
+                "recargo_aplicado": redondear_monto(pago_original["monto_recargo_aplicado"]),
+                "monto_total_cobrado": monto_original,
+            }
+            monto_reversion_caja = _calcular_monto_caja_para_pago(
+                pago_original["medio_pago"],
+                tramo_original,
+            )
             total_final = redondear_monto(venta["total_final"])
 
-            saldo_restante = redondear_monto(saldo_pendiente + monto_original)
+            saldo_restante = redondear_monto(
+                saldo_pendiente + tramo_original["monto_base_aplicado"]
+            )
 
             if saldo_restante > total_final:
                 raise HTTPException(
@@ -655,7 +704,7 @@ def revertir_pago(pago_id: int, data):
                 id_caja=caja["id"],
                 tipo_movimiento=CAJA_MOVIMIENTO_EGRESO,
                 submedio=pago_original["medio_pago"],
-                monto=pago_original["monto_total_cobrado"],
+                monto=monto_reversion_caja,
                 origen_tipo="pago_reversion",
                 origen_id=reversion_id,
                 nota=f"Reversión pago #{pago_original['id']} venta #{venta['id']}",
@@ -690,6 +739,7 @@ def revertir_pago(pago_id: int, data):
                     "cliente_id": venta["id_cliente"],
                     "medio_pago": pago_original["medio_pago"],
                     "monto": str(monto_original),
+                    "monto_caja": str(monto_reversion_caja),
                     "saldo_pendiente_anterior": str(saldo_pendiente),
                     "saldo_pendiente_nuevo": str(saldo_restante),
                     "estado_venta_nuevo": nuevo_estado,
@@ -772,7 +822,7 @@ def simular_pago_venta(data):
         )
 
         saldo_restante_estimado = redondear_monto(
-            saldo_pendiente - redondear_monto(tramo["monto_base_aplicado"])
+            saldo_pendiente - monto_total_cobrado
         )
 
         # Tolerancia financiera por redondeo.
