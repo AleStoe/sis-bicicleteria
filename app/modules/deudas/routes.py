@@ -6,6 +6,7 @@ from .service import (
     listar_deudas,
     obtener_deuda,
     registrar_pago_deuda,
+    simular_pago_deuda,
 )
 
 router = APIRouter()
@@ -34,6 +35,11 @@ def listar(
 @router.get("/{deuda_id}")
 def detalle(deuda_id: int):
     return obtener_deuda(deuda_id)
+
+
+@router.post("/{deuda_id}/pagos/preview")
+def preview_pago_deuda(deuda_id: int, data: DeudaPagoInput):
+    return simular_pago_deuda(deuda_id, data)
 
 
 @router.post("/{deuda_id}/pagos")

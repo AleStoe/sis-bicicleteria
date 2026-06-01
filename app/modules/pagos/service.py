@@ -127,6 +127,100 @@ def _calcular_tramo_pago_venta(conn, data: dict):
     }
 
 
+def calcular_tramo_financiero_pago(conn, data: dict):
+    """
+    Helper público para cualquier origen de pago.
+    Mantiene una única fuente de verdad para descuentos/recargos.
+    """
+    return _calcular_tramo_pago_venta(conn, data)
+
+
+def resolver_tramo_financiero_para_cobrado_objetivo(
+    conn,
+    *,
+    medio_pago: str,
+    monto_cobrado_objetivo,
+    maximo_base,
+    cuotas=None,
+    entidad=None,
+    nota=None,
+):
+    objetivo = redondear_monto(_to_decimal(monto_cobrado_objetivo))
+    maximo_base = redondear_monto(_to_decimal(maximo_base))
+
+    if objetivo <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="El cobrado objetivo debe ser mayor a 0",
+        )
+
+    tramo_referencia = calcular_tramo_financiero_pago(
+        conn,
+        {
+            "medio_pago": medio_pago,
+            "monto_base": objetivo,
+            "cuotas": cuotas,
+            "entidad": entidad,
+            "nota": nota,
+        },
+    )
+
+    descuento_ref = redondear_monto(tramo_referencia["descuento_aplicado"])
+    recargo_ref = redondear_monto(tramo_referencia["recargo_aplicado"])
+
+    factor = Decimal("1")
+
+    if descuento_ref > 0:
+        factor = Decimal("1") - (descuento_ref / objetivo)
+
+    if recargo_ref > 0:
+        factor = Decimal("1") + (recargo_ref / objetivo)
+
+    if factor <= 0:
+        raise HTTPException(
+            status_code=500,
+            detail="Factor financiero inválido para simular pago",
+        )
+
+    base_calculada = redondear_monto(objetivo / factor)
+
+    if base_calculada > maximo_base:
+        raise HTTPException(
+            status_code=400,
+            detail="La base necesaria para ese cobrado objetivo supera el saldo pendiente",
+        )
+
+    tramo = calcular_tramo_financiero_pago(
+        conn,
+        {
+            "medio_pago": medio_pago,
+            "monto_base": base_calculada,
+            "cuotas": cuotas,
+            "entidad": entidad,
+            "nota": nota,
+        },
+    )
+
+    cobrado = redondear_monto(tramo["monto_total_cobrado"])
+    diferencia = redondear_monto(objetivo - cobrado)
+
+    # Ajuste de centavos: si por redondeo quedó a 0,01,
+    # corregimos la base en el sentido necesario.
+    if abs(diferencia) <= Decimal("0.01") and diferencia != 0:
+        tramo = calcular_tramo_financiero_pago(
+            conn,
+            {
+                "medio_pago": medio_pago,
+                "monto_base": redondear_monto(base_calculada + diferencia),
+                "cuotas": cuotas,
+                "entidad": entidad,
+                "nota": nota,
+            },
+        )
+
+    return tramo
+
+
 def registrar_pago(conn, data: dict):
     medio_pago = data["medio_pago"]
     origen_tipo = data["origen_tipo"]
@@ -308,17 +402,10 @@ def registrar_pago(conn, data: dict):
         }
 
     # =====================================================
-    # CASO 2: PAGO DE RESERVA / OTROS ORÍGENES
-    # Mantiene compatibilidad: monto = cobrado real.
+    # CASO 2: PAGO DE RESERVA / DEUDA / OTROS ORÍGENES
+    # Si viene monto_base, usa motor financiero.
+    # Si solo viene monto, mantiene compatibilidad legacy: monto = cobrado real.
     # =====================================================
-
-    monto = redondear_monto(_to_decimal(data.get("monto")))
-
-    if monto <= 0:
-        raise HTTPException(
-            status_code=400,
-            detail="El monto del pago debe ser mayor a 0",
-        )
 
     if "id_sucursal" not in data:
         raise HTTPException(
@@ -329,6 +416,31 @@ def registrar_pago(conn, data: dict):
     id_sucursal = data["id_sucursal"]
     caja = _obtener_caja_abierta_obligatoria(conn, id_sucursal)
 
+    if data.get("monto_base") is not None:
+        tramo = calcular_tramo_financiero_pago(conn, data)
+
+        monto = redondear_monto(tramo["monto_total_cobrado"])
+        monto_base_aplicado = redondear_monto(tramo["monto_base_aplicado"])
+        descuento_aplicado = redondear_monto(tramo["descuento_aplicado"])
+        recargo_aplicado = redondear_monto(tramo["recargo_aplicado"])
+    else:
+        monto = redondear_monto(_to_decimal(data.get("monto")))
+        monto_base_aplicado = monto
+        descuento_aplicado = Decimal("0.00")
+        recargo_aplicado = Decimal("0.00")
+        tramo = {
+            "cuotas": data.get("cuotas"),
+            "entidad": data.get("entidad"),
+            "id_tarjeta_plan": data.get("id_tarjeta_plan"),
+            "porcentaje_recargo_aplicado": data.get("porcentaje_recargo_aplicado"),
+        }
+
+    if monto <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="El monto del pago debe ser mayor a 0",
+        )
+
     pago_id = insert_pago(
         conn,
         {
@@ -337,38 +449,30 @@ def registrar_pago(conn, data: dict):
             "origen_id": data["origen_id"],
             "medio_pago": medio_pago,
             "monto_total_cobrado": monto,
-            "monto_base_aplicado": monto,
-            "monto_descuento_aplicado": Decimal("0.00"),
-            "monto_recargo_aplicado": Decimal("0.00"),
+            "monto_base_aplicado": monto_base_aplicado,
+            "monto_descuento_aplicado": descuento_aplicado,
+            "monto_recargo_aplicado": recargo_aplicado,
             "nota": data.get("nota"),
             "id_usuario": data["id_usuario"],
         },
     )
 
     if medio_pago == "tarjeta":
-        cuotas = data.get("cuotas") or 1
-        entidad = data.get("entidad") or "Sin especificar"
-
-        monto_base = redondear_monto(data.get("monto_base") or monto)
-        monto_recargo_financiero = redondear_monto(
-            data.get("monto_recargo_financiero") or Decimal("0")
-        )
-        monto_neto_liquidado = redondear_monto(
-            data.get("monto_neto_liquidado") or monto
-        )
+        cuotas = tramo.get("cuotas") or data.get("cuotas") or 1
+        entidad = tramo.get("entidad") or data.get("entidad") or "Sin especificar"
 
         insert_pago_tarjeta_detalle(
             conn,
             {
                 "id_pago": pago_id,
-                "monto_base": monto_base,
-                "monto_recargo_financiero": monto_recargo_financiero,
-                "monto_neto_liquidado": monto_neto_liquidado,
+                "monto_base": monto_base_aplicado,
+                "monto_recargo_financiero": recargo_aplicado,
+                "monto_neto_liquidado": monto,
                 "cuotas": cuotas,
                 "entidad": entidad,
                 "observacion": data.get("nota"),
-                "id_tarjeta_plan": data.get("id_tarjeta_plan"),
-                "porcentaje_recargo_aplicado": data.get("porcentaje_recargo_aplicado"),
+                "id_tarjeta_plan": tramo.get("id_tarjeta_plan"),
+                "porcentaje_recargo_aplicado": tramo.get("porcentaje_recargo_aplicado"),
             },
         )
 
@@ -393,7 +497,9 @@ def registrar_pago(conn, data: dict):
         accion=AUDITORIA_ACCION_PAGO_REGISTRADO,
         detalle=(
             f"Pago registrado. origen_tipo={origen_tipo}, "
-            f"origen_id={data['origen_id']}, medio={medio_pago}, monto={monto}"
+            f"origen_id={data['origen_id']}, medio={medio_pago}, "
+            f"base={monto_base_aplicado}, descuento={descuento_aplicado}, "
+            f"recargo={recargo_aplicado}, cobrado={monto}"
         ),
         metadata={
             "tipo": "pago_registrado",
@@ -402,7 +508,10 @@ def registrar_pago(conn, data: dict):
             "origen_id": data["origen_id"],
             "id_cliente": data.get("id_cliente"),
             "medio_pago": medio_pago,
-            "monto": str(monto),
+            "monto_base_aplicado": str(monto_base_aplicado),
+            "monto_descuento_aplicado": str(descuento_aplicado),
+            "monto_recargo_aplicado": str(recargo_aplicado),
+            "monto_total_cobrado": str(monto),
         },
         origen_tipo=origen_tipo,
         origen_id=data["origen_id"],
@@ -413,6 +522,10 @@ def registrar_pago(conn, data: dict):
         "pago_id": pago_id,
         "origen_tipo": origen_tipo,
         "origen_id": data["origen_id"],
+        "monto_base_aplicado": monto_base_aplicado,
+        "descuento_aplicado": descuento_aplicado,
+        "recargo_aplicado": recargo_aplicado,
+        "monto_total_cobrado": monto,
     }
 
 
@@ -428,6 +541,7 @@ def crear_pago(data):
                 "medio_pago": data.medio_pago,
                 "monto": getattr(data, "monto", None),
                 "monto_base": getattr(data, "monto_base", None),
+                "monto_cobrado_objetivo": getattr(data, "monto_cobrado_objetivo", None),
                 "nota": data.nota,
                 "id_usuario": data.id_usuario,
                 "cuotas": getattr(data, "cuotas", None),
@@ -658,7 +772,7 @@ def simular_pago_venta(data):
         )
 
         saldo_restante_estimado = redondear_monto(
-            saldo_pendiente - monto_total_cobrado
+            saldo_pendiente - redondear_monto(tramo["monto_base_aplicado"])
         )
 
         # Tolerancia financiera por redondeo.
