@@ -70,6 +70,25 @@ export default function useAltaBicicleta() {
   const [mensaje, setMensaje] = useState("");
 
   useEffect(() => {
+  const categoriaBicicletas = categorias.find(
+    (c) => c.nombre?.trim().toLowerCase() === "bicicletas"
+  );
+
+  if (!categoriaBicicletas) return;
+
+  setForm((prev) => {
+    if (String(prev.id_categoria) === String(categoriaBicicletas.id)) {
+      return prev;
+    }
+
+    return {
+      ...prev,
+      id_categoria: categoriaBicicletas.id,
+    };
+  });
+}, [categorias]);
+
+  useEffect(() => {
     cargarDatos();
   }, []);
 
@@ -92,11 +111,6 @@ export default function useAltaBicicleta() {
   const marcaSeleccionada = useMemo(() => {
     return marcas.find((m) => String(m.id) === String(form.id_marca));
   }, [marcas, form.id_marca]);
-  console.log({
-    formMarca: form.id_marca,
-    marcas,
-    marcaSeleccionada,
-    });
   const nombreProducto = useMemo(() => {
     return generarNombreBicicleta({
       marcaNombre: marcaSeleccionada?.nombre || "",
@@ -171,7 +185,9 @@ export default function useAltaBicicleta() {
   }
 
   function validar() {
-    if (!form.id_categoria) return "Seleccioná categoría";
+    if (!form.id_categoria) {
+      return "No se encontró la categoría Bicicletas";
+    }
     if (!form.id_marca) return "Seleccioná marca";
     if (!form.id_proveedor) return "Seleccioná proveedor";
     if (!form.modelo.trim()) return "El modelo es obligatorio";
@@ -246,8 +262,8 @@ export default function useAltaBicicleta() {
         const colorNormalizado = varianteForm.color.trim().toUpperCase();
 
         const nombreVariante = generarNombreVarianteBicicleta({
-        talle: talleNormalizado,
-        color: colorNormalizado,
+          talle: talleNormalizado,
+          color: colorNormalizado,
         });
 
         const variante = await crearVariante({

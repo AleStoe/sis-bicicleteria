@@ -8,24 +8,16 @@ export default function BicicletaModeloForm({
 }) {
   return (
     <section style={styles.section}>
-      <h2 style={styles.cardTitle}>Modelo base</h2>
+      <div style={styles.previewBox}>
+        <span>Nombre generado</span>
+        <strong>{nombreProducto || "Completá marca, modelo y datos base"}</strong>
+      </div>
 
-      <div style={styles.grid}>
-        <label style={styles.label}>
-          Categoría *
-          <select
-            style={styles.input}
-            value={form.id_categoria}
-            onChange={(e) => setCampo("id_categoria", e.target.value)}
-          >
-            <option value="">Seleccionar...</option>
-            {categorias.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nombre}
-              </option>
-            ))}
-          </select>
-        </label>
+      <div style={styles.gridPrimary}>
+        <div style={styles.readOnlyField}>
+          <span style={styles.readOnlyLabel}>Categoría</span>
+          <strong>Bicicletas</strong>
+        </div>
 
         <label style={styles.label}>
           Marca *
@@ -58,14 +50,16 @@ export default function BicicletaModeloForm({
             ))}
           </select>
         </label>
+      </div>
 
+      <div style={styles.gridPrimary}>
         <label style={styles.label}>
           Modelo *
           <input
             style={styles.input}
             value={form.modelo}
             onChange={(e) => setCampo("modelo", e.target.value)}
-            placeholder="REGAL"
+            placeholder="Ej: Regal, Tigris, Svel"
           />
         </label>
 
@@ -75,6 +69,7 @@ export default function BicicletaModeloForm({
             style={styles.input}
             value={form.rodado}
             onChange={(e) => setCampo("rodado", e.target.value)}
+            placeholder="29"
           />
         </label>
 
@@ -84,15 +79,19 @@ export default function BicicletaModeloForm({
             style={styles.input}
             value={form.tipo_bicicleta}
             onChange={(e) => setCampo("tipo_bicicleta", e.target.value)}
+            placeholder="MTB"
           />
         </label>
+      </div>
 
+      <div style={styles.gridSecondary}>
         <label style={styles.label}>
           Material cuadro
           <input
             style={styles.input}
             value={form.material_cuadro}
             onChange={(e) => setCampo("material_cuadro", e.target.value)}
+            placeholder="Aluminio"
           />
         </label>
 
@@ -102,46 +101,65 @@ export default function BicicletaModeloForm({
             style={styles.input}
             value={form.transmision}
             onChange={(e) => setCampo("transmision", e.target.value)}
+            placeholder="21V Shimano Tourney"
           />
         </label>
-      </div>
-
-      <div style={styles.previewBox}>
-        <span>Nombre generado</span>
-        <strong>{nombreProducto || "Completá los datos del modelo"}</strong>
       </div>
     </section>
   );
 }
 
 const styles = {
-  section: { display: "grid", gap: "14px" },
-  cardTitle: { margin: 0, fontSize: "20px" },
-  grid: {
+  section: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+    gap: "14px",
+  },
+  gridPrimary: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gap: "12px",
+  },
+  gridSecondary: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
     gap: "12px",
   },
   label: {
     display: "grid",
     gap: "6px",
-    fontWeight: 700,
-    fontSize: "14px",
+    fontWeight: 800,
+    fontSize: "13px",
   },
   input: {
     width: "100%",
-    padding: "10px 12px",
-    border: "1px solid #d0d5dd",
-    borderRadius: "10px",
+    padding: "11px 12px",
+    border: "1px solid #d1d5db",
+    borderRadius: "12px",
     fontSize: "14px",
     boxSizing: "border-box",
+    background: "#ffffff",
   },
   previewBox: {
     display: "grid",
     gap: "4px",
-    background: "#eef4ff",
+    background: "#eff6ff",
     border: "1px solid #bfdbfe",
-    borderRadius: "12px",
-    padding: "12px",
+    borderRadius: "14px",
+    padding: "14px",
   },
+  readOnlyField: {
+  display: "grid",
+  gap: "4px",
+  padding: "11px 12px",
+  border: "1px solid #d1d5db",
+  borderRadius: "12px",
+  background: "#f9fafb",
+},
+
+readOnlyLabel: {
+  color: "#6b7280",
+  fontSize: "12px",
+  fontWeight: 800,
+  textTransform: "uppercase",
+},
 };

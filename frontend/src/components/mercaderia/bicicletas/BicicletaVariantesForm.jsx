@@ -9,23 +9,30 @@ export default function BicicletaVariantesForm({
   return (
     <section style={styles.section}>
       <div style={styles.rowBetween}>
-        <h2 style={styles.cardTitle}>Variantes</h2>
+        <div>
+          <strong style={styles.sectionTitle}>Variantes</strong>
+          <p style={styles.muted}>
+            Agregá una tarjeta por talle/color. Evitá repetir códigos proveedor.
+          </p>
+        </div>
 
         <button type="button" onClick={onAdd} style={styles.secondaryButton}>
           + Agregar variante
         </button>
       </div>
 
-      {variantes.map((variante, index) => (
-        <BicicletaVarianteCard
-          key={index}
-          variante={variante}
-          index={index}
-          puedeEliminar={variantes.length > 1}
-          onChange={onChange}
-          onRemove={onRemove}
-        />
-      ))}
+      <div style={styles.cardsGrid}>
+        {variantes.map((variante, index) => (
+          <BicicletaVarianteCard
+            key={index}
+            variante={variante}
+            index={index}
+            puedeEliminar={variantes.length > 1}
+            onChange={onChange}
+            onRemove={onRemove}
+          />
+        ))}
+      </div>
     </section>
   );
 }
@@ -41,16 +48,27 @@ const styles = {
     alignItems: "center",
     gap: "12px",
   },
-  cardTitle: {
-    margin: 0,
-    fontSize: "20px",
+  sectionTitle: {
+    display: "block",
+    fontSize: "16px",
+    fontWeight: 900,
+  },
+  muted: {
+    margin: "4px 0 0",
+    color: "#6b7280",
+    fontSize: "13px",
+  },
+  cardsGrid: {
+    display: "grid",
+    gap: "14px",
   },
   secondaryButton: {
-    border: "1px solid #d0d5dd",
-    background: "#fff",
-    borderRadius: "10px",
-    padding: "10px 12px",
-    fontWeight: 800,
+    border: "1px solid #d1d5db",
+    background: "#ffffff",
+    borderRadius: "12px",
+    padding: "11px 13px",
+    fontWeight: 900,
     cursor: "pointer",
+    whiteSpace: "nowrap",
   },
 };
