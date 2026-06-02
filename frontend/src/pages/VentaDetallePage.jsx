@@ -203,11 +203,31 @@ export default function VentaDetallePage() {
 
   async function handleDevolverVentaCompleta() {
     const totalEstimadoCredito = Number(data?.venta?.total_final || 0);
+    let modoDevolucion = "credito_comercial";
 
+    if (tienePagosExternosConfirmados()) {
+      const usarReversionExterna = await pedirConfirmacion({
+        title: "Tipo de devolución",
+        message:
+          "La venta tiene pagos con tarjeta o MercadoPago.\n\n" +
+          "Aceptar = registrar reversión de pago externo (NO genera crédito).\n\n" +
+          "Cancelar = generar crédito comercial.",
+        confirmText: "Reversión externa",
+        cancelText: "Crédito comercial",
+        variant: "warning",
+      });
+
+      modoDevolucion = usarReversionExterna
+        ? "reversion_pago_externo"
+        : "credito_comercial";
+    }
     const motivo = await pedirPrompt({
       title: "Devolución total",
       label: "Motivo de devolución",
-      message: `Se generará crédito estimado por ${formatMoney(totalEstimadoCredito)}, no devolución de efectivo.`,
+      message:
+        modoDevolucion === "reversion_pago_externo"
+          ? "No se generará crédito comercial. Los pagos externos confirmados se marcarán como devueltos."
+          : `Se generará crédito estimado por ${formatMoney(totalEstimadoCredito)}, no devolución de efectivo.`,
       required: true,
       minLength: 3,
       confirmText: "Continuar",
@@ -217,7 +237,10 @@ export default function VentaDetallePage() {
 
     const confirmar = await pedirConfirmacion({
       title: "Confirmar devolución total",
-      message: `¿Confirmás la devolución TOTAL de esta venta? Se devolverá stock y se generará crédito estimado por ${formatMoney(totalEstimadoCredito)}.`,
+      message:
+        modoDevolucion === "reversion_pago_externo"
+          ? "¿Confirmás la devolución TOTAL de esta venta? Se devolverá stock y los pagos externos se marcarán como devueltos. No se generará crédito ni egreso de caja."
+          : `¿Confirmás la devolución TOTAL de esta venta? Se devolverá stock y se generará crédito estimado por ${formatMoney(totalEstimadoCredito)}.`,
       confirmText: "Devolver venta",
       cancelText: "Cancelar",
       variant: "danger",
@@ -233,12 +256,15 @@ export default function VentaDetallePage() {
       const result = await devolverVenta(ventaId, {
         motivo: motivo.trim(),
         id_usuario: CURRENT_USER_ID,
+        modo_devolucion: modoDevolucion,
       });
 
       await cargarVenta();
 
       setMensaje(
-        `Venta devuelta correctamente. Crédito generado: ${formatMoney(result.credito_generado)}`
+        modoDevolucion === "reversion_pago_externo"
+          ? "Venta devuelta correctamente. Los pagos externos fueron marcados como devueltos."
+          : `Venta devuelta correctamente. Crédito generado: ${formatMoney(result.credito_generado)}`
       );
     } catch (err) {
       setError(err.message || "No se pudo devolver la venta");
@@ -366,16 +392,39 @@ export default function VentaDetallePage() {
       setProcesando(false);
     }
   }
-
-  async function handleDevolverSerializada(item) {
+async function handleDevolverSerializada(item) {
     if (!item.id_bicicleta_serializada) return;
 
     const creditoEstimado = calcularCreditoEstimadoItem(item, 1);
 
+    let modoDevolucion = "credito_comercial";
+
+    if (tienePagosExternosConfirmados()) {
+      const usarReversionExterna = await pedirConfirmacion({
+        title: "Tipo de devolución",
+        message:
+          "Esta venta tiene pagos con tarjeta o MercadoPago.\n\n" +
+          "Reversión externa: usala solo si ya devolviste/cancelaste el pago en Posnet, banco o MercadoPago. No genera crédito comercial ni egreso de caja.\n\n" +
+          "Crédito comercial: genera saldo a favor del cliente para usar o reintegrar después.",
+        confirmText: "Reversión externa",
+        cancelText: "Crédito comercial",
+        variant: "warning",
+      });
+
+      modoDevolucion = usarReversionExterna
+        ? "reversion_pago_externo"
+        : "credito_comercial";
+    }
+
+    const mensajeMotivo =
+      modoDevolucion === "reversion_pago_externo"
+        ? "No se generará crédito comercial. El pago externo se marcará como devuelto."
+        : `Crédito estimado: ${formatMoney(creditoEstimado)}`;
+
     const motivo = await pedirPrompt({
       title: "Devolución serializada",
       label: "Motivo",
-      message: `Crédito estimado: ${formatMoney(creditoEstimado)}`,
+      message: mensajeMotivo,
       required: true,
       minLength: 3,
       confirmText: "Registrar devolución",
@@ -392,12 +441,15 @@ export default function VentaDetallePage() {
         id_bicicleta_serializada: Number(item.id_bicicleta_serializada),
         motivo: motivo.trim(),
         id_usuario: CURRENT_USER_ID,
+        modo_devolucion: modoDevolucion,
       });
 
       await cargarVenta();
 
       setMensaje(
-        `Devolución registrada. ID devolución: ${result.devolucion_id}. El crédito se calcula según el total real de la venta.`
+        modoDevolucion === "reversion_pago_externo"
+          ? `Devolución registrada. ID devolución: ${result.devolucion_id}. Pago externo marcado como devuelto.`
+          : `Devolución registrada. ID devolución: ${result.devolucion_id}. El crédito se calcula según el total real de la venta.`
       );
     } catch (err) {
       setError(err.message || "No se pudo registrar la devolución serializada");
@@ -405,13 +457,18 @@ export default function VentaDetallePage() {
       setProcesando(false);
     }
   }
-
   const totalPagadoReal = useMemo(() => {
     return pagos
       .filter((pago) => pago.estado === "confirmado")
       .reduce((acc, pago) => acc + Number(pago.monto_total_cobrado || 0), 0);
   }, [pagos]);
-
+  function tienePagosExternosConfirmados() {
+    return (pagos ?? []).some(
+      (p) =>
+        p.estado === "confirmado" &&
+        ["tarjeta", "mercadopago"].includes(p.medio_pago)
+    );
+  }
   if (loading) {
     return <p style={{ padding: "24px" }}>Cargando detalle de venta...</p>;
   }
@@ -566,4 +623,3 @@ const estaCerradaOperativamente =
     </div>
   );
 }
-
