@@ -8,12 +8,12 @@ import { listarCatalogoPOS } from "../services/catalogoService";
 import { getImageUrl } from "../utils/images";
 
 const ESTADOS = [
-  { value: "", label: "Todos", emoji: "📋" },
-  { value: "disponible", label: "Disponible", emoji: "✅" },
-  { value: "reservada", label: "Reservada", emoji: "🟡" },
-  { value: "vendida_pendiente_entrega", label: "Pendiente", emoji: "📦" },
-  { value: "entregada", label: "Entregada", emoji: "🏁" },
+  { value: "disponible", label: "Disponibles", emoji: "✅" },
+  { value: "reservada", label: "Reservadas", emoji: "🟡" },
+  { value: "vendida_pendiente_entrega", label: "Pendientes", emoji: "📦" },
+  { value: "entregada", label: "Entregadas", emoji: "🏁" },
   { value: "fuera_de_stock", label: "Fuera stock", emoji: "⛔" },
+  { value: "", label: "Todos", emoji: "📋" },
 ];
 
 function normalizarEstado(estado) {
@@ -93,7 +93,7 @@ function getOperacionDetalle(bici) {
 
 export default function BicicletasSerializadasPage() {
   const [bicis, setBicis] = useState([]);
-  const [estado, setEstado] = useState("");
+  const [estado, setEstado] = useState("disponible");
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [procesando, setProcesando] = useState(false);
@@ -101,6 +101,7 @@ export default function BicicletasSerializadasPage() {
   const [mensaje, setMensaje] = useState("");
   const [seleccionadaId, setSeleccionadaId] = useState(null);
   const [mostrarAlta, setMostrarAlta] = useState(false);
+  const [panelAyudaAbierto, setPanelAyudaAbierto] = useState(false);
   const [queryVariante, setQueryVariante] = useState("");
   const [variantesSerializables, setVariantesSerializables] = useState([]);
   const [buscandoVariantes, setBuscandoVariantes] = useState(false);
@@ -319,13 +320,17 @@ export default function BicicletasSerializadasPage() {
           <span style={kickerStyle}>Unidades únicas</span>
           <h1 style={titleStyle}>Bicicletas serializadas</h1>
           <p style={mutedStyle}>
-            Control operativo por número de cuadro. No las trates como stock genérico.
+            Control operativo por número de cuadro. Por defecto se muestran solo las disponibles para venta.
           </p>
         </div>
 
         <div style={headerActionsStyle}>
+          <button type="button" onClick={() => setPanelAyudaAbierto((v) => !v)} style={refreshButtonStyle}>
+            Guía
+          </button>
+
           <button type="button" onClick={() => setMostrarAlta(true)} style={primaryHeaderButtonStyle}>
-            ＋ Armar serializada
+            ＋ Serializar bicicleta
           </button>
 
           <button onClick={cargarSerializadas} disabled={procesando} style={refreshButtonStyle}>
@@ -338,12 +343,22 @@ export default function BicicletasSerializadasPage() {
       {error && <div style={alertStyle}>Error: {error}</div>}
 
       <section style={metricGridStyle}>
-        <Metric label="Total" value={resumen.total} tone="dark" />
+        <Metric label="Vista actual" value={resumen.total} tone="dark" />
         <Metric label="Disponibles" value={resumen.disponible} tone="ok" />
         <Metric label="Reservadas" value={resumen.reservada} tone="warning" />
         <Metric label="Pendientes" value={resumen.vendida_pendiente_entrega} tone="info" />
         <Metric label="Entregadas" value={resumen.entregada} tone="muted" />
       </section>
+
+      {panelAyudaAbierto && (
+        <section style={helpPanelStyle}>
+          <strong>Regla operativa</strong>
+          <span>
+            Esta pantalla no es stock general. Usala para identificar una bicicleta física por número de cuadro.
+            Para vender rápido, trabajá primero con el filtro Disponibles.
+          </span>
+        </section>
+      )}
 
       <div style={gridStyle}>
         <section style={listPanelStyle}>
@@ -353,7 +368,7 @@ export default function BicicletasSerializadasPage() {
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Buscar por cuadro, producto, variante, SKU o estado"
+                placeholder="Buscar por cuadro, producto, variante, SKU, cliente o venta"
                 style={searchInputStyle}
               />
             </div>
@@ -418,7 +433,7 @@ export default function BicicletasSerializadasPage() {
             <form onSubmit={handleCrear} style={modalFormStyle}>
               <div style={variantSearchPanelStyle}>
                 <label style={fieldStyle}>
-                  <span style={labelStyle}>Buscar bicicleta</span>
+                  <span style={labelStyle}>Buscar modelo para serializar</span>
                   <input
                     type="text"
                     value={queryVariante}
@@ -435,7 +450,7 @@ export default function BicicletasSerializadasPage() {
                     <div style={variantEmptyStyle}>
                       {queryVariante.trim()
                         ? "No encontré bicicletas serializables con stock para esa búsqueda."
-                        : "Escribí para buscar bicicletas serializables con stock."}
+                        : "Escribí o dejá vacío para ver bicicletas serializables con stock."}
                     </div>
                   ) : (
                     variantesSerializables.slice(0, 8).map((variante) => {
@@ -489,11 +504,7 @@ export default function BicicletasSerializadasPage() {
                 )}
               </div>
 
-              <TextInput
-                label="Sucursal ID"
-                value={form.id_sucursal_actual}
-                onChange={(v) => setForm((p) => ({ ...p, id_sucursal_actual: v }))}
-              />
+              <ReadOnlyField label="Sucursal" value={`Sucursal #${form.id_sucursal_actual}`} />
 
               <TextInput
                 label="Número de cuadro"
@@ -645,6 +656,15 @@ function Metric({ label, value, tone }) {
   );
 }
 
+function ReadOnlyField({ label, value }) {
+  return (
+    <div style={readOnlyFieldStyle}>
+      <span style={readOnlyLabelStyle}>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
 function TextInput({ label, value, onChange, type = "number", placeholder = "" }) {
   return (
     <label style={fieldStyle}>
@@ -684,6 +704,7 @@ const primaryHeaderButtonStyle = { border: "none", background: "#f97316", color:
 const refreshButtonStyle = { border: "1px solid #cbd5e1", background: "white", color: "#0f172a", borderRadius: 12, padding: "11px 14px", fontWeight: 900, cursor: "pointer" };
 const loadingCardStyle = { background: "white", border: "1px solid #e2e8f0", borderRadius: 18, padding: 24, color: "#334155", fontWeight: 900 };
 const alertStyle = { background: "#fff1f0", color: "#b42318", padding: 12, borderRadius: 12, border: "1px solid #f4c7c3", marginBottom: 16, fontWeight: 800 };
+const helpPanelStyle = { background: "#fff7ed", color: "#c2410c", border: "1px solid #fed7aa", borderRadius: 16, padding: 14, marginBottom: 16, display: "grid", gap: 5, fontWeight: 800 };
 const successStyle = { background: "#ecfdf5", color: "#047857", padding: 12, borderRadius: 12, border: "1px solid #86efac", marginBottom: 16, fontWeight: 800 };
 
 const metricGridStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))", gap: 12, marginBottom: 16 };
@@ -727,6 +748,8 @@ const formStyle = { display: "grid", gap: 10 };
 const fieldStyle = { display: "flex", flexDirection: "column", gap: 7 };
 const labelStyle = { fontWeight: 900, fontSize: 14, color: "#334155" };
 const inputStyle = { width: "100%", padding: "11px 12px", borderRadius: 12, border: "1px solid #cbd5e1", fontSize: 15, boxSizing: "border-box", fontWeight: 700 };
+const readOnlyFieldStyle = { border: "1px solid #dbeafe", background: "#eff6ff", color: "#1d4ed8", borderRadius: 14, padding: "11px 12px", display: "grid", gap: 4 };
+const readOnlyLabelStyle = { color: "#64748b", fontSize: 12, fontWeight: 1000, textTransform: "uppercase", letterSpacing: "0.04em" };
 const textareaStyle = { ...inputStyle, minHeight: 74, resize: "vertical", fontFamily: "inherit" };
 const noteStyle = { background: "#f8fafc", borderLeft: "4px solid #f97316", padding: 10, borderRadius: 10, color: "#334155", marginTop: 12, fontWeight: 700 };
 const primaryButtonStyle = { border: "none", background: "#16a34a", color: "white", borderRadius: 12, padding: 13, fontWeight: 1000, cursor: "pointer", boxShadow: "0 12px 24px rgba(22, 163, 74, 0.25)" };
