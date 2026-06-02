@@ -122,7 +122,7 @@ export default function CatalogoDetalleModal({ item, onClose, onEdit }) {
             Cerrar
           </button>
           <button type="button" onClick={onEdit} style={styles.primaryButton}>
-            Editar producto
+            Abrir ficha completa
           </button>
         </footer>
       </div>

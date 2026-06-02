@@ -3,13 +3,6 @@ import { useNavigate } from "react-router-dom";
 import {
   listarCatalogoPOS,
   listarCategorias,
-  listarMarcas,
-  obtenerProducto,
-  obtenerVariante,
-  editarProducto,
-  editarVariante,
-  cambiarEstadoProducto,
-  cambiarEstadoVariante,
 } from "../services/catalogoService";
 import ProductImage from "../components/catalogo/ProductImage";
 import EstadoBadge from "../components/catalogo/EstadoBadge";
@@ -53,7 +46,6 @@ export default function CatalogoPage() {
 
   const [items, setItems] = useState([]);
   const [categorias, setCategorias] = useState([]);
-  const [marcas, setMarcas] = useState([]);
   const [query, setQuery] = useState("");
   const [categoriaId, setCategoriaId] = useState("");
   const [offset, setOffset] = useState(0);
@@ -63,14 +55,9 @@ export default function CatalogoPage() {
   const [mensaje, setMensaje] = useState("");
   const [detalle, setDetalle] = useState(null);
   const [seleccionadoId, setSeleccionadoId] = useState(null);
-  const [productoDetalle, setProductoDetalle] = useState(null);
-  const [varianteDetalle, setVarianteDetalle] = useState(null);
-  const [cargandoDetalle, setCargandoDetalle] = useState(false);
-  const [guardandoEdicion, setGuardandoEdicion] = useState(false);
 
   useEffect(() => {
     cargarCategorias();
-    cargarMarcas();
   }, []);
 
   useEffect(() => {
@@ -111,15 +98,6 @@ export default function CatalogoPage() {
     }
   }
 
-  async function cargarMarcas() {
-    try {
-      const data = await listarMarcas();
-      setMarcas(data || []);
-    } catch (err) {
-      setError(err.message || "No se pudieron cargar las marcas");
-    }
-  }
-
   async function cargarCatalogo(options = {}) {
     const nextOffset = options.nextOffset ?? offset;
 
@@ -141,70 +119,6 @@ export default function CatalogoPage() {
       setError(err.message || "No se pudo cargar el catálogo");
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function guardarProductoEditado(payload) {
-    if (!seleccionado) return;
-
-    try {
-      setGuardandoEdicion(true);
-      setError("");
-      setMensaje("");
-
-      await editarProducto(seleccionado.id_producto, payload);
-      setMensaje("Producto actualizado correctamente");
-      await cargarCatalogo();
-      const producto = await obtenerProducto(seleccionado.id_producto);
-      setProductoDetalle(producto);
-    } catch (err) {
-      setError(err.message || "No se pudo actualizar el producto");
-    } finally {
-      setGuardandoEdicion(false);
-    }
-  }
-
-  async function guardarVarianteEditada(payload) {
-    if (!seleccionado) return;
-
-    try {
-      setGuardandoEdicion(true);
-      setError("");
-      setMensaje("");
-
-      await editarVariante(seleccionado.id_variante, payload);
-      setMensaje("Variante actualizada correctamente");
-      await cargarCatalogo();
-      const variante = await obtenerVariante(seleccionado.id_variante);
-      setVarianteDetalle(variante);
-    } catch (err) {
-      setError(err.message || "No se pudo actualizar la variante");
-    } finally {
-      setGuardandoEdicion(false);
-    }
-  }
-
-  async function cambiarEstadoSeleccionado(tipo, activo) {
-    if (!seleccionado) return;
-
-    try {
-      setGuardandoEdicion(true);
-      setError("");
-      setMensaje("");
-
-      if (tipo === "producto") {
-        await cambiarEstadoProducto(seleccionado.id_producto, { activo, id_usuario: 1 });
-        setMensaje(activo ? "Producto activado" : "Producto desactivado");
-      } else {
-        await cambiarEstadoVariante(seleccionado.id_variante, { activo, id_usuario: 1 });
-        setMensaje(activo ? "Variante activada" : "Variante desactivada");
-      }
-
-      await cargarCatalogo();
-    } catch (err) {
-      setError(err.message || "No se pudo cambiar el estado");
-    } finally {
-      setGuardandoEdicion(false);
     }
   }
 
@@ -236,44 +150,6 @@ export default function CatalogoPage() {
     return items.find((item) => item.id_variante === seleccionadoId) || items[0] || null;
   }, [items, seleccionadoId]);
 
-
-  useEffect(() => {
-    if (!seleccionado) {
-      setProductoDetalle(null);
-      setVarianteDetalle(null);
-      return;
-    }
-
-    let cancelado = false;
-
-    async function cargarDetalleSeleccionado() {
-      try {
-        setCargandoDetalle(true);
-
-        const [producto, variante] = await Promise.all([
-          obtenerProducto(seleccionado.id_producto),
-          obtenerVariante(seleccionado.id_variante),
-        ]);
-
-        if (cancelado) return;
-
-        setProductoDetalle(producto);
-        setVarianteDetalle(variante);
-      } catch (err) {
-        if (!cancelado) {
-          setError(err.message || "No se pudo cargar el detalle para editar");
-        }
-      } finally {
-        if (!cancelado) setCargandoDetalle(false);
-      }
-    }
-
-    cargarDetalleSeleccionado();
-
-    return () => {
-      cancelado = true;
-    };
-  }, [seleccionado]);
 
   const paginaActual = Math.floor(offset / LIMIT) + 1;
   const totalPaginas = Math.max(1, Math.ceil(total / LIMIT));
@@ -389,7 +265,6 @@ export default function CatalogoPage() {
                   selected={seleccionado?.id_variante === item.id_variante}
                   onSelect={() => setSeleccionadoId(item.id_variante)}
                   onOpenDetail={() => setDetalle(item)}
-                  onEdit={() => setSeleccionadoId(item.id_variante)}
                 />
               ))}
             </div>
@@ -398,18 +273,9 @@ export default function CatalogoPage() {
 
         <aside style={styles.sidePanel}>
           {seleccionado ? (
-            <PanelEdicionCatalogo
+            <PanelPreviewCatalogo
               item={seleccionado}
-              categorias={categorias}
-              marcas={marcas}
-              productoDetalle={productoDetalle}
-              varianteDetalle={varianteDetalle}
-              cargando={cargandoDetalle}
-              guardando={guardandoEdicion}
               onDetalle={() => setDetalle(seleccionado)}
-              onGuardarProducto={guardarProductoEditado}
-              onGuardarVariante={guardarVarianteEditada}
-              onCambiarEstado={cambiarEstadoSeleccionado}
             />
           ) : (
             <section style={styles.sideCardDark}>
@@ -431,7 +297,7 @@ export default function CatalogoPage() {
   );
 }
 
-function CatalogoCard({ item, selected, onSelect, onOpenDetail, onEdit }) {
+function CatalogoCard({ item, selected, onSelect, onOpenDetail }) {
   return (
     <article style={selected ? styles.cardSelected : styles.card} onClick={onSelect}>
       <div style={styles.cardImageWrap} onDoubleClick={onOpenDetail}>
@@ -450,13 +316,32 @@ function CatalogoCard({ item, selected, onSelect, onOpenDetail, onEdit }) {
         <div style={styles.tagsRow}>
           {item.marca_nombre && <span style={styles.tag}>{item.marca_nombre}</span>}
           <span style={styles.tag}>{item.categoria_nombre}</span>
-          {item.serializable && <span style={styles.serialTag}>Serializable</span>}
+          {item.serializable && (
+            <span style={styles.serialTag}>
+              Serializada
+            </span>
+          )}
         </div>
 
-        <div style={styles.stockStrip}>
+       <div
+          style={{
+            ...styles.stockStrip,
+            gridTemplateColumns:
+              Number(item.stock_reservado || 0) > 0
+                ? "repeat(3, 1fr)"
+                : "repeat(2, 1fr)",
+          }}
+        >
           <StockMini label="Disponible" value={item.stock_disponible} tone="ok" />
           <StockMini label="Físico" value={item.stock_fisico} tone="info" />
-          <StockMini label="Reservado" value={item.stock_reservado} tone="muted" />
+
+          {Number(item.stock_reservado || 0) > 0 && (
+            <StockMini
+              label="Reservado"
+              value={item.stock_reservado}
+              tone="muted"
+            />
+          )}
         </div>
 
         <div style={styles.priceGrid}>
@@ -470,18 +355,34 @@ function CatalogoCard({ item, selected, onSelect, onOpenDetail, onEdit }) {
           </div>
         </div>
 
-        <div style={styles.codesBox}>
-          <CodePill label="SKU" value={item.sku} />
-          <CodePill label="EAN" value={item.codigo_barras} />
-          <CodePill label="Prov" value={item.codigo_proveedor} />
+        <div
+          style={{
+            ...styles.codesBox,
+            gridTemplateColumns: `repeat(${
+              [
+                item.sku,
+                item.codigo_barras,
+                item.codigo_proveedor,
+              ].filter(Boolean).length || 1
+            }, minmax(0,1fr))`,
+          }}
+        >
+          {item.sku && (
+            <CodePill label="SKU" value={item.sku} />
+          )}
+
+          {item.codigo_barras && (
+            <CodePill label="EAN" value={item.codigo_barras} />
+          )}
+
+          {item.codigo_proveedor && (
+            <CodePill label="Prov" value={item.codigo_proveedor} />
+          )}
         </div>
 
         <div style={styles.cardActions}>
           <button type="button" onClick={(e) => { e.stopPropagation(); onOpenDetail(); }} style={styles.secondaryButton}>
             Ver detalle
-          </button>
-          <button type="button" onClick={(e) => { e.stopPropagation(); onEdit(); }} style={styles.primaryButton}>
-            Editar rápido
           </button>
         </div>
       </div>
@@ -489,108 +390,14 @@ function CatalogoCard({ item, selected, onSelect, onOpenDetail, onEdit }) {
   );
 }
 
-function PanelEdicionCatalogo({
-  item,
-  categorias,
-  marcas,
-  productoDetalle,
-  varianteDetalle,
-  cargando,
-  guardando,
-  onDetalle,
-  onGuardarProducto,
-  onGuardarVariante,
-  onCambiarEstado,
-}) {
-  const [tab, setTab] = useState("producto");
-  const [productoForm, setProductoForm] = useState({});
-  const [varianteForm, setVarianteForm] = useState({});
 
-  useEffect(() => {
-    const base = productoDetalle || item;
-
-    setProductoForm({
-      nombre: base.nombre || base.producto_nombre || "",
-      id_categoria: base.id_categoria || base.categoria_id || "",
-      id_marca: base.id_marca || "",
-      tipo_item: base.tipo_item || "producto",
-      stockeable: Boolean(base.stockeable),
-      serializable: Boolean(base.serializable),
-      rodado: base.rodado || "",
-      tipo_bicicleta: base.tipo_bicicleta || "",
-      material_cuadro: base.material_cuadro || "",
-    });
-  }, [productoDetalle, item]);
-
-  useEffect(() => {
-    const base = varianteDetalle || item;
-
-    setVarianteForm({
-      nombre_variante: base.nombre_variante || "",
-      talle: base.talle || "",
-      color: base.color || "",
-      codigo_proveedor: base.codigo_proveedor || "",
-      proveedor_preferido_id: base.proveedor_preferido_id || "",
-      alicuota_iva: base.alicuota_iva ?? "21.00",
-      gravado: base.gravado !== false,
-      precio_minorista: base.precio_minorista ?? "0",
-      precio_mayorista: base.precio_mayorista ?? "0",
-      permite_precio_libre: Boolean(base.permite_precio_libre),
-    });
-  }, [varianteDetalle, item]);
-
-  function updateProducto(campo, valor) {
-    setProductoForm((prev) => ({ ...prev, [campo]: valor }));
-  }
-
-  function updateVariante(campo, valor) {
-    setVarianteForm((prev) => ({ ...prev, [campo]: valor }));
-  }
-
-  const categoriaActual = categorias.find(
-    (cat) => String(cat.id) === String(productoForm.id_categoria)
-  );
-
-  const esBicicleta = categoriaEsBicicleta(categorias, productoForm.id_categoria);
-
-  function submitProducto(e) {
-    e.preventDefault();
-
-    const payload = {
-      ...productoForm,
-      id_categoria: Number(productoForm.id_categoria),
-      id_marca: productoForm.id_marca ? Number(productoForm.id_marca) : null,
-      serializable: esBicicleta ? Boolean(productoForm.serializable) : false,
-      rodado: esBicicleta ? productoForm.rodado?.trim() || null : null,
-      tipo_bicicleta: esBicicleta ? productoForm.tipo_bicicleta?.trim() || null : null,
-      material_cuadro: esBicicleta ? productoForm.material_cuadro?.trim() || null : null,
-    };
-
-    onGuardarProducto(payload);
-  }
-
-  function submitVariante(e) {
-    e.preventDefault();
-
-    onGuardarVariante({
-      ...varianteForm,
-      proveedor_preferido_id: varianteForm.proveedor_preferido_id
-        ? Number(varianteForm.proveedor_preferido_id)
-        : null,
-      precio_minorista: String(varianteForm.precio_minorista || "0"),
-      precio_mayorista: String(varianteForm.precio_mayorista || "0"),
-      alicuota_iva: String(varianteForm.alicuota_iva || "21.00"),
-      talle: esBicicleta ? varianteForm.talle?.trim() || null : null,
-      color: varianteForm.color?.trim() || null,
-      codigo_proveedor: varianteForm.codigo_proveedor?.trim() || null,
-    });
-  }
-
+function PanelPreviewCatalogo({ item, onDetalle }) {
   return (
-    <section style={styles.editorPanel}>
-      <div style={styles.editorHeader}>
+    <section style={styles.previewPanel}>
+      <div style={styles.previewHeader}>
+        <span style={styles.sideKicker}>Preview operativo</span>
         <h2 style={styles.sideTitle}>{item.producto_nombre}</h2>
-        <p style={styles.sideMuted}>{item.nombre_variante}</p>
+        <p style={styles.previewVariant}>{item.nombre_variante || "Variante única"}</p>
       </div>
 
       <div style={styles.sideImageBoxSoft}>
@@ -602,157 +409,24 @@ function PanelEdicionCatalogo({
         <small>{getMotivoTexto(item)}</small>
       </div>
 
-
-      <div style={styles.editorTabs}>
-        <button type="button" onClick={() => setTab("producto")} style={tab === "producto" ? styles.editorTabActive : styles.editorTab}>
-          Producto
-        </button>
-        <button type="button" onClick={() => setTab("variante")} style={tab === "variante" ? styles.editorTabActive : styles.editorTab}>
-          Variante
-        </button>
-        <button type="button" onClick={() => setTab("acciones")} style={tab === "acciones" ? styles.editorTabActive : styles.editorTab}>
-          Acciones
-        </button>
+      <div style={styles.availableHero}>
+        <span>Disponible</span>
+        <strong>{formatNumber(item.stock_disponible)}</strong>
       </div>
 
-      {cargando ? (
-        <div style={styles.editorLoading}>Cargando datos...</div>
-      ) : tab === "producto" ? (
-        <form onSubmit={submitProducto} style={styles.editorForm}>
-          <Field label="Nombre del producto">
-            <input value={productoForm.nombre || ""} onChange={(e) => updateProducto("nombre", e.target.value)} style={styles.editorInput} />
-          </Field>
+      <div style={styles.sideInfoGridLight}>
+        <Info label="Disponible" value={formatNumber(item.stock_disponible)} />
+        <Info label="Físico" value={formatNumber(item.stock_fisico)} />
+        <Info label="Minorista" value={formatMoney(item.precio_minorista)} />
+        <Info label="Mayorista" value={formatMoney(item.precio_mayorista)} />
+        <Info label="Código proveedor" value={item.codigo_proveedor} />
+        <Info label="SKU" value={item.sku} />
+      </div>
 
-          <div style={styles.twoCols}>
-            <Field label="Categoría">
-              <select value={productoForm.id_categoria || ""} onChange={(e) => updateProducto("id_categoria", e.target.value)} style={styles.editorInput}>
-                <option value="">Seleccionar</option>
-                {categorias.map((cat) => (
-                  <option key={cat.id} value={cat.id}>{cat.nombre}</option>
-                ))}
-              </select>
-            </Field>
-
-            <Field label="Marca">
-              <select value={productoForm.id_marca || ""} onChange={(e) => updateProducto("id_marca", e.target.value)} style={styles.editorInput}>
-                <option value="">Sin marca</option>
-                {marcas.map((marca) => (
-                  <option key={marca.id} value={marca.id}>{marca.nombre}</option>
-                ))}
-              </select>
-            </Field>
-          </div>
-
-          {esBicicleta && (
-            <>
-              <div style={styles.twoCols}>
-                <Field label="Rodado">
-                  <input value={productoForm.rodado || ""} onChange={(e) => updateProducto("rodado", e.target.value)} style={styles.editorInput} placeholder="Ej: 29" />
-                </Field>
-
-                <Field label="Material cuadro">
-                  <input value={productoForm.material_cuadro || ""} onChange={(e) => updateProducto("material_cuadro", e.target.value)} style={styles.editorInput} placeholder="Aluminio, acero..." />
-                </Field>
-              </div>
-
-              <Field label="Tipo de bicicleta">
-                <input value={productoForm.tipo_bicicleta || ""} onChange={(e) => updateProducto("tipo_bicicleta", e.target.value)} style={styles.editorInput} placeholder="MTB, urbana, paseo..." />
-              </Field>
-            </>
-          )}
-
-          {esBicicleta && (
-            <label style={styles.editorCheck}>
-              <input type="checkbox" checked={Boolean(productoForm.serializable)} onChange={(e) => updateProducto("serializable", e.target.checked)} />
-              Puede tener número de cuadro
-            </label>
-          )}
-
-          <button type="submit" disabled={guardando} style={styles.orangeButtonFull}>
-            {guardando ? "Guardando..." : "Guardar producto"}
-          </button>
-        </form>
-      ) : tab === "variante" ? (
-        <form onSubmit={submitVariante} style={styles.editorForm}>
-          <Field label="Nombre de variante">
-            <input value={varianteForm.nombre_variante || ""} onChange={(e) => updateVariante("nombre_variante", e.target.value)} style={styles.editorInput} />
-          </Field>
-
-          {esBicicleta ? (
-            <div style={styles.twoCols}>
-              <Field label="Color">
-                <input value={varianteForm.color || ""} onChange={(e) => updateVariante("color", e.target.value)} style={styles.editorInput} />
-              </Field>
-              <Field label="Talle">
-                <input value={varianteForm.talle || ""} onChange={(e) => updateVariante("talle", e.target.value)} style={styles.editorInput} />
-              </Field>
-            </div>
-          ) : (
-            <Field label="Color / presentación">
-              <input value={varianteForm.color || ""} onChange={(e) => updateVariante("color", e.target.value)} style={styles.editorInput} placeholder="Ej: Rojo, 120ml, S/P..." />
-            </Field>
-          )}
-
-          <Field label="Código proveedor">
-            <input value={varianteForm.codigo_proveedor || ""} onChange={(e) => updateVariante("codigo_proveedor", e.target.value)} style={styles.editorInput} />
-          </Field>
-
-          <div style={styles.twoCols}>
-            <Field label="Minorista">
-              <input type="number" value={varianteForm.precio_minorista || ""} onChange={(e) => updateVariante("precio_minorista", e.target.value)} style={styles.editorInput} />
-            </Field>
-            <Field label="Mayorista">
-              <input type="number" value={varianteForm.precio_mayorista || ""} onChange={(e) => updateVariante("precio_mayorista", e.target.value)} style={styles.editorInput} />
-            </Field>
-          </div>
-
-          <div style={styles.twoCols}>
-            <Field label="IVA %">
-              <input type="number" value={varianteForm.alicuota_iva || ""} onChange={(e) => updateVariante("alicuota_iva", e.target.value)} style={styles.editorInput} />
-            </Field>
-            <Field label="Proveedor ID">
-              <input type="number" value={varianteForm.proveedor_preferido_id || ""} onChange={(e) => updateVariante("proveedor_preferido_id", e.target.value)} style={styles.editorInput} />
-            </Field>
-          </div>
-
-          <label style={styles.editorCheck}>
-            <input type="checkbox" checked={Boolean(varianteForm.gravado)} onChange={(e) => updateVariante("gravado", e.target.checked)} />
-            Gravado
-          </label>
-
-          <label style={styles.editorCheck}>
-            <input type="checkbox" checked={Boolean(varianteForm.permite_precio_libre)} onChange={(e) => updateVariante("permite_precio_libre", e.target.checked)} />
-            Permite precio libre en venta
-          </label>
-
-          <button type="submit" disabled={guardando} style={styles.orangeButtonFull}>
-            {guardando ? "Guardando..." : "Guardar variante"}
-          </button>
-        </form>
-      ) : (
-        <div style={styles.editorForm}>
-          <div style={styles.sideInfoGridLight}>
-            <Info label="Producto" value={`#${item.id_producto}`} />
-            <Info label="Variante" value={`#${item.id_variante}`} />
-            <Info label="Stock disponible" value={formatNumber(item.stock_disponible)} />
-            <Info label="Pendiente entrega" value={formatNumber(item.stock_vendido_pendiente_entrega)} />
-          </div>
-
-          <button type="button" onClick={onDetalle} style={styles.secondaryButtonFull}>Ver detalle completo</button>
-          <button type="button" onClick={() => onCambiarEstado("producto", false)} disabled={guardando} style={styles.dangerButton}>Desactivar producto</button>
-          <button type="button" onClick={() => onCambiarEstado("variante", false)} disabled={guardando} style={styles.dangerButton}>Desactivar variante</button>
-        </div>
-      )}
+      <button type="button" onClick={onDetalle} style={styles.orangeButtonFull}>
+        Ver detalle completo
+      </button>
     </section>
-  );
-}
-
-function Field({ label, children }) {
-  return (
-    <label style={styles.editorField}>
-      <span>{label}</span>
-      {children}
-    </label>
   );
 }
 
@@ -1132,7 +806,7 @@ const styles = {
   },
   cardActions: {
     display: "grid",
-    gridTemplateColumns: "1fr 1fr",
+    gridTemplateColumns: "1fr",
     gap: 8,
   },
   secondaryButton: {
@@ -1154,6 +828,34 @@ const styles = {
     cursor: "pointer",
   },
 
+  previewPanel: {
+    background: "white",
+    color: "#0f172a",
+    borderRadius: 22,
+    padding: 16,
+    border: "1px solid #e2e8f0",
+    boxShadow: "0 18px 40px rgba(15, 23, 42, 0.12)",
+    display: "grid",
+    gap: 12,
+  },
+  previewHeader: {
+    paddingBottom: 12,
+    borderBottom: "1px solid #e2e8f0",
+  },
+  previewVariant: {
+    margin: "6px 0 0",
+    color: "#64748b",
+    fontWeight: 800,
+  },
+  availableHero: {
+    display: "grid",
+    gap: 4,
+    background: "#ecfdf5",
+    color: "#047857",
+    border: "1px solid #bbf7d0",
+    borderRadius: 18,
+    padding: 16,
+  },
   editorPanel: {
     background: "white",
     color: "#0f172a",

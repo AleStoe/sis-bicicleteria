@@ -206,7 +206,6 @@ export default function CatalogoProductoDetallePage() {
 
         <div style={styles.headerActions}>
           <button type="button" onClick={cargar} style={styles.secondaryButton}>Refrescar</button>
-          <button type="button" onClick={() => navigate("/catalogo")} style={styles.primaryButton}>Editar rápido en catálogo</button>
         </div>
       </header>
 
@@ -257,7 +256,7 @@ export default function CatalogoProductoDetallePage() {
           <div style={styles.sectionHeader}>
             <div>
               <h2 style={styles.sectionTitle}>Información operativa</h2>
-              <p style={styles.muted}>Lo estructural queda resumido. La edición se hace desde el panel rápido del catálogo.</p>
+              <p style={styles.muted}>Resumen de datos estructurales. La edición completa queda pendiente para este detalle.</p>
             </div>
           </div>
 
