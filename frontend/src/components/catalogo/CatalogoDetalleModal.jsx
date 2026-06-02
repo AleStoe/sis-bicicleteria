@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { API_BASE_URL } from "../../config/appConfig";
 import { obtenerFichaTecnicaProducto } from "../../services/catalogoService";
+import EstadoBadge from "./EstadoBadge";
 
 export default function CatalogoDetalleModal({ item, onClose, onEdit }) {
   const [fichaTecnica, setFichaTecnica] = useState([]);
@@ -24,83 +25,106 @@ export default function CatalogoDetalleModal({ item, onClose, onEdit }) {
     }
   }
 
+  const stock = useMemo(
+    () => [
+      { label: "Disponible", value: item.stock_disponible, tone: "ok" },
+      { label: "Físico", value: item.stock_fisico, tone: "info" },
+      { label: "Reservado", value: item.stock_reservado, tone: "muted" },
+      {
+        label: "Pendiente entrega",
+        value: item.stock_vendido_pendiente_entrega,
+        tone: "warning",
+      },
+    ],
+    [item]
+  );
+
   return (
-    <div style={modalOverlayStyle} onClick={onClose}>
-      <div style={modalStyle} onClick={(e) => e.stopPropagation()}>
-        <div style={modalHeaderStyle}>
+    <div style={styles.overlay} onClick={onClose}>
+      <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+        <header style={styles.header}>
           <div>
-            <h2 style={{ margin: 0 }}>{item.producto_nombre}</h2>
-            <div style={mutedSmallStyle}>{item.nombre_variante}</div>
+            <p style={styles.kicker}>Detalle de catálogo</p>
+            <h2 style={styles.title}>{item.producto_nombre}</h2>
+            <p style={styles.subtitle}>{item.nombre_variante || "Variante única"}</p>
           </div>
 
-          <button type="button" onClick={onClose}>
+          <button type="button" onClick={onClose} style={styles.closeButton}>
             ✕
           </button>
-        </div>
+        </header>
 
-        <div style={modalContentStyle}>
-          <div>
-            {item.imagen_principal ? (
-              <img
-                src={getImageUrl(item.imagen_principal)}
-                alt={item.producto_nombre}
-                style={modalImageStyle}
-              />
-            ) : (
-              <div style={bigPlaceholderStyle}>Sin imagen</div>
-            )}
-          </div>
-
-          <div style={modalInfoStyle}>
-            <InfoRow label="SKU" value={item.sku} />
-            <InfoRow label="EAN" value={item.codigo_barras} />
-            <InfoRow label="Código proveedor" value={item.codigo_proveedor} />
-            <InfoRow label="Marca" value={item.marca_nombre} />
-            <InfoRow label="Categoría" value={item.categoria_nombre} />
-            <InfoRow label="Proveedor" value={item.proveedor_preferido_nombre} />
-            <InfoRow label="Stock físico" value={formatNumber(item.stock_fisico)} />
-            <InfoRow label="Reservado" value={formatNumber(item.stock_reservado)} />
-            <InfoRow
-              label="Pendiente entrega"
-              value={formatNumber(item.stock_vendido_pendiente_entrega)}
-            />
-            <InfoRow
-              label="Stock disponible"
-              value={formatNumber(item.stock_disponible)}
-            />
-            <InfoRow
-              label="Precio minorista"
-              value={formatMoney(item.precio_minorista)}
-            />
-            <InfoRow
-              label="Precio mayorista"
-              value={formatMoney(item.precio_mayorista)}
-            />
-
-            <div style={separatorStyle} />
-
-            <div>
-              <h3 style={sectionTitleStyle}>Ficha técnica</h3>
-
-              {cargandoFicha ? (
-                <div style={mutedSmallStyle}>Cargando ficha técnica...</div>
-              ) : fichaTecnica.length === 0 ? (
-                <div style={mutedSmallStyle}>Sin ficha técnica cargada.</div>
+        <main style={styles.content}>
+          <section style={styles.leftColumn}>
+            <div style={styles.imageCard}>
+              {item.imagen_principal ? (
+                <img
+                  src={getImageUrl(item.imagen_principal)}
+                  alt={item.producto_nombre}
+                  style={styles.image}
+                />
               ) : (
-                <FichaTecnicaAgrupada items={fichaTecnica} />
+                <div style={styles.placeholder}>Sin imagen</div>
               )}
             </div>
 
-            <div style={modalActionsStyle}>
-              <button type="button" onClick={onEdit}>
-                Editar
-              </button>
-              <button type="button" onClick={onClose}>
-                Cerrar
-              </button>
+            <div style={styles.statusCard}>
+              <div>
+                <span style={styles.smallLabel}>Estado</span>
+                <div style={styles.badgeWrap}>
+                  <EstadoBadge item={item} />
+                </div>
+              </div>
+              <strong>{item.disponible_para_venta ? "Listo para vender" : "Revisar"}</strong>
             </div>
-          </div>
-        </div>
+
+            <div style={styles.priceGrid}>
+              <PriceBox label="Minorista" value={item.precio_minorista} />
+              <PriceBox label="Mayorista" value={item.precio_mayorista} />
+            </div>
+          </section>
+
+          <section style={styles.rightColumn}>
+            <div style={styles.stockGrid}>
+              {stock.map((s) => (
+                <StockBox key={s.label} {...s} />
+              ))}
+            </div>
+
+            <div style={styles.twoColumns}>
+              <InfoSection title="Códigos">
+                <InfoRow label="SKU" value={item.sku} />
+                <InfoRow label="EAN" value={item.codigo_barras} />
+                <InfoRow label="Código proveedor" value={item.codigo_proveedor} strong />
+              </InfoSection>
+
+              <InfoSection title="Datos comerciales">
+                <InfoRow label="Marca" value={item.marca_nombre} strong />
+                <InfoRow label="Categoría" value={item.categoria_nombre} strong />
+                <InfoRow label="Proveedor" value={item.proveedor_preferido_nombre} />
+              </InfoSection>
+            </div>
+
+            <InfoSection title="Ficha técnica">
+              {cargandoFicha ? (
+                <div style={styles.emptyText}>Cargando ficha técnica...</div>
+              ) : fichaTecnica.length === 0 ? (
+                <div style={styles.emptyText}>Sin ficha técnica cargada.</div>
+              ) : (
+                <FichaTecnicaAgrupada items={fichaTecnica} />
+              )}
+            </InfoSection>
+          </section>
+        </main>
+
+        <footer style={styles.footer}>
+          <button type="button" onClick={onClose} style={styles.secondaryButton}>
+            Cerrar
+          </button>
+          <button type="button" onClick={onEdit} style={styles.primaryButton}>
+            Editar producto
+          </button>
+        </footer>
       </div>
     </div>
   );
@@ -108,19 +132,69 @@ export default function CatalogoDetalleModal({ item, onClose, onEdit }) {
 
 function getImageUrl(url) {
   if (!url) return "";
-
-  if (url.startsWith("http://") || url.startsWith("https://")) {
-    return url;
-  }
-
+  if (url.startsWith("http://") || url.startsWith("https://")) return url;
   return `${API_BASE_URL}${url}`;
 }
 
-function InfoRow({ label, value }) {
+function InfoSection({ title, children }) {
   return (
-    <div style={infoRowStyle}>
-      <span style={infoLabelStyle}>{label}</span>
-      <strong>{value || "-"}</strong>
+    <section style={styles.sectionCard}>
+      <h3 style={styles.sectionTitle}>{title}</h3>
+      <div style={styles.sectionBody}>{children}</div>
+    </section>
+  );
+}
+
+function InfoRow({ label, value, strong = false }) {
+  return (
+    <div style={styles.infoRow}>
+      <span>{label}</span>
+      <strong style={strong ? styles.strongValue : undefined}>{value || "-"}</strong>
+    </div>
+  );
+}
+
+function StockBox({ label, value, tone }) {
+  return (
+    <div style={{ ...styles.stockBox, ...(styles.stockTones[tone] || {}) }}>
+      <span>{label}</span>
+      <strong>{formatNumber(value)}</strong>
+    </div>
+  );
+}
+
+function PriceBox({ label, value }) {
+  return (
+    <div style={styles.priceBox}>
+      <span>{label}</span>
+      <strong>{formatMoney(value)}</strong>
+    </div>
+  );
+}
+
+function FichaTecnicaAgrupada({ items }) {
+  const grupos = items.reduce((acc, item) => {
+    const grupo = item.grupo || "Otros";
+    if (!acc[grupo]) acc[grupo] = [];
+    acc[grupo].push(item);
+    return acc;
+  }, {});
+
+  return (
+    <div style={styles.fichaGrid}>
+      {Object.entries(grupos).map(([grupo, componentes]) => (
+        <div key={grupo} style={styles.fichaGroup}>
+          <h4 style={styles.fichaGroupTitle}>{grupo}</h4>
+          <div style={styles.fichaSpecs}>
+            {componentes.map((item) => (
+              <div key={item.id || `${item.grupo}-${item.clave}`} style={styles.fichaRow}>
+                <span>{item.clave}</span>
+                <strong>{item.valor || "-"}</strong>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -138,180 +212,250 @@ function formatMoney(value) {
     maximumFractionDigits: 2,
   });
 }
-function FichaTecnicaAgrupada({ items }) {
-  const grupos = items.reduce((acc, item) => {
-    const grupo = item.grupo || "Otros";
 
-    if (!acc[grupo]) {
-      acc[grupo] = [];
-    }
-
-    acc[grupo].push(item);
-    return acc;
-  }, {});
-
-  return (
-    <div style={fichaGroupedStyle}>
-      {Object.entries(grupos).map(([grupo, componentes]) => (
-        <div key={grupo} style={fichaGroupStyle}>
-          <h4 style={fichaGroupTitleStyle}>{grupo}</h4>
-
-          <div style={fichaSpecsStyle}>
-            {componentes.map((item) => (
-              <div key={item.id} style={fichaSpecRowStyle}>
-                <span style={fichaSpecLabelStyle}>{item.clave}</span>
-                <strong style={fichaSpecValueStyle}>{item.valor || "-"}</strong>
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-const modalOverlayStyle = {
-  position: "fixed",
-  inset: 0,
-  background: "rgba(0,0,0,.45)",
-  display: "grid",
-  placeItems: "center",
-  zIndex: 1000,
-  padding: "20px",
-};
-
-const modalStyle = {
-  width: "min(1050px, 100%)",
-  maxHeight: "92vh",
-  display: "flex",
-  flexDirection: "column",
-  background: "white",
-  borderRadius: "18px",
-  overflow: "hidden",
-  boxShadow: "0 20px 60px rgba(0,0,0,.35)",
-};
-
-const modalHeaderStyle = {
-  padding: "18px 22px",
-  borderBottom: "1px solid #eee",
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "start",
-};
-
-const modalContentStyle = {
-  display: "grid",
-  gridTemplateColumns: "320px 1fr",
-  gap: "20px",
-  padding: "22px",
-  overflowY: "auto",
-  alignItems: "start",
-};
-
-const modalImageStyle = {
-  width: "100%",
-  maxHeight: "420px",
-  objectFit: "contain",
-  borderRadius: "14px",
-  background: "#f9fafb",
-  border: "1px solid #e5e7eb",
-};
-
-const bigPlaceholderStyle = {
-  height: "420px",
-  borderRadius: "14px",
-  border: "1px dashed #d0d5dd",
-  display: "grid",
-  placeItems: "center",
-  background: "#f9fafb",
-  color: "#667085",
-};
-
-const modalInfoStyle = {
-  display: "grid",
-  gap: "10px",
-  alignContent: "start",
-};
-
-const infoRowStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  gap: "12px",
-  paddingBottom: "10px",
-  borderBottom: "1px solid #f2f4f7",
-};
-
-const infoLabelStyle = {
-  color: "#667085",
-};
-
-const mutedSmallStyle = {
-  color: "#667085",
-  fontSize: "13px",
-  marginTop: "4px",
-};
-
-const modalActionsStyle = {
-  marginTop: "16px",
-  display: "flex",
-  gap: "10px",
-};
-
-const separatorStyle = {
-  height: "1px",
-  background: "#eee",
-  margin: "10px 0",
-};
-
-const sectionTitleStyle = {
-  margin: "0 0 8px",
-  fontSize: "16px",
-};
-
-const fichaBoxStyle = {
-  display: "grid",
-  gap: "8px",
-};
-
-const fichaGroupedStyle = {
-  display: "grid",
-  gap: "14px",
-};
-
-const fichaGroupStyle = {
-  border: "1px solid #e5e7eb",
-  borderRadius: "12px",
-  padding: "12px",
-  background: "#fff",
-};
-
-const fichaGroupTitleStyle = {
-  margin: "0 0 10px",
-  fontSize: "13px",
-  color: "#175cd3",
-  textTransform: "uppercase",
-  letterSpacing: ".04em",
-};
-
-const fichaSpecsStyle = {
-  display: "grid",
-  gap: "8px",
-};
-
-const fichaSpecRowStyle = {
-  display: "grid",
-  gridTemplateColumns: "minmax(110px, 1fr) minmax(120px, 1.2fr)",
-  gap: "12px",
-  alignItems: "baseline",
-  borderBottom: "1px solid #f2f4f7",
-  paddingBottom: "7px",
-};
-
-const fichaSpecLabelStyle = {
-  color: "#667085",
-  fontSize: "13px",
-};
-
-const fichaSpecValueStyle = {
-  textAlign: "right",
-  fontSize: "14px",
+const styles = {
+  overlay: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(15, 23, 42, 0.58)",
+    display: "grid",
+    placeItems: "center",
+    zIndex: 1000,
+    padding: 20,
+  },
+  modal: {
+    width: "min(1120px, 100%)",
+    maxHeight: "92vh",
+    display: "flex",
+    flexDirection: "column",
+    background: "#f8fafc",
+    borderRadius: 24,
+    overflow: "hidden",
+    boxShadow: "0 28px 80px rgba(0,0,0,.36)",
+  },
+  header: {
+    padding: "20px 24px",
+    background: "#ffffff",
+    borderBottom: "1px solid #e2e8f0",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 14,
+  },
+  kicker: {
+    margin: 0,
+    color: "#f97316",
+    fontSize: 12,
+    fontWeight: 1000,
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+  },
+  title: {
+    margin: "4px 0 0",
+    fontSize: 28,
+    lineHeight: 1.1,
+    fontWeight: 1000,
+    color: "#0f172a",
+  },
+  subtitle: {
+    margin: "6px 0 0",
+    color: "#64748b",
+    fontWeight: 800,
+  },
+  closeButton: {
+    width: 38,
+    height: 38,
+    border: "1px solid #cbd5e1",
+    background: "#ffffff",
+    borderRadius: 12,
+    cursor: "pointer",
+    fontWeight: 1000,
+    color: "#0f172a",
+  },
+  content: {
+    display: "grid",
+    gridTemplateColumns: "330px minmax(0, 1fr)",
+    gap: 18,
+    padding: 20,
+    overflowY: "auto",
+    alignItems: "start",
+  },
+  leftColumn: {
+    display: "grid",
+    gap: 14,
+  },
+  rightColumn: {
+    display: "grid",
+    gap: 14,
+  },
+  imageCard: {
+    minHeight: 330,
+    borderRadius: 20,
+    border: "1px solid #e2e8f0",
+    background: "#ffffff",
+    display: "grid",
+    placeItems: "center",
+    padding: 14,
+  },
+  image: {
+    width: "100%",
+    height: 300,
+    objectFit: "contain",
+  },
+  placeholder: {
+    width: "100%",
+    height: 300,
+    border: "1px dashed #cbd5e1",
+    borderRadius: 18,
+    display: "grid",
+    placeItems: "center",
+    color: "#64748b",
+    fontWeight: 900,
+    background: "#f8fafc",
+  },
+  statusCard: {
+    background: "#ffffff",
+    border: "1px solid #e2e8f0",
+    borderRadius: 18,
+    padding: 14,
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+  },
+  smallLabel: {
+    display: "block",
+    color: "#64748b",
+    fontSize: 12,
+    fontWeight: 900,
+    marginBottom: 6,
+  },
+  badgeWrap: {
+    display: "flex",
+  },
+  priceGrid: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 12,
+  },
+  priceBox: {
+    background: "#ffffff",
+    border: "1px solid #e2e8f0",
+    borderRadius: 18,
+    padding: 14,
+    display: "grid",
+    gap: 6,
+  },
+  stockGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(4, 1fr)",
+    gap: 10,
+  },
+  stockBox: {
+    border: "1px solid #e2e8f0",
+    borderRadius: 18,
+    padding: 14,
+    display: "grid",
+    gap: 6,
+    background: "#ffffff",
+  },
+  stockTones: {
+    ok: { color: "#047857", background: "#ecfdf5", borderColor: "#bbf7d0" },
+    info: { color: "#1d4ed8", background: "#eff6ff", borderColor: "#bfdbfe" },
+    warning: { color: "#b45309", background: "#fffbeb", borderColor: "#fde68a" },
+    muted: { color: "#475569", background: "#f8fafc" },
+  },
+  twoColumns: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 14,
+  },
+  sectionCard: {
+    background: "#ffffff",
+    border: "1px solid #e2e8f0",
+    borderRadius: 20,
+    padding: 16,
+  },
+  sectionTitle: {
+    margin: "0 0 12px",
+    color: "#0f172a",
+    fontSize: 16,
+    fontWeight: 1000,
+  },
+  sectionBody: {
+    display: "grid",
+    gap: 8,
+  },
+  infoRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 12,
+    padding: "8px 0",
+    borderBottom: "1px solid #f1f5f9",
+    color: "#64748b",
+  },
+  strongValue: {
+    color: "#0f172a",
+  },
+  emptyText: {
+    color: "#64748b",
+    fontWeight: 800,
+  },
+  fichaGrid: {
+    display: "grid",
+    gap: 12,
+  },
+  fichaGroup: {
+    border: "1px solid #e2e8f0",
+    borderRadius: 16,
+    padding: 12,
+    background: "#f8fafc",
+  },
+  fichaGroupTitle: {
+    margin: "0 0 10px",
+    color: "#1d4ed8",
+    fontSize: 12,
+    fontWeight: 1000,
+    textTransform: "uppercase",
+    letterSpacing: "0.06em",
+  },
+  fichaSpecs: {
+    display: "grid",
+    gap: 8,
+  },
+  fichaRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 12,
+    color: "#64748b",
+    paddingBottom: 7,
+    borderBottom: "1px solid #e2e8f0",
+  },
+  footer: {
+    padding: 16,
+    background: "#ffffff",
+    borderTop: "1px solid #e2e8f0",
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: 10,
+  },
+  secondaryButton: {
+    border: "1px solid #cbd5e1",
+    background: "#ffffff",
+    color: "#0f172a",
+    borderRadius: 13,
+    padding: "12px 16px",
+    fontWeight: 1000,
+    cursor: "pointer",
+  },
+  primaryButton: {
+    border: "none",
+    background: "#f97316",
+    color: "#ffffff",
+    borderRadius: 13,
+    padding: "12px 16px",
+    fontWeight: 1000,
+    cursor: "pointer",
+    boxShadow: "0 10px 20px rgba(249, 115, 22, 0.22)",
+  },
 };

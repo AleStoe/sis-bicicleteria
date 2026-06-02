@@ -29,6 +29,24 @@ function getMotivoTexto(item) {
   return "Revisar antes de vender";
 }
 
+function normalizarTexto(valor) {
+  return String(valor || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
+}
+
+function esCategoriaBicicletaPorNombre(nombre) {
+  const normalizado = normalizarTexto(nombre);
+  return normalizado === "bicicletas" || normalizado.includes("bicicleta");
+}
+
+function categoriaEsBicicleta(categorias, idCategoria) {
+  const categoria = categorias.find((cat) => String(cat.id) === String(idCategoria));
+  return esCategoriaBicicletaPorNombre(categoria?.nombre);
+}
+
 export default function CatalogoPage() {
   const navigate = useNavigate();
   const searchRef = useRef(null);
@@ -288,6 +306,9 @@ export default function CatalogoPage() {
             ↻ Refrescar
           </button>
           <button type="button" onClick={() => navigate("/mercaderia/alta")} style={styles.primaryHeroButton}>
+            ＋ Alta mercadería
+          </button>
+          <button type="button" onClick={() => navigate("/mercaderia/bicicletas/alta")} style={styles.secondaryHeroButton}>
             ＋ Alta bicicleta
           </button>
         </div>
@@ -433,18 +454,9 @@ function CatalogoCard({ item, selected, onSelect, onOpenDetail, onEdit }) {
         </div>
 
         <div style={styles.stockStrip}>
-          <div>
-            <span>Disponible</span>
-            <strong>{formatNumber(item.stock_disponible)}</strong>
-          </div>
-          <div>
-            <span>Físico</span>
-            <strong>{formatNumber(item.stock_fisico)}</strong>
-          </div>
-          <div>
-            <span>Reservado</span>
-            <strong>{formatNumber(item.stock_reservado)}</strong>
-          </div>
+          <StockMini label="Disponible" value={item.stock_disponible} tone="ok" />
+          <StockMini label="Físico" value={item.stock_fisico} tone="info" />
+          <StockMini label="Reservado" value={item.stock_reservado} tone="muted" />
         </div>
 
         <div style={styles.priceGrid}>
@@ -469,7 +481,7 @@ function CatalogoCard({ item, selected, onSelect, onOpenDetail, onEdit }) {
             Ver detalle
           </button>
           <button type="button" onClick={(e) => { e.stopPropagation(); onEdit(); }} style={styles.primaryButton}>
-            Editar
+            Editar rápido
           </button>
         </div>
       </div>
@@ -535,17 +547,26 @@ function PanelEdicionCatalogo({
     setVarianteForm((prev) => ({ ...prev, [campo]: valor }));
   }
 
+  const categoriaActual = categorias.find(
+    (cat) => String(cat.id) === String(productoForm.id_categoria)
+  );
+
+  const esBicicleta = categoriaEsBicicleta(categorias, productoForm.id_categoria);
+
   function submitProducto(e) {
     e.preventDefault();
 
-    onGuardarProducto({
+    const payload = {
       ...productoForm,
       id_categoria: Number(productoForm.id_categoria),
       id_marca: productoForm.id_marca ? Number(productoForm.id_marca) : null,
-      rodado: productoForm.rodado?.trim() || null,
-      tipo_bicicleta: productoForm.tipo_bicicleta?.trim() || null,
-      material_cuadro: productoForm.material_cuadro?.trim() || null,
-    });
+      serializable: esBicicleta ? Boolean(productoForm.serializable) : false,
+      rodado: esBicicleta ? productoForm.rodado?.trim() || null : null,
+      tipo_bicicleta: esBicicleta ? productoForm.tipo_bicicleta?.trim() || null : null,
+      material_cuadro: esBicicleta ? productoForm.material_cuadro?.trim() || null : null,
+    };
+
+    onGuardarProducto(payload);
   }
 
   function submitVariante(e) {
@@ -559,7 +580,7 @@ function PanelEdicionCatalogo({
       precio_minorista: String(varianteForm.precio_minorista || "0"),
       precio_mayorista: String(varianteForm.precio_mayorista || "0"),
       alicuota_iva: String(varianteForm.alicuota_iva || "21.00"),
-      talle: varianteForm.talle?.trim() || null,
+      talle: esBicicleta ? varianteForm.talle?.trim() || null : null,
       color: varianteForm.color?.trim() || null,
       codigo_proveedor: varianteForm.codigo_proveedor?.trim() || null,
     });
@@ -568,7 +589,6 @@ function PanelEdicionCatalogo({
   return (
     <section style={styles.editorPanel}>
       <div style={styles.editorHeader}>
-        <span style={styles.sideKicker}>Edición contextual</span>
         <h2 style={styles.sideTitle}>{item.producto_nombre}</h2>
         <p style={styles.sideMuted}>{item.nombre_variante}</p>
       </div>
@@ -581,6 +601,7 @@ function PanelEdicionCatalogo({
         <EstadoBadge item={item} />
         <small>{getMotivoTexto(item)}</small>
       </div>
+
 
       <div style={styles.editorTabs}>
         <button type="button" onClick={() => setTab("producto")} style={tab === "producto" ? styles.editorTabActive : styles.editorTab}>
@@ -622,36 +643,30 @@ function PanelEdicionCatalogo({
             </Field>
           </div>
 
-          <div style={styles.twoCols}>
-            <Field label="Tipo">
-              <select value={productoForm.tipo_item || "producto"} onChange={(e) => updateProducto("tipo_item", e.target.value)} style={styles.editorInput}>
-                <option value="producto">Producto</option>
-                <option value="servicio">Servicio</option>
-              </select>
-            </Field>
+          {esBicicleta && (
+            <>
+              <div style={styles.twoCols}>
+                <Field label="Rodado">
+                  <input value={productoForm.rodado || ""} onChange={(e) => updateProducto("rodado", e.target.value)} style={styles.editorInput} placeholder="Ej: 29" />
+                </Field>
 
-            <Field label="Rodado">
-              <input value={productoForm.rodado || ""} onChange={(e) => updateProducto("rodado", e.target.value)} style={styles.editorInput} placeholder="Ej: 29" />
-            </Field>
-          </div>
+                <Field label="Material cuadro">
+                  <input value={productoForm.material_cuadro || ""} onChange={(e) => updateProducto("material_cuadro", e.target.value)} style={styles.editorInput} placeholder="Aluminio, acero..." />
+                </Field>
+              </div>
 
-          <Field label="Tipo de bicicleta">
-            <input value={productoForm.tipo_bicicleta || ""} onChange={(e) => updateProducto("tipo_bicicleta", e.target.value)} style={styles.editorInput} placeholder="MTB, urbana, paseo..." />
-          </Field>
+              <Field label="Tipo de bicicleta">
+                <input value={productoForm.tipo_bicicleta || ""} onChange={(e) => updateProducto("tipo_bicicleta", e.target.value)} style={styles.editorInput} placeholder="MTB, urbana, paseo..." />
+              </Field>
+            </>
+          )}
 
-          <Field label="Material cuadro">
-            <input value={productoForm.material_cuadro || ""} onChange={(e) => updateProducto("material_cuadro", e.target.value)} style={styles.editorInput} placeholder="Aluminio, acero..." />
-          </Field>
-
-          <label style={styles.editorCheck}>
-            <input type="checkbox" checked={Boolean(productoForm.stockeable)} onChange={(e) => updateProducto("stockeable", e.target.checked)} />
-            Maneja stock
-          </label>
-
-          <label style={styles.editorCheck}>
-            <input type="checkbox" checked={Boolean(productoForm.serializable)} onChange={(e) => updateProducto("serializable", e.target.checked)} />
-            Puede tener número de cuadro
-          </label>
+          {esBicicleta && (
+            <label style={styles.editorCheck}>
+              <input type="checkbox" checked={Boolean(productoForm.serializable)} onChange={(e) => updateProducto("serializable", e.target.checked)} />
+              Puede tener número de cuadro
+            </label>
+          )}
 
           <button type="submit" disabled={guardando} style={styles.orangeButtonFull}>
             {guardando ? "Guardando..." : "Guardar producto"}
@@ -663,14 +678,20 @@ function PanelEdicionCatalogo({
             <input value={varianteForm.nombre_variante || ""} onChange={(e) => updateVariante("nombre_variante", e.target.value)} style={styles.editorInput} />
           </Field>
 
-          <div style={styles.twoCols}>
-            <Field label="Color">
-              <input value={varianteForm.color || ""} onChange={(e) => updateVariante("color", e.target.value)} style={styles.editorInput} />
+          {esBicicleta ? (
+            <div style={styles.twoCols}>
+              <Field label="Color">
+                <input value={varianteForm.color || ""} onChange={(e) => updateVariante("color", e.target.value)} style={styles.editorInput} />
+              </Field>
+              <Field label="Talle">
+                <input value={varianteForm.talle || ""} onChange={(e) => updateVariante("talle", e.target.value)} style={styles.editorInput} />
+              </Field>
+            </div>
+          ) : (
+            <Field label="Color / presentación">
+              <input value={varianteForm.color || ""} onChange={(e) => updateVariante("color", e.target.value)} style={styles.editorInput} placeholder="Ej: Rojo, 120ml, S/P..." />
             </Field>
-            <Field label="Talle">
-              <input value={varianteForm.talle || ""} onChange={(e) => updateVariante("talle", e.target.value)} style={styles.editorInput} />
-            </Field>
-          </div>
+          )}
 
           <Field label="Código proveedor">
             <input value={varianteForm.codigo_proveedor || ""} onChange={(e) => updateVariante("codigo_proveedor", e.target.value)} style={styles.editorInput} />
@@ -749,6 +770,15 @@ function Info({ label, value }) {
     <div style={styles.infoBox}>
       <span>{label}</span>
       <strong>{value || "-"}</strong>
+    </div>
+  );
+}
+
+function StockMini({ label, value, tone }) {
+  return (
+    <div style={{ ...styles.stockMini, ...(styles.stockMiniTones[tone] || {}) }}>
+      <span>{label}</span>
+      <strong>{formatNumber(value)}</strong>
     </div>
   );
 }
@@ -1057,6 +1087,21 @@ const styles = {
     gridTemplateColumns: "repeat(3, 1fr)",
     gap: 8,
   },
+  stockMini: {
+    minWidth: 0,
+    display: "grid",
+    gap: 3,
+    border: "1px solid #e2e8f0",
+    borderRadius: 12,
+    padding: "8px 9px",
+    background: "#f8fafc",
+    fontSize: 12,
+  },
+  stockMiniTones: {
+    ok: { background: "#ecfdf5", borderColor: "#bbf7d0", color: "#047857" },
+    info: { background: "#eff6ff", borderColor: "#bfdbfe", color: "#1d4ed8" },
+    muted: { background: "#f8fafc", borderColor: "#e2e8f0", color: "#475569" },
+  },
   priceGrid: {
     display: "grid",
     gridTemplateColumns: "1fr 1fr",
@@ -1142,6 +1187,18 @@ const styles = {
     alignItems: "center",
     gap: 10,
     marginBottom: 12,
+  },
+  contextBox: {
+    display: "grid",
+    gap: 3,
+    background: "#fff7ed",
+    border: "1px solid #fed7aa",
+    borderRadius: 16,
+    padding: 12,
+    marginBottom: 12,
+    color: "#9a3412",
+    fontSize: 12,
+    fontWeight: 900,
   },
   editorTabs: {
     display: "grid",
