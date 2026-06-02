@@ -1,0 +1,647 @@
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { crearAjusteStock, crearIngresoStock, listarStock } from "../services/stockService";
+import { listarProveedores } from "../services/proveedoresService";
+import { CURRENT_USER_ID, CURRENT_SUCURSAL_ID } from "../config/appConfig";
+import { formatMoney, formatNumber } from "../utils/formatters";
+import {
+  getEstadoStock,
+  calcularResumenStock,
+} from "../utils/stockUtils";
+import {
+  buildIngresoStockPayload,
+  buildAjusteStockPayload,
+} from "../builders/stockPayloadBuilder";
+
+import StockTable from "../components/stock/StockTable";
+const ID_USUARIO = CURRENT_USER_ID || 1;
+const ID_SUCURSAL_DEFAULT = CURRENT_SUCURSAL_ID || 1;
+
+export default function StockPage() {
+  const navigate = useNavigate();
+
+  const [stock, setStock] = useState([]);
+  const [proveedores, setProveedores] = useState([]);
+  const [query, setQuery] = useState("");
+  const [filtroEstado, setFiltroEstado] = useState("todos");
+
+  const [loading, setLoading] = useState(true);
+  const [procesando, setProcesando] = useState(false);
+  const [error, setError] = useState("");
+  const [mensaje, setMensaje] = useState("");
+  const [ultimoIngreso, setUltimoIngreso] = useState(null);
+
+  const [seleccionado, setSeleccionado] = useState(null);
+  const [modoPanel, setModoPanel] = useState("detalle");
+
+  const [ingresoForm, setIngresoForm] = useState({
+    id_sucursal: ID_SUCURSAL_DEFAULT,
+    id_variante: "",
+    id_proveedor: "",
+    cantidad_ingresada: "",
+    costo_productos: "",
+    gastos_adicionales: "0",
+    origen_ingreso: "manual",
+    observacion: "",
+    id_usuario: ID_USUARIO,
+  });
+
+  const [ajusteForm, setAjusteForm] = useState({
+    id_sucursal: ID_SUCURSAL_DEFAULT,
+    id_variante: "",
+    cantidad: "",
+    nota: "",
+    id_usuario: ID_USUARIO,
+    origen_tipo: "ajuste_manual",
+    origen_id: null,
+  });
+
+  useEffect(() => {
+    cargarTodo();
+  }, []);
+
+  async function cargarTodo() {
+    await Promise.all([cargarStock(), cargarProveedores()]);
+  }
+
+  async function cargarStock() {
+    try {
+      setLoading(true);
+      setError("");
+      const data = await listarStock();
+      setStock(data || []);
+    } catch (err) {
+      setError(err.message || "No se pudo cargar el stock");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function cargarProveedores() {
+    try {
+      const data = await listarProveedores({ solo_activos: true });
+      setProveedores(data || []);
+    } catch (err) {
+      setError(err.message || "No se pudieron cargar proveedores");
+    }
+  }
+
+  function seleccionarItem(item, modo = "detalle") {
+    setSeleccionado(item);
+    setModoPanel(modo);
+
+    setIngresoForm((p) => ({
+      ...p,
+      id_sucursal: item.sucursal_id,
+      id_variante: item.variante_id,
+    }));
+
+    setAjusteForm((p) => ({
+      ...p,
+      id_sucursal: item.sucursal_id,
+      id_variante: item.variante_id,
+    }));
+  }
+
+  function cerrarPanel() {
+    setSeleccionado(null);
+    setModoPanel("detalle");
+  }
+
+  const stockFiltrado = useMemo(() => {
+    const q = query.trim().toLowerCase();
+
+    return stock.filter((item) => {
+      const texto = [
+        item.sucursal_nombre,
+        item.producto_nombre,
+        item.nombre_variante,
+        item.sku,
+        item.variante_id,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      const coincideTexto = !q || texto.includes(q);
+      const estado = getEstadoStock(item);
+      const coincideEstado = filtroEstado === "todos" || filtroEstado === estado;
+
+      return coincideTexto && coincideEstado;
+    });
+  }, [stock, query, filtroEstado]);
+
+  const resumen = useMemo(
+    () => calcularResumenStock(stock),
+    [stock]
+  );
+
+  async function handleIngreso(e) {
+    e.preventDefault();
+
+    if (!ingresoForm.id_variante || !ingresoForm.id_proveedor) {
+      setError("Ingreso: variante y proveedor son obligatorios");
+      return;
+    }
+
+    if (!ingresoForm.cantidad_ingresada || Number(ingresoForm.cantidad_ingresada) <= 0) {
+      setError("Ingreso: la cantidad debe ser mayor a 0");
+      return;
+    }
+
+    try {
+      setProcesando(true);
+      setError("");
+      setMensaje("");
+      setUltimoIngreso(null);
+
+      const payload = buildIngresoStockPayload({
+        ingresoForm,
+        usuarioId: ID_USUARIO,
+      });
+
+      const res = await crearIngresoStock(payload);
+
+      setUltimoIngreso({
+        ...res,
+        id_proveedor: payload.id_proveedor,
+      });
+
+      setMensaje(
+        `Ingreso registrado. Stock: ${formatNumber(res.stock_anterior)} → ${formatNumber(
+          res.stock_nuevo
+        )}. Costo promedio: ${formatMoney(res.costo_promedio_nuevo)}`
+      );
+
+      setIngresoForm((p) => ({
+        ...p,
+        cantidad_ingresada: "",
+        costo_productos: "",
+        gastos_adicionales: "0",
+        observacion: "",
+      }));
+
+      await cargarStock();
+    } catch (err) {
+      setError(err.message || "No se pudo registrar el ingreso");
+    } finally {
+      setProcesando(false);
+    }
+  }
+
+  async function handleAjuste(e) {
+    e.preventDefault();
+
+    if (!ajusteForm.id_variante) {
+      setError("Ajuste: seleccioná una variante");
+      return;
+    }
+
+    if (!ajusteForm.cantidad || Number(ajusteForm.cantidad) === 0) {
+      setError("Ajuste: la cantidad no puede ser 0");
+      return;
+    }
+
+    if (!ajusteForm.nota.trim()) {
+      setError("Ajuste: el motivo es obligatorio");
+      return;
+    }
+
+    try {
+      setProcesando(true);
+      setError("");
+      setMensaje("");
+      setUltimoIngreso(null);
+
+      const payload = buildAjusteStockPayload({
+        ajusteForm,
+        usuarioId: ID_USUARIO,
+      });
+
+      const res = await crearAjusteStock(payload);
+
+      setMensaje(`Ajuste registrado. Disponible nuevo: ${formatNumber(res.stock_disponible_nuevo)}`);
+
+      setAjusteForm((p) => ({
+        ...p,
+        cantidad: "",
+        nota: "",
+      }));
+
+      await cargarStock();
+    } catch (err) {
+      setError(err.message || "No se pudo registrar el ajuste");
+    } finally {
+      setProcesando(false);
+    }
+  }
+
+  const costoCambio =
+    ultimoIngreso &&
+    Number(ultimoIngreso.costo_promedio_anterior) !== Number(ultimoIngreso.costo_promedio_nuevo);
+
+  if (loading) return <p style={{ padding: "24px" }}>Cargando stock...</p>;
+
+  return (
+    <div style={pageStyle}>
+      <header style={headerStyle}>
+        <div>
+          <h1 style={{ margin: 0 }}>Stock</h1>
+          <p style={mutedStyle}>
+            Inventario físico, reservado, vendido pendiente de entrega y disponible.
+          </p>
+        </div>
+
+        <div style={actionsStyle}>
+          <button onClick={cargarTodo}>Refrescar</button>
+          <button onClick={() => navigate("/mercaderia/alta")}>Alta mercadería</button>
+        </div>
+      </header>
+
+      {mensaje && <div style={successStyle}>{mensaje}</div>}
+      {error && <div style={alertStyle}>Error: {error}</div>}
+
+      {costoCambio && (
+        <div style={priceWarningStyle}>
+          <div>
+            <strong>El costo promedio cambió.</strong>
+            <div>
+              Anterior: {formatMoney(ultimoIngreso.costo_promedio_anterior)} · Nuevo:{" "}
+              {formatMoney(ultimoIngreso.costo_promedio_nuevo)}
+            </div>
+            <div style={mutedSmallStyle}>Conviene revisar precios desfasados.</div>
+          </div>
+
+          <button type="button" onClick={() => navigate("/precios")} style={warningButtonStyle}>
+            Ir a precios
+          </button>
+        </div>
+      )}
+
+      <section style={metricGridStyle}>
+        <Metric label="Variantes" value={resumen.variantes} />
+        <Metric label="Físico" value={formatNumber(resumen.stockFisico)} />
+        <Metric label="Reservado" value={formatNumber(resumen.stockReservado)} />
+        <Metric label="Pendiente entrega" value={formatNumber(resumen.stockPendiente)} />
+        <Metric label="Disponible" value={formatNumber(resumen.stockDisponible)} />
+        <Metric label="Sin disponible" value={resumen.sinDisponible} danger={resumen.sinDisponible > 0} />
+        <Metric label="Inconsistencias" value={resumen.inconsistentes} danger={resumen.inconsistentes > 0} />
+      </section>
+
+      <section style={cardStyle}>
+        <div style={toolbarStyle}>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Buscar producto, variante, SKU, sucursal o ID..."
+            style={inputStyle}
+          />
+
+          <div style={filterButtonsStyle}>
+            <FilterButton label="Todos" value="todos" current={filtroEstado} onClick={setFiltroEstado} />
+            <FilterButton label="Sin stock" value="sin_disponible" current={filtroEstado} onClick={setFiltroEstado} />
+            <FilterButton label="Reservado" value="reservado" current={filtroEstado} onClick={setFiltroEstado} />
+            <FilterButton label="Pendiente" value="pendiente" current={filtroEstado} onClick={setFiltroEstado} />
+            <FilterButton label="Inconsistente" value="inconsistente" current={filtroEstado} onClick={setFiltroEstado} />
+          </div>
+        </div>
+      </section>
+
+      <section style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
+        <div style={tableHeaderStyle}>
+          <div>
+            <h2 style={cardTitleStyle}>Inventario</h2>
+            <p style={mutedSmallStyle}>
+              {stockFiltrado.length} resultado(s). Click para detalle, acciones para operar.
+            </p>
+          </div>
+        </div>
+
+        {stockFiltrado.length === 0 ? (
+          <div style={{ padding: "18px" }}>No hay stock para mostrar.</div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <StockTable
+              stockFiltrado={stockFiltrado}
+              seleccionado={seleccionado}
+              seleccionarItem={seleccionarItem}
+              EstadoBadge={EstadoBadge}
+              styles={{
+                table: tableStyle,
+                th: thStyle,
+                td: tdStyle,
+                mutedSmall: mutedSmallStyle,
+                rowActions: rowActionsStyle,
+              }}
+            />
+          </div>
+        )}
+      </section>
+
+      {seleccionado && (
+        <StockDrawer
+          seleccionado={seleccionado}
+          cerrarPanel={cerrarPanel}
+          modoPanel={modoPanel}
+          setModoPanel={setModoPanel}
+          handleIngreso={handleIngreso}
+          handleAjuste={handleAjuste}
+          ingresoForm={ingresoForm}
+          setIngresoForm={setIngresoForm}
+          ajusteForm={ajusteForm}
+          setAjusteForm={setAjusteForm}
+          proveedores={proveedores}
+          procesando={procesando}
+          InfoRow={InfoRow}
+          TextInput={TextInput}
+          styles={{
+            overlay: drawerOverlayStyle,
+            drawer: drawerStyle,
+            header: drawerHeaderStyle,
+            muted: mutedStyle,
+            tabs: drawerTabsStyle,
+            tab: tabStyle,
+            activeTab: activeTabStyle,
+            content: drawerContentStyle,
+            actions: drawerActionsStyle,
+            note: noteStyle,
+            field: fieldStyle,
+            label: labelStyle,
+            input: inputStyle,
+            textarea: textareaStyle,
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function Metric({ label, value, danger = false }) {
+  return (
+    <div style={metricStyle}>
+      <span style={mutedSmallStyle}>{label}</span>
+      <strong style={{ ...metricValueStyle, color: danger ? "#b42318" : "#111827" }}>
+        {value}
+      </strong>
+    </div>
+  );
+}
+
+function FilterButton({ label, value, current, onClick }) {
+  return (
+    <button
+      type="button"
+      style={current === value ? activeFilterStyle : filterStyle}
+      onClick={() => onClick(value)}
+    >
+      {label}
+    </button>
+  );
+}
+
+function EstadoBadge({ estado }) {
+  if (estado === "ok") return <span style={okPillStyle}>OK</span>;
+  if (estado === "sin_disponible") return <span style={dangerPillStyle}>Sin disponible</span>;
+  if (estado === "reservado") return <span style={bluePillStyle}>Reservado</span>;
+  if (estado === "pendiente") return <span style={warningPillStyle}>Pendiente</span>;
+  if (estado === "inconsistente") return <span style={dangerPillStyle}>Inconsistente</span>;
+  return <span style={warningPillStyle}>Revisar</span>;
+}
+
+function InfoRow({ label, value }) {
+  return (
+    <div style={infoRowStyle}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function TextInput({ label, value, onChange, type = "text" }) {
+  return (
+    <label style={fieldStyle}>
+      <span style={labelStyle}>{label}</span>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={inputStyle}
+      />
+    </label>
+  );
+}
+
+const pageStyle = { padding: "24px", background: "#f6f7fb", minHeight: "100vh" };
+const headerStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "12px",
+  marginBottom: "16px",
+  flexWrap: "wrap",
+};
+const actionsStyle = { display: "flex", gap: "10px", flexWrap: "wrap" };
+const mutedStyle = { color: "#667085", margin: "6px 0 0" };
+const mutedSmallStyle = { color: "#667085", fontSize: "13px", marginTop: "4px" };
+const alertStyle = {
+  background: "#fff1f0",
+  color: "#b42318",
+  padding: "12px",
+  borderRadius: "10px",
+  border: "1px solid #f4c7c3",
+  marginBottom: "16px",
+};
+const successStyle = {
+  background: "#e8fff0",
+  color: "#146c2e",
+  padding: "12px",
+  borderRadius: "10px",
+  border: "1px solid #b7ebc6",
+  marginBottom: "16px",
+};
+const priceWarningStyle = {
+  background: "#fffaeb",
+  color: "#92400e",
+  padding: "14px",
+  borderRadius: "12px",
+  border: "1px solid #facc15",
+  marginBottom: "16px",
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "12px",
+  alignItems: "center",
+};
+const warningButtonStyle = {
+  border: "1px solid #d97706",
+  background: "#fff",
+  color: "#92400e",
+  borderRadius: "8px",
+  padding: "10px 12px",
+  fontWeight: "bold",
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+};
+const metricGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+  gap: "12px",
+  marginBottom: "16px",
+};
+const metricStyle = {
+  background: "white",
+  borderRadius: "14px",
+  boxShadow: "0 2px 10px rgba(0,0,0,.08)",
+  padding: "14px",
+  display: "grid",
+  gap: "6px",
+};
+const metricValueStyle = { fontSize: "22px" };
+const cardStyle = {
+  background: "white",
+  borderRadius: "14px",
+  boxShadow: "0 2px 10px rgba(0,0,0,.08)",
+  padding: "16px",
+  marginBottom: "16px",
+};
+const toolbarStyle = {
+  display: "grid",
+  gridTemplateColumns: "minmax(260px, 1fr)",
+  gap: "12px",
+};
+const inputStyle = {
+  width: "100%",
+  padding: "10px 12px",
+  borderRadius: "10px",
+  border: "1px solid #d0d5dd",
+  fontSize: "15px",
+  boxSizing: "border-box",
+};
+const filterButtonsStyle = { display: "flex", gap: "8px", flexWrap: "wrap" };
+const filterStyle = {
+  border: "1px solid #d0d5dd",
+  background: "white",
+  borderRadius: "999px",
+  padding: "8px 12px",
+  fontWeight: 700,
+  cursor: "pointer",
+};
+const activeFilterStyle = {
+  ...filterStyle,
+  background: "#1f6feb",
+  borderColor: "#1f6feb",
+  color: "white",
+};
+const tableHeaderStyle = {
+  padding: "16px 18px",
+  borderBottom: "1px solid #eee",
+};
+const cardTitleStyle = { margin: 0, fontSize: "20px" };
+const tableStyle = { width: "100%", borderCollapse: "collapse", minWidth: "1000px" };
+const thStyle = {
+  textAlign: "left",
+  padding: "12px 10px",
+  borderBottom: "1px solid #e5e7eb",
+};
+const tdStyle = { padding: "10px", verticalAlign: "top" };
+const rowActionsStyle = { display: "flex", gap: "6px", flexWrap: "wrap" };
+const okPillStyle = {
+  background: "#ecfdf3",
+  color: "#067647",
+  borderRadius: "999px",
+  padding: "4px 8px",
+  fontWeight: "bold",
+  fontSize: "13px",
+};
+const warningPillStyle = {
+  background: "#fffaeb",
+  color: "#b54708",
+  borderRadius: "999px",
+  padding: "4px 8px",
+  fontWeight: "bold",
+  fontSize: "13px",
+};
+const dangerPillStyle = {
+  background: "#fff1f0",
+  color: "#b42318",
+  borderRadius: "999px",
+  padding: "4px 8px",
+  fontWeight: "bold",
+  fontSize: "13px",
+};
+const bluePillStyle = {
+  background: "#eef4ff",
+  color: "#175cd3",
+  borderRadius: "999px",
+  padding: "4px 8px",
+  fontWeight: "bold",
+  fontSize: "13px",
+};
+const drawerOverlayStyle = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(0,0,0,.35)",
+  zIndex: 1000,
+  display: "flex",
+  justifyContent: "flex-end",
+};
+const drawerStyle = {
+  width: "min(460px, 100%)",
+  background: "white",
+  height: "100%",
+  boxShadow: "-8px 0 30px rgba(0,0,0,.22)",
+  overflowY: "auto",
+};
+const drawerHeaderStyle = {
+  padding: "18px",
+  borderBottom: "1px solid #eee",
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "12px",
+};
+const drawerTabsStyle = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr 1fr",
+  borderBottom: "1px solid #eee",
+};
+const tabStyle = {
+  border: "none",
+  background: "white",
+  padding: "12px",
+  fontWeight: 700,
+  cursor: "pointer",
+};
+const activeTabStyle = {
+  ...tabStyle,
+  background: "#eef4ff",
+  color: "#175cd3",
+};
+const drawerContentStyle = {
+  padding: "18px",
+  display: "grid",
+  gap: "12px",
+};
+const drawerActionsStyle = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: "10px",
+  marginTop: "8px",
+};
+const fieldStyle = { display: "flex", flexDirection: "column", gap: "7px" };
+const labelStyle = { fontWeight: "bold", fontSize: "14px" };
+const textareaStyle = { ...inputStyle, minHeight: "76px", resize: "vertical" };
+const noteStyle = {
+  background: "#f9fafb",
+  borderLeft: "4px solid #111827",
+  padding: "10px",
+  borderRadius: "8px",
+  color: "#344054",
+  marginTop: "8px",
+};
+const infoRowStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "10px",
+  borderBottom: "1px solid #f2f4f7",
+  paddingBottom: "10px",
+  color: "#344054",
+};

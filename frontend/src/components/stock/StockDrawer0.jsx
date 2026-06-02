@@ -1,4 +1,4 @@
-import { formatNumber, formatMoney } from "../../utils/formatters";
+import { formatNumber } from "../../utils/formatters";
 
 export default function StockDrawer({
   seleccionado,
@@ -15,46 +15,54 @@ export default function StockDrawer({
   procesando,
   styles,
   InfoRow,
-  ReadOnlyField,
   TextInput,
 }) {
-  const costoUnitarioIngreso = calcularCostoUnitarioIngreso(ingresoForm);
-
   return (
     <aside style={styles.overlay} onClick={cerrarPanel}>
       <div style={styles.drawer} onClick={(e) => e.stopPropagation()}>
         <div style={styles.header}>
           <div>
-            <p style={styles.eyebrow}>Detalle de stock</p>
-            <h2 style={styles.title}>{seleccionado.producto_nombre}</h2>
-            <p style={styles.muted}>{seleccionado.nombre_variante}</p>
+            <h2 style={{ margin: 0 }}>
+              {seleccionado.producto_nombre}
+            </h2>
+
+            <p style={styles.muted}>
+              {seleccionado.nombre_variante}
+            </p>
           </div>
 
-          <button type="button" onClick={cerrarPanel} style={styles.closeButton}>
-            ×
-          </button>
+          <button onClick={cerrarPanel}>×</button>
         </div>
 
         <div style={styles.tabs}>
           <button
-            type="button"
-            style={modoPanel === "detalle" ? styles.activeTab : styles.tab}
+            style={
+              modoPanel === "detalle"
+                ? styles.activeTab
+                : styles.tab
+            }
             onClick={() => setModoPanel("detalle")}
           >
             Detalle
           </button>
 
           <button
-            type="button"
-            style={modoPanel === "ingreso" ? styles.activeTab : styles.tab}
+            style={
+              modoPanel === "ingreso"
+                ? styles.activeTab
+                : styles.tab
+            }
             onClick={() => setModoPanel("ingreso")}
           >
             Ingreso
           </button>
 
           <button
-            type="button"
-            style={modoPanel === "ajuste" ? styles.activeTab : styles.tab}
+            style={
+              modoPanel === "ajuste"
+                ? styles.activeTab
+                : styles.tab
+            }
             onClick={() => setModoPanel("ajuste")}
           >
             Ajuste
@@ -63,45 +71,89 @@ export default function StockDrawer({
 
         {modoPanel === "detalle" && (
           <div style={styles.content}>
-            <section style={styles.stockHero}>
-              <span>Disponible</span>
-              <strong>{formatNumber(seleccionado.stock_disponible)}</strong>
-            </section>
+            <InfoRow
+              label="Sucursal"
+              value={seleccionado.sucursal_nombre}
+            />
 
-            <InfoRow label="Sucursal" value={seleccionado.sucursal_nombre} />
-            <InfoRow label="SKU" value={seleccionado.sku || "-"} />
-            <InfoRow label="Variante ID" value={`#${seleccionado.variante_id}`} />
-            <InfoRow label="Stock físico" value={formatNumber(seleccionado.stock_fisico)} />
-            <InfoRow label="Reservado" value={formatNumber(seleccionado.stock_reservado)} />
+            <InfoRow
+              label="SKU"
+              value={seleccionado.sku || "-"}
+            />
+
+            <InfoRow
+              label="Variante ID"
+              value={`#${seleccionado.variante_id}`}
+            />
+
+            <InfoRow
+              label="Stock físico"
+              value={formatNumber(seleccionado.stock_fisico)}
+            />
+
+            <InfoRow
+              label="Reservado"
+              value={formatNumber(seleccionado.stock_reservado)}
+            />
+
             <InfoRow
               label="Pendiente entrega"
-              value={formatNumber(seleccionado.stock_vendido_pendiente_entrega)}
+              value={formatNumber(
+                seleccionado.stock_vendido_pendiente_entrega
+              )}
             />
-            <InfoRow label="Disponible" value={formatNumber(seleccionado.stock_disponible)} />
+
+            <InfoRow
+              label="Disponible"
+              value={formatNumber(seleccionado.stock_disponible)}
+            />
 
             <div style={styles.actions}>
-              <button type="button" style={styles.primaryButton} onClick={() => setModoPanel("ingreso")}>
+              <button onClick={() => setModoPanel("ingreso")}>
                 Registrar ingreso
               </button>
 
-              <button type="button" style={styles.dangerButton} onClick={() => setModoPanel("ajuste")}>
+              <button onClick={() => setModoPanel("ajuste")}>
                 Ajustar stock
               </button>
             </div>
 
             <div style={styles.note}>
-              El disponible se calcula como físico menos reservado menos pendiente de entrega.
+              El stock disponible se calcula como físico -
+              reservado - pendiente de entrega.
             </div>
           </div>
         )}
 
         {modoPanel === "ingreso" && (
           <form onSubmit={handleIngreso} style={styles.content}>
-            <ReadOnlyField label="Sucursal" value={seleccionado.sucursal_nombre} />
-            <ReadOnlyField label="Variante" value={`#${seleccionado.variante_id}`} />
+            <TextInput
+              label="Sucursal"
+              value={ingresoForm.id_sucursal}
+              onChange={(v) =>
+                setIngresoForm((p) => ({
+                  ...p,
+                  id_sucursal: v,
+                }))
+              }
+            />
+
+            <TextInput
+              label="Variante"
+              value={ingresoForm.id_variante}
+              onChange={(v) =>
+                setIngresoForm((p) => ({
+                  ...p,
+                  id_variante: v,
+                }))
+              }
+            />
 
             <label style={styles.field}>
-              <span style={styles.label}>Proveedor</span>
+              <span style={styles.label}>
+                Proveedor
+              </span>
+
               <select
                 value={ingresoForm.id_proveedor}
                 onChange={(e) =>
@@ -112,7 +164,10 @@ export default function StockDrawer({
                 }
                 style={styles.input}
               >
-                <option value="">Seleccionar proveedor...</option>
+                <option value="">
+                  Seleccionar proveedor...
+                </option>
+
                 {proveedores.map((p) => (
                   <option key={p.id} value={p.id}>
                     #{p.id} - {p.nombre}
@@ -157,13 +212,11 @@ export default function StockDrawer({
               }
             />
 
-            <div style={styles.previewBox}>
-              <span>Costo final estimado por unidad</span>
-              <strong>{formatMoney(costoUnitarioIngreso)}</strong>
-            </div>
-
             <label style={styles.field}>
-              <span style={styles.label}>Observación</span>
+              <span style={styles.label}>
+                Observación
+              </span>
+
               <textarea
                 value={ingresoForm.observacion}
                 onChange={(e) =>
@@ -177,16 +230,37 @@ export default function StockDrawer({
               />
             </label>
 
-            <button type="submit" disabled={procesando} style={styles.primaryButton}>
-              {procesando ? "Guardando..." : "Registrar ingreso"}
+            <button type="submit" disabled={procesando}>
+              {procesando
+                ? "Guardando..."
+                : "Registrar ingreso"}
             </button>
           </form>
         )}
 
         {modoPanel === "ajuste" && (
           <form onSubmit={handleAjuste} style={styles.content}>
-            <ReadOnlyField label="Sucursal" value={seleccionado.sucursal_nombre} />
-            <ReadOnlyField label="Variante" value={`#${seleccionado.variante_id}`} />
+            <TextInput
+              label="Sucursal"
+              value={ajusteForm.id_sucursal}
+              onChange={(v) =>
+                setAjusteForm((p) => ({
+                  ...p,
+                  id_sucursal: v,
+                }))
+              }
+            />
+
+            <TextInput
+              label="Variante"
+              value={ajusteForm.id_variante}
+              onChange={(v) =>
+                setAjusteForm((p) => ({
+                  ...p,
+                  id_variante: v,
+                }))
+              }
+            />
 
             <TextInput
               label="Cantidad (+ suma / - resta)"
@@ -201,7 +275,10 @@ export default function StockDrawer({
             />
 
             <label style={styles.field}>
-              <span style={styles.label}>Motivo obligatorio</span>
+              <span style={styles.label}>
+                Motivo obligatorio
+              </span>
+
               <textarea
                 value={ajusteForm.nota}
                 onChange={(e) =>
@@ -215,26 +292,20 @@ export default function StockDrawer({
               />
             </label>
 
-            <button type="submit" disabled={procesando} style={styles.dangerButton}>
-              {procesando ? "Guardando..." : "Registrar ajuste"}
+            <button type="submit" disabled={procesando}>
+              {procesando
+                ? "Guardando..."
+                : "Registrar ajuste"}
             </button>
 
-            <div style={styles.warningNote}>
-              Usá ajuste solo para diferencias reales de inventario. Ventas, reservas,
-              entregas y taller tienen sus propios movimientos.
+            <div style={styles.note}>
+              Usá ajuste solo para diferencias reales de
+              inventario. Ventas, reservas, entregas y taller
+              tienen sus propios movimientos.
             </div>
           </form>
         )}
       </div>
     </aside>
   );
-}
-
-function calcularCostoUnitarioIngreso(form) {
-  const cantidad = Number(form.cantidad_ingresada || 0);
-  const costoProductos = Number(form.costo_productos || 0);
-  const gastos = Number(form.gastos_adicionales || 0);
-
-  if (cantidad <= 0) return 0;
-  return (costoProductos + gastos) / cantidad;
 }
