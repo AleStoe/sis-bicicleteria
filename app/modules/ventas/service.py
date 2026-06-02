@@ -16,11 +16,12 @@ from app.modules.auditoria import service as auditoria_service
 from app.modules.pagos.repository import (
     get_total_pagado_confirmado_por_venta,
     get_pagos_confirmados_por_venta,
+    update_pago_estado,
 )
 from app.modules.serializadas.repository import (
     get_bicicleta_serializada_for_update,
     update_bicicleta_serializada_estado,
-    insert_bicicleta_cliente,    
+    insert_bicicleta_cliente,
 )
 from app.modules.creditos.service import crear_credito_por_devolucion_venta
 from app.modules.deudas import service as deudas_service
@@ -60,6 +61,7 @@ from app.shared.constants import (
     MODOS_DEVOLUCION_VALIDOS,
     MODO_DEVOLUCION_CREDITO_COMERCIAL,
     MODO_DEVOLUCION_REVERSION_PAGO_EXTERNO,
+    PAGO_ESTADO_DEVUELTO_EXTERNO
 )
 from app.modules.deudas import service as deudas_service
 
@@ -133,6 +135,32 @@ def _obtener_modo_devolucion(data) -> str:
         )
 
     return modo
+def _registrar_reversion_pago_externo_por_devolucion(
+    conn,
+    *,
+    venta_id: int,
+    id_usuario: int,
+):
+    pagos = get_pagos_confirmados_por_venta(conn, venta_id)
+
+    pagos_externos = [
+        pago for pago in pagos
+        if pago["medio_pago"] in {"tarjeta", "mercadopago"}
+    ]
+
+    if not pagos_externos:
+        raise HTTPException(
+            status_code=400,
+            detail="La venta no tiene pagos externos confirmados para marcar como devueltos",
+        )
+
+    for pago in pagos_externos:
+        update_pago_estado(
+            conn,
+            pago["id"],
+            PAGO_ESTADO_DEVUELTO_EXTERNO,
+        )
+
 def _resolver_credito_por_devolucion(
     conn,
     *,
@@ -155,8 +183,11 @@ def _resolver_credito_por_devolucion(
         )
 
     if modo_devolucion == MODO_DEVOLUCION_REVERSION_PAGO_EXTERNO:
-        # Por ahora: no crear crédito.
-        # Falta paso siguiente: marcar pagos externos como devueltos_externo.
+        _registrar_reversion_pago_externo_por_devolucion(
+            conn,
+            venta_id=venta_id,
+            id_usuario=id_usuario,
+        )
         return None
 
     raise HTTPException(
@@ -1517,6 +1548,15 @@ def devolver_items(venta_id: int, data):
                 )
 
             modo_devolucion = _obtener_modo_devolucion(data)
+
+            if modo_devolucion == MODO_DEVOLUCION_REVERSION_PAGO_EXTERNO:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "La reversión de pago externo no está habilitada para devoluciones parciales. "
+                        "Usá devolución total o crédito comercial."
+                    ),
+                )
 
             if not data.items:
                 raise HTTPException(

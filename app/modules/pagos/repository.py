@@ -293,6 +293,9 @@ def get_pagos_confirmados_por_venta(conn, venta_id: int):
                 id,
                 medio_pago,
                 monto_total_cobrado,
+                monto_base_aplicado,
+                monto_descuento_aplicado,
+                monto_recargo_aplicado,
                 estado
             FROM pagos
             WHERE origen_tipo = 'venta'

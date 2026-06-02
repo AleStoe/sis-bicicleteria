@@ -138,6 +138,45 @@ def _crear_venta_serializada(client, seed, bicicleta_id: int):
         },
     )
 
+def _abrir_caja(client, seed):
+    response = client.post(
+        "/cajas/abrir",
+        json={
+            "id_sucursal": seed["sucursal_id"],
+            "id_usuario": seed["usuario_id"],
+            "monto_apertura": 0,
+        },
+    )
+    assert response.status_code == 200, response.text
+    return response.json()["caja_id"]
+
+
+def _crear_venta_serializada_pagada_tarjeta(client, seed, bicicleta_id: int):
+    return client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed["cliente_id"],
+            "id_sucursal": seed["sucursal_id"],
+            "id_usuario": seed["usuario_id"],
+            "usar_credito": False,
+            "items": [
+                {
+                    "id_variante": seed["variante_id"],
+                    "id_bicicleta_serializada": bicicleta_id,
+                    "cantidad": 1,
+                }
+            ],
+            "pagos": [
+                {
+                    "medio_pago": "tarjeta",
+                    "monto_base": str(seed["precio_venta"]),
+                    "cuotas": 3,
+                    "entidad": None,
+                    "nota": "Pago tarjeta test devolución externa",
+                }
+            ],
+        },
+    )
 
 def _marcar_venta_como_pagada_total(db_conn, venta_id: int):
     with db_conn.cursor() as cur:
@@ -172,6 +211,16 @@ def _devolver_serializada(client, seed, venta_id: int, bicicleta_id: int):
         },
     )
 
+def _devolver_serializada_reversion_externa(client, seed, venta_id: int, bicicleta_id: int):
+    return client.post(
+        f"/ventas/{venta_id}/devolver-serializada",
+        json={
+            "id_bicicleta_serializada": bicicleta_id,
+            "motivo": "Devolución con reversión externa",
+            "id_usuario": seed["usuario_id"],
+            "modo_devolucion": "reversion_pago_externo",
+        },
+    )
 
 def _get_creditos_cliente(db_conn, cliente_id: int):
     with db_conn.cursor() as cur:
@@ -200,7 +249,32 @@ def _get_credito_movimientos(db_conn, credito_id: int):
         )
         return cur.fetchall()
 
+def _get_pagos_venta(db_conn, venta_id: int):
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT *
+            FROM pagos
+            WHERE origen_tipo = 'venta'
+              AND origen_id = %s
+            ORDER BY id ASC
+            """,
+            (venta_id,),
+        )
+        return cur.fetchall()
 
+
+def _get_caja_movimientos(db_conn):
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT *
+            FROM caja_movimientos
+            ORDER BY id ASC
+            """
+        )
+        return cur.fetchall()
+    
 def test_devolucion_serializada_genera_credito(client, db_conn, clean_db):
     seed = _crear_seed(db_conn, clean_db)
 
@@ -260,3 +334,62 @@ def test_devolucion_serializada_genera_credito(client, db_conn, clean_db):
     assert movimiento["origen_tipo"] == "venta"
     assert movimiento["origen_id"] == venta_id
     assert movimiento["id_usuario"] == seed["usuario_id"]
+
+def test_devolucion_serializada_tarjeta_marca_pago_devuelto_externo_sin_credito_ni_caja(
+    client,
+    db_conn,
+    clean_db,
+):
+    seed = _crear_seed(db_conn, clean_db)
+
+    _abrir_caja(client, seed)
+
+    bici_response = _crear_bici_serializada(
+        client,
+        seed,
+        "CUADRO-CRED-DEV-EXT-001",
+    )
+    assert bici_response.status_code == 200, bici_response.text
+    bicicleta_id = bici_response.json()["bicicleta_id"]
+
+    venta_response = _crear_venta_serializada_pagada_tarjeta(
+        client,
+        seed,
+        bicicleta_id,
+    )
+    assert venta_response.status_code == 200, venta_response.text
+    venta_id = venta_response.json()["venta_id"]
+
+    entrega_response = _entregar_venta(
+        client,
+        seed,
+        venta_id,
+    )
+    assert entrega_response.status_code == 200, entrega_response.text
+
+    pagos_antes = _get_pagos_venta(db_conn, venta_id)
+    assert len(pagos_antes) == 1
+    assert pagos_antes[0]["medio_pago"] == "tarjeta"
+    assert pagos_antes[0]["estado"] == "confirmado"
+
+    movimientos_caja_antes = _get_caja_movimientos(db_conn)
+
+    devolucion_response = _devolver_serializada_reversion_externa(
+        client,
+        seed,
+        venta_id,
+        bicicleta_id,
+    )
+    assert devolucion_response.status_code == 200, devolucion_response.text
+
+    creditos = _get_creditos_cliente(db_conn, seed["cliente_id"])
+    assert creditos == []
+
+    pagos_despues = _get_pagos_venta(db_conn, venta_id)
+    assert len(pagos_despues) == 1
+    assert pagos_despues[0]["medio_pago"] == "tarjeta"
+    assert pagos_despues[0]["estado"] == "devuelto_externo"
+
+    movimientos_caja_despues = _get_caja_movimientos(db_conn)
+
+    assert len(movimientos_caja_despues) == len(movimientos_caja_antes)
