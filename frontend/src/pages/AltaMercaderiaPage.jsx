@@ -153,7 +153,6 @@ export default function AltaMercaderiaPage() {
 
   async function buscarProducto(valor = busqueda) {
     const q = valor.trim();
-
     if (!q) return;
 
     try {
@@ -407,9 +406,11 @@ export default function AltaMercaderiaPage() {
     <div style={styles.page}>
       <header style={styles.header}>
         <div>
+          <p style={styles.eyebrow}>Stock / Ingreso manual</p>
           <h1 style={styles.title}>Alta de mercadería</h1>
           <p style={styles.subtitle}>
-            Buscá primero. Si no existe, crealo rápido y registrá el ingreso.
+            Primero escaneá o buscá. Si existe, registrás ingreso. Si no existe,
+            lo creás rápido.
           </p>
         </div>
       </header>
@@ -417,10 +418,15 @@ export default function AltaMercaderiaPage() {
       {error && <div style={styles.error}>Error: {error}</div>}
       {mensaje && <div style={styles.success}>{mensaje}</div>}
 
-      <section style={styles.grid}>
-        <div style={styles.card}>
-          <h2 style={styles.cardTitle}>1. Buscar / escanear</h2>
+      <section style={styles.searchCard}>
+        <div>
+          <h2 style={styles.searchTitle}>Buscar producto</h2>
+          <p style={styles.searchHelp}>
+            Código proveedor, código de barras, SKU o nombre.
+          </p>
+        </div>
 
+        <div style={styles.searchRow}>
           <input
             ref={buscarRef}
             style={styles.searchInput}
@@ -435,443 +441,757 @@ export default function AltaMercaderiaPage() {
                 buscarProducto(e.currentTarget.value);
               }
             }}
-            placeholder="Código proveedor, barras, SKU o nombre"
+            placeholder="Escaneá o escribí para buscar..."
           />
 
           <button
             type="button"
-            style={styles.primaryButton}
+            style={{
+              ...styles.button,
+              ...styles.primaryButton,
+              opacity: buscando ? 0.7 : 1,
+            }}
             onClick={() => buscarProducto()}
             disabled={buscando}
           >
             {buscando ? "Buscando..." : "Buscar"}
           </button>
+        </div>
+      </section>
 
+      <section style={styles.contentGrid}>
+        <main style={styles.mainColumn}>
           {resultados.length > 0 && (
-            <div style={styles.results}>
-              {resultados.map((item) => (
-                <button
-                  key={item.id_variante}
-                  type="button"
-                  style={styles.resultItem}
-                  onClick={() => seleccionarExistente(item)}
-                >
-                  <strong>
-                    {item.producto_nombre} - {item.nombre_variante}
-                  </strong>
-                  <span>
-                    Prov: {item.codigo_proveedor || "-"} · Stock:{" "}
-                    {formatNumber(item.stock_disponible)}
-                  </span>
-                </button>
-              ))}
-            </div>
+            <section style={styles.card}>
+              <div style={styles.sectionHeader}>
+                <div>
+                  <h2 style={styles.cardTitle}>Resultados encontrados</h2>
+                  <p style={styles.muted}>
+                    Elegí el producto correcto para cargar mercadería.
+                  </p>
+                </div>
+                <span style={styles.countBadge}>{resultados.length}</span>
+              </div>
+
+              <div style={styles.results}>
+                {resultados.map((item) => (
+                  <button
+                    key={item.id_variante}
+                    type="button"
+                    style={styles.resultItem}
+                    onClick={() => seleccionarExistente(item)}
+                  >
+                    <div>
+                      <strong>
+                        {item.producto_nombre} - {item.nombre_variante}
+                      </strong>
+                      <span>
+                        Código proveedor: {item.codigo_proveedor || "-"}
+                      </span>
+                    </div>
+
+                    <div style={styles.stockPill}>
+                      Stock: {formatNumber(item.stock_disponible)}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </section>
           )}
 
           {seleccionado && (
-            <form onSubmit={registrarIngresoExistente} style={styles.form}>
-              <div style={styles.selectedBox}>
-                <strong>
-                  {seleccionado.producto_nombre} - {seleccionado.nombre_variante}
-                </strong>
-                <span>
-                  Stock disponible: {formatNumber(seleccionado.stock_disponible)}
-                </span>
+            <section style={styles.card}>
+              <div style={styles.sectionHeader}>
+                <div>
+                  <p style={styles.eyebrow}>Producto existente</p>
+                  <h2 style={styles.cardTitle}>
+                    {seleccionado.producto_nombre} -{" "}
+                    {seleccionado.nombre_variante}
+                  </h2>
+                  <p style={styles.muted}>
+                    Stock disponible actual:{" "}
+                    <strong>{formatNumber(seleccionado.stock_disponible)}</strong>
+                  </p>
+                </div>
+
+                <span style={styles.okBadge}>Listo para ingresar</span>
               </div>
 
-              {seleccionado.proveedor_preferido_id &&
-              !mostrarCambioProveedor ? (
-                <div style={styles.providerDetected}>
-                  <div>
-                    <strong>Proveedor detectado</strong>
-                    <div>{seleccionado.proveedor_preferido_nombre}</div>
-                  </div>
+              <form onSubmit={registrarIngresoExistente} style={styles.form}>
+                {seleccionado.proveedor_preferido_id &&
+                !mostrarCambioProveedor ? (
+                  <div style={styles.providerDetected}>
+                    <div>
+                      <strong>Proveedor detectado</strong>
+                      <div>{seleccionado.proveedor_preferido_nombre}</div>
+                    </div>
 
-                  <button
-                    type="button"
-                    style={styles.secondaryButton}
-                    onClick={() => setMostrarCambioProveedor(true)}
-                  >
-                    Cambiar
-                  </button>
-                </div>
-              ) : (
-                <AltaMercaderiaProveedorSelect
+                    <button
+                      type="button"
+                      style={{ ...styles.button, ...styles.secondaryButton }}
+                      onClick={() => setMostrarCambioProveedor(true)}
+                    >
+                      Cambiar
+                    </button>
+                  </div>
+                ) : (
+                  <AltaMercaderiaProveedorSelect
+                    form={form}
+                    setCampo={setCampo}
+                    proveedores={proveedores}
+                  />
+                )}
+
+                <AltaMercaderiaIngresoFields
                   form={form}
                   setCampo={setCampo}
-                  proveedores={proveedores}
+                  costoRef={costoRef}
+                  costoUnitarioConGastos={costoUnitarioConGastos}
+                  totalProductos={totalProductos}
                 />
-              )}
 
-              <AltaMercaderiaIngresoFields
-                form={form}
-                setCampo={setCampo}
-                costoRef={costoRef}
-                costoUnitarioConGastos={costoUnitarioConGastos}
-                totalProductos={totalProductos}
-              />
-
-              <button
-                type="submit"
-                style={styles.primaryButton}
-                disabled={procesando}
-              >
-                Registrar ingreso
-              </button>
-            </form>
-          )}
-        </div>
-
-        <div style={styles.card}>
-          <h2 style={styles.cardTitle}>2. Crear si no existe</h2>
-
-          {!modoCrear ? (
-            <div style={styles.emptyState}>
-              Buscá primero. Si no aparece, acá se habilita el alta rápida.
-            </div>
-          ) : (
-            <form onSubmit={crearProductoEIngresar} style={styles.form}>
-              <label style={styles.label}>
-                Categoría *
-                <select
-                  style={styles.input}
-                  value={form.id_categoria}
-                  onChange={(e) => setCampo("id_categoria", e.target.value)}
-                >
-                  <option value="">Seleccionar...</option>
-                  {categorias.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.nombre}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label style={styles.label}>
-                Marca
-                <select
-                  style={styles.input}
-                  value={form.id_marca}
-                  onChange={(e) => setCampo("id_marca", e.target.value)}
-                >
-                  <option value="">Sin marca</option>
-                  {marcas.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.nombre}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <div style={styles.inlineCreate}>
-                <input
-                  style={styles.input}
-                  value={marcaNueva}
-                  onChange={(e) => setMarcaNueva(e.target.value)}
-                  placeholder="Nueva marca..."
-                />
                 <button
-                  type="button"
-                  style={styles.secondaryButton}
-                  onClick={handleCrearMarca}
+                  type="submit"
+                  style={{ ...styles.button, ...styles.primaryButton }}
                   disabled={procesando}
                 >
-                  Crear marca
+                  {procesando ? "Registrando..." : "Registrar ingreso"}
                 </button>
-              </div>
-
-              <label style={styles.label}>
-                Nombre producto *
-                <input
-                  style={styles.input}
-                  value={form.nombre_producto}
-                  onChange={(e) => setCampo("nombre_producto", e.target.value)}
-                  placeholder="Ej: Cámara Arisun 29"
-                />
-              </label>
-
-              <label style={styles.check}>
-                <input
-                  type="checkbox"
-                  checked={form.tiene_variantes}
-                  onChange={(e) => setCampo("tiene_variantes", e.target.checked)}
-                  disabled={esBicicleta}
-                />
-                Tiene variante real
-              </label>
-
-              {form.tiene_variantes && (
-                <label style={styles.label}>
-                  Variante
-                  <input
-                    style={styles.input}
-                    value={form.nombre_variante}
-                    onChange={(e) => setCampo("nombre_variante", e.target.value)}
-                    placeholder="Ej: Negro rojo 52"
-                  />
-                </label>
-              )}
-
-              {esBicicleta && (
-                <label style={styles.check}>
-                  <input
-                    type="checkbox"
-                    checked={form.controlar_numero_cuadro}
-                    onChange={(e) =>
-                      setCampo("controlar_numero_cuadro", e.target.checked)
-                    }
-                  />
-                  Controlar número de cuadro
-                </label>
-              )}
-
-              <label style={styles.label}>
-                Código proveedor *
-                <input
-                  style={styles.input}
-                  value={form.codigo_proveedor}
-                  onChange={(e) => setCampo("codigo_proveedor", e.target.value)}
-                />
-              </label>
-
-              <AltaMercaderiaProveedorSelect
-                form={form}
-                setCampo={setCampo}
-                proveedores={proveedores}
-              />
-
-              <AltaMercaderiaIngresoFields
-                form={form}
-                setCampo={setCampo}
-                costoRef={costoRef}
-                costoUnitarioConGastos={costoUnitarioConGastos}
-                totalProductos={totalProductos}
-              />
-
-              <div style={styles.suggestionBox}>
-                <div>
-                  <span>Minorista sugerido</span>
-                  <strong>{formatMoney(sugeridoMinorista)}</strong>
-                </div>
-                <div>
-                  <span>Mayorista sugerido</span>
-                  <strong>{formatMoney(sugeridoMayorista)}</strong>
-                </div>
-              </div>
-
-              <div style={styles.twoCols}>
-                <label style={styles.label}>
-                  Precio minorista
-                  <input
-                    style={styles.input}
-                    type="number"
-                    value={form.precio_minorista}
-                    onChange={(e) => setCampo("precio_minorista", e.target.value)}
-                  />
-                </label>
-
-                <label style={styles.label}>
-                  Precio mayorista
-                  <input
-                    style={styles.input}
-                    type="number"
-                    value={form.precio_mayorista}
-                    onChange={(e) => setCampo("precio_mayorista", e.target.value)}
-                  />
-                </label>
-              </div>
-
-              <AltaMercaderiaImagenUpload form={form} setForm={setForm} />
-
-              {form.imagen_url && (
-                <img
-                  src={form.imagen_url}
-                  alt="Preview"
-                  style={styles.preview}
-                  onError={(e) => {
-                    e.currentTarget.style.display = "none";
-                  }}
-                />
-              )}
-
-              <button
-                type="submit"
-                style={styles.primaryButton}
-                disabled={procesando}
-              >
-                Crear e ingresar mercadería
-              </button>
-            </form>
+              </form>
+            </section>
           )}
-        </div>
+
+          {!seleccionado && !modoCrear && resultados.length === 0 && (
+            <section style={styles.emptyPanel}>
+              <h2>Esperando búsqueda</h2>
+              <p>
+                Escaneá un código. Si el producto existe, vas a cargar cantidad y
+                costo. Si no existe, se habilita el alta rápida.
+              </p>
+            </section>
+          )}
+
+          {modoCrear && (
+            <section style={styles.card}>
+              <div style={styles.sectionHeader}>
+                <div>
+                  <p style={styles.eyebrow}>Alta rápida</p>
+                  <h2 style={styles.cardTitle}>Crear producto e ingresar stock</h2>
+                  <p style={styles.muted}>
+                    Cargá solo lo necesario ahora. Los datos finos se pueden
+                    completar después desde catálogo.
+                  </p>
+                </div>
+
+                <span style={styles.warningBadge}>Producto nuevo</span>
+              </div>
+
+              <form onSubmit={crearProductoEIngresar} style={styles.form}>
+                <section style={styles.formSection}>
+                  <h3 style={styles.formSectionTitle}>Datos básicos</h3>
+
+                  <div style={styles.twoCols}>
+                    <label style={styles.label}>
+                      Categoría *
+                      <select
+                        style={styles.input}
+                        value={form.id_categoria}
+                        onChange={(e) =>
+                          setCampo("id_categoria", e.target.value)
+                        }
+                      >
+                        <option value="">Seleccionar...</option>
+                        {categorias.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.nombre}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label style={styles.label}>
+                      Marca
+                      <select
+                        style={styles.input}
+                        value={form.id_marca}
+                        onChange={(e) => setCampo("id_marca", e.target.value)}
+                      >
+                        <option value="">Sin marca</option>
+                        {marcas.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.nombre}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  <div style={styles.inlineCreate}>
+                    <input
+                      style={styles.input}
+                      value={marcaNueva}
+                      onChange={(e) => setMarcaNueva(e.target.value)}
+                      placeholder="Nueva marca..."
+                    />
+                    <button
+                      type="button"
+                      style={{ ...styles.button, ...styles.secondaryButton }}
+                      onClick={handleCrearMarca}
+                      disabled={procesando}
+                    >
+                      Crear marca
+                    </button>
+                  </div>
+
+                  <label style={styles.label}>
+                    Nombre producto *
+                    <input
+                      style={styles.input}
+                      value={form.nombre_producto}
+                      onChange={(e) =>
+                        setCampo("nombre_producto", e.target.value)
+                      }
+                      placeholder="Ej: Cámara Arisun 29"
+                    />
+                  </label>
+
+                  <div style={styles.twoCols}>
+                    <label style={styles.label}>
+                      Código proveedor *
+                      <input
+                        style={styles.input}
+                        value={form.codigo_proveedor}
+                        onChange={(e) =>
+                          setCampo("codigo_proveedor", e.target.value)
+                        }
+                      />
+                    </label>
+
+                    <AltaMercaderiaProveedorSelect
+                      form={form}
+                      setCampo={setCampo}
+                      proveedores={proveedores}
+                    />
+                  </div>
+
+                  <label style={styles.check}>
+                    <input
+                      type="checkbox"
+                      checked={form.tiene_variantes}
+                      onChange={(e) =>
+                        setCampo("tiene_variantes", e.target.checked)
+                      }
+                      disabled={esBicicleta}
+                    />
+                    Tiene variante real
+                  </label>
+
+                  {form.tiene_variantes && (
+                    <label style={styles.label}>
+                      Variante
+                      <input
+                        style={styles.input}
+                        value={form.nombre_variante}
+                        onChange={(e) =>
+                          setCampo("nombre_variante", e.target.value)
+                        }
+                        placeholder="Ej: Negro rojo 52"
+                      />
+                    </label>
+                  )}
+
+                  {esBicicleta && (
+                    <label style={styles.check}>
+                      <input
+                        type="checkbox"
+                        checked={form.controlar_numero_cuadro}
+                        onChange={(e) =>
+                          setCampo("controlar_numero_cuadro", e.target.checked)
+                        }
+                      />
+                      Controlar número de cuadro
+                    </label>
+                  )}
+                </section>
+
+                <section style={styles.formSection}>
+                  <h3 style={styles.formSectionTitle}>Ingreso y costo</h3>
+
+                  <AltaMercaderiaIngresoFields
+                    form={form}
+                    setCampo={setCampo}
+                    costoRef={costoRef}
+                    costoUnitarioConGastos={costoUnitarioConGastos}
+                    totalProductos={totalProductos}
+                  />
+                </section>
+
+                <section style={styles.formSection}>
+                  <h3 style={styles.formSectionTitle}>Precios</h3>
+
+                  <div style={styles.suggestionBox}>
+                    <div>
+                      <span>Minorista sugerido</span>
+                      <strong>{formatMoney(sugeridoMinorista)}</strong>
+                    </div>
+                    <div>
+                      <span>Mayorista sugerido</span>
+                      <strong>{formatMoney(sugeridoMayorista)}</strong>
+                    </div>
+                  </div>
+
+                  <div style={styles.twoCols}>
+                    <label style={styles.label}>
+                      Precio minorista
+                      <input
+                        style={styles.input}
+                        type="number"
+                        value={form.precio_minorista}
+                        onChange={(e) =>
+                          setCampo("precio_minorista", e.target.value)
+                        }
+                      />
+                    </label>
+
+                    <label style={styles.label}>
+                      Precio mayorista
+                      <input
+                        style={styles.input}
+                        type="number"
+                        value={form.precio_mayorista}
+                        onChange={(e) =>
+                          setCampo("precio_mayorista", e.target.value)
+                        }
+                      />
+                    </label>
+                  </div>
+                </section>
+
+                <details style={styles.details}>
+                  <summary style={styles.detailsSummary}>Opcionales</summary>
+                  <div style={styles.detailsBody}>
+                    <AltaMercaderiaImagenUpload form={form} setForm={setForm} />
+                  </div>
+                </details>
+
+                <button
+                  type="submit"
+                  style={{ ...styles.button, ...styles.primaryButton }}
+                  disabled={procesando}
+                >
+                  {procesando
+                    ? "Creando..."
+                    : "Crear producto e ingresar mercadería"}
+                </button>
+              </form>
+            </section>
+          )}
+        </main>
+
+        <aside style={styles.sideColumn}>
+          <section style={styles.sideCard}>
+            <h3 style={styles.sideTitle}>Guía rápida</h3>
+
+            <ol style={styles.steps}>
+              <li>Escaneá o buscá el producto.</li>
+              <li>Si existe, cargá cantidad y costo.</li>
+              <li>Si no existe, completá el alta rápida.</li>
+              <li>Revisá el costo final antes de guardar.</li>
+            </ol>
+          </section>
+
+          <section style={styles.sideCard}>
+            <h3 style={styles.sideTitle}>Resumen actual</h3>
+
+            <div style={styles.summaryRow}>
+              <span>Cantidad</span>
+              <strong>{formatNumber(form.cantidad || 0)}</strong>
+            </div>
+
+            <div style={styles.summaryRow}>
+              <span>Total productos</span>
+              <strong>{formatMoney(totalProductos)}</strong>
+            </div>
+
+            <div style={styles.summaryRow}>
+              <span>Costo final unidad</span>
+              <strong>{formatMoney(costoUnitarioConGastos)}</strong>
+            </div>
+
+            <div style={styles.summaryRow}>
+              <span>Minorista sugerido</span>
+              <strong>{formatMoney(sugeridoMinorista)}</strong>
+            </div>
+
+            <div style={styles.summaryRow}>
+              <span>Mayorista sugerido</span>
+              <strong>{formatMoney(sugeridoMayorista)}</strong>
+            </div>
+          </section>
+        </aside>
       </section>
     </div>
   );
 }
-
-
-
 
 function redondearPrecio(valor) {
   if (!valor || valor <= 0) return 0;
   return Math.ceil(valor / 50) * 50;
 }
 
-
 const styles = {
-  page: { padding: "24px", background: "#f6f7fb", minHeight: "100vh" },
-  header: { marginBottom: "16px" },
-  title: { margin: 0, fontSize: "28px", fontWeight: 800 },
-  subtitle: { margin: "6px 0 0", color: "#667085" },
-  grid: {
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: "16px",
-    alignItems: "start",
+  page: {
+    minHeight: "100vh",
+    padding: "24px",
+    background: "#f3f4f6",
+    color: "#111827",
   },
-  card: {
-    background: "#fff",
-    borderRadius: "14px",
-    boxShadow: "0 2px 10px rgba(0,0,0,.08)",
-    padding: "16px",
+
+  header: {
+    marginBottom: "18px",
   },
-  cardTitle: { margin: "0 0 14px", fontSize: "20px" },
-  form: { display: "grid", gap: "10px", marginTop: "14px" },
-  label: { display: "grid", gap: "6px", fontWeight: 700, fontSize: "14px" },
-  input: {
-    width: "100%",
-    padding: "10px 12px",
-    border: "1px solid #d0d5dd",
-    borderRadius: "10px",
+
+  eyebrow: {
+    margin: 0,
+    color: "#2563eb",
+    fontSize: "12px",
+    fontWeight: 800,
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+  },
+
+  title: {
+    margin: "2px 0 0",
+    fontSize: "30px",
+    fontWeight: 900,
+  },
+
+  subtitle: {
+    margin: "6px 0 0",
+    color: "#6b7280",
     fontSize: "14px",
-    boxSizing: "border-box",
   },
-  searchInput: {
-    width: "100%",
-    padding: "14px 16px",
-    border: "2px solid #1f6feb",
-    borderRadius: "12px",
-    fontSize: "18px",
-    boxSizing: "border-box",
-    marginBottom: "10px",
+
+  searchCard: {
+    background: "#ffffff",
+    border: "1px solid #e5e7eb",
+    borderRadius: "18px",
+    padding: "18px",
+    boxShadow: "0 8px 24px rgba(15, 23, 42, 0.06)",
+    marginBottom: "18px",
   },
-  textarea: {
-    width: "100%",
-    minHeight: "70px",
-    padding: "10px 12px",
-    border: "1px solid #d0d5dd",
-    borderRadius: "10px",
-    resize: "vertical",
-    boxSizing: "border-box",
+
+  searchTitle: {
+    margin: 0,
+    fontSize: "20px",
+    fontWeight: 900,
   },
-  primaryButton: {
-    border: "none",
-    background: "#1f6feb",
-    color: "#fff",
-    borderRadius: "10px",
-    padding: "12px 14px",
-    fontWeight: 700,
-    cursor: "pointer",
+
+  searchHelp: {
+    margin: "4px 0 14px",
+    color: "#6b7280",
+    fontSize: "14px",
   },
-  secondaryButton: {
-    border: "1px solid #d0d5dd",
-    background: "#fff",
-    borderRadius: "10px",
-    padding: "10px 12px",
-    fontWeight: 700,
-    cursor: "pointer",
-  },
-  results: { display: "grid", gap: "8px", marginTop: "14px" },
-  resultItem: {
-    display: "grid",
-    gap: "4px",
-    textAlign: "left",
-    border: "1px solid #d0d5dd",
-    background: "#fff",
-    borderRadius: "10px",
-    padding: "12px",
-    cursor: "pointer",
-  },
-  selectedBox: {
-    display: "grid",
-    gap: "4px",
-    background: "#eef4ff",
-    border: "1px solid #bfdbfe",
-    borderRadius: "12px",
-    padding: "12px",
-  },
-  providerDetected: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: "12px",
-    borderRadius: "12px",
-    background: "#ecfdf3",
-    border: "1px solid #abefc6",
-  },
-  inlineCreate: {
+
+  searchRow: {
     display: "grid",
     gridTemplateColumns: "1fr auto",
-    gap: "8px",
+    gap: "12px",
     alignItems: "center",
   },
+
+  searchInput: {
+    width: "100%",
+    padding: "16px 18px",
+    border: "2px solid #2563eb",
+    borderRadius: "14px",
+    fontSize: "20px",
+    boxSizing: "border-box",
+    outline: "none",
+    background: "#ffffff",
+  },
+
+  contentGrid: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) 320px",
+    gap: "18px",
+    alignItems: "start",
+  },
+
+  mainColumn: {
+    display: "grid",
+    gap: "18px",
+  },
+
+  sideColumn: {
+    display: "grid",
+    gap: "14px",
+    position: "sticky",
+    top: "16px",
+  },
+
+  card: {
+    background: "#ffffff",
+    border: "1px solid #e5e7eb",
+    borderRadius: "18px",
+    padding: "18px",
+    boxShadow: "0 8px 24px rgba(15, 23, 42, 0.06)",
+  },
+
+  sideCard: {
+    background: "#ffffff",
+    border: "1px solid #e5e7eb",
+    borderRadius: "16px",
+    padding: "16px",
+    boxShadow: "0 6px 18px rgba(15, 23, 42, 0.05)",
+  },
+
+  sectionHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: "14px",
+    alignItems: "flex-start",
+    marginBottom: "14px",
+  },
+
+  cardTitle: {
+    margin: 0,
+    fontSize: "22px",
+    fontWeight: 900,
+  },
+
+  sideTitle: {
+    margin: "0 0 12px",
+    fontSize: "16px",
+    fontWeight: 900,
+  },
+
+  muted: {
+    margin: "4px 0 0",
+    color: "#6b7280",
+    fontSize: "14px",
+  },
+
+  form: {
+    display: "grid",
+    gap: "14px",
+  },
+
+  formSection: {
+    display: "grid",
+    gap: "12px",
+    padding: "14px",
+    border: "1px solid #e5e7eb",
+    borderRadius: "14px",
+    background: "#fafafa",
+  },
+
+  formSectionTitle: {
+    margin: 0,
+    fontSize: "16px",
+    fontWeight: 900,
+  },
+
+  label: {
+    display: "grid",
+    gap: "6px",
+    fontWeight: 800,
+    fontSize: "13px",
+  },
+
+  input: {
+    width: "100%",
+    padding: "11px 12px",
+    border: "1px solid #d1d5db",
+    borderRadius: "12px",
+    fontSize: "14px",
+    boxSizing: "border-box",
+    background: "#ffffff",
+  },
+
   twoCols: {
     display: "grid",
     gridTemplateColumns: "1fr 1fr",
-    gap: "10px",
+    gap: "12px",
   },
+
+  inlineCreate: {
+    display: "grid",
+    gridTemplateColumns: "1fr auto",
+    gap: "10px",
+    alignItems: "center",
+  },
+
   check: {
     display: "flex",
     gap: "8px",
     alignItems: "center",
-    fontWeight: 700,
+    fontWeight: 800,
     fontSize: "14px",
   },
-  calcBox: {
+
+  button: {
+    border: "none",
+    borderRadius: "12px",
+    padding: "12px 16px",
+    fontWeight: 900,
+    fontSize: "14px",
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  },
+
+  primaryButton: {
+    background: "#2563eb",
+    color: "#ffffff",
+  },
+
+  secondaryButton: {
+    background: "#ffffff",
+    color: "#111827",
+    border: "1px solid #d1d5db",
+  },
+
+  results: {
+    display: "grid",
+    gap: "10px",
+  },
+
+  resultItem: {
     display: "flex",
     justifyContent: "space-between",
-    padding: "12px",
-    background: "#f9fafb",
+    alignItems: "center",
+    gap: "14px",
+    width: "100%",
+    textAlign: "left",
     border: "1px solid #e5e7eb",
-    borderRadius: "10px",
+    background: "#ffffff",
+    borderRadius: "14px",
+    padding: "14px",
+    cursor: "pointer",
   },
+
+  stockPill: {
+    background: "#eff6ff",
+    color: "#1d4ed8",
+    border: "1px solid #bfdbfe",
+    borderRadius: "999px",
+    padding: "6px 10px",
+    fontWeight: 900,
+    fontSize: "13px",
+    whiteSpace: "nowrap",
+  },
+
+  countBadge: {
+    background: "#111827",
+    color: "#ffffff",
+    borderRadius: "999px",
+    padding: "6px 10px",
+    fontWeight: 900,
+    fontSize: "13px",
+  },
+
+  okBadge: {
+    background: "#dcfce7",
+    color: "#166534",
+    border: "1px solid #bbf7d0",
+    borderRadius: "999px",
+    padding: "7px 10px",
+    fontWeight: 900,
+    fontSize: "13px",
+  },
+
+  warningBadge: {
+    background: "#fef3c7",
+    color: "#92400e",
+    border: "1px solid #fde68a",
+    borderRadius: "999px",
+    padding: "7px 10px",
+    fontWeight: 900,
+    fontSize: "13px",
+  },
+
+  providerDetected: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: "12px",
+    padding: "14px",
+    borderRadius: "14px",
+    background: "#ecfdf5",
+    border: "1px solid #bbf7d0",
+  },
+
   suggestionBox: {
     display: "grid",
     gridTemplateColumns: "1fr 1fr",
-    gap: "10px",
-    background: "#f0f9ff",
-    border: "1px solid #bae6fd",
-    borderRadius: "12px",
-    padding: "12px",
+    gap: "12px",
+    background: "#eff6ff",
+    border: "1px solid #bfdbfe",
+    borderRadius: "14px",
+    padding: "14px",
   },
-  preview: {
-    width: "100%",
-    maxHeight: "220px",
-    objectFit: "contain",
+
+  details: {
     border: "1px solid #e5e7eb",
-    borderRadius: "12px",
-    background: "#f9fafb",
+    borderRadius: "14px",
+    background: "#ffffff",
+    overflow: "hidden",
   },
-  emptyState: {
-    padding: "18px",
-    background: "#f9fafb",
-    borderRadius: "12px",
-    color: "#667085",
+
+  detailsSummary: {
+    cursor: "pointer",
+    padding: "14px",
+    fontWeight: 900,
   },
+
+  detailsBody: {
+    padding: "0 14px 14px",
+  },
+
+  steps: {
+    margin: 0,
+    paddingLeft: "20px",
+    color: "#4b5563",
+    display: "grid",
+    gap: "8px",
+    fontSize: "14px",
+  },
+
+  summaryRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: "12px",
+    padding: "10px 0",
+    borderBottom: "1px solid #f3f4f6",
+    fontSize: "14px",
+  },
+
+  emptyPanel: {
+    background: "#ffffff",
+    border: "1px dashed #cbd5e1",
+    borderRadius: "18px",
+    padding: "28px",
+    color: "#6b7280",
+    textAlign: "center",
+  },
+
   error: {
-    background: "#fff1f0",
-    color: "#b42318",
-    padding: "12px",
-    borderRadius: "10px",
-    border: "1px solid #f4c7c3",
-    marginBottom: "16px",
+    background: "#fef2f2",
+    color: "#991b1b",
+    padding: "12px 14px",
+    borderRadius: "12px",
+    border: "1px solid #fecaca",
+    marginBottom: "14px",
+    fontWeight: 700,
   },
+
   success: {
-    background: "#e8fff0",
-    color: "#146c2e",
-    padding: "12px",
-    borderRadius: "10px",
-    border: "1px solid #b7ebc6",
-    marginBottom: "16px",
+    background: "#ecfdf5",
+    color: "#166534",
+    padding: "12px 14px",
+    borderRadius: "12px",
+    border: "1px solid #bbf7d0",
+    marginBottom: "14px",
+    fontWeight: 700,
   },
 };
