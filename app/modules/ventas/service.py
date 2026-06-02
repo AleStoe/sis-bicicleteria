@@ -1445,11 +1445,42 @@ def devolver_venta(venta_id: int, data):
             for item in items:
                 cantidad = to_decimal(item["cantidad"])
 
+                monto_item = _calcular_monto_credito_devolucion_item(
+                    venta,
+                    item,
+                    cantidad,
+                )
+
+                devolucion_item_id = insert_venta_item_devolucion(
+                    conn,
+                    {
+                        "id_venta": venta_id,
+                        "id_venta_item": item["id"],
+                        "id_variante": item["id_variante"],
+                        "cantidad_devuelta": cantidad,
+                        "monto_credito_generado": monto_item,
+                        "motivo": data.motivo,
+                        "id_usuario": data.id_usuario,
+                    },
+                )
+
                 if item["id_bicicleta_serializada"]:
                     update_bicicleta_serializada_estado(
                         conn,
                         item["id_bicicleta_serializada"],
                         "disponible",
+                    )
+
+                    insert_venta_devolucion(
+                        conn,
+                        {
+                            "id_venta": venta_id,
+                            "id_venta_item": item["id"],
+                            "id_bicicleta_serializada": item["id_bicicleta_serializada"],
+                            "id_sucursal_reingreso": venta["id_sucursal"],
+                            "motivo": data.motivo,
+                            "id_usuario": data.id_usuario,
+                        },
                     )
 
                 if item["stockeable"]:
@@ -1462,18 +1493,17 @@ def devolver_venta(venta_id: int, data):
                             "id_usuario": data.id_usuario,
                             "origen_tipo": "venta",
                             "origen_id": venta_id,
-                            "nota": f"Devolución venta #{venta_id}",
+                            "id_bicicleta_serializada": item.get("id_bicicleta_serializada"),
+                            "nota": (
+                                f"Devolución total venta #{venta_id}. "
+                                f"venta_item_id={item['id']}. "
+                                f"devolucion_item_id={devolucion_item_id}. "
+                                f"motivo={data.motivo}"
+                            ),
                         },
                     )
 
-                monto_item = _calcular_monto_credito_devolucion_item(
-                    venta,
-                    item,
-                    cantidad,
-                )
-
                 total_devolucion = redondear_monto(total_devolucion + monto_item)
-
             # generar crédito
             resultado_deuda = deudas_service.cancelar_deuda_por_devolucion_venta(
                 conn,
