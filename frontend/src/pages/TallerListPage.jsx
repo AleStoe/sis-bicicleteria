@@ -80,8 +80,13 @@ export default function TallerListPage() {
 
       const texto = [
         orden.id,
-        orden.id_cliente,
-        orden.id_bicicleta_cliente,
+        orden.cliente_nombre,
+        orden.cliente_telefono,
+        orden.cliente_dni,
+        orden.bicicleta_descripcion,
+        orden.bicicleta_marca,
+        orden.bicicleta_modelo,
+        orden.bicicleta_numero_cuadro,
         orden.estado,
         orden.problema_reportado,
       ]
@@ -209,9 +214,9 @@ function OrdenCard({ orden }) {
 
       <div style={styles.orderMetaGrid}>
         <Info label="Fecha" value={formatDate(orden.fecha_ingreso)} />
-        <Info label="Cliente" value={`#${orden.id_cliente}`} />
-        <Info label="Bicicleta" value={`#${orden.id_bicicleta_cliente}`} />
-        <Info label="Total" value={formatMoney(orden.total_final)} />
+        <Info label="Cliente" value={nombreClienteOrden(orden)} />
+        <Info label="Bicicleta" value={descripcionBicicletaOrden(orden)} />
+        <Info label="Presupuesto" value={resumenTotalOrden(orden)} />
       </div>
 
       <div style={styles.orderFooter}>
@@ -243,6 +248,30 @@ function Info({ label, value }) {
       <strong>{value || "-"}</strong>
     </div>
   );
+}
+
+
+function nombreClienteOrden(orden) {
+  return orden.cliente_nombre || `Cliente #${orden.id_cliente}`;
+}
+
+function descripcionBicicletaOrden(orden) {
+  if (orden.bicicleta_descripcion) return orden.bicicleta_descripcion;
+
+  const partes = [
+    orden.bicicleta_marca,
+    orden.bicicleta_modelo,
+    orden.bicicleta_rodado ? `R${orden.bicicleta_rodado}` : null,
+    orden.bicicleta_color,
+  ].filter(Boolean);
+
+  return partes.length > 0 ? partes.join(" ") : `Bicicleta #${orden.id_bicicleta_cliente}`;
+}
+
+function resumenTotalOrden(orden) {
+  const total = Number(orden.total_final || 0);
+  if (total <= 0) return "Sin presupuesto";
+  return formatMoney(total);
 }
 
 function labelEstadoFiltro(value) {

@@ -132,7 +132,7 @@ def crear_orden_taller(data):
                 id_usuario=data.id_usuario,
             )
 
-            return orden
+            return get_orden_taller_by_id(conn, orden["id"])
     finally:
         conn.close()
 
@@ -366,7 +366,10 @@ def ejecutar_item_orden_taller(orden_id: int, item_id: int, id_usuario: int):
 
             # SOLO si es producto (no servicio)
         
-            if item["id_variante"]:
+            es_servicio = item.get("tipo_item") == "servicio"
+            es_stockeable = bool(item.get("stockeable"))
+
+            if item["id_variante"] and es_stockeable and not es_servicio:
 
                 stock_row = obtener_stock_disponible_variante(
                     conn,
@@ -470,7 +473,10 @@ def revertir_ejecucion_item_orden_taller(orden_id: int, item_id: int, data):
                     detail="Solo se puede revertir un item ejecutado",
                 )
 
-            if item["id_variante"]:
+            es_servicio = item.get("tipo_item") == "servicio"
+            es_stockeable = bool(item.get("stockeable"))
+
+            if item["id_variante"] and es_stockeable and not es_servicio:
                 registrar_movimiento_stock(
                     conn,
                     id_sucursal=orden["id_sucursal"],

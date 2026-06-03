@@ -44,6 +44,15 @@ class OrdenTallerResponse(BaseModel):
     id_sucursal: int
     id_cliente: int
     id_bicicleta_cliente: int
+    cliente_nombre: str | None = None
+    cliente_telefono: str | None = None
+    cliente_dni: str | None = None
+    bicicleta_marca: str | None = None
+    bicicleta_modelo: str | None = None
+    bicicleta_rodado: str | None = None
+    bicicleta_color: str | None = None
+    bicicleta_numero_cuadro: str | None = None
+    bicicleta_descripcion: str | None = None
     estado: str
     problema_reportado: str
     observaciones: str | None = None

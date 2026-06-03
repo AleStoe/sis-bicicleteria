@@ -10,6 +10,7 @@ import {
   revertirEjecucionItemOrdenTaller,
   cancelarItemOrdenTaller,
 } from "../services/tallerService";
+import ProductImage from "../components/catalogo/ProductImage";
 import { formatDate, formatMoney, formatNumber } from "../utils/formatters";
 import { EstadoBadge } from "./TallerListPage";
 import { PromptModal } from "../components/ui/PromptModal";
@@ -111,18 +112,38 @@ export default function TallerDetallePage() {
   }, [items]);
 
   const variantesFiltradas = useMemo(() => {
-    const q = busquedaVariante.trim().toLowerCase();
-    const base = variantes || [];
-    if (!q) return base.slice(0, 80);
+    const q = normalizarTexto(busquedaVariante);
+
+    const base = (variantes || [])
+      .filter(esItemPermitidoParaTaller)
+      .sort((a, b) => {
+        const tipoA = prioridadTipoTaller(a);
+        const tipoB = prioridadTipoTaller(b);
+        if (tipoA !== tipoB) return tipoA - tipoB;
+        return String(a.producto_nombre || "").localeCompare(String(b.producto_nombre || ""));
+      });
+
+    if (!q) return base.slice(0, 18);
 
     return base
-      .filter((v) => [v.id, v.producto_nombre, v.nombre_variante, v.sku, v.codigo_proveedor]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(q))
-      .slice(0, 80);
+      .filter((v) =>
+        normalizarTexto([
+          v.id,
+          v.producto_nombre,
+          v.nombre_variante,
+          v.categoria_nombre,
+          v.tipo_item,
+          v.sku,
+          v.codigo_barras,
+          v.codigo_proveedor,
+        ].filter(Boolean).join(" ")).includes(q)
+      )
+      .slice(0, 24);
   }, [variantes, busquedaVariante]);
+
+  const itemSeleccionado = useMemo(() => {
+    return variantes.find((v) => String(v.id) === String(itemForm.id_variante)) || null;
+  }, [variantes, itemForm.id_variante]);
 
   const estadosPermitidos = useMemo(() => {
     if (!orden) return [];
@@ -131,6 +152,12 @@ export default function TallerDetallePage() {
 
   function seleccionarVariante(id) {
     const variante = variantes.find((v) => String(v.id) === String(id));
+
+    if (variante && !esItemPermitidoParaTaller(variante)) {
+      setError("Ese ítem no se puede usar en taller. Usá servicios, repuestos o accesorios.");
+      return;
+    }
+
     setItemForm({
       id_variante: id,
       cantidad: itemForm.cantidad || "1",
@@ -161,6 +188,13 @@ export default function TallerDetallePage() {
 
     if (!itemForm.id_variante) {
       setError("Seleccioná una variante para agregar al trabajo");
+      return;
+    }
+
+    const varianteSeleccionada = variantes.find((v) => String(v.id) === String(itemForm.id_variante));
+
+    if (varianteSeleccionada && !esItemPermitidoParaTaller(varianteSeleccionada)) {
+      setError("No podés agregar bicicletas completas al taller. Seleccioná servicios, repuestos o accesorios.");
       return;
     }
 
@@ -265,7 +299,9 @@ export default function TallerDetallePage() {
         <div>
           <p style={styles.kicker}>Orden de taller</p>
           <h1 style={styles.title}>Orden #{orden.id}</h1>
-          <p style={styles.subtitle}>Ingresada: {formatDate(orden.fecha_ingreso)} · Cliente #{orden.id_cliente} · Bicicleta #{orden.id_bicicleta_cliente}</p>
+          <p style={styles.subtitle}>
+            Ingresada: {formatDate(orden.fecha_ingreso)} · {nombreClienteOrden(orden)} · {descripcionBicicletaOrden(orden)}
+          </p>
         </div>
 
         <div style={styles.heroActions}>
@@ -307,33 +343,64 @@ export default function TallerDetallePage() {
               </div>
             </div>
 
-            <form onSubmit={agregarItem} style={styles.itemGrid}>
+            <form onSubmit={agregarItem} style={styles.itemComposer}>
               <label style={styles.field}>
-                <span style={styles.label}>Buscar variante</span>
-                <input value={busquedaVariante} onChange={(e) => setBusquedaVariante(e.target.value)} placeholder="Buscar por producto, variante, SKU o proveedor" style={styles.input} />
+                <span style={styles.label}>Buscar servicio, repuesto o accesorio</span>
+                <input
+                  value={busquedaVariante}
+                  onChange={(e) => setBusquedaVariante(e.target.value)}
+                  placeholder="Ej: service, cámara, cadena, freno, lubricante..."
+                  style={styles.input}
+                />
               </label>
 
-              <label style={styles.field}>
-                <span style={styles.label}>Variante</span>
-                <select value={itemForm.id_variante} onChange={(e) => seleccionarVariante(e.target.value)} style={styles.input}>
-                  <option value="">Seleccionar variante</option>
-                  {variantesFiltradas.map((v) => (
-                    <option key={v.id} value={v.id}>#{v.id} - {v.producto_nombre} / {v.nombre_variante} {v.sku ? `(${v.sku})` : ""}</option>
-                  ))}
-                </select>
-              </label>
+              
 
-              <label style={styles.field}>
-                <span style={styles.label}>Cantidad</span>
-                <input type="number" min="0.01" step="0.01" value={itemForm.cantidad} onChange={(e) => setItemForm((p) => ({ ...p, cantidad: e.target.value }))} style={styles.input} />
-              </label>
+              <div style={styles.itemsPicker}>
+                {variantesFiltradas.length === 0 ? (
+                  <div style={styles.emptySmall}>No hay resultados permitidos para taller.</div>
+                ) : (
+                  variantesFiltradas.map((v) => (
+                    <TallerItemOption
+                      key={v.id}
+                      item={v}
+                      selected={String(itemForm.id_variante) === String(v.id)}
+                      onSelect={() => seleccionarVariante(v.id)}
+                    />
+                  ))
+                )}
+              </div>
 
-              <label style={styles.field}>
-                <span style={styles.label}>Precio unitario</span>
-                <input type="number" min="0" step="0.01" value={itemForm.precio_unitario} onChange={(e) => setItemForm((p) => ({ ...p, precio_unitario: e.target.value }))} style={styles.input} />
-              </label>
+              {itemSeleccionado && (
+                <div style={styles.selectedItemBox}>
+                  <div>
+                    <span style={styles.label}>Seleccionado</span>
+                    <strong>{itemSeleccionado.producto_nombre}</strong>
+                    <p>{itemSeleccionado.nombre_variante || "Única"}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setItemForm({ id_variante: "", cantidad: "1", precio_unitario: "" })}
+                    style={styles.smallSecondary}
+                  >
+                    Quitar
+                  </button>
+                </div>
+              )}
 
-              <button type="submit" disabled={guardando} style={styles.primaryButton}>Agregar item</button>
+              <div style={styles.itemFormRow}>
+                <label style={styles.field}>
+                  <span style={styles.label}>Cantidad</span>
+                  <input type="number" min="0.01" step="0.01" value={itemForm.cantidad} onChange={(e) => setItemForm((p) => ({ ...p, cantidad: e.target.value }))} style={styles.input} />
+                </label>
+
+                <label style={styles.field}>
+                  <span style={styles.label}>Precio unitario</span>
+                  <input type="number" min="0" step="0.01" value={itemForm.precio_unitario} onChange={(e) => setItemForm((p) => ({ ...p, precio_unitario: e.target.value }))} style={styles.input} />
+                </label>
+
+                <button type="submit" disabled={guardando || !itemForm.id_variante} style={styles.primaryButton}>Agregar item</button>
+              </div>
             </form>
           </section>
 
@@ -423,6 +490,42 @@ export default function TallerDetallePage() {
   );
 }
 
+function TallerItemOption({ item, selected, onSelect }) {
+  const tipo = tipoTallerLabel(item);
+  const esServicio = tipo === "Servicio";
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      style={selected ? styles.tallerOptionSelected : styles.tallerOption}
+    >
+      <div style={styles.optionImageBox}>
+        {esServicio ? (
+          <span style={styles.serviceIcon}>🛠</span>
+        ) : (
+          <ProductImage url={item.imagen_principal} size={54} />
+        )}
+      </div>
+
+      <div style={styles.optionBody}>
+        <div style={styles.optionTop}>
+          <strong>{item.producto_nombre}</strong>
+          <span style={tipo === "Servicio" ? styles.serviceBadge : styles.partBadge}>{tipo}</span>
+        </div>
+        <p>{item.nombre_variante || "Única"}</p>
+        <div style={styles.optionMeta}>
+          {item.codigo_proveedor && <span>Prov: {item.codigo_proveedor}</span>}
+          {item.sku && <span>SKU: {item.sku}</span>}
+          {item.stock_disponible != null && !esServicio && <span>Stock: {formatNumber(item.stock_disponible)}</span>}
+        </div>
+      </div>
+
+      <strong style={styles.optionPrice}>{formatMoney(item.precio_minorista)}</strong>
+    </button>
+  );
+}
+
 function ItemCard({ item, guardando, onAprobar, onDesaprobar, onEjecutar, onRevertir, onCancelar }) {
   return (
     <article style={item.etapa === "cancelado" ? styles.itemCardMuted : styles.itemCard}>
@@ -508,6 +611,45 @@ function humanizarEvento(evento) {
   return String(evento || "").replaceAll("_", " ");
 }
 
+function normalizarTexto(valor) {
+  return String(valor || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function esBicicletaCatalogo(item) {
+  const texto = normalizarTexto([
+    item?.producto_nombre,
+    item?.nombre_variante,
+    item?.categoria_nombre,
+    item?.tipo_bicicleta,
+  ].filter(Boolean).join(" "));
+
+  return Boolean(item?.serializable) || texto.includes("bicicleta") || texto.includes("bici ");
+}
+
+function esItemPermitidoParaTaller(item) {
+  return !esBicicletaCatalogo(item);
+}
+
+function tipoTallerLabel(item) {
+  const texto = normalizarTexto([item?.categoria_nombre, item?.tipo_item, item?.producto_nombre].filter(Boolean).join(" "));
+  if (texto.includes("servicio")) return "Servicio";
+  if (texto.includes("repuesto")) return "Repuesto";
+  if (texto.includes("accesorio")) return "Accesorio";
+  return item?.tipo_item === "servicio" ? "Servicio" : "Insumo";
+}
+
+function prioridadTipoTaller(item) {
+  const tipo = tipoTallerLabel(item);
+  if (tipo === "Servicio") return 1;
+  if (tipo === "Repuesto") return 2;
+  if (tipo === "Accesorio") return 3;
+  return 4;
+}
+
 const styles = {
   page: { minHeight: "100vh", padding: 20, background: "#f1f5f9", color: "#0f172a" },
   hero: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, padding: 22, borderRadius: 24, background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)", color: "white", boxShadow: "0 18px 40px rgba(15,23,42,.18)", marginBottom: 16 },
@@ -530,6 +672,21 @@ const styles = {
   cardTitle: { margin: "3px 0 0", fontSize: 22, letterSpacing: "-.02em" },
   muted: { color: "#64748b", margin: "4px 0 0", fontWeight: 700 },
   itemGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12, alignItems: "end" },
+  itemComposer: { display: "grid", gap: 12 },
+  selectorHint: { background: "#fff7ed", border: "1px solid #fed7aa", color: "#9a3412", borderRadius: 13, padding: "10px 12px", fontWeight: 800, fontSize: 13 },
+  itemsPicker: { display: "grid", gap: 10, maxHeight: 360, overflowY: "auto", paddingRight: 4 },
+  tallerOption: { width: "100%", border: "1px solid #e2e8f0", background: "white", borderRadius: 16, padding: 10, display: "grid", gridTemplateColumns: "64px minmax(0, 1fr) auto", gap: 12, alignItems: "center", textAlign: "left", cursor: "pointer" },
+  tallerOptionSelected: { width: "100%", border: "1px solid #f97316", background: "#fff7ed", borderRadius: 16, padding: 10, display: "grid", gridTemplateColumns: "64px minmax(0, 1fr) auto", gap: 12, alignItems: "center", textAlign: "left", cursor: "pointer", boxShadow: "0 10px 22px rgba(249,115,22,.15)" },
+  optionImageBox: { width: 58, height: 58, borderRadius: 14, background: "#f8fafc", border: "1px solid #e2e8f0", display: "grid", placeItems: "center", overflow: "hidden" },
+  serviceIcon: { fontSize: 28 },
+  optionBody: { minWidth: 0, display: "grid", gap: 4 },
+  optionTop: { display: "flex", gap: 8, justifyContent: "space-between", alignItems: "center" },
+  optionMeta: { display: "flex", gap: 8, flexWrap: "wrap", color: "#64748b", fontSize: 12, fontWeight: 800 },
+  serviceBadge: { background: "#ecfdf5", color: "#047857", borderRadius: 999, padding: "5px 8px", fontSize: 12, fontWeight: 1000 },
+  partBadge: { background: "#eff6ff", color: "#1d4ed8", borderRadius: 999, padding: "5px 8px", fontSize: 12, fontWeight: 1000 },
+  optionPrice: { whiteSpace: "nowrap", fontSize: 15 },
+  selectedItemBox: { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", background: "#ecfdf5", border: "1px solid #bbf7d0", borderRadius: 16, padding: 12 },
+  itemFormRow: { display: "grid", gridTemplateColumns: "160px 180px minmax(180px, 1fr)", gap: 12, alignItems: "end" },
   field: { display: "grid", gap: 7, fontSize: 14, fontWeight: 900 },
   label: { color: "#334155" },
   input: { width: "100%", border: "1px solid #cbd5e1", borderRadius: 13, padding: "12px 13px", fontWeight: 700, color: "#0f172a", boxSizing: "border-box", background: "white" },
@@ -559,3 +716,20 @@ const styles = {
   stageTones: { ok: { background: "#dcfce7", color: "#166534", borderColor: "#bbf7d0" }, info: { background: "#eff6ff", color: "#1d4ed8", borderColor: "#bfdbfe" }, warning: { background: "#fef3c7", color: "#92400e", borderColor: "#fde68a" }, danger: { background: "#fee2e2", color: "#991b1b", borderColor: "#fecaca" } },
   state: { padding: 24, fontWeight: 900 },
 };
+
+function nombreClienteOrden(orden) {
+  return orden?.cliente_nombre || `Cliente #${orden?.id_cliente}`;
+}
+
+function descripcionBicicletaOrden(orden) {
+  if (orden?.bicicleta_descripcion) return orden.bicicleta_descripcion;
+
+  const partes = [
+    orden?.bicicleta_marca,
+    orden?.bicicleta_modelo,
+    orden?.bicicleta_rodado ? `R${orden.bicicleta_rodado}` : null,
+    orden?.bicicleta_color,
+  ].filter(Boolean);
+
+  return partes.length > 0 ? partes.join(" ") : `Bicicleta #${orden?.id_bicicleta_cliente}`;
+}

@@ -138,22 +138,45 @@ def get_ordenes_taller(conn):
         cur.execute(
             """
             SELECT
-                id,
-                fecha_ingreso,
-                id_sucursal,
-                id_cliente,
-                id_bicicleta_cliente,
-                estado,
-                problema_reportado,
-                observaciones,
-                fecha_prometida,
-                total_final,
-                saldo_pendiente,
-                id_usuario,
-                created_at,
-                updated_at
-            FROM ordenes_taller
-            ORDER BY fecha_ingreso DESC, id DESC
+                ot.id,
+                ot.fecha_ingreso,
+                ot.id_sucursal,
+                ot.id_cliente,
+                ot.id_bicicleta_cliente,
+                c.nombre AS cliente_nombre,
+                c.telefono AS cliente_telefono,
+                c.dni AS cliente_dni,
+                bc.marca AS bicicleta_marca,
+                bc.modelo AS bicicleta_modelo,
+                bc.rodado AS bicicleta_rodado,
+                bc.color AS bicicleta_color,
+                bc.numero_cuadro AS bicicleta_numero_cuadro,
+                NULLIF(
+                    CONCAT_WS(
+                        ' ',
+                        NULLIF(bc.marca, ''),
+                        NULLIF(bc.modelo, ''),
+                        CASE
+                            WHEN NULLIF(bc.rodado, '') IS NOT NULL THEN 'R' || bc.rodado
+                            ELSE NULL
+                        END,
+                        NULLIF(bc.color, '')
+                    ),
+                    ''
+                ) AS bicicleta_descripcion,
+                ot.estado,
+                ot.problema_reportado,
+                ot.observaciones,
+                ot.fecha_prometida,
+                ot.total_final,
+                ot.saldo_pendiente,
+                ot.id_usuario,
+                ot.created_at,
+                ot.updated_at
+            FROM ordenes_taller ot
+            JOIN clientes c ON c.id = ot.id_cliente
+            JOIN bicicletas_clientes bc ON bc.id = ot.id_bicicleta_cliente
+            ORDER BY ot.fecha_ingreso DESC, ot.id DESC
             """
         )
         return cur.fetchall()
@@ -164,22 +187,45 @@ def get_orden_taller_by_id(conn, orden_id: int):
         cur.execute(
             """
             SELECT
-                id,
-                fecha_ingreso,
-                id_sucursal,
-                id_cliente,
-                id_bicicleta_cliente,
-                estado,
-                problema_reportado,
-                observaciones,
-                fecha_prometida,
-                total_final,
-                saldo_pendiente,
-                id_usuario,
-                created_at,
-                updated_at
-            FROM ordenes_taller
-            WHERE id = %s
+                ot.id,
+                ot.fecha_ingreso,
+                ot.id_sucursal,
+                ot.id_cliente,
+                ot.id_bicicleta_cliente,
+                c.nombre AS cliente_nombre,
+                c.telefono AS cliente_telefono,
+                c.dni AS cliente_dni,
+                bc.marca AS bicicleta_marca,
+                bc.modelo AS bicicleta_modelo,
+                bc.rodado AS bicicleta_rodado,
+                bc.color AS bicicleta_color,
+                bc.numero_cuadro AS bicicleta_numero_cuadro,
+                NULLIF(
+                    CONCAT_WS(
+                        ' ',
+                        NULLIF(bc.marca, ''),
+                        NULLIF(bc.modelo, ''),
+                        CASE
+                            WHEN NULLIF(bc.rodado, '') IS NOT NULL THEN 'R' || bc.rodado
+                            ELSE NULL
+                        END,
+                        NULLIF(bc.color, '')
+                    ),
+                    ''
+                ) AS bicicleta_descripcion,
+                ot.estado,
+                ot.problema_reportado,
+                ot.observaciones,
+                ot.fecha_prometida,
+                ot.total_final,
+                ot.saldo_pendiente,
+                ot.id_usuario,
+                ot.created_at,
+                ot.updated_at
+            FROM ordenes_taller ot
+            JOIN clientes c ON c.id = ot.id_cliente
+            JOIN bicicletas_clientes bc ON bc.id = ot.id_bicicleta_cliente
+            WHERE ot.id = %s
             """,
             (orden_id,),
         )
@@ -191,22 +237,45 @@ def get_orden_taller_by_id_for_update(conn, orden_id: int):
         cur.execute(
             """
             SELECT
-                id,
-                fecha_ingreso,
-                id_sucursal,
-                id_cliente,
-                id_bicicleta_cliente,
-                estado,
-                problema_reportado,
-                observaciones,
-                fecha_prometida,
-                total_final,
-                saldo_pendiente,
-                id_usuario,
-                created_at,
-                updated_at
-            FROM ordenes_taller
-            WHERE id = %s
+                ot.id,
+                ot.fecha_ingreso,
+                ot.id_sucursal,
+                ot.id_cliente,
+                ot.id_bicicleta_cliente,
+                c.nombre AS cliente_nombre,
+                c.telefono AS cliente_telefono,
+                c.dni AS cliente_dni,
+                bc.marca AS bicicleta_marca,
+                bc.modelo AS bicicleta_modelo,
+                bc.rodado AS bicicleta_rodado,
+                bc.color AS bicicleta_color,
+                bc.numero_cuadro AS bicicleta_numero_cuadro,
+                NULLIF(
+                    CONCAT_WS(
+                        ' ',
+                        NULLIF(bc.marca, ''),
+                        NULLIF(bc.modelo, ''),
+                        CASE
+                            WHEN NULLIF(bc.rodado, '') IS NOT NULL THEN 'R' || bc.rodado
+                            ELSE NULL
+                        END,
+                        NULLIF(bc.color, '')
+                    ),
+                    ''
+                ) AS bicicleta_descripcion,
+                ot.estado,
+                ot.problema_reportado,
+                ot.observaciones,
+                ot.fecha_prometida,
+                ot.total_final,
+                ot.saldo_pendiente,
+                ot.id_usuario,
+                ot.created_at,
+                ot.updated_at
+            FROM ordenes_taller ot
+            JOIN clientes c ON c.id = ot.id_cliente
+            JOIN bicicletas_clientes bc ON bc.id = ot.id_bicicleta_cliente
+            WHERE ot.id = %s
             FOR UPDATE
             """,
             (orden_id,),
@@ -369,21 +438,25 @@ def get_item_orden_taller_by_id_for_update(conn, item_id: int):
         cur.execute(
             """
             SELECT
-                id,
-                id_orden_taller,
-                id_variante,
-                etapa,
-                descripcion_snapshot,
-                cantidad,
-                precio_unitario,
-                costo_unitario_aplicado,
-                aprobado,
-                subtotal,
-                created_at,
-                updated_at
-            FROM ordenes_taller_items
-            WHERE id = %s
-            FOR UPDATE
+                oti.id,
+                oti.id_orden_taller,
+                oti.id_variante,
+                oti.etapa,
+                oti.descripcion_snapshot,
+                oti.cantidad,
+                oti.precio_unitario,
+                oti.costo_unitario_aplicado,
+                oti.aprobado,
+                oti.subtotal,
+                oti.created_at,
+                oti.updated_at,
+                p.tipo_item,
+                p.stockeable
+            FROM ordenes_taller_items oti
+            LEFT JOIN variantes v ON v.id = oti.id_variante
+            LEFT JOIN productos p ON p.id = v.id_producto
+            WHERE oti.id = %s
+            FOR UPDATE OF oti
             """,
             (item_id,),
         )
