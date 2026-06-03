@@ -15,14 +15,7 @@ export default function TallerNuevaOrdenPage() {
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
   const [mostrarNuevaBici, setMostrarNuevaBici] = useState(false);
-  const [nuevaBici, setNuevaBici] = useState({
-    marca: "",
-    modelo: "",
-    rodado: "",
-    color: "",
-    numero_cuadro: "",
-    notas: "",
-  });
+  const [nuevaBici, setNuevaBici] = useState({ marca: "", modelo: "", rodado: "", color: "", numero_cuadro: "", notas: "" });
 
   useEffect(() => {
     cargarClientes();
@@ -149,28 +142,41 @@ export default function TallerNuevaOrdenPage() {
     [clientes, clienteId]
   );
 
-  if (loading) return <p style={{ padding: "24px" }}>Cargando nueva orden...</p>;
+  const bicicletaSeleccionada = useMemo(
+    () => bicicletas.find((bici) => String(bici.id) === String(bicicletaId)),
+    [bicicletas, bicicletaId]
+  );
+
+  if (loading) return <div style={styles.state}>Cargando nueva orden...</div>;
 
   return (
-    <div style={pageStyle}>
-      <div style={headerStyle}>
+    <div style={styles.page}>
+      <header style={styles.hero}>
         <div>
-          <h1 style={{ margin: 0 }}>Nueva orden de taller</h1>
-          <p style={mutedStyle}>Ingreso de bicicleta, problema reportado y cliente responsable</p>
+          <p style={styles.kicker}>Taller / ingreso</p>
+          <h1 style={styles.title}>Nueva orden de taller</h1>
+          <p style={styles.subtitle}>Cliente real, bicicleta identificada y problema claro antes de presupuestar.</p>
         </div>
-        <Link to="/taller" style={linkBtnStyle}>Volver</Link>
-      </div>
 
-      {error && <div style={alertStyle}>Error: {error}</div>}
+        <Link to="/taller" style={styles.secondaryHeroButton}>← Volver</Link>
+      </header>
 
-      <div style={gridStyle}>
-        <section style={cardStyle}>
-          <h2 style={cardTitleStyle}>Datos de ingreso</h2>
+      {error && <div style={styles.error}>Error: {error}</div>}
 
-          <form onSubmit={crearOrden} style={{ display: "grid", gap: "14px" }}>
-            <label style={fieldStyle}>
-              <span style={labelStyle}>Cliente</span>
-              <select value={clienteId} onChange={(e) => setClienteId(e.target.value)} style={inputStyle}>
+      <main style={styles.layout}>
+        <section style={styles.card}>
+          <div style={styles.sectionHeader}>
+            <div>
+              <p style={styles.eyebrow}>Paso 1</p>
+              <h2 style={styles.cardTitle}>Ingreso de bicicleta</h2>
+              <p style={styles.muted}>Seleccioná cliente, bicicleta y describí exactamente qué dejó el cliente.</p>
+            </div>
+          </div>
+
+          <form onSubmit={crearOrden} style={styles.form}>
+            <label style={styles.field}>
+              <span style={styles.label}>Cliente *</span>
+              <select value={clienteId} onChange={(e) => setClienteId(e.target.value)} style={styles.input}>
                 <option value="">Seleccionar cliente</option>
                 {clientes.map((cliente) => (
                   <option key={cliente.id} value={cliente.id}>
@@ -181,72 +187,76 @@ export default function TallerNuevaOrdenPage() {
             </label>
 
             {Number(clienteId) === 1 && (
-              <div style={warningStyle}>
-                Taller no debería trabajar con Consumidor final. Cargá el cliente real antes de crear la orden.
-              </div>
+              <div style={styles.warning}>Taller no debería trabajar con Consumidor final. Cargá el cliente real antes de crear la orden.</div>
             )}
 
-            <div style={fieldStyle}>
-              <span style={labelStyle}>Bicicleta</span>
+            <div style={styles.field}>
+              <span style={styles.label}>Bicicleta *</span>
               {cargandoBicis ? (
-                <div>Cargando bicicletas...</div>
+                <div style={styles.emptyInline}>Cargando bicicletas...</div>
               ) : bicicletas.length === 0 ? (
-                <div style={warningStyle}>Este cliente todavía no tiene bicicletas cargadas.</div>
+                <div style={styles.warning}>Este cliente todavía no tiene bicicletas cargadas.</div>
               ) : (
-                <select value={bicicletaId} onChange={(e) => setBicicletaId(e.target.value)} style={inputStyle}>
+                <select value={bicicletaId} onChange={(e) => setBicicletaId(e.target.value)} style={styles.input}>
                   {bicicletas.map((bici) => (
-                    <option key={bici.id} value={bici.id}>
-                      #{bici.id} - {describirBicicleta(bici)}
-                    </option>
+                    <option key={bici.id} value={bici.id}>#{bici.id} - {describirBicicleta(bici)}</option>
                   ))}
                 </select>
               )}
             </div>
 
-            <button type="button" onClick={() => setMostrarNuevaBici((v) => !v)} style={{ width: "fit-content" }}>
-              {mostrarNuevaBici ? "Ocultar carga de bicicleta" : "+ Cargar bicicleta"}
+            <button type="button" onClick={() => setMostrarNuevaBici((v) => !v)} style={styles.secondaryButton}>
+              {mostrarNuevaBici ? "Ocultar carga de bicicleta" : "＋ Cargar bicicleta del cliente"}
             </button>
 
-            <label style={fieldStyle}>
-              <span style={labelStyle}>Problema reportado</span>
+            <label style={styles.field}>
+              <span style={styles.label}>Problema reportado *</span>
               <textarea
                 value={problema}
                 onChange={(e) => setProblema(e.target.value)}
-                placeholder="Ej: cambio de cable y funda, freno trasero no responde, revisar transmisión..."
-                rows={6}
-                style={{ ...inputStyle, resize: "vertical" }}
+                placeholder="Ej: freno trasero no responde, cambio salta en piñón 3, revisar transmisión completa..."
+                rows={7}
+                style={{ ...styles.input, resize: "vertical" }}
               />
             </label>
 
-            <button type="submit" disabled={guardando} style={primaryButtonStyle}>
-              {guardando ? "Guardando..." : "Crear orden"}
+            <button type="submit" disabled={guardando} style={styles.primaryButton}>
+              {guardando ? "Creando..." : "Crear orden de taller"}
             </button>
           </form>
         </section>
 
-        <aside style={cardStyle}>
-          <h2 style={cardTitleStyle}>Contexto</h2>
-          <Info label="Cliente seleccionado" value={clienteSeleccionado ? clienteSeleccionado.nombre : "-"} />
-          <Info label="Teléfono" value={clienteSeleccionado?.telefono || "-"} />
-          <Info label="Bicicletas cargadas" value={bicicletas.length} />
-          <div style={noteStyle}>
-            No conviene crear órdenes sin cliente real: después perdés historial de reparaciones, deuda, garantía y seguimiento.
-          </div>
+        <aside style={styles.sidePanel}>
+          <section style={styles.sideCard}>
+            <h2 style={styles.sideTitle}>Resumen de ingreso</h2>
+            <Info label="Cliente" value={clienteSeleccionado?.nombre || "-"} />
+            <Info label="Teléfono" value={clienteSeleccionado?.telefono || "-"} />
+            <Info label="Bicicleta" value={bicicletaSeleccionada ? describirBicicleta(bicicletaSeleccionada) : "-"} />
+            <Info label="Bicis cargadas" value={bicicletas.length} />
+            <div style={styles.note}>Si no registrás cliente y bicicleta real, después perdés historial, deuda, garantía y seguimiento.</div>
+          </section>
         </aside>
-      </div>
+      </main>
 
       {mostrarNuevaBici && (
-        <section style={cardStyle}>
-          <h2 style={cardTitleStyle}>Cargar bicicleta del cliente</h2>
-          <form onSubmit={guardarBicicleta} style={bikeFormGridStyle}>
+        <section style={styles.card}>
+          <div style={styles.sectionHeader}>
+            <div>
+              <p style={styles.eyebrow}>Paso auxiliar</p>
+              <h2 style={styles.cardTitle}>Cargar bicicleta del cliente</h2>
+              <p style={styles.muted}>Solo lo necesario para identificarla cuando vuelva al taller.</p>
+            </div>
+          </div>
+
+          <form onSubmit={guardarBicicleta} style={styles.bikeGrid}>
             <Input label="Marca" value={nuevaBici.marca} onChange={(v) => cambiarNuevaBici("marca", v)} required />
             <Input label="Modelo" value={nuevaBici.modelo} onChange={(v) => cambiarNuevaBici("modelo", v)} required />
             <Input label="Rodado" value={nuevaBici.rodado} onChange={(v) => cambiarNuevaBici("rodado", v)} />
             <Input label="Color" value={nuevaBici.color} onChange={(v) => cambiarNuevaBici("color", v)} />
             <Input label="Número de cuadro" value={nuevaBici.numero_cuadro} onChange={(v) => cambiarNuevaBici("numero_cuadro", v)} />
             <Input label="Notas" value={nuevaBici.notas} onChange={(v) => cambiarNuevaBici("notas", v)} />
-            <button type="submit" disabled={guardando} style={{ ...primaryButtonStyle, gridColumn: "1 / -1", width: "fit-content" }}>
-              Guardar bicicleta
+            <button type="submit" disabled={guardando} style={{ ...styles.primaryButton, gridColumn: "1 / -1", width: "fit-content" }}>
+              {guardando ? "Guardando..." : "Guardar bicicleta"}
             </button>
           </form>
         </section>
@@ -257,18 +267,18 @@ export default function TallerNuevaOrdenPage() {
 
 function Input({ label, value, onChange, required = false }) {
   return (
-    <label style={fieldStyle}>
-      <span style={labelStyle}>{label}{required ? " *" : ""}</span>
-      <input value={value} onChange={(e) => onChange(e.target.value)} style={inputStyle} />
+    <label style={styles.field}>
+      <span style={styles.label}>{label}{required ? " *" : ""}</span>
+      <input value={value} onChange={(e) => onChange(e.target.value)} style={styles.input} />
     </label>
   );
 }
 
 function Info({ label, value }) {
   return (
-    <div style={{ background: "#f9fafb", border: "1px solid #eaecf0", borderRadius: "12px", padding: "12px", marginBottom: "10px" }}>
-      <div style={{ fontSize: "13px", color: "#667085", marginBottom: "6px" }}>{label}</div>
-      <div style={{ fontWeight: 600 }}>{value}</div>
+    <div style={styles.infoBox}>
+      <span>{label}</span>
+      <strong>{value || "-"}</strong>
     </div>
   );
 }
@@ -283,18 +293,33 @@ function limpiarObjeto(obj) {
   return Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, typeof v === "string" && v.trim() === "" ? null : v]));
 }
 
-const pageStyle = { padding: "24px", background: "#f6f7fb", minHeight: "100vh" };
-const headerStyle = { display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "center", marginBottom: "16px", flexWrap: "wrap" };
-const mutedStyle = { margin: "6px 0 0", color: "#667085" };
-const gridStyle = { display: "grid", gridTemplateColumns: "minmax(360px, 1.4fr) minmax(280px, 0.8fr)", gap: "16px", alignItems: "start" };
-const cardStyle = { background: "white", borderRadius: "14px", boxShadow: "0 2px 10px rgba(0,0,0,0.08)", padding: "16px", marginBottom: "16px" };
-const cardTitleStyle = { marginTop: 0, marginBottom: "14px", fontSize: "20px" };
-const fieldStyle = { display: "flex", flexDirection: "column", gap: "7px" };
-const labelStyle = { fontWeight: "bold", fontSize: "14px" };
-const inputStyle = { width: "100%", padding: "10px 12px", borderRadius: "10px", border: "1px solid #d0d5dd", fontSize: "15px" };
-const linkBtnStyle = { textDecoration: "none", padding: "8px 12px", borderRadius: "10px", border: "1px solid #d0d5dd", color: "#111827", background: "white" };
-const primaryButtonStyle = { padding: "11px 14px", borderRadius: "10px", border: "1px solid #111827", background: "#111827", color: "white", fontWeight: "bold", cursor: "pointer" };
-const alertStyle = { background: "#fff1f0", color: "#b42318", padding: "12px", borderRadius: "10px", border: "1px solid #f4c7c3", marginBottom: "16px" };
-const warningStyle = { background: "#fff7e6", color: "#8a4b00", padding: "10px", borderRadius: "10px", border: "1px solid #ffd591" };
-const noteStyle = { background: "#f9fafb", borderLeft: "4px solid #111827", padding: "12px", borderRadius: "8px", color: "#344054" };
-const bikeFormGridStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "14px" };
+const styles = {
+  page: { minHeight: "100vh", padding: 20, background: "#f1f5f9", color: "#0f172a" },
+  hero: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, padding: 22, borderRadius: 24, background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)", color: "white", boxShadow: "0 18px 40px rgba(15,23,42,.18)", marginBottom: 16 },
+  kicker: { margin: 0, color: "#fb923c", fontSize: 12, fontWeight: 1000, textTransform: "uppercase", letterSpacing: ".08em" },
+  title: { margin: "3px 0 0", fontSize: 34, fontWeight: 1000, letterSpacing: "-.03em" },
+  subtitle: { margin: "8px 0 0", color: "#cbd5e1", fontWeight: 700 },
+  secondaryHeroButton: { textDecoration: "none", border: "1px solid rgba(255,255,255,.22)", background: "rgba(255,255,255,.08)", color: "white", borderRadius: 14, padding: "12px 16px", fontWeight: 1000, cursor: "pointer" },
+  error: { background: "#fff1f0", color: "#b42318", border: "1px solid #fecdca", borderRadius: 14, padding: 12, marginBottom: 14, fontWeight: 800 },
+  layout: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) 340px", gap: 16, alignItems: "start" },
+  card: { background: "white", border: "1px solid #e2e8f0", borderRadius: 22, padding: 18, boxShadow: "0 14px 30px rgba(15,23,42,.06)", marginBottom: 16 },
+  sectionHeader: { marginBottom: 14 },
+  eyebrow: { margin: 0, color: "#f97316", fontSize: 12, fontWeight: 1000, textTransform: "uppercase", letterSpacing: ".08em" },
+  cardTitle: { margin: "3px 0 0", fontSize: 22, letterSpacing: "-.02em" },
+  muted: { color: "#64748b", margin: "4px 0 0", fontWeight: 700 },
+  form: { display: "grid", gap: 14 },
+  field: { display: "grid", gap: 7, fontSize: 14, fontWeight: 900 },
+  label: { color: "#334155" },
+  input: { width: "100%", border: "1px solid #cbd5e1", borderRadius: 13, padding: "12px 13px", fontWeight: 700, color: "#0f172a", boxSizing: "border-box", background: "white" },
+  primaryButton: { border: "none", background: "#f97316", color: "white", borderRadius: 13, padding: "12px 16px", fontWeight: 1000, cursor: "pointer", boxShadow: "0 10px 20px rgba(249,115,22,.22)" },
+  secondaryButton: { border: "1px solid #cbd5e1", background: "white", color: "#0f172a", borderRadius: 13, padding: "11px 14px", fontWeight: 1000, cursor: "pointer", width: "fit-content" },
+  warning: { background: "#fffbeb", color: "#92400e", padding: 12, borderRadius: 14, border: "1px solid #fde68a", fontWeight: 800 },
+  emptyInline: { color: "#64748b", fontWeight: 800, padding: 12, background: "#f8fafc", borderRadius: 12 },
+  sidePanel: { position: "sticky", top: 16 },
+  sideCard: { background: "#0f172a", color: "white", borderRadius: 22, padding: 18, boxShadow: "0 18px 40px rgba(15,23,42,.22)", display: "grid", gap: 10 },
+  sideTitle: { margin: 0, fontSize: 22 },
+  infoBox: { background: "#1e293b", borderRadius: 14, padding: 12, display: "grid", gap: 5, color: "#cbd5e1" },
+  note: { marginTop: 4, background: "rgba(249,115,22,.14)", border: "1px solid rgba(251,146,60,.32)", color: "#fed7aa", borderRadius: 16, padding: 14, fontWeight: 800 },
+  bikeGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 14 },
+  state: { padding: 24, fontWeight: 900 },
+};
