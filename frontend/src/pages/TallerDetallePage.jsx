@@ -10,6 +10,7 @@ import {
   revertirEjecucionItemOrdenTaller,
   cancelarItemOrdenTaller,
   generarVentaDesdeOrdenTaller,
+  getPresupuestoTallerUrl,
 } from "../services/tallerService";
 import { formatDate, formatMoney, formatNumber } from "../utils/formatters";
 import { EstadoBadge } from "./TallerListPage";
@@ -310,6 +311,12 @@ export default function TallerDetallePage() {
     }
   }
 
+
+  function imprimirPresupuesto() {
+    if (!orden?.id) return;
+    window.open(getPresupuestoTallerUrl(orden.id), "_blank", "noopener,noreferrer");
+  }
+
   if (loading) return <div style={styles.state}>Cargando orden...</div>;
   if (!orden) return <div style={styles.state}>No se encontró la orden.</div>;
 
@@ -457,6 +464,21 @@ export default function TallerDetallePage() {
         </section>
 
         <aside style={styles.sidePanel}>
+          <section style={styles.card}>
+            <h2 style={styles.sideTitle}>Presupuesto</h2>
+            <div style={styles.billingBox}>
+              <p style={styles.muted}>Imprimí el presupuesto para aprobación del cliente. No genera venta ni cobra.</p>
+              <button
+                type="button"
+                onClick={imprimirPresupuesto}
+                disabled={items.filter((item) => item.etapa !== "cancelado").length === 0}
+                style={styles.secondaryButtonFull}
+              >
+                Imprimir presupuesto
+              </button>
+            </div>
+          </section>
+
           <section style={styles.card}>
             <h2 style={styles.sideTitle}>Facturación</h2>
             <div style={styles.billingBox}>
@@ -734,6 +756,7 @@ const styles = {
   label: { color: "#334155" },
   input: { width: "100%", border: "1px solid #cbd5e1", borderRadius: 13, padding: "12px 13px", fontWeight: 700, color: "#0f172a", boxSizing: "border-box", background: "white" },
   primaryButton: { border: "none", background: "#f97316", color: "white", borderRadius: 13, padding: "12px 16px", fontWeight: 1000, cursor: "pointer", boxShadow: "0 10px 20px rgba(249,115,22,.22)" },
+  secondaryButtonFull: { width: "100%", border: "1px solid #cbd5e1", background: "white", color: "#0f172a", borderRadius: 13, padding: "12px 16px", fontWeight: 1000, cursor: "pointer", textAlign: "center" },
   tableHeader: { padding: 18, borderBottom: "1px solid #e2e8f0" },
   itemsList: { display: "grid", gap: 10, padding: 16 },
   itemCard: { border: "1px solid #e2e8f0", borderRadius: 18, padding: 14, display: "grid", gap: 12, background: "white" },

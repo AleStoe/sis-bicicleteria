@@ -209,6 +209,12 @@ export default function CatalogoPage() {
             ref={searchRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                e.currentTarget.select();
+              }
+            }}
             placeholder="Buscar por producto, variante, marca, SKU, código de barras o proveedor..."
             style={styles.searchInput}
           />

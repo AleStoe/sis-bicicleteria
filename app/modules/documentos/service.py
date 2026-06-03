@@ -11,6 +11,10 @@ from .repository import (
     get_resumen_cobros_pagos_by_venta_id,
     get_resumen_cobros_items_preview_by_venta_id,
 )
+from .repository_taller_presupuesto import (
+    get_orden_taller_presupuesto_by_id,
+    get_orden_taller_items_presupuesto_by_orden_id,
+)
 
 
 def obtener_datos_comprobante_x_venta(venta_id: int):
@@ -86,6 +90,35 @@ def obtener_datos_resumen_cobros_venta(venta_id: int):
             "venta": venta,
             "pagos": pagos,
             "items_preview": items_preview,
+        }
+
+    finally:
+        conn.close()
+
+
+def obtener_datos_presupuesto_taller(orden_id: int):
+    conn = get_connection()
+
+    try:
+        orden = get_orden_taller_presupuesto_by_id(conn, orden_id)
+
+        if orden is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No existe la orden de taller {orden_id}",
+            )
+
+        items = get_orden_taller_items_presupuesto_by_orden_id(conn, orden_id)
+
+        if not items:
+            raise HTTPException(
+                status_code=400,
+                detail="La orden de taller no tiene items para presupuestar",
+            )
+
+        return {
+            "orden": orden,
+            "items": items,
         }
 
     finally:
