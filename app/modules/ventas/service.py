@@ -108,6 +108,7 @@ def _consolidar_items(items):
             bool(item.get("bonificado", False)),
             item.get("motivo_precio_manual"),
             item.get("motivo_bonificacion"),
+            item.get("id_orden_taller_item"),
         )
 
         if clave not in consolidados:
@@ -119,6 +120,7 @@ def _consolidar_items(items):
                 "bonificado": bool(item.get("bonificado", False)),
                 "motivo_precio_manual": item.get("motivo_precio_manual"),
                 "motivo_bonificacion": item.get("motivo_bonificacion"),
+                "id_orden_taller_item": item.get("id_orden_taller_item"),
             }
         else:
             consolidados[clave]["cantidad"] += cantidad
@@ -488,6 +490,7 @@ def crear_venta(data):
                     "bonificado": item.bonificado,
                     "motivo_precio_manual": item.motivo_precio_manual,
                     "motivo_bonificacion": item.motivo_bonificacion,
+                    "id_orden_taller_item": item.id_orden_taller_item,
                 }
                 for item in data.items
             ]
@@ -611,6 +614,7 @@ def crear_venta(data):
                     "id_usuario_creador": data.id_usuario,
                     "observaciones": getattr(data, "observaciones", None),
                     "id_reserva_origen": None,
+                    "id_orden_taller": getattr(data, "id_orden_taller", None),
                 },
             )
             for regla in reglas_aplicadas:
@@ -640,6 +644,7 @@ def crear_venta(data):
                         "id_venta": venta_id,
                         "id_variante": variante["id"],
                         "id_bicicleta_serializada": item["id_bicicleta_serializada"],
+                        "id_orden_taller_item": item.get("id_orden_taller_item"),
                         "descripcion_snapshot": (
                             f"{variante['producto_nombre']} - "
                             f"{variante['nombre_variante']}"
@@ -706,6 +711,8 @@ def crear_venta(data):
                 item = fila["item"]
                 variante = fila["variante"]
                 if item.get("id_bicicleta_serializada") is not None:
+                    continue
+                if item.get("id_orden_taller_item") is not None:
                     continue
                 try:
                     stock_service.marcar_stock_pendiente_entrega(
@@ -1034,6 +1041,8 @@ def entregar_venta(venta_id: int, data):
 
             for item in items_stock:
                 if item.get("id_bicicleta_serializada") is not None:
+                    continue
+                if item.get("id_orden_taller_item") is not None:
                     continue
 
                 stock_service.registrar_entrega_stock(

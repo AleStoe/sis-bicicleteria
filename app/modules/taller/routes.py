@@ -10,6 +10,8 @@ from .schemas import (
     OrdenTallerItemAprobacionUpdate,
     OrdenTallerItemReversionEjecucionInput,
     OrdenTallerItemCancelarInput,
+    OrdenTallerGenerarVentaInput,
+    OrdenTallerGenerarVentaOutput,
     
 )
 from .service import (
@@ -22,6 +24,7 @@ from .service import (
     ejecutar_item_orden_taller,
     revertir_ejecucion_item_orden_taller,
     cancelar_item_orden_taller,
+    generar_venta_desde_orden_taller,
 )
 
 router = APIRouter(prefix="/ordenes_taller", tags=["Taller"])
@@ -90,3 +93,10 @@ def cancelar_item(
     payload: OrdenTallerItemCancelarInput,
 ):
     return cancelar_item_orden_taller(orden_id, item_id, payload)
+
+@router.post(
+    "/{orden_id}/generar-venta",
+    response_model=OrdenTallerGenerarVentaOutput,
+)
+def generar_venta(orden_id: int, payload: OrdenTallerGenerarVentaInput):
+    return generar_venta_desde_orden_taller(orden_id, payload)

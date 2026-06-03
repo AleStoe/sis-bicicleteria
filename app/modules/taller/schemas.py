@@ -12,6 +12,7 @@ ESTADOS_TALLER_BASE = Literal[
     "esperando_repuestos",
     "en_reparacion",
     "terminada",
+    "facturada",
     "lista_para_retirar",
     "retirada",
     "cancelada",
@@ -59,6 +60,7 @@ class OrdenTallerResponse(BaseModel):
     fecha_prometida: datetime | None = None
     total_final: Decimal
     saldo_pendiente: Decimal
+    id_venta_generada: int | None = None
     id_usuario: int
     created_at: datetime
     updated_at: datetime
@@ -104,3 +106,13 @@ class OrdenTallerItemReversionEjecucionInput(BaseModel):
 class OrdenTallerItemCancelarInput(BaseModel):
     id_usuario: int = Field(gt=0)
     motivo: str = Field(min_length=1)
+
+class OrdenTallerGenerarVentaInput(BaseModel):
+    id_usuario: int = Field(gt=0)
+
+
+class OrdenTallerGenerarVentaOutput(BaseModel):
+    ok: bool
+    orden_id: int
+    venta_id: int
+    estado_orden: str

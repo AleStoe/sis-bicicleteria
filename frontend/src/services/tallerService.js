@@ -61,3 +61,11 @@ export function cancelarItemOrdenTaller(ordenId, itemId, data) {
     body: JSON.stringify(data),
   });
 }
+
+
+export function generarVentaDesdeOrdenTaller(ordenId, data) {
+  return apiRequest(`/ordenes_taller/${ordenId}/generar-venta`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}

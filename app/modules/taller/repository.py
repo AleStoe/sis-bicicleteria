@@ -117,6 +117,7 @@ def insert_orden_taller(conn, data: dict):
                 fecha_prometida,
                 total_final,
                 saldo_pendiente,
+                id_venta_generada,
                 id_usuario,
                 created_at,
                 updated_at
@@ -170,6 +171,7 @@ def get_ordenes_taller(conn):
                 ot.fecha_prometida,
                 ot.total_final,
                 ot.saldo_pendiente,
+                ot.id_venta_generada,
                 ot.id_usuario,
                 ot.created_at,
                 ot.updated_at
@@ -219,6 +221,7 @@ def get_orden_taller_by_id(conn, orden_id: int):
                 ot.fecha_prometida,
                 ot.total_final,
                 ot.saldo_pendiente,
+                ot.id_venta_generada,
                 ot.id_usuario,
                 ot.created_at,
                 ot.updated_at
@@ -269,6 +272,7 @@ def get_orden_taller_by_id_for_update(conn, orden_id: int):
                 ot.fecha_prometida,
                 ot.total_final,
                 ot.saldo_pendiente,
+                ot.id_venta_generada,
                 ot.id_usuario,
                 ot.created_at,
                 ot.updated_at
@@ -569,5 +573,31 @@ def update_orden_taller_item_cancelado(conn, item_id: int):
                 updated_at
             """,
             (item_id,),
+        )
+        return cur.fetchone()
+
+def update_orden_taller_venta_generada(conn, orden_id: int, venta_id: int) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE ordenes_taller
+            SET id_venta_generada = %s,
+                estado = 'facturada',
+                updated_at = NOW()
+            WHERE id = %s
+            """,
+            (venta_id, orden_id),
+        )
+
+
+def get_venta_generada_por_orden_taller(conn, orden_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT id, estado, total_final, saldo_pendiente
+            FROM ventas
+            WHERE id_orden_taller = %s
+            """,
+            (orden_id,),
         )
         return cur.fetchone()

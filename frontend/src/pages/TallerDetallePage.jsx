@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { listarVariantes } from "../services/catalogoService";
 import {
   agregarItemOrdenTaller,
@@ -9,11 +9,12 @@ import {
   obtenerOrdenTaller,
   revertirEjecucionItemOrdenTaller,
   cancelarItemOrdenTaller,
+  generarVentaDesdeOrdenTaller,
 } from "../services/tallerService";
-import ProductImage from "../components/catalogo/ProductImage";
 import { formatDate, formatMoney, formatNumber } from "../utils/formatters";
 import { EstadoBadge } from "./TallerListPage";
 import { PromptModal } from "../components/ui/PromptModal";
+import ProductImage from "../components/catalogo/ProductImage";
 
 const ESTADOS = [
   "ingresada",
@@ -22,6 +23,7 @@ const ESTADOS = [
   "esperando_repuestos",
   "en_reparacion",
   "terminada",
+  "facturada",
   "lista_para_retirar",
   "retirada",
   "cancelada",
@@ -33,7 +35,8 @@ const TRANSICIONES_UI = {
   esperando_aprobacion: ["en_reparacion", "cancelada"],
   esperando_repuestos: ["en_reparacion", "cancelada"],
   en_reparacion: ["esperando_repuestos", "terminada", "cancelada"],
-  terminada: ["lista_para_retirar"],
+  terminada: ["facturada", "lista_para_retirar"],
+  facturada: ["lista_para_retirar"],
   lista_para_retirar: ["retirada"],
   retirada: [],
   cancelada: [],
@@ -41,6 +44,7 @@ const TRANSICIONES_UI = {
 
 export default function TallerDetallePage() {
   const { ordenId } = useParams();
+  const navigate = useNavigate();
   const [orden, setOrden] = useState(null);
   const [variantes, setVariantes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -290,6 +294,22 @@ export default function TallerDetallePage() {
     }
   }
 
+  async function generarVenta() {
+    try {
+      setGuardando(true);
+      setError("");
+      setMensaje("");
+      const resultado = await generarVentaDesdeOrdenTaller(ordenId, { id_usuario: 1 });
+      await refrescarOrden();
+      setMensaje(`Venta #${resultado.venta_id} generada desde taller`);
+      navigate(`/ventas/${resultado.venta_id}/cobro`);
+    } catch (err) {
+      setError(err.message || "No se pudo generar la venta desde taller");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
   if (loading) return <div style={styles.state}>Cargando orden...</div>;
   if (!orden) return <div style={styles.state}>No se encontró la orden.</div>;
 
@@ -317,6 +337,7 @@ export default function TallerDetallePage() {
         <Metric label="Estado" value={<EstadoBadge estado={orden.estado} />} tone="dark" />
         <Metric label="Total" value={formatMoney(orden.total_final)} tone="orange" />
         <Metric label="Saldo pendiente" value={formatMoney(orden.saldo_pendiente)} tone={Number(orden.saldo_pendiente || 0) > 0 ? "warning" : "ok"} />
+        <Metric label="Venta" value={orden.id_venta_generada ? `#${orden.id_venta_generada}` : "No generada"} tone={orden.id_venta_generada ? "ok" : "warning"} />
         <Metric label="Items" value={resumen.items} tone="muted" />
         <Metric label="Ejecutados" value={resumen.ejecutados} tone="ok" />
         <Metric label="Pendientes" value={resumen.presupuestados + resumen.aprobados} tone="info" />
@@ -354,7 +375,9 @@ export default function TallerDetallePage() {
                 />
               </label>
 
-              
+              <div style={styles.selectorHint}>
+                Se ocultan bicicletas completas y serializadas. Taller usa servicios, repuestos y accesorios.
+              </div>
 
               <div style={styles.itemsPicker}>
                 {variantesFiltradas.length === 0 ? (
@@ -434,6 +457,25 @@ export default function TallerDetallePage() {
         </section>
 
         <aside style={styles.sidePanel}>
+          <section style={styles.card}>
+            <h2 style={styles.sideTitle}>Facturación</h2>
+            <div style={styles.billingBox}>
+              {orden.id_venta_generada ? (
+                <>
+                  <Info label="Venta generada" value={`#${orden.id_venta_generada}`} />
+                  <Link to={`/ventas/${orden.id_venta_generada}/cobro`} style={styles.linkButton}>Cobrar venta</Link>
+                </>
+              ) : orden.estado === "terminada" ? (
+                <>
+                  <p style={styles.muted}>El trabajo está terminado. Generá la venta para cobrar con el flujo normal de ventas.</p>
+                  <button type="button" onClick={generarVenta} disabled={guardando || resumen.ejecutados === 0} style={styles.primaryButton}>Generar venta</button>
+                </>
+              ) : (
+                <p style={styles.muted}>La venta se habilita cuando la orden queda terminada.</p>
+              )}
+            </div>
+          </section>
+
           <section style={styles.card}>
             <h2 style={styles.sideTitle}>Estado operativo</h2>
             <form onSubmit={cambiarEstado} style={styles.statusForm}>
@@ -595,6 +637,7 @@ function labelEstado(estado) {
     esperando_repuestos: "Esperando repuestos",
     en_reparacion: "En reparación",
     terminada: "Terminada",
+    facturada: "Facturada",
     lista_para_retirar: "Lista para retirar",
     retirada: "Retirada",
     cancelada: "Cancelada",
@@ -706,6 +749,22 @@ const styles = {
   sidePanel: { display: "grid", gap: 16, position: "sticky", top: 16 },
   sideTitle: { margin: "0 0 12px", fontSize: 20 },
   statusForm: { display: "grid", gap: 12 },
+  billingBox: {
+    display: "grid",
+    gap: 10,
+  },
+  linkButton: {
+    display: "block",
+    textAlign: "center",
+    textDecoration: "none",
+    border: "none",
+    background: "#f97316",
+    color: "white",
+    borderRadius: 12,
+    padding: "11px 12px",
+    fontWeight: 1000,
+    cursor: "pointer",
+  },
   note: { marginTop: 12, background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", borderRadius: 14, padding: 12, fontWeight: 800 },
   infoBox: { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 14, padding: 12, display: "grid", gap: 5, color: "#64748b" },
   timeline: { display: "grid", gap: 10, maxHeight: 480, overflowY: "auto" },

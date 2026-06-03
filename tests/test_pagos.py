@@ -1429,3 +1429,170 @@ def test_venta_con_tarjeta_6_cuotas_persiste_recargo(
     assert detalle is not None
     assert detalle["cuotas"] == 6
     assert detalle["entidad"] == "Mastercard"
+
+def test_pago_efectivo_con_descuento_cubre_saldo_por_base(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    venta_id = crear_venta_base(client, seed_venta_basica)
+
+    abrir = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+    assert abrir.status_code == 200
+
+    venta = get_venta(db_conn, venta_id)
+    total = Decimal(str(venta["total_final"]))
+
+    response = client.post(
+        "/pagos/",
+        json={
+            "origen_tipo": "venta",
+            "origen_id": venta_id,
+            "medio_pago": "efectivo",
+            "monto_base": str(total),
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "nota": "Pago efectivo con descuento",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+
+    data = response.json()
+    assert data["estado_venta"] == "pagada_total"
+    assert Decimal(str(data["saldo_restante"])) == Decimal("0.00")
+
+    venta_final = get_venta(db_conn, venta_id)
+    assert venta_final["estado"] == "pagada_total"
+    assert Decimal(str(venta_final["saldo_pendiente"])) == Decimal("0.00")
+
+    pagos = get_pagos_by_venta(db_conn, venta_id)
+    assert len(pagos) == 1
+
+    pago = pagos[0]
+    assert Decimal(str(pago["monto_base_aplicado"])) == total
+    assert Decimal(str(pago["monto_descuento_aplicado"])) > Decimal("0.00")
+    assert Decimal(str(pago["monto_total_cobrado"])) < total
+
+
+def test_pago_parcial_efectivo_con_descuento_descuenta_saldo_por_base(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    venta_id = crear_venta_base(client, seed_venta_basica)
+
+    abrir = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+    assert abrir.status_code == 200
+
+    response = client.post(
+        "/pagos/",
+        json={
+            "origen_tipo": "venta",
+            "origen_id": venta_id,
+            "medio_pago": "efectivo",
+            "monto_base": "10000",
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "nota": "Pago parcial efectivo con descuento",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+
+    venta = get_venta(db_conn, venta_id)
+
+    assert venta["estado"] == "pagada_parcial"
+    assert Decimal(str(venta["saldo_pendiente"])) == (
+        Decimal(str(venta["total_final"])) - Decimal("10000.00")
+    )
+
+
+def test_reversion_pago_efectivo_con_descuento_restaura_saldo_base(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    venta_id = crear_venta_base(client, seed_venta_basica)
+
+    abrir = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+    assert abrir.status_code == 200
+
+    pago = client.post(
+        "/pagos/",
+        json={
+            "origen_tipo": "venta",
+            "origen_id": venta_id,
+            "medio_pago": "efectivo",
+            "monto_base": "10000",
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "nota": "Pago efectivo con descuento para revertir",
+        },
+    )
+
+    assert pago.status_code == 200, pago.text
+    pago_id = pago.json()["pago_id"]
+
+    venta = get_venta(db_conn, venta_id)
+    assert Decimal(str(venta["saldo_pendiente"])) == (
+        Decimal(str(venta["total_final"])) - Decimal("10000.00")
+    )
+
+    reversion = client.post(
+        f"/pagos/{pago_id}/revertir",
+        json={
+            "motivo": "Revertir pago con descuento",
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+
+    assert reversion.status_code == 200, reversion.text
+
+    venta_final = get_venta(db_conn, venta_id)
+    assert venta_final["estado"] == "creada"
+    assert Decimal(str(venta_final["saldo_pendiente"])) == Decimal(
+        str(venta_final["total_final"])
+    )
+
+
+def test_rechaza_sobrepago_por_base_aplicada_no_por_cobrado_real(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    venta_id = crear_venta_base(client, seed_venta_basica)
+
+    abrir = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+    assert abrir.status_code == 200
+
+    venta = get_venta(db_conn, venta_id)
+    total = Decimal(str(venta["total_final"]))
+
+    response = client.post(
+        "/pagos/",
+        json={
+            "origen_tipo": "venta",
+            "origen_id": venta_id,
+            "medio_pago": "efectivo",
+            "monto_base": str(total + Decimal("1.00")),
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "nota": "Sobrepago por base",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "supera el saldo pendiente" in response.json()["detail"]

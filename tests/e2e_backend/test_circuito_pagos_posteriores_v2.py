@@ -111,7 +111,7 @@ def test_pago_posterior_efectivo_crea_tramo_v2_y_mueve_caja(
 
     venta = get_venta(db_conn, venta_id)
 
-    assert _dec(venta["saldo_pendiente"]) == Decimal("15440.00")
+    assert _dec(venta["saldo_pendiente"]) == Decimal("14440.00")
     assert venta["estado"] == "pagada_parcial"
 
     movimientos_caja = get_caja_movimientos(db_conn, caja_id)
@@ -177,7 +177,7 @@ def test_pago_posterior_tarjeta_crea_tramo_v2_detalle_tarjeta_y_mueve_caja(
 
     venta = get_venta(db_conn, venta_id)
 
-    assert _dec(venta["saldo_pendiente"]) == Decimal("12940.00")
+    assert _dec(venta["saldo_pendiente"]) == Decimal("14440.00")
     assert venta["estado"] == "pagada_parcial"
 
     movimientos_caja = get_caja_movimientos(db_conn, caja_id)
@@ -195,8 +195,9 @@ def test_pago_posterior_tarjeta_crea_tramo_v2_detalle_tarjeta_y_mueve_caja(
     assert _dec(ingresos_tarjeta[0]["monto"]) == Decimal("10000.00")
 
 
-def test_pago_posterior_rechaza_si_cobrado_del_tramo_supera_saldo(
+def test_pago_posterior_tarjeta_permite_cobrado_mayor_al_saldo_si_base_no_supera_saldo(
     client,
+    db_conn,
     seed_venta_basica,
 ):
     _abrir_caja(client, seed_venta_basica)
@@ -212,7 +213,35 @@ def test_pago_posterior_rechaza_si_cobrado_del_tramo_supera_saldo(
             "cuotas": 3,
             "entidad": None,
             "id_usuario": seed_venta_basica["usuario_id"],
-            "nota": "Debe fallar porque el cobrado supera saldo",
+            "nota": "Pago tarjeta con recargo mayor al saldo cobrado",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+
+    venta = get_venta(db_conn, venta_id)
+    assert venta["estado"] == "pagada_parcial"
+    assert _dec(venta["saldo_pendiente"]) == Decimal("1440.00")
+
+
+def test_pago_posterior_rechaza_si_base_aplicada_supera_saldo(
+    client,
+    seed_venta_basica,
+):
+    _abrir_caja(client, seed_venta_basica)
+    venta_id = _crear_venta_sin_pagos(client, seed_venta_basica)
+
+    response = client.post(
+        "/pagos/",
+        json={
+            "origen_tipo": "venta",
+            "origen_id": venta_id,
+            "medio_pago": "tarjeta",
+            "monto_base": "25000.00",
+            "cuotas": 3,
+            "entidad": None,
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "nota": "Debe fallar porque la base supera saldo",
         },
     )
 

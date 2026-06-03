@@ -29,6 +29,8 @@ class VentaItemCreateInput(BaseModel):
         max_length=300,
     )
 
+    id_orden_taller_item: Optional[int] = None
+
     def model_post_init(self, __context):
         if self.bonificado and not self.motivo_bonificacion:
             raise ValueError(
@@ -76,6 +78,7 @@ class VentaCreateInput(BaseModel):
     observaciones: Optional[str] = None
     usar_credito: bool = False
     monto_credito_a_aplicar: Optional[Decimal] = None
+    id_orden_taller: Optional[int] = None
     
 
 
@@ -149,6 +152,7 @@ class VentaDetalleItemOutput(BaseModel):
     id_venta: int
     id_variante: int
     id_bicicleta_serializada: Optional[int] = None
+    id_orden_taller_item: Optional[int] = None
     descripcion_snapshot: str
     cantidad: Decimal
     precio_lista: Decimal

@@ -310,7 +310,7 @@ def registrar_pago(conn, data: dict):
                 detail="El monto del pago debe ser mayor a 0",
             )
 
-        if monto > saldo_pendiente:
+        if monto_base_aplicado > saldo_pendiente:
             raise HTTPException(
                 status_code=400,
                 detail="El monto cobrado del tramo supera el saldo pendiente",
@@ -318,7 +318,7 @@ def registrar_pago(conn, data: dict):
 
         caja = _obtener_caja_abierta_obligatoria(conn, venta["id_sucursal"])
 
-        saldo_restante = redondear_monto(saldo_pendiente - monto)
+        saldo_restante = redondear_monto(saldo_pendiente - monto_base_aplicado)
 
         # Tolerancia financiera por redondeo de centavos.
         # Evita que queden ventas en pagada_parcial por $0.01.
@@ -656,7 +656,7 @@ def revertir_pago(pago_id: int, data):
             total_final = redondear_monto(venta["total_final"])
 
             saldo_restante = redondear_monto(
-                saldo_pendiente + tramo_original["monto_total_cobrado"]
+                saldo_pendiente + tramo_original["monto_base_aplicado"]
             )
 
             if saldo_restante > total_final:
@@ -822,7 +822,7 @@ def simular_pago_venta(data):
         )
 
         saldo_restante_estimado = redondear_monto(
-            saldo_pendiente - monto_total_cobrado
+            saldo_pendiente - redondear_monto(tramo["monto_base_aplicado"])
         )
 
         # Tolerancia financiera por redondeo.

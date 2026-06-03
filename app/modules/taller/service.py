@@ -2,6 +2,7 @@ from decimal import Decimal
 from app.modules.stock.repository import registrar_movimiento_stock
 from app.shared.constants import TIPO_MOVIMIENTO_USO_TALLER
 from fastapi import HTTPException
+from pydantic import ValidationError
 
 from app.db.connection import get_connection
 from app.shared.constants import (
@@ -21,7 +22,8 @@ TRANSICIONES_VALIDAS_TALLER = {
     "esperando_aprobacion": {"en_reparacion", "cancelada"},
     "esperando_repuestos": {"en_reparacion", "cancelada"},
     "en_reparacion": {"esperando_repuestos", "terminada", "cancelada"},
-    "terminada": {"lista_para_retirar"},
+    "terminada": {"facturada", "lista_para_retirar"},
+    "facturada": {"lista_para_retirar"},
     "lista_para_retirar": {"retirada"},
     "retirada": set(),
     "cancelada": set(),
@@ -47,6 +49,9 @@ from app.modules.stock.repository import (
     incrementar_stock_fisico,
 )
 
+from app.modules.ventas.schema import VentaCreateInput
+from app.modules.ventas.service import crear_venta
+
 from .repository import (
     validar_sucursal_activa,
     validar_usuario_activo,
@@ -68,6 +73,8 @@ from .repository import (
     update_orden_taller_item_ejecutado, 
     update_orden_taller_item_agregado,
     update_orden_taller_item_cancelado,
+    update_orden_taller_venta_generada,
+    get_venta_generada_por_orden_taller,
 )
 
 
@@ -364,8 +371,6 @@ def ejecutar_item_orden_taller(orden_id: int, item_id: int, id_usuario: int):
                     detail="El item ya fue ejecutado",
                 )
 
-            # SOLO si es producto (no servicio)
-        
             es_servicio = item.get("tipo_item") == "servicio"
             es_stockeable = bool(item.get("stockeable"))
 
@@ -578,5 +583,108 @@ def cancelar_item_orden_taller(orden_id: int, item_id: int, data):
             )
 
             return item_actualizado
+    finally:
+        conn.close()
+
+def generar_venta_desde_orden_taller(orden_id: int, data):
+    """Genera una venta cobrable desde una orden terminada.
+
+    Importante: los repuestos ejecutados en taller ya consumieron stock.
+    Por eso cada venta_item queda vinculado a id_orden_taller_item para que
+    ventas no vuelva a reservar/descontar stock al cobrar/entregar.
+    """
+    conn = get_connection()
+    try:
+        with conn.transaction():
+            try:
+                validar_usuario_activo(conn, data.id_usuario)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+
+            orden = get_orden_taller_by_id_for_update(conn, orden_id)
+            if orden is None:
+                raise HTTPException(status_code=404, detail=f"No existe la orden de taller {orden_id}")
+
+            if orden.get("id_venta_generada"):
+                return {
+                    "ok": True,
+                    "orden_id": orden_id,
+                    "venta_id": orden["id_venta_generada"],
+                    "estado_orden": orden["estado"],
+                }
+
+            venta_existente = get_venta_generada_por_orden_taller(conn, orden_id)
+            if venta_existente:
+                update_orden_taller_venta_generada(conn, orden_id, venta_existente["id"])
+                return {
+                    "ok": True,
+                    "orden_id": orden_id,
+                    "venta_id": venta_existente["id"],
+                    "estado_orden": "facturada",
+                }
+
+            if orden["estado"] != "terminada":
+                raise HTTPException(
+                    status_code=400,
+                    detail="Solo se puede generar venta desde una orden terminada",
+                )
+
+            items = get_items_orden_taller(conn, orden_id)
+            items_ejecutados = [
+                item for item in items
+                if item["etapa"] == "ejecutado" and item.get("aprobado") is True
+            ]
+
+            if not items_ejecutados:
+                raise HTTPException(
+                    status_code=400,
+                    detail="La orden no tiene items ejecutados para facturar",
+                )
+
+            payload_items = []
+            for item in items_ejecutados:
+                payload_items.append({
+                    "id_variante": item["id_variante"],
+                    "cantidad": item["cantidad"],
+                    "precio_unitario_manual": item["precio_unitario"],
+                    "motivo_precio_manual": f"Precio de taller OT #{orden_id}",
+                    "id_orden_taller_item": item["id"],
+                })
+
+            try:
+                venta_payload = VentaCreateInput.model_validate({
+                    "id_cliente": orden["id_cliente"],
+                    "id_sucursal": orden["id_sucursal"],
+                    "id_usuario": data.id_usuario,
+                    "tipo_precio": "minorista",
+                    "items": payload_items,
+                    "pagos": [],
+                    "observaciones": f"Generada desde orden de taller #{orden_id}",
+                    "id_orden_taller": orden_id,
+                })
+            except ValidationError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+
+        # crear_venta maneja su propia transacción/conexión. No la llamamos dentro
+        # de la transacción anterior para evitar transacciones anidadas entre conexiones.
+        venta_creada = crear_venta(venta_payload)
+        venta_id = venta_creada["venta_id"]
+
+        with conn.transaction():
+            update_orden_taller_venta_generada(conn, orden_id, venta_id)
+            insert_orden_taller_evento(
+                conn,
+                id_orden_taller=orden_id,
+                tipo_evento="venta_generada",
+                detalle=f"Venta #{venta_id} generada desde orden de taller #{orden_id}",
+                id_usuario=data.id_usuario,
+            )
+
+        return {
+            "ok": True,
+            "orden_id": orden_id,
+            "venta_id": venta_id,
+            "estado_orden": "facturada",
+        }
     finally:
         conn.close()

@@ -84,9 +84,10 @@ def insert_venta(conn, data: dict):
                 saldo_pendiente,
                 id_usuario_creador,
                 observaciones,
-                id_reserva_origen
+                id_reserva_origen,
+                id_orden_taller
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
             (
@@ -102,6 +103,7 @@ def insert_venta(conn, data: dict):
                 data["id_usuario_creador"],
                 data.get("observaciones"),
                 data.get("id_reserva_origen"),
+                data.get("id_orden_taller"),
             ),
         )
         return cur.fetchone()["id"]
@@ -115,6 +117,7 @@ def insert_venta_item(conn, data: dict):
                 id_venta,
                 id_variante,
                 id_bicicleta_serializada,
+                id_orden_taller_item,
                 descripcion_snapshot,
                 cantidad,
                 precio_lista,
@@ -130,7 +133,7 @@ def insert_venta_item(conn, data: dict):
             VALUES (
                 %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s,
-                %s, %s, %s, %s
+                %s, %s, %s, %s, %s
             )
             RETURNING id
             """,
@@ -138,6 +141,7 @@ def insert_venta_item(conn, data: dict):
                 data["id_venta"],
                 data["id_variante"],
                 data.get("id_bicicleta_serializada"),
+                data.get("id_orden_taller_item"),
                 data["descripcion_snapshot"],
                 data["cantidad"],
                 data["precio_lista"],
@@ -270,6 +274,7 @@ def get_venta_items_by_venta_id(conn, venta_id: int):
                 vi.id_venta,
                 vi.id_variante,
                 vi.id_bicicleta_serializada,
+                vi.id_orden_taller_item,
                 vi.descripcion_snapshot,
                 vi.cantidad,
                 vi.precio_lista,
@@ -312,6 +317,7 @@ def get_venta_items_detallados_by_venta_id(conn, venta_id: int):
                 vi.id_venta,
                 vi.id_variante,
                 vi.id_bicicleta_serializada,
+                vi.id_orden_taller_item,
                 vi.descripcion_snapshot,
                 vi.cantidad,
                 vi.precio_lista,
@@ -357,7 +363,8 @@ def get_venta_for_update(conn, venta_id: int):
                 recargo_total,
                 total_final,
                 saldo_pendiente,
-                id_reserva_origen
+                id_reserva_origen,
+                id_orden_taller
             FROM ventas
             WHERE id = %s
             FOR UPDATE
