@@ -13,6 +13,8 @@ class StockSucursalOut(BaseModel):
     stock_reservado: Decimal
     stock_vendido_pendiente_entrega: Decimal
     stock_disponible: Decimal
+    codigo_barras: str | None = None
+    codigo_proveedor: str | None = None
 
 
 class IngresoStockCreate(BaseModel):

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { listarCatalogoPOS } from "../services/catalogoService";
 import { listarProveedores } from "../services/proveedoresService";
 import RecalculoMasivoPanel from "../components/precios/RecalculoMasivoPanel";
+import PrecioManualPanel from "../components/precios/PrecioManualPanel";
+import ReglasPrecioPanel from "../components/precios/ReglasPrecioPanel";
 import { ConfirmModal } from "../components/ui/ConfirmModal";
 import {
   buildRecalculoProveedorPayload,

@@ -19,6 +19,8 @@ def get_stock_sucursal(conn):
                 p.nombre AS producto_nombre,
                 v.nombre_variante,
                 v.sku,
+                v.codigo_barras,
+                v.codigo_proveedor,
                 ss.stock_fisico,
                 ss.stock_reservado,
                 ss.stock_vendido_pendiente_entrega,

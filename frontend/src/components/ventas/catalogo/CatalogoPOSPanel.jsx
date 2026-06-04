@@ -13,6 +13,10 @@ export default function CatalogoPOSPanel({
   onCategoriaChange,
   onAgregarItem,
 }) {
+  const catalogoVisible = catalogo.filter((producto) => {
+    if (!producto.stockeable) return true;
+    return Number(producto.stock_disponible || 0) > 0;
+  });
   return (
     <section style={leftPanelStyle}>
       <div style={searchRowStyle}>
@@ -50,10 +54,10 @@ export default function CatalogoPOSPanel({
       </div>
 
       <div style={catalogListStyle}>
-        {catalogo.length === 0 ? (
+        {catalogoVisible.length === 0 ? (
           <div style={emptyStyle}>No hay productos para mostrar.</div>
         ) : (
-          catalogo.map((producto) => (
+          catalogoVisible.map((producto) => (
             <ProductoPOSCard
               key={producto.id_variante}
               producto={producto}

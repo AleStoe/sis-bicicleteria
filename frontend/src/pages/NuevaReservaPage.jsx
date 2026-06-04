@@ -68,8 +68,8 @@ export default function NuevaReservaPage() {
         query: query.trim() || undefined,
         limit: 80,
       });
-
-      setCatalogo(data || []);
+      console.log("CATALOGO RESERVA", data);
+      setCatalogo(Array.isArray(data) ? data : data?.items || []);
     } catch (err) {
       setError(err.message || "No se pudo cargar catálogo");
     } finally {
@@ -288,7 +288,7 @@ export default function NuevaReservaPage() {
           </div>
 
           <div style={catalogListStyle}>
-            {catalogo.map((producto) => (
+            {(Array.isArray(catalogo) ? catalogo : []).map((producto) => (
               <button
                 type="button"
                 key={producto.id_variante}

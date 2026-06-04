@@ -88,6 +88,11 @@ export default function AltaMercaderiaPage() {
       setError(err.message || "No se pudieron cargar datos iniciales");
     }
   }
+ const categoriasPermitidas = useMemo(() => {
+    return categorias.filter((c) =>
+      ["Accesorios", "Repuestos"].includes(c.nombre)
+    );
+  }, [categorias]);
 
   const categoriaSeleccionada = useMemo(() => {
     return categorias.find((c) => String(c.id) === String(form.id_categoria));
@@ -601,7 +606,7 @@ export default function AltaMercaderiaPage() {
                         }
                       >
                         <option value="">Seleccionar...</option>
-                        {categorias.map((c) => (
+                        {categoriasPermitidas.map((c) => (
                           <option key={c.id} value={c.id}>
                             {c.nombre}
                           </option>

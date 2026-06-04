@@ -112,6 +112,7 @@ export default function StockPage() {
         item.producto_nombre,
         item.nombre_variante,
         item.sku,
+        item.codigo_barras,
         item.codigo_proveedor,
         item.variante_id,
       ]
@@ -166,7 +167,7 @@ export default function StockPage() {
         gastos_adicionales: "0",
         observacion: "",
       }));
-
+      
       await cargarStock();
     } catch (err) {
       setError(err.message || "No se pudo registrar el ingreso");
@@ -286,6 +287,12 @@ export default function StockPage() {
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              e.currentTarget.select();
+            }
+          }}
           placeholder="Buscar producto, variante, SKU, sucursal o ID..."
           style={styles.searchInput}
         />
