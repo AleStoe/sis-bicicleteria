@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { listarVariantes } from "../services/catalogoService";
+import { listarServiciosTaller } from "../services/serviciosTallerService";
 import {
   agregarItemOrdenTaller,
   aprobarItemOrdenTaller,
@@ -48,6 +49,7 @@ export default function TallerDetallePage() {
   const navigate = useNavigate();
   const [orden, setOrden] = useState(null);
   const [variantes, setVariantes] = useState([]);
+  const [serviciosTaller, setServiciosTaller] = useState([]);
   const [loading, setLoading] = useState(true);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
@@ -55,7 +57,14 @@ export default function TallerDetallePage() {
   const [promptConfig, setPromptConfig] = useState(null);
   const [nuevoEstado, setNuevoEstado] = useState("");
   const [busquedaVariante, setBusquedaVariante] = useState("");
-  const [itemForm, setItemForm] = useState({ id_variante: "", cantidad: "1", precio_unitario: "" });
+  const [busquedaServicio, setBusquedaServicio] = useState("");
+  const [itemForm, setItemForm] = useState({
+    tipo_item: "repuesto",
+    id_variante: "",
+    id_servicio_taller: "",
+    cantidad: "1",
+    precio_unitario: "",
+  });
 
   function pedirPrompt(config) {
     return new Promise((resolve) => {
@@ -81,10 +90,15 @@ export default function TallerDetallePage() {
     try {
       setLoading(true);
       setError("");
-      const [ordenData, variantesData] = await Promise.all([obtenerOrdenTaller(ordenId), listarVariantes()]);
+      const [ordenData, variantesData, serviciosData] = await Promise.all([
+        obtenerOrdenTaller(ordenId),
+        listarVariantes(),
+        listarServiciosTaller(),
+      ]);
       setOrden(ordenData);
       setNuevoEstado(ordenData.estado);
       setVariantes(variantesData || []);
+      setServiciosTaller(serviciosData || []);
     } catch (err) {
       setError(err.message || "No se pudo cargar la orden de taller");
     } finally {
@@ -105,6 +119,8 @@ export default function TallerDetallePage() {
     return items.reduce(
       (acc, item) => {
         acc.items += 1;
+        if (item.tipo_item === "servicio") acc.servicios += 1;
+        if (item.tipo_item !== "servicio") acc.repuestos += 1;
         if (item.etapa === "presupuestado") acc.presupuestados += 1;
         if (item.etapa === "agregado") acc.aprobados += 1;
         if (item.etapa === "ejecutado") acc.ejecutados += 1;
@@ -112,7 +128,7 @@ export default function TallerDetallePage() {
         acc.total += item.etapa === "cancelado" ? 0 : Number(item.subtotal || 0);
         return acc;
       },
-      { items: 0, presupuestados: 0, aprobados: 0, ejecutados: 0, cancelados: 0, total: 0 }
+      { items: 0, servicios: 0, repuestos: 0, presupuestados: 0, aprobados: 0, ejecutados: 0, cancelados: 0, total: 0 }
     );
   }, [items]);
 
@@ -121,12 +137,7 @@ export default function TallerDetallePage() {
 
     const base = (variantes || [])
       .filter(esItemPermitidoParaTaller)
-      .sort((a, b) => {
-        const tipoA = prioridadTipoTaller(a);
-        const tipoB = prioridadTipoTaller(b);
-        if (tipoA !== tipoB) return tipoA - tipoB;
-        return String(a.producto_nombre || "").localeCompare(String(b.producto_nombre || ""));
-      });
+      .sort((a, b) => String(a.producto_nombre || "").localeCompare(String(b.producto_nombre || "")));
 
     if (!q) return base.slice(0, 18);
 
@@ -146,28 +157,82 @@ export default function TallerDetallePage() {
       .slice(0, 24);
   }, [variantes, busquedaVariante]);
 
+  const serviciosFiltrados = useMemo(() => {
+    const q = normalizarTexto(busquedaServicio);
+    const base = (serviciosTaller || []).filter((servicio) => servicio.activo !== false);
+
+    if (!q) return base.slice(0, 18);
+
+    return base
+      .filter((servicio) =>
+        normalizarTexto([servicio.id, servicio.nombre, servicio.descripcion].filter(Boolean).join(" ")).includes(q)
+      )
+      .slice(0, 24);
+  }, [serviciosTaller, busquedaServicio]);
+
   const itemSeleccionado = useMemo(() => {
+    if (itemForm.tipo_item === "servicio") {
+      return serviciosTaller.find((s) => String(s.id) === String(itemForm.id_servicio_taller)) || null;
+    }
+
     return variantes.find((v) => String(v.id) === String(itemForm.id_variante)) || null;
-  }, [variantes, itemForm.id_variante]);
+  }, [serviciosTaller, variantes, itemForm.tipo_item, itemForm.id_servicio_taller, itemForm.id_variante]);
 
   const estadosPermitidos = useMemo(() => {
     if (!orden) return [];
     return TRANSICIONES_UI[orden.estado] || [];
   }, [orden]);
 
+  function cambiarTipoItem(tipoItem) {
+    setError("");
+    setItemForm({
+      tipo_item: tipoItem,
+      id_variante: "",
+      id_servicio_taller: "",
+      cantidad: "1",
+      precio_unitario: "",
+    });
+  }
+
   function seleccionarVariante(id) {
     const variante = variantes.find((v) => String(v.id) === String(id));
 
     if (variante && !esItemPermitidoParaTaller(variante)) {
-      setError("Ese ítem no se puede usar en taller. Usá servicios, repuestos o accesorios.");
+      setError("Ese ítem no se puede usar en taller. Usá repuestos o accesorios. Los servicios salen del módulo Servicios Taller.");
       return;
     }
 
-    setItemForm({
+    setItemForm((prev) => ({
+      ...prev,
+      tipo_item: "repuesto",
       id_variante: id,
-      cantidad: itemForm.cantidad || "1",
+      id_servicio_taller: "",
+      cantidad: prev.cantidad || "1",
       precio_unitario: variante?.precio_minorista != null ? String(variante.precio_minorista) : "0",
-    });
+    }));
+  }
+
+  function seleccionarServicio(id) {
+    const servicio = serviciosTaller.find((s) => String(s.id) === String(id));
+
+    if (!servicio) {
+      setError("No se encontró el servicio seleccionado");
+      return;
+    }
+
+    if (servicio.activo === false) {
+      setError("No podés agregar un servicio inactivo");
+      return;
+    }
+
+    setItemForm((prev) => ({
+      ...prev,
+      tipo_item: "servicio",
+      id_variante: "",
+      id_servicio_taller: id,
+      cantidad: prev.cantidad || "1",
+      precio_unitario: servicio.precio_sugerido != null ? String(servicio.precio_sugerido) : "0",
+    }));
   }
 
   async function cambiarEstado(e) {
@@ -191,16 +256,23 @@ export default function TallerDetallePage() {
   async function agregarItem(e) {
     e.preventDefault();
 
-    if (!itemForm.id_variante) {
-      setError("Seleccioná una variante para agregar al trabajo");
+    if (itemForm.tipo_item === "repuesto" && !itemForm.id_variante) {
+      setError("Seleccioná un repuesto o accesorio para agregar al trabajo");
       return;
     }
 
-    const varianteSeleccionada = variantes.find((v) => String(v.id) === String(itemForm.id_variante));
-
-    if (varianteSeleccionada && !esItemPermitidoParaTaller(varianteSeleccionada)) {
-      setError("No podés agregar bicicletas completas al taller. Seleccioná servicios, repuestos o accesorios.");
+    if (itemForm.tipo_item === "servicio" && !itemForm.id_servicio_taller) {
+      setError("Seleccioná un servicio de taller");
       return;
+    }
+
+    if (itemForm.tipo_item === "repuesto") {
+      const varianteSeleccionada = variantes.find((v) => String(v.id) === String(itemForm.id_variante));
+
+      if (varianteSeleccionada && !esItemPermitidoParaTaller(varianteSeleccionada)) {
+        setError("No podés agregar bicicletas completas ni servicios viejos del catálogo. Seleccioná repuestos/accesorios o usá Servicios Taller.");
+        return;
+      }
     }
 
     if (Number(itemForm.cantidad) <= 0) {
@@ -212,14 +284,24 @@ export default function TallerDetallePage() {
       setGuardando(true);
       setError("");
       setMensaje("");
-      await agregarItemOrdenTaller(ordenId, {
-        id_variante: Number(itemForm.id_variante),
+
+      const payload = {
+        tipo_item: itemForm.tipo_item,
         cantidad: Number(itemForm.cantidad),
         precio_unitario: Number(itemForm.precio_unitario || 0),
         id_usuario: 1,
-      });
-      setItemForm({ id_variante: "", cantidad: "1", precio_unitario: "" });
+      };
+
+      if (itemForm.tipo_item === "servicio") {
+        payload.id_servicio_taller = Number(itemForm.id_servicio_taller);
+      } else {
+        payload.id_variante = Number(itemForm.id_variante);
+      }
+
+      await agregarItemOrdenTaller(ordenId, payload);
+      setItemForm({ tipo_item: itemForm.tipo_item, id_variante: "", id_servicio_taller: "", cantidad: "1", precio_unitario: "" });
       setBusquedaVariante("");
+      setBusquedaServicio("");
       await refrescarOrden();
       setMensaje("Item agregado correctamente");
     } catch (err) {
@@ -365,52 +447,104 @@ export default function TallerDetallePage() {
           <section style={styles.card}>
             <div style={styles.sectionHeader}>
               <div>
-                <p style={styles.eyebrow}>Presupuesto / repuestos</p>
+                <p style={styles.eyebrow}>Presupuesto / items</p>
                 <h2 style={styles.cardTitle}>Agregar item</h2>
-                <p style={styles.muted}>El stock se descuenta recién al ejecutar el item aprobado.</p>
+                <p style={styles.muted}>Los servicios no mueven stock. Los repuestos descuentan recién al ejecutar el item aprobado.</p>
               </div>
             </div>
 
             <form onSubmit={agregarItem} style={styles.itemComposer}>
-              <label style={styles.field}>
-                <span style={styles.label}>Buscar servicio, repuesto o accesorio</span>
-                <input
-                  value={busquedaVariante}
-                  onChange={(e) => setBusquedaVariante(e.target.value)}
-                  placeholder="Ej: service, cámara, cadena, freno, lubricante..."
-                  style={styles.input}
-                />
-              </label>
-
-              <div style={styles.selectorHint}>
-                Se ocultan bicicletas completas y serializadas. Taller usa servicios, repuestos y accesorios.
+              <div style={styles.tipoSelector}>
+                <button
+                  type="button"
+                  onClick={() => cambiarTipoItem("repuesto")}
+                  style={itemForm.tipo_item === "repuesto" ? styles.tipoButtonActive : styles.tipoButton}
+                >
+                  Repuesto / accesorio
+                </button>
+                <button
+                  type="button"
+                  onClick={() => cambiarTipoItem("servicio")}
+                  style={itemForm.tipo_item === "servicio" ? styles.tipoButtonActive : styles.tipoButton}
+                >
+                  Servicio
+                </button>
               </div>
 
-              <div style={styles.itemsPicker}>
-                {variantesFiltradas.length === 0 ? (
-                  <div style={styles.emptySmall}>No hay resultados permitidos para taller.</div>
-                ) : (
-                  variantesFiltradas.map((v) => (
-                    <TallerItemOption
-                      key={v.id}
-                      item={v}
-                      selected={String(itemForm.id_variante) === String(v.id)}
-                      onSelect={() => seleccionarVariante(v.id)}
+              {itemForm.tipo_item === "repuesto" ? (
+                <>
+                  <label style={styles.field}>
+                    <span style={styles.label}>Buscar repuesto o accesorio</span>
+                    <input
+                      value={busquedaVariante}
+                      onChange={(e) => setBusquedaVariante(e.target.value)}
+                      placeholder="Ej: cámara, cadena, freno, lubricante..."
+                      style={styles.input}
                     />
-                  ))
-                )}
-              </div>
+                  </label>
+
+                  <div style={styles.selectorHint}>
+                    Se ocultan bicicletas completas y servicios viejos del catálogo. Los servicios se cargan desde Servicios Taller.
+                  </div>
+
+                  <div style={styles.itemsPicker}>
+                    {variantesFiltradas.length === 0 ? (
+                      <div style={styles.emptySmall}>No hay repuestos/accesorios permitidos para taller.</div>
+                    ) : (
+                      variantesFiltradas.map((v) => (
+                        <TallerItemOption
+                          key={v.id}
+                          item={v}
+                          selected={String(itemForm.id_variante) === String(v.id)}
+                          onSelect={() => seleccionarVariante(v.id)}
+                        />
+                      ))
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <label style={styles.field}>
+                    <span style={styles.label}>Buscar servicio</span>
+                    <input
+                      value={busquedaServicio}
+                      onChange={(e) => setBusquedaServicio(e.target.value)}
+                      placeholder="Ej: service completo, centrado, armado..."
+                      style={styles.input}
+                    />
+                  </label>
+
+                  <div style={styles.selectorHintSuccess}>
+                    Servicio Taller es mano de obra: no descuenta stock, no requiere proveedor y no usa variantes.
+                  </div>
+
+                  <div style={styles.itemsPicker}>
+                    {serviciosFiltrados.length === 0 ? (
+                      <div style={styles.emptySmall}>No hay servicios activos para mostrar.</div>
+                    ) : (
+                      serviciosFiltrados.map((servicio) => (
+                        <ServicioTallerOption
+                          key={servicio.id}
+                          servicio={servicio}
+                          selected={String(itemForm.id_servicio_taller) === String(servicio.id)}
+                          onSelect={() => seleccionarServicio(servicio.id)}
+                        />
+                      ))
+                    )}
+                  </div>
+                </>
+              )}
 
               {itemSeleccionado && (
                 <div style={styles.selectedItemBox}>
                   <div>
                     <span style={styles.label}>Seleccionado</span>
-                    <strong>{itemSeleccionado.producto_nombre}</strong>
-                    <p>{itemSeleccionado.nombre_variante || "Única"}</p>
+                    <strong>{itemForm.tipo_item === "servicio" ? itemSeleccionado.nombre : itemSeleccionado.producto_nombre}</strong>
+                    <p>{itemForm.tipo_item === "servicio" ? itemSeleccionado.descripcion || "Servicio de taller" : itemSeleccionado.nombre_variante || "Única"}</p>
                   </div>
                   <button
                     type="button"
-                    onClick={() => setItemForm({ id_variante: "", cantidad: "1", precio_unitario: "" })}
+                    onClick={() => setItemForm((prev) => ({ ...prev, id_variante: "", id_servicio_taller: "", precio_unitario: "" }))}
                     style={styles.smallSecondary}
                   >
                     Quitar
@@ -429,7 +563,13 @@ export default function TallerDetallePage() {
                   <input type="number" min="0" step="0.01" value={itemForm.precio_unitario} onChange={(e) => setItemForm((p) => ({ ...p, precio_unitario: e.target.value }))} style={styles.input} />
                 </label>
 
-                <button type="submit" disabled={guardando || !itemForm.id_variante} style={styles.primaryButton}>Agregar item</button>
+                <button
+                  type="submit"
+                  disabled={guardando || (itemForm.tipo_item === "servicio" ? !itemForm.id_servicio_taller : !itemForm.id_variante)}
+                  style={styles.primaryButton}
+                >
+                  Agregar item
+                </button>
               </div>
             </form>
           </section>
@@ -489,8 +629,12 @@ export default function TallerDetallePage() {
                 </>
               ) : orden.estado === "terminada" ? (
                 <>
-                  <p style={styles.muted}>El trabajo está terminado. Generá la venta para cobrar con el flujo normal de ventas.</p>
-                  <button type="button" onClick={generarVenta} disabled={guardando || resumen.ejecutados === 0} style={styles.primaryButton}>Generar venta</button>
+                  {resumen.servicios > 0 ? (
+                    <p style={styles.warningText}>Esta orden tiene servicios de taller. La facturación se habilita cuando adaptemos Ventas para líneas sin variante.</p>
+                  ) : (
+                    <p style={styles.muted}>El trabajo está terminado. Generá la venta para cobrar con el flujo normal de ventas.</p>
+                  )}
+                  <button type="button" onClick={generarVenta} disabled={guardando || resumen.ejecutados === 0 || resumen.servicios > 0} style={styles.primaryButton}>Generar venta</button>
                 </>
               ) : (
                 <p style={styles.muted}>La venta se habilita cuando la orden queda terminada.</p>
@@ -556,7 +700,6 @@ export default function TallerDetallePage() {
 
 function TallerItemOption({ item, selected, onSelect }) {
   const tipo = tipoTallerLabel(item);
-  const esServicio = tipo === "Servicio";
 
   return (
     <button
@@ -565,27 +708,51 @@ function TallerItemOption({ item, selected, onSelect }) {
       style={selected ? styles.tallerOptionSelected : styles.tallerOption}
     >
       <div style={styles.optionImageBox}>
-        {esServicio ? (
-          <span style={styles.serviceIcon}>🛠</span>
-        ) : (
-          <ProductImage url={item.imagen_principal} size={54} />
-        )}
+        <ProductImage url={item.imagen_principal} size={54} />
       </div>
 
       <div style={styles.optionBody}>
         <div style={styles.optionTop}>
           <strong>{item.producto_nombre}</strong>
-          <span style={tipo === "Servicio" ? styles.serviceBadge : styles.partBadge}>{tipo}</span>
+          <span style={styles.partBadge}>{tipo}</span>
         </div>
         <p>{item.nombre_variante || "Única"}</p>
         <div style={styles.optionMeta}>
           {item.codigo_proveedor && <span>Prov: {item.codigo_proveedor}</span>}
           {item.sku && <span>SKU: {item.sku}</span>}
-          {item.stock_disponible != null && !esServicio && <span>Stock: {formatNumber(item.stock_disponible)}</span>}
+          {item.stock_disponible != null && <span>Stock: {formatNumber(item.stock_disponible)}</span>}
         </div>
       </div>
 
       <strong style={styles.optionPrice}>{formatMoney(item.precio_minorista)}</strong>
+    </button>
+  );
+}
+
+function ServicioTallerOption({ servicio, selected, onSelect }) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      style={selected ? styles.tallerOptionSelected : styles.tallerOption}
+    >
+      <div style={styles.optionImageBox}>
+        <span style={styles.serviceIcon}>🛠</span>
+      </div>
+
+      <div style={styles.optionBody}>
+        <div style={styles.optionTop}>
+          <strong>{servicio.nombre}</strong>
+          <span style={styles.serviceBadge}>Servicio</span>
+        </div>
+        <p>{servicio.descripcion || "Mano de obra"}</p>
+        <div style={styles.optionMeta}>
+          {servicio.duracion_estimada_min && <span>{servicio.duracion_estimada_min} min</span>}
+          <span>Sin stock</span>
+        </div>
+      </div>
+
+      <strong style={styles.optionPrice}>{formatMoney(servicio.precio_sugerido)}</strong>
     </button>
   );
 }
@@ -595,7 +762,10 @@ function ItemCard({ item, guardando, onAprobar, onDesaprobar, onEjecutar, onReve
     <article style={item.etapa === "cancelado" ? styles.itemCardMuted : styles.itemCard}>
       <div style={styles.itemTop}>
         <div>
-          <strong style={styles.itemTitle}>{item.descripcion_snapshot}</strong>
+          <div style={styles.itemTitleRow}>
+            <span style={item.tipo_item === "servicio" ? styles.serviceBadge : styles.partBadge}>{tipoOrdenItemLabel(item)}</span>
+            <strong style={styles.itemTitle}>{item.descripcion_snapshot}</strong>
+          </div>
           <p style={styles.muted}>#{item.id} · Cantidad {formatNumber(item.cantidad)} · {formatMoney(item.precio_unitario)} c/u</p>
         </div>
         <EtapaBadge etapa={item.etapa} aprobado={item.aprobado} />
@@ -651,6 +821,10 @@ function Info({ label, value }) {
   );
 }
 
+function tipoOrdenItemLabel(item) {
+  return item?.tipo_item === "servicio" ? "Servicio" : "Repuesto";
+}
+
 function labelEstado(estado) {
   const labels = {
     ingresada: "Ingresada",
@@ -696,7 +870,7 @@ function esBicicletaCatalogo(item) {
 }
 
 function esItemPermitidoParaTaller(item) {
-  return !esBicicletaCatalogo(item);
+  return !esBicicletaCatalogo(item) && tipoTallerLabel(item) !== "Servicio";
 }
 
 function tipoTallerLabel(item) {
@@ -736,9 +910,14 @@ const styles = {
   eyebrow: { margin: 0, color: "#f97316", fontSize: 12, fontWeight: 1000, textTransform: "uppercase", letterSpacing: ".08em" },
   cardTitle: { margin: "3px 0 0", fontSize: 22, letterSpacing: "-.02em" },
   muted: { color: "#64748b", margin: "4px 0 0", fontWeight: 700 },
+  warningText: { margin: 0, background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", borderRadius: 12, padding: 10, fontWeight: 900 },
   itemGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12, alignItems: "end" },
   itemComposer: { display: "grid", gap: 12 },
   selectorHint: { background: "#fff7ed", border: "1px solid #fed7aa", color: "#9a3412", borderRadius: 13, padding: "10px 12px", fontWeight: 800, fontSize: 13 },
+  selectorHintSuccess: { background: "#ecfdf5", border: "1px solid #bbf7d0", color: "#047857", borderRadius: 13, padding: "10px 12px", fontWeight: 800, fontSize: 13 },
+  tipoSelector: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 },
+  tipoButton: { border: "1px solid #cbd5e1", background: "white", color: "#334155", borderRadius: 13, padding: "12px 14px", fontWeight: 1000, cursor: "pointer" },
+  tipoButtonActive: { border: "1px solid #f97316", background: "#fff7ed", color: "#c2410c", borderRadius: 13, padding: "12px 14px", fontWeight: 1000, cursor: "pointer", boxShadow: "0 10px 20px rgba(249,115,22,.12)" },
   itemsPicker: { display: "grid", gap: 10, maxHeight: 360, overflowY: "auto", paddingRight: 4 },
   tallerOption: { width: "100%", border: "1px solid #e2e8f0", background: "white", borderRadius: 16, padding: 10, display: "grid", gridTemplateColumns: "64px minmax(0, 1fr) auto", gap: 12, alignItems: "center", textAlign: "left", cursor: "pointer" },
   tallerOptionSelected: { width: "100%", border: "1px solid #f97316", background: "#fff7ed", borderRadius: 16, padding: 10, display: "grid", gridTemplateColumns: "64px minmax(0, 1fr) auto", gap: 12, alignItems: "center", textAlign: "left", cursor: "pointer", boxShadow: "0 10px 22px rgba(249,115,22,.15)" },
@@ -763,6 +942,7 @@ const styles = {
   itemCardMuted: { border: "1px solid #e2e8f0", borderRadius: 18, padding: 14, display: "grid", gap: 12, background: "#f8fafc", opacity: 0.78 },
   itemTop: { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start" },
   itemTitle: { fontSize: 16 },
+  itemTitleRow: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" },
   itemBottom: { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", borderTop: "1px solid #f1f5f9", paddingTop: 10 },
   itemActions: { display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" },
   smallPrimary: { border: "none", background: "#0f172a", color: "white", borderRadius: 11, padding: "8px 10px", fontWeight: 900, cursor: "pointer" },

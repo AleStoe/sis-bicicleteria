@@ -32,6 +32,7 @@ import ClienteBicicletaDetallePage from "./pages/ClienteBicicletaDetallePage";
 import AltaBicicletaPage from "./pages/AltaBicicletaPage";
 import CatalogoProductoDetallePage from "./pages/CatalogoProductoDetallePage";
 import ConfiguracionComercialPage from "./pages/ConfiguracionComercialPage";
+import ServiciosPage from "./pages/ServiciosPage";
 export default function App() {
   return (
     <BrowserRouter>
@@ -71,6 +72,7 @@ export default function App() {
           <Route path="/mercaderia/bicicletas/alta" element={<AltaBicicletaPage />} />
           <Route path="/catalogo/productos/:productoId" element={<CatalogoProductoDetallePage />} />
           <Route path="/configuracion-comercial" element={<ConfiguracionComercialPage />} />
+          <Route path="/servicios-taller" element={<ServiciosPage />} />
 
         </Routes>
       </AppLayout>

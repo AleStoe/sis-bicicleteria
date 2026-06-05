@@ -49,6 +49,7 @@ const groups = [
       { to: "/catalogo", label: "Catálogo", icon: Tags },
       { to: "/precios", label: "Precios", icon: Calculator },
       { to: "/proveedores", label: "Proveedores", icon: HandCoins },
+      { to: "/servicios-taller", label: "Servicios Taller", icon: Wrench },
       
     ],
   },
