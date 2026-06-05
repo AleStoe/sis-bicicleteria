@@ -1119,3 +1119,293 @@ def test_cancelar_item_no_ejecutado(client, seed_taller_basico, seed_venta_basic
     assert response.status_code == 200
     assert response.json()["etapa"] == "cancelado"
     assert response.json()["aprobado"] is False
+
+def _crear_servicio_taller_test(client, nombre="Centrado de rueda", precio=8000):
+    response = client.post(
+        "/servicios_taller/",
+        json={
+            "nombre": nombre,
+            "descripcion": "Servicio creado desde test de taller",
+            "precio_sugerido": precio,
+            "duracion_estimada_min": 30,
+        },
+    )
+    assert response.status_code == 201
+    return response.json()
+
+
+def _crear_orden_taller_test(client, seed_taller_basico, problema="Service test"):
+    response = client.post(
+        "/ordenes_taller/",
+        json={
+            "id_sucursal": seed_taller_basico["sucursal_id"],
+            "id_cliente": seed_taller_basico["cliente_id"],
+            "id_bicicleta_cliente": seed_taller_basico["bicicleta_cliente_id"],
+            "problema_reportado": problema,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert response.status_code == 201
+    return response.json()
+
+
+def test_agregar_item_servicio_taller_desde_servicios_taller(client, seed_taller_basico):
+    servicio = _crear_servicio_taller_test(
+        client,
+        nombre="Service completo test",
+        precio=15000,
+    )
+    orden = _crear_orden_taller_test(client, seed_taller_basico)
+
+    response = client.post(
+        f"/ordenes_taller/{orden['id']}/items",
+        json={
+            "tipo_item": "servicio",
+            "id_servicio_taller": servicio["id"],
+            "cantidad": 1,
+            "precio_unitario": 15000,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+
+    assert response.status_code == 201
+    item = response.json()
+
+    assert item["tipo_item"] == "servicio"
+    assert item["id_variante"] is None
+    assert item["id_servicio_taller"] == servicio["id"]
+    assert item["descripcion_snapshot"] == "Service completo test"
+    assert float(item["cantidad"]) == 1.0
+    assert float(item["precio_unitario"]) == 15000.0
+    assert float(item["subtotal"]) == 15000.0
+
+
+def test_servicio_taller_recalcula_total_orden(client, seed_taller_basico):
+    servicio = _crear_servicio_taller_test(client, precio=12000)
+    orden = _crear_orden_taller_test(client, seed_taller_basico)
+
+    response = client.post(
+        f"/ordenes_taller/{orden['id']}/items",
+        json={
+            "tipo_item": "servicio",
+            "id_servicio_taller": servicio["id"],
+            "cantidad": 2,
+            "precio_unitario": 12000,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert response.status_code == 201
+
+    detalle = client.get(f"/ordenes_taller/{orden['id']}").json()
+
+    assert float(detalle["total_final"]) == 24000.0
+    assert len(detalle["items"]) == 1
+    assert detalle["items"][0]["tipo_item"] == "servicio"
+
+
+def test_aprobar_y_ejecutar_servicio_taller_no_mueve_stock(
+    client,
+    db_conn,
+    seed_taller_basico,
+):
+    servicio = _crear_servicio_taller_test(client, precio=9000)
+    orden = _crear_orden_taller_test(client, seed_taller_basico)
+
+    item_response = client.post(
+        f"/ordenes_taller/{orden['id']}/items",
+        json={
+            "tipo_item": "servicio",
+            "id_servicio_taller": servicio["id"],
+            "cantidad": 1,
+            "precio_unitario": 9000,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert item_response.status_code == 201
+    item_id = item_response.json()["id"]
+
+    aprobar = client.post(
+        f"/ordenes_taller/{orden['id']}/items/{item_id}/aprobacion",
+        json={
+            "aprobado": True,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert aprobar.status_code == 200
+    assert aprobar.json()["aprobado"] is True
+
+    ejecutar = client.post(
+        f"/ordenes_taller/{orden['id']}/items/{item_id}/ejecutar",
+        params={"id_usuario": seed_taller_basico["usuario_id"]},
+    )
+    assert ejecutar.status_code == 200
+    assert ejecutar.json()["etapa"] == "ejecutado"
+    assert ejecutar.json()["tipo_item"] == "servicio"
+    assert ejecutar.json()["id_variante"] is None
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT COUNT(*) AS cantidad_movimientos
+            FROM movimientos_stock
+            WHERE origen_tipo = 'orden_taller'
+              AND origen_id = %s
+              AND tipo_movimiento IN ('uso_taller', 'reversion_uso_taller')
+            """,
+            (orden["id"],),
+        )
+        row = cur.fetchone()
+
+    assert row["cantidad_movimientos"] == 0
+
+
+def test_revertir_ejecucion_servicio_taller_no_mueve_stock(
+    client,
+    db_conn,
+    seed_taller_basico,
+):
+    servicio = _crear_servicio_taller_test(client, precio=10000)
+    orden = _crear_orden_taller_test(client, seed_taller_basico)
+
+    item_response = client.post(
+        f"/ordenes_taller/{orden['id']}/items",
+        json={
+            "tipo_item": "servicio",
+            "id_servicio_taller": servicio["id"],
+            "cantidad": 1,
+            "precio_unitario": 10000,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert item_response.status_code == 201
+    item_id = item_response.json()["id"]
+
+    aprobar = client.post(
+        f"/ordenes_taller/{orden['id']}/items/{item_id}/aprobacion",
+        json={
+            "aprobado": True,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert aprobar.status_code == 200
+
+    ejecutar = client.post(
+        f"/ordenes_taller/{orden['id']}/items/{item_id}/ejecutar",
+        params={"id_usuario": seed_taller_basico["usuario_id"]},
+    )
+    assert ejecutar.status_code == 200
+
+    revertir = client.post(
+        f"/ordenes_taller/{orden['id']}/items/{item_id}/revertir-ejecucion",
+        json={
+            "id_usuario": seed_taller_basico["usuario_id"],
+            "motivo": "Servicio cargado por error",
+        },
+    )
+
+    assert revertir.status_code == 200
+    assert revertir.json()["etapa"] == "agregado"
+    assert revertir.json()["tipo_item"] == "servicio"
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT COUNT(*) AS cantidad_movimientos
+            FROM movimientos_stock
+            WHERE origen_tipo = 'orden_taller'
+              AND origen_id = %s
+              AND tipo_movimiento IN ('uso_taller', 'reversion_uso_taller')
+            """,
+            (orden["id"],),
+        )
+        row = cur.fetchone()
+
+    assert row["cantidad_movimientos"] == 0
+
+
+def test_cancelar_servicio_taller_no_ejecutado(client, seed_taller_basico):
+    servicio = _crear_servicio_taller_test(client, precio=7000)
+    orden = _crear_orden_taller_test(client, seed_taller_basico)
+
+    item_response = client.post(
+        f"/ordenes_taller/{orden['id']}/items",
+        json={
+            "tipo_item": "servicio",
+            "id_servicio_taller": servicio["id"],
+            "cantidad": 1,
+            "precio_unitario": 7000,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert item_response.status_code == 201
+    item_id = item_response.json()["id"]
+
+    cancelar = client.post(
+        f"/ordenes_taller/{orden['id']}/items/{item_id}/cancelar",
+        json={
+            "id_usuario": seed_taller_basico["usuario_id"],
+            "motivo": "Cliente no aprueba el servicio",
+        },
+    )
+
+    assert cancelar.status_code == 200
+    assert cancelar.json()["etapa"] == "cancelado"
+    assert cancelar.json()["aprobado"] is False
+    assert cancelar.json()["tipo_item"] == "servicio"
+
+
+def test_no_permite_agregar_servicio_con_id_variante(client, seed_taller_basico, seed_venta_basica):
+    servicio = _crear_servicio_taller_test(client)
+    orden = _crear_orden_taller_test(client, seed_taller_basico)
+
+    response = client.post(
+        f"/ordenes_taller/{orden['id']}/items",
+        json={
+            "tipo_item": "servicio",
+            "id_servicio_taller": servicio["id"],
+            "id_variante": seed_venta_basica["variante_id"],
+            "cantidad": 1,
+            "precio_unitario": 8000,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_no_permite_agregar_repuesto_sin_id_variante(client, seed_taller_basico):
+    orden = _crear_orden_taller_test(client, seed_taller_basico)
+
+    response = client.post(
+        f"/ordenes_taller/{orden['id']}/items",
+        json={
+            "tipo_item": "repuesto",
+            "cantidad": 1,
+            "precio_unitario": 1000,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_no_permite_agregar_servicio_inactivo(client, seed_taller_basico):
+    servicio = _crear_servicio_taller_test(client, nombre="Servicio inactivo test")
+    orden = _crear_orden_taller_test(client, seed_taller_basico)
+
+    desactivar = client.patch(f"/servicios_taller/{servicio['id']}/desactivar")
+    assert desactivar.status_code == 200
+
+    response = client.post(
+        f"/ordenes_taller/{orden['id']}/items",
+        json={
+            "tipo_item": "servicio",
+            "id_servicio_taller": servicio["id"],
+            "cantidad": 1,
+            "precio_unitario": 8000,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+
+    assert response.status_code == 400
+    assert "inactivo" in response.json()["detail"]

@@ -1,7 +1,8 @@
 from datetime import datetime
 from decimal import Decimal
-from pydantic import BaseModel, Field
+from typing import Literal
 
+from pydantic import BaseModel, Field, model_validator
 
 class ServicioTallerCreate(BaseModel):
     nombre: str = Field(min_length=1, max_length=150)

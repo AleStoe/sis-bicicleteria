@@ -306,17 +306,21 @@ def insert_orden_taller_item(conn, data: dict):
             """
             INSERT INTO ordenes_taller_items (
                 id_orden_taller,
+                tipo_item,
                 id_variante,
+                id_servicio_taller,
                 descripcion_snapshot,
                 cantidad,
                 precio_unitario,
                 subtotal
             )
-            VALUES (%s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING
                 id,
                 id_orden_taller,
+                tipo_item,
                 id_variante,
+                id_servicio_taller,
                 descripcion_snapshot,
                 cantidad,
                 precio_unitario,
@@ -329,7 +333,9 @@ def insert_orden_taller_item(conn, data: dict):
             """,
             (
                 data["id_orden_taller"],
-                data["id_variante"],
+                data["tipo_item"],
+                data.get("id_variante"),
+                data.get("id_servicio_taller"),
                 data["descripcion_snapshot"],
                 data["cantidad"],
                 data["precio_unitario"],
@@ -346,7 +352,9 @@ def get_items_orden_taller(conn, orden_id: int):
             SELECT
                 id,
                 id_orden_taller,
+                tipo_item,
                 id_variante,
+                id_servicio_taller,
                 descripcion_snapshot,
                 cantidad,
                 precio_unitario,
@@ -444,7 +452,9 @@ def get_item_orden_taller_by_id_for_update(conn, item_id: int):
             SELECT
                 oti.id,
                 oti.id_orden_taller,
+                oti.tipo_item,
                 oti.id_variante,
+                oti.id_servicio_taller,
                 oti.etapa,
                 oti.descripcion_snapshot,
                 oti.cantidad,
@@ -454,7 +464,8 @@ def get_item_orden_taller_by_id_for_update(conn, item_id: int):
                 oti.subtotal,
                 oti.created_at,
                 oti.updated_at,
-                p.tipo_item,
+                COALESCE(oti.tipo_item, p.tipo_item, 'repuesto') AS tipo_item_resuelto,
+                p.tipo_item AS producto_tipo_item,
                 p.stockeable
             FROM ordenes_taller_items oti
             LEFT JOIN variantes v ON v.id = oti.id_variante
@@ -482,7 +493,9 @@ def update_orden_taller_item_aprobacion(conn, item_id: int, aprobado: bool):
             RETURNING
                 id,
                 id_orden_taller,
+                tipo_item,
                 id_variante,
+                id_servicio_taller,
                 etapa,
                 descripcion_snapshot,
                 cantidad,
@@ -508,7 +521,9 @@ def update_orden_taller_item_ejecutado(conn, item_id: int):
             RETURNING
                 id,
                 id_orden_taller,
+                tipo_item,
                 id_variante,
+                id_servicio_taller,
                 etapa,
                 descripcion_snapshot,
                 cantidad,
@@ -534,7 +549,9 @@ def update_orden_taller_item_agregado(conn, item_id: int):
             RETURNING
                 id,
                 id_orden_taller,
+                tipo_item,
                 id_variante,
+                id_servicio_taller,
                 etapa,
                 descripcion_snapshot,
                 cantidad,
@@ -548,6 +565,7 @@ def update_orden_taller_item_agregado(conn, item_id: int):
             (item_id,),
         )
         return cur.fetchone()
+
     
 def update_orden_taller_item_cancelado(conn, item_id: int):
     with conn.cursor(row_factory=dict_row) as cur:
@@ -561,7 +579,9 @@ def update_orden_taller_item_cancelado(conn, item_id: int):
             RETURNING
                 id,
                 id_orden_taller,
+                tipo_item,
                 id_variante,
+                id_servicio_taller,
                 etapa,
                 descripcion_snapshot,
                 cantidad,

@@ -1,8 +1,8 @@
 from datetime import datetime
 from decimal import Decimal
 from typing import Literal
+from pydantic import BaseModel, Field, model_validator
 
-from pydantic import BaseModel, Field
 
 
 ESTADOS_TALLER_BASE = Literal[
@@ -33,10 +33,28 @@ class OrdenTallerEstadoUpdate(BaseModel):
 
 
 class OrdenTallerItemCreate(BaseModel):
-    id_variante: int = Field(gt=0)
+    tipo_item: Literal["repuesto", "servicio"] = "repuesto"
+    id_variante: int | None = Field(default=None, gt=0)
+    id_servicio_taller: int | None = Field(default=None, gt=0)
     cantidad: Decimal = Field(gt=0)
     precio_unitario: Decimal = Field(ge=0)
     id_usuario: int = Field(gt=0)
+
+    @model_validator(mode="after")
+    def validar_referencia_por_tipo(self):
+        if self.tipo_item == "repuesto":
+            if self.id_variante is None:
+                raise ValueError("Para un repuesto debe informarse id_variante")
+            if self.id_servicio_taller is not None:
+                raise ValueError("Un repuesto no debe tener id_servicio_taller")
+
+        if self.tipo_item == "servicio":
+            if self.id_servicio_taller is None:
+                raise ValueError("Para un servicio debe informarse id_servicio_taller")
+            if self.id_variante is not None:
+                raise ValueError("Un servicio no debe tener id_variante")
+
+        return self
 
 
 class OrdenTallerResponse(BaseModel):
@@ -79,7 +97,9 @@ class OrdenTallerEventoResponse(BaseModel):
 class OrdenTallerItemResponse(BaseModel):
     id: int
     id_orden_taller: int
-    id_variante: int
+    tipo_item: str
+    id_variante: int | None = None
+    id_servicio_taller: int | None = None
     etapa: str
     descripcion_snapshot: str
     cantidad: Decimal

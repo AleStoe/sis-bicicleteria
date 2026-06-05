@@ -77,6 +77,7 @@ from .repository import (
     get_venta_generada_por_orden_taller,
 )
 
+from app.modules.servicios_taller.repository import get_servicio_taller_by_id
 
 def _build_descripcion_snapshot(variante: dict) -> str:
     producto_nombre = (variante.get("producto_nombre") or "").strip()
@@ -233,21 +234,51 @@ def agregar_item_orden_taller(orden_id: int, data):
                     detail=f"No existe la orden de taller {orden_id}",
                 )
 
-            variante = get_variante_by_id(conn, data.id_variante)
-            if variante is None:
+            if data.tipo_item == "repuesto":
+                variante = get_variante_by_id(conn, data.id_variante)
+                if variante is None:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"No existe la variante {data.id_variante}",
+                    )
+
+                descripcion_snapshot = _build_descripcion_snapshot(variante)
+                id_variante = data.id_variante
+                id_servicio_taller = None
+
+            elif data.tipo_item == "servicio":
+                servicio = get_servicio_taller_by_id(conn, data.id_servicio_taller)
+                if servicio is None:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"No existe el servicio de taller {data.id_servicio_taller}",
+                    )
+
+                if servicio["activo"] is not True:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="No se puede agregar un servicio de taller inactivo",
+                    )
+
+                descripcion_snapshot = servicio["nombre"]
+                id_variante = None
+                id_servicio_taller = data.id_servicio_taller
+
+            else:
                 raise HTTPException(
-                    status_code=404,
-                    detail=f"No existe la variante {data.id_variante}",
+                    status_code=400,
+                    detail="Tipo de item de taller inválido",
                 )
 
-            descripcion_snapshot = _build_descripcion_snapshot(variante)
             subtotal = Decimal(data.cantidad) * Decimal(data.precio_unitario)
 
             item = insert_orden_taller_item(
                 conn,
                 {
                     "id_orden_taller": orden_id,
-                    "id_variante": data.id_variante,
+                    "tipo_item": data.tipo_item,
+                    "id_variante": id_variante,
+                    "id_servicio_taller": id_servicio_taller,
                     "descripcion_snapshot": descripcion_snapshot,
                     "cantidad": data.cantidad,
                     "precio_unitario": data.precio_unitario,
@@ -268,7 +299,6 @@ def agregar_item_orden_taller(orden_id: int, data):
             return item
     finally:
         conn.close()
-    
 
 def aprobar_item_orden_taller(orden_id: int, item_id: int, data):
     conn = get_connection()
