@@ -7,7 +7,11 @@ MedioPagoVenta = Literal["efectivo", "transferencia", "mercadopago", "tarjeta"]
 TipoPrecioVenta = Literal["minorista", "mayorista"]
 
 class VentaItemCreateInput(BaseModel):
-    id_variante: int
+    tipo_item: Literal["producto", "servicio_taller"] = "producto"
+
+    id_variante: Optional[int] = None
+    id_servicio_taller: Optional[int] = None
+
     cantidad: Decimal = Field(gt=0)
 
     id_bicicleta_serializada: Optional[int] = None
@@ -28,23 +32,45 @@ class VentaItemCreateInput(BaseModel):
         default=None,
         max_length=300,
     )
-
+    descripcion_snapshot: Optional[str] = Field(default=None, max_length=300)
     id_orden_taller_item: Optional[int] = None
 
-    def model_post_init(self, __context):
+    @model_validator(mode="after")
+    def validar_referencia_por_tipo(self):
+        if self.tipo_item == "producto":
+            if self.id_variante is None:
+                raise ValueError("Un producto requiere id_variante")
+
+            if self.id_servicio_taller is not None:
+                raise ValueError("Un producto no debe tener id_servicio_taller")
+
+        if self.tipo_item == "servicio_taller":
+            if self.id_servicio_taller is None:
+                raise ValueError("Un servicio de taller requiere id_servicio_taller")
+
+            if self.id_variante is not None:
+                raise ValueError("Un servicio de taller no debe tener id_variante")
+
+            if self.id_bicicleta_serializada is not None:
+                raise ValueError("Un servicio de taller no debe tener bicicleta serializada")
+
+            if self.precio_unitario_manual is None:
+                raise ValueError("Un servicio de taller requiere precio_unitario_manual")
+
+            if not self.motivo_precio_manual:
+                raise ValueError("Un servicio de taller requiere motivo_precio_manual")
+
         if self.bonificado and not self.motivo_bonificacion:
-            raise ValueError(
-                "La bonificación requiere motivo"
-            )
+            raise ValueError("La bonificación requiere motivo")
 
         if (
             self.precio_unitario_manual is not None
             and not self.motivo_precio_manual
         ):
-            raise ValueError(
-                "El precio manual requiere motivo"
-            )
+            raise ValueError("El precio manual requiere motivo")
 
+        return self
+    
 class VentaPagoCreateInput(BaseModel):
     medio_pago: MedioPagoVenta
 
@@ -150,7 +176,9 @@ class VentaDetalleItemOutput(BaseModel):
 
     id: int
     id_venta: int
-    id_variante: int
+    tipo_item: str = "producto"
+    id_variante: Optional[int] = None
+    id_servicio_taller: Optional[int] = None
     id_bicicleta_serializada: Optional[int] = None
     id_orden_taller_item: Optional[int] = None
     descripcion_snapshot: str

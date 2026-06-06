@@ -1,9 +1,12 @@
+from decimal import Decimal
 from app.shared.constants import (
     ORDEN_TALLER_ESTADO_INGRESADA,
     ORDEN_TALLER_ESTADO_PRESUPUESTADA,
     ORDEN_TALLER_EVENTO_CREADA,
     ORDEN_TALLER_EVENTO_CAMBIO_ESTADO,
 )
+def _to_decimal(value) -> Decimal:
+    return Decimal(str(value))
 
 
 def test_flujo_base_taller_crear_obtener_y_cambiar_estado(client, seed_taller_basico):
@@ -1409,3 +1412,102 @@ def test_no_permite_agregar_servicio_inactivo(client, seed_taller_basico):
 
     assert response.status_code == 400
     assert "inactivo" in response.json()["detail"]
+
+def test_generar_venta_desde_taller_con_servicio_taller(
+    client,
+    db_conn,
+    seed_taller_basico,
+):
+    servicio = _crear_servicio_taller_test(
+        client,
+        nombre="Service completo facturable",
+        precio=18000,
+    )
+    orden = _crear_orden_taller_test(
+        client,
+        seed_taller_basico,
+        problema="Service completo para facturar",
+    )
+
+    item_response = client.post(
+        f"/ordenes_taller/{orden['id']}/items",
+        json={
+            "tipo_item": "servicio",
+            "id_servicio_taller": servicio["id"],
+            "cantidad": 1,
+            "precio_unitario": 18000,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert item_response.status_code == 201, item_response.text
+    item_id = item_response.json()["id"]
+
+    aprobar = client.post(
+        f"/ordenes_taller/{orden['id']}/items/{item_id}/aprobacion",
+        json={
+            "aprobado": True,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert aprobar.status_code == 200, aprobar.text
+
+    ejecutar = client.post(
+        f"/ordenes_taller/{orden['id']}/items/{item_id}/ejecutar",
+        params={"id_usuario": seed_taller_basico["usuario_id"]},
+    )
+    assert ejecutar.status_code == 200, ejecutar.text
+
+    for estado in ["presupuestada", "en_reparacion", "terminada"]:
+        response = client.post(
+            f"/ordenes_taller/{orden['id']}/estado",
+            json={
+                "nuevo_estado": estado,
+                "id_usuario": seed_taller_basico["usuario_id"],
+            },
+        )
+        assert response.status_code == 200, response.text
+
+    generar = client.post(
+        f"/ordenes_taller/{orden['id']}/generar-venta",
+        json={
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert generar.status_code == 200, generar.text
+
+    venta_id = generar.json()["venta_id"]
+
+    venta_item = db_conn.execute(
+        """
+        SELECT
+            tipo_item,
+            id_variante,
+            id_servicio_taller,
+            id_orden_taller_item,
+            descripcion_snapshot,
+            cantidad,
+            precio_lista,
+            precio_final,
+            costo_unitario_aplicado,
+            subtotal
+        FROM venta_items
+        WHERE id_venta = %s
+        """,
+        (venta_id,),
+    ).fetchone()
+
+    assert venta_item is not None
+    assert venta_item["tipo_item"] == "servicio_taller"
+    assert venta_item["id_variante"] is None
+    assert venta_item["id_servicio_taller"] == servicio["id"]
+    assert venta_item["id_orden_taller_item"] == item_id
+    assert venta_item["descripcion_snapshot"] == "Service completo facturable"
+    assert _to_decimal(venta_item["cantidad"]) == Decimal("1.000")
+    assert _to_decimal(venta_item["precio_lista"]) == Decimal("18000.00")
+    assert _to_decimal(venta_item["precio_final"]) == Decimal("18000.00")
+    assert _to_decimal(venta_item["costo_unitario_aplicado"]) == Decimal("0.00")
+    assert _to_decimal(venta_item["subtotal"]) == Decimal("18000.00")
+
+    orden_actualizada = client.get(f"/ordenes_taller/{orden['id']}").json()
+    assert orden_actualizada["estado"] == "facturada"
+    assert orden_actualizada["id_venta_generada"] == venta_id

@@ -673,7 +673,20 @@ def generar_venta_desde_orden_taller(orden_id: int, data):
 
             payload_items = []
             for item in items_ejecutados:
+                if item.get("tipo_item") == "servicio":
+                    payload_items.append({
+                        "tipo_item": "servicio_taller",
+                        "id_servicio_taller": item["id_servicio_taller"],
+                        "descripcion_snapshot": item["descripcion_snapshot"],
+                        "cantidad": item["cantidad"],
+                        "precio_unitario_manual": item["precio_unitario"],
+                        "motivo_precio_manual": f"Precio de taller OT #{orden_id}",
+                        "id_orden_taller_item": item["id"],
+                    })
+                    continue
+
                 payload_items.append({
+                    "tipo_item": "producto",
                     "id_variante": item["id_variante"],
                     "cantidad": item["cantidad"],
                     "precio_unitario_manual": item["precio_unitario"],

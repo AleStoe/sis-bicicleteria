@@ -2,6 +2,7 @@ from decimal import Decimal
 from app.modules.pagos import service as pagos_service
 from app.shared.money import to_decimal
 from fastapi import HTTPException
+from app.modules.servicios_taller.repository import get_servicio_taller_by_id
 from app.modules.authz.service import (
     exigir_permiso_anular_venta,
     exigir_permiso_entregar_con_deuda,
@@ -69,7 +70,7 @@ def _consolidar_items(items):
     consolidados = {}
 
     for item in items:
-        id_variante = item["id_variante"]
+        tipo_item = item.get("tipo_item", "producto")
         cantidad = Decimal(str(item["cantidad"]))
         id_bicicleta_serializada = item.get("id_bicicleta_serializada")
 
@@ -79,6 +80,71 @@ def _consolidar_items(items):
                 detail="La cantidad debe ser mayor a 0",
             )
 
+        if tipo_item == "servicio_taller":
+            id_servicio_taller = item.get("id_servicio_taller")
+
+            if not id_servicio_taller:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Un servicio de taller requiere id_servicio_taller",
+                )
+
+            if item.get("id_variante") is not None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Un servicio de taller no debe tener id_variante",
+                )
+
+            if id_bicicleta_serializada is not None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Un servicio de taller no debe tener bicicleta serializada",
+                )
+
+            clave = (
+                "servicio_taller",
+                id_servicio_taller,
+                item.get("precio_unitario_manual"),
+                bool(item.get("bonificado", False)),
+                item.get("motivo_precio_manual"),
+                item.get("motivo_bonificacion"),
+                item.get("id_orden_taller_item"),
+                item.get("descripcion_snapshot"),
+            )
+
+            if clave not in consolidados:
+                consolidados[clave] = {
+                    "tipo_item": "servicio_taller",
+                    "id_variante": None,
+                    "id_servicio_taller": id_servicio_taller,
+                    "cantidad": cantidad,
+                    "id_bicicleta_serializada": None,
+                    "precio_unitario_manual": item.get("precio_unitario_manual"),
+                    "bonificado": bool(item.get("bonificado", False)),
+                    "motivo_precio_manual": item.get("motivo_precio_manual"),
+                    "motivo_bonificacion": item.get("motivo_bonificacion"),
+                    "id_orden_taller_item": item.get("id_orden_taller_item"),
+                    "descripcion_snapshot": item.get("descripcion_snapshot"),
+                }
+            else:
+                consolidados[clave]["cantidad"] += cantidad
+
+            continue
+
+        if tipo_item != "producto":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Tipo de item de venta inválido: {tipo_item}",
+            )
+
+        id_variante = item.get("id_variante")
+
+        if not id_variante:
+            raise HTTPException(
+                status_code=400,
+                detail="Un producto requiere id_variante",
+            )
+
         if id_bicicleta_serializada:
             if cantidad != Decimal("1"):
                 raise HTTPException(
@@ -86,7 +152,7 @@ def _consolidar_items(items):
                     detail="Un item con bicicleta serializada debe tener cantidad = 1",
                 )
 
-            clave = (id_variante, id_bicicleta_serializada)
+            clave = ("producto", id_variante, id_bicicleta_serializada)
 
             if clave in consolidados:
                 raise HTTPException(
@@ -95,13 +161,16 @@ def _consolidar_items(items):
                 )
 
             consolidados[clave] = {
+                "tipo_item": "producto",
                 "id_variante": id_variante,
+                "id_servicio_taller": None,
                 "cantidad": cantidad,
                 "id_bicicleta_serializada": id_bicicleta_serializada,
             }
             continue
 
         clave = (
+            "producto",
             id_variante,
             None,
             item.get("precio_unitario_manual"),
@@ -113,7 +182,9 @@ def _consolidar_items(items):
 
         if clave not in consolidados:
             consolidados[clave] = {
+                "tipo_item": "producto",
                 "id_variante": id_variante,
+                "id_servicio_taller": None,
                 "cantidad": cantidad,
                 "id_bicicleta_serializada": None,
                 "precio_unitario_manual": item.get("precio_unitario_manual"),
@@ -483,7 +554,9 @@ def crear_venta(data):
 
             items_input = [
                 {
+                    "tipo_item": item.tipo_item,
                     "id_variante": item.id_variante,
+                    "id_servicio_taller": item.id_servicio_taller,
                     "cantidad": item.cantidad,
                     "id_bicicleta_serializada": item.id_bicicleta_serializada,
                     "precio_unitario_manual": item.precio_unitario_manual,
@@ -491,18 +564,70 @@ def crear_venta(data):
                     "motivo_precio_manual": item.motivo_precio_manual,
                     "motivo_bonificacion": item.motivo_bonificacion,
                     "id_orden_taller_item": item.id_orden_taller_item,
+                    "descripcion_snapshot": item.descripcion_snapshot,
                 }
                 for item in data.items
             ]
 
             items_consolidados = _consolidar_items(items_input)
-            ids_unicos = list({item["id_variante"] for item in items_consolidados})
-            variantes_map = _obtener_variantes_map(conn, ids_unicos)
+            ids_unicos = list({
+                item["id_variante"]
+                for item in items_consolidados
+                if item.get("tipo_item", "producto") == "producto"
+            })
+
+            variantes_map = (
+                _obtener_variantes_map(conn, ids_unicos)
+                if ids_unicos
+                else {}
+            )
 
             subtotal_total = Decimal("0")
             venta_items = []
 
             for item in items_consolidados:
+                cantidad = to_decimal(item["cantidad"])
+                bonificado = item.get("bonificado", False)
+                precio_manual = item.get("precio_unitario_manual")
+
+                if item.get("tipo_item", "producto") == "servicio_taller":
+                    servicio = get_servicio_taller_by_id(conn, item["id_servicio_taller"])
+
+                    if servicio is None:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"No existe el servicio de taller {item['id_servicio_taller']}",
+                        )
+
+                    if servicio["activo"] is not True:
+                        raise HTTPException(
+                            status_code=400,
+                            detail="No se puede vender un servicio de taller inactivo",
+                        )
+
+                    precio_lista = redondear_monto(precio_manual)
+
+                    precio_final = Decimal("0") if bonificado else precio_lista
+                    subtotal = redondear_monto(precio_final * cantidad)
+                    subtotal_total = redondear_monto(subtotal_total + subtotal)
+
+                    venta_items.append(
+                        {
+                            "tipo_item": "servicio_taller",
+                            "item": item,
+                            "servicio": servicio,
+                            "variante": None,
+                            "cantidad": cantidad,
+                            "subtotal": subtotal,
+                            "precio_final": precio_final,
+                            "precio_lista": precio_lista,
+                            "bonificado": bonificado,
+                            "motivo_precio_manual": item.get("motivo_precio_manual"),
+                            "motivo_bonificacion": item.get("motivo_bonificacion"),
+                        }
+                    )
+                    continue
+
                 variante = variantes_map[item["id_variante"]]
                 campo_precio = (
                     "precio_mayorista"
@@ -521,12 +646,6 @@ def crear_venta(data):
                         ),
                     )
 
-                cantidad = to_decimal(item["cantidad"])
-
-                bonificado = item.get("bonificado", False)
-
-                precio_manual = item.get("precio_unitario_manual")
-
                 if bonificado:
                     precio_final = Decimal("0")
                 else:
@@ -537,10 +656,7 @@ def crear_venta(data):
                     )
 
                 subtotal = redondear_monto(precio_final * cantidad)
-
-                subtotal_total = redondear_monto(
-                    subtotal_total + subtotal
-                )
+                subtotal_total = redondear_monto(subtotal_total + subtotal)
 
                 if item["id_bicicleta_serializada"] is not None:
                     _validar_y_bloquear_bicicleta_serializada_para_venta(
@@ -552,6 +668,7 @@ def crear_venta(data):
 
                 venta_items.append(
                     {
+                        "tipo_item": "producto",
                         "item": item,
                         "variante": variante,
                         "cantidad": cantidad,
@@ -631,10 +748,40 @@ def crear_venta(data):
                 )
             for fila in venta_items:
                 item = fila["item"]
-                variante = fila["variante"]
                 cantidad = fila["cantidad"]
                 subtotal = fila["subtotal"]
 
+                if fila.get("tipo_item") == "servicio_taller":
+                    servicio = fila["servicio"]
+
+                    insert_venta_item(
+                        conn,
+                        {
+                            "id_venta": venta_id,
+                            "tipo_item": "servicio_taller",
+                            "id_variante": None,
+                            "id_servicio_taller": item["id_servicio_taller"],
+                            "id_bicicleta_serializada": None,
+                            "id_orden_taller_item": item.get("id_orden_taller_item"),
+                            "descripcion_snapshot": (
+                                item.get("descripcion_snapshot")
+                                or servicio["nombre"]
+                            ),
+                            "cantidad": cantidad,
+                            "precio_lista": fila["precio_lista"],
+                            "precio_final": fila["precio_final"],
+                            "precio_unitario_original": fila["precio_lista"],
+                            "precio_unitario_final": fila["precio_final"],
+                            "bonificado": fila.get("bonificado", False),
+                            "motivo_bonificacion": fila.get("motivo_bonificacion"),
+                            "motivo_precio_manual": fila.get("motivo_precio_manual"),
+                            "costo_unitario_aplicado": Decimal("0"),
+                            "subtotal": subtotal,
+                        },
+                    )
+                    continue
+
+                variante = fila["variante"]
                 precio_minorista = redondear_monto(variante["precio_minorista"])
                 costo_promedio = redondear_monto(variante["costo_promedio_vigente"] or 0)
 
@@ -642,7 +789,9 @@ def crear_venta(data):
                     conn,
                     {
                         "id_venta": venta_id,
+                        "tipo_item": "producto",
                         "id_variante": variante["id"],
+                        "id_servicio_taller": None,
                         "id_bicicleta_serializada": item["id_bicicleta_serializada"],
                         "id_orden_taller_item": item.get("id_orden_taller_item"),
                         "descripcion_snapshot": (
@@ -650,33 +799,14 @@ def crear_venta(data):
                             f"{variante['nombre_variante']}"
                         ),
                         "cantidad": cantidad,
-
                         "precio_lista": fila["precio_lista"],
                         "precio_final": fila["precio_final"],
-
-                        "precio_unitario_original": fila.get(
-                            "precio_lista"
-                        ) or fila.get("precio_final"),
-
-                        "precio_unitario_final": fila.get(
-                            "precio_final"
-                        ) or fila.get("precio_lista"),
-
-                        "bonificado": fila.get(
-                            "bonificado",
-                            False,
-                        ),
-
-                        "motivo_bonificacion": fila.get(
-                            "motivo_bonificacion"
-                        ),
-
-                        "motivo_precio_manual": fila.get(
-                            "motivo_precio_manual"
-                        ),
-
+                        "precio_unitario_original": fila.get("precio_lista") or fila.get("precio_final"),
+                        "precio_unitario_final": fila.get("precio_final") or fila.get("precio_lista"),
+                        "bonificado": fila.get("bonificado", False),
+                        "motivo_bonificacion": fila.get("motivo_bonificacion"),
+                        "motivo_precio_manual": fila.get("motivo_precio_manual"),
                         "costo_unitario_aplicado": costo_promedio,
-
                         "subtotal": subtotal,
                     },
                 )
@@ -703,7 +833,13 @@ def crear_venta(data):
                     )
 
             items_stock = sorted(
-                [fila for fila in venta_items if fila["variante"]["stockeable"]],
+                [
+                    fila
+                    for fila in venta_items
+                    if fila.get("tipo_item") == "producto"
+                    and fila["variante"] is not None
+                    and fila["variante"]["stockeable"]
+                ],
                 key=lambda fila: fila["variante"]["id"],
             )
 
@@ -1261,7 +1397,13 @@ def anular_venta(venta_id: int, data):
 
 def _ordenar_items_stockeables_por_variante(items: list[dict]) -> list[dict]:
     return sorted(
-        [item for item in items if item.get("stockeable", True)],
+        [
+            item
+            for item in items
+            if item.get("tipo_item", "producto") == "producto"
+            and item.get("id_variante") is not None
+            and item.get("stockeable", True)
+        ],
         key=lambda item: item["id_variante"],
     )
 
@@ -1808,24 +1950,66 @@ def simular_venta(data):
 
         items_input = [
             {
+                "tipo_item": item.tipo_item,
                 "id_variante": item.id_variante,
+                "id_servicio_taller": item.id_servicio_taller,
                 "cantidad": item.cantidad,
                 "id_bicicleta_serializada": item.id_bicicleta_serializada,
                 "precio_unitario_manual": item.precio_unitario_manual,
                 "bonificado": item.bonificado,
                 "motivo_precio_manual": item.motivo_precio_manual,
                 "motivo_bonificacion": item.motivo_bonificacion,
+                "id_orden_taller_item": item.id_orden_taller_item,
+                "descripcion_snapshot": item.descripcion_snapshot,
             }
             for item in data.items
         ]
 
         items_consolidados = _consolidar_items(items_input)
-        ids_unicos = list({item["id_variante"] for item in items_consolidados})
-        variantes_map = _obtener_variantes_map(conn, ids_unicos)
+        ids_unicos = list({
+            item["id_variante"]
+            for item in items_consolidados
+            if item.get("tipo_item", "producto") == "producto"
+        })
+
+        variantes_map = (
+            _obtener_variantes_map(conn, ids_unicos)
+            if ids_unicos
+            else {}
+        )
 
         subtotal_total = Decimal("0")
 
         for item in items_consolidados:
+            cantidad = to_decimal(item["cantidad"])
+            bonificado = item.get("bonificado", False)
+            precio_manual = item.get("precio_unitario_manual")
+
+            if item.get("tipo_item", "producto") == "servicio_taller":
+                servicio = get_servicio_taller_by_id(conn, item["id_servicio_taller"])
+
+                if servicio is None:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"No existe el servicio de taller {item['id_servicio_taller']}",
+                    )
+
+                if servicio["activo"] is not True:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="No se puede vender un servicio de taller inactivo",
+                    )
+
+                precio_lista = redondear_monto(precio_manual)
+
+                precio_final = Decimal("0") if bonificado else precio_lista
+
+                subtotal_total = redondear_monto(
+                    subtotal_total + redondear_monto(precio_final * cantidad)
+                )
+
+                continue
+
             variante = variantes_map[item["id_variante"]]
 
             campo_precio = (
@@ -1844,10 +2028,6 @@ def simular_venta(data):
                         f"{data.tipo_precio} configurado"
                     ),
                 )
-
-            cantidad = to_decimal(item["cantidad"])
-            bonificado = item.get("bonificado", False)
-            precio_manual = item.get("precio_unitario_manual")
 
             if bonificado:
                 precio_final = Decimal("0")

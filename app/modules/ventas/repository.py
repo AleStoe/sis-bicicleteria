@@ -114,32 +114,37 @@ def insert_venta_item(conn, data: dict):
         cur.execute(
             """
             INSERT INTO venta_items (
-                id_venta,
-                id_variante,
-                id_bicicleta_serializada,
-                id_orden_taller_item,
-                descripcion_snapshot,
-                cantidad,
-                precio_lista,
-                precio_final,
-                precio_unitario_original,
-                precio_unitario_final,
-                bonificado,
-                motivo_bonificacion,
-                motivo_precio_manual,
-                costo_unitario_aplicado,
-                subtotal
-            )
-            VALUES (
-                %s, %s, %s, %s, %s,
-                %s, %s, %s, %s, %s,
-                %s, %s, %s, %s, %s
-            )
+            id_venta,
+            tipo_item,
+            id_variante,
+            id_servicio_taller,
+            id_bicicleta_serializada,
+            id_orden_taller_item,
+            descripcion_snapshot,
+            cantidad,
+            precio_lista,
+            precio_final,
+            precio_unitario_original,
+            precio_unitario_final,
+            bonificado,
+            motivo_bonificacion,
+            motivo_precio_manual,
+            costo_unitario_aplicado,
+            subtotal
+        )
+        VALUES (
+            %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s,
+            %s, %s
+        )
             RETURNING id
             """,
             (
                 data["id_venta"],
-                data["id_variante"],
+                data.get("tipo_item", "producto"),
+                data.get("id_variante"),
+                data.get("id_servicio_taller"),
                 data.get("id_bicicleta_serializada"),
                 data.get("id_orden_taller_item"),
                 data["descripcion_snapshot"],
@@ -273,6 +278,8 @@ def get_venta_items_by_venta_id(conn, venta_id: int):
                 vi.id,
                 vi.id_venta,
                 vi.id_variante,
+                vi.tipo_item,
+                vi.id_servicio_taller,
                 vi.id_bicicleta_serializada,
                 vi.id_orden_taller_item,
                 vi.descripcion_snapshot,
@@ -315,7 +322,9 @@ def get_venta_items_detallados_by_venta_id(conn, venta_id: int):
             SELECT
                 vi.id,
                 vi.id_venta,
+                vi.tipo_item,
                 vi.id_variante,
+                vi.id_servicio_taller,
                 vi.id_bicicleta_serializada,
                 vi.id_orden_taller_item,
                 vi.descripcion_snapshot,
@@ -327,7 +336,7 @@ def get_venta_items_detallados_by_venta_id(conn, venta_id: int):
                 v.id_producto,
                 v.activo AS variante_activa,
                 p.nombre AS producto_nombre,
-                p.tipo_item,
+                p.tipo_item AS producto_tipo_item,
                 p.stockeable,
                 p.serializable,
                 p.activo AS producto_activo,
@@ -337,9 +346,9 @@ def get_venta_items_detallados_by_venta_id(conn, venta_id: int):
                 vi.precio_unitario_original,
                 vi.precio_unitario_final
             FROM venta_items vi
-            INNER JOIN variantes v
+            LEFT JOIN variantes v
                 ON v.id = vi.id_variante
-            INNER JOIN productos p
+            LEFT JOIN productos p
                 ON p.id = v.id_producto
             WHERE vi.id_venta = %s
             ORDER BY vi.id
@@ -426,19 +435,23 @@ def insert_venta_item_devolucion(conn, data: dict):
             INSERT INTO venta_item_devoluciones (
                 id_venta,
                 id_venta_item,
+                tipo_item,
                 id_variante,
+                id_servicio_taller,
                 cantidad_devuelta,
                 monto_credito_generado,
                 motivo,
                 id_usuario
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
             (
                 data["id_venta"],
                 data["id_venta_item"],
-                data["id_variante"],
+                data.get("tipo_item", "producto"),
+                data.get("id_variante"),
+                data.get("id_servicio_taller"),
                 data["cantidad_devuelta"],
                 data["monto_credito_generado"],
                 data["motivo"],
