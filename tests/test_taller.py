@@ -242,7 +242,7 @@ def test_no_permite_salto_invalido_de_ingresada_a_terminada(client, seed_taller_
     assert "Transición inválida" in response.json()["detail"]
 
 
-def test_flujo_valido_hasta_retirada(client, seed_taller_basico):
+def test_no_permite_terminar_orden_sin_items_ejecutados(client, seed_taller_basico):
     crear = client.post(
         "/ordenes_taller/",
         json={
@@ -256,15 +256,7 @@ def test_flujo_valido_hasta_retirada(client, seed_taller_basico):
     assert crear.status_code == 201
     orden_id = crear.json()["id"]
 
-    flujo = [
-        "presupuestada",
-        "en_reparacion",
-        "terminada",
-        "lista_para_retirar",
-        "retirada",
-    ]
-
-    for estado in flujo:
+    for estado in ["presupuestada", "en_reparacion"]:
         response = client.post(
             f"/ordenes_taller/{orden_id}/estado",
             json={
@@ -272,51 +264,55 @@ def test_flujo_valido_hasta_retirada(client, seed_taller_basico):
                 "id_usuario": seed_taller_basico["usuario_id"],
             },
         )
+        assert response.status_code == 200, response.text
 
-        assert response.status_code == 200
-        assert response.json()["estado"] == estado
+    terminar = client.post(
+        f"/ordenes_taller/{orden_id}/estado",
+        json={
+            "nuevo_estado": "terminada",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
 
+    assert terminar.status_code == 400
+    assert "sin items activos" in terminar.json()["detail"]
 
-def test_no_permite_mover_orden_retirada(client, seed_taller_basico):
+def test_no_permite_lista_para_retirar_sin_venta_generada(client, db_conn, seed_taller_basico):
     crear = client.post(
         "/ordenes_taller/",
         json={
             "id_sucursal": seed_taller_basico["sucursal_id"],
             "id_cliente": seed_taller_basico["cliente_id"],
             "id_bicicleta_cliente": seed_taller_basico["bicicleta_cliente_id"],
-            "problema_reportado": "Orden terminal",
+            "problema_reportado": "Orden terminada sin venta",
             "id_usuario": seed_taller_basico["usuario_id"],
         },
     )
     assert crear.status_code == 201
     orden_id = crear.json()["id"]
 
-    for estado in [
-        "presupuestada",
-        "en_reparacion",
-        "terminada",
-        "lista_para_retirar",
-        "retirada",
-    ]:
-        response = client.post(
-            f"/ordenes_taller/{orden_id}/estado",
-            json={
-                "nuevo_estado": estado,
-                "id_usuario": seed_taller_basico["usuario_id"],
-            },
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE ordenes_taller
+            SET estado = 'terminada',
+                id_venta_generada = NULL
+            WHERE id = %s
+            """,
+            (orden_id,),
         )
-        assert response.status_code == 200
+    db_conn.commit()
 
     response = client.post(
         f"/ordenes_taller/{orden_id}/estado",
         json={
-            "nuevo_estado": "en_reparacion",
+            "nuevo_estado": "lista_para_retirar",
             "id_usuario": seed_taller_basico["usuario_id"],
         },
     )
 
     assert response.status_code == 400
-    assert "Transición inválida" in response.json()["detail"]
+    assert "generá la venta" in response.json()["detail"]
 
 
 def test_aprobar_item_taller(client, seed_taller_basico, seed_venta_basica):
@@ -1062,6 +1058,25 @@ def test_no_permite_revertir_ejecucion_en_orden_retirada(
         "presupuestada",
         "en_reparacion",
         "terminada",
+    ]:
+        cambiar = client.post(
+            f"/ordenes_taller/{orden_id}/estado",
+            json={
+                "nuevo_estado": estado,
+                "id_usuario": seed_taller_basico["usuario_id"],
+            },
+        )
+        assert cambiar.status_code == 200, cambiar.text
+
+    generar = client.post(
+        f"/ordenes_taller/{orden_id}/generar-venta",
+        json={
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert generar.status_code == 200, generar.text
+
+    for estado in [
         "lista_para_retirar",
         "retirada",
     ]:
@@ -1072,7 +1087,7 @@ def test_no_permite_revertir_ejecucion_en_orden_retirada(
                 "id_usuario": seed_taller_basico["usuario_id"],
             },
         )
-        assert cambiar.status_code == 200
+        assert cambiar.status_code == 200, cambiar.text
 
     response = client.post(
         f"/ordenes_taller/{orden_id}/items/{item_id}/revertir-ejecucion",

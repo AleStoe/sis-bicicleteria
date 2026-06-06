@@ -708,21 +708,14 @@ export default function TallerDetallePage() {
                 </>
               ) : orden.estado === "terminada" ? (
                 <>
-                  {items.some((item) => item.tipo_item === "servicio" && item.etapa === "ejecutado") ? (
-                    <p style={styles.warningText}>
-                      Esta orden tiene servicios ejecutados. Todavía no generes venta desde taller hasta adaptar Ventas para líneas sin variante.
-                    </p>
-                  ) : (
-                    <p style={styles.muted}>El trabajo está terminado. Generá la venta para cobrar con el flujo normal de ventas.</p>
-                  )}
+                  <p style={styles.muted}>
+                    El trabajo está terminado. Generá la venta para cobrar con el flujo normal de ventas.
+                  </p>
+
                   <button
                     type="button"
                     onClick={generarVenta}
-                    disabled={
-                      guardando ||
-                      resumen.ejecutados === 0 ||
-                      items.some((item) => item.tipo_item === "servicio" && item.etapa === "ejecutado")
-                    }
+                    disabled={guardando || resumen.ejecutados === 0}
                     style={styles.primaryButton}
                   >
                     Generar venta

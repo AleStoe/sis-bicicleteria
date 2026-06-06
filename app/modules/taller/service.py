@@ -201,7 +201,37 @@ def cambiar_estado_orden_taller(orden_id: int, data):
                 estado_actual=orden["estado"],
                 nuevo_estado=data.nuevo_estado,
             )
+            if orden["estado"] == "en_reparacion" and data.nuevo_estado == "terminada":
+                items = get_items_orden_taller(conn, orden_id)
 
+                items_activos = [
+                    item for item in items
+                    if item["etapa"] != "cancelado"
+                ]
+
+                if not items_activos:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="No se puede marcar como terminada una orden sin items activos",
+                    )
+
+                items_pendientes = [
+                    item for item in items_activos
+                    if item["etapa"] != "ejecutado"
+                ]
+
+                if items_pendientes:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="No se puede marcar como terminada: hay items aprobados o pendientes sin ejecutar",
+                    )
+
+            if orden["estado"] == "terminada" and data.nuevo_estado == "lista_para_retirar":
+                if not orden.get("id_venta_generada"):
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Primero generá la venta antes de marcar la orden como lista para retirar",
+                    )
             update_orden_taller_estado(conn, orden_id, data.nuevo_estado)
 
             insert_orden_taller_evento(
@@ -636,22 +666,18 @@ def generar_venta_desde_orden_taller(orden_id: int, data):
                 raise HTTPException(status_code=404, detail=f"No existe la orden de taller {orden_id}")
 
             if orden.get("id_venta_generada"):
-                return {
-                    "ok": True,
-                    "orden_id": orden_id,
-                    "venta_id": orden["id_venta_generada"],
-                    "estado_orden": orden["estado"],
-                }
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"La orden ya tiene una venta generada: #{orden['id_venta_generada']}",
+                )
 
             venta_existente = get_venta_generada_por_orden_taller(conn, orden_id)
             if venta_existente:
                 update_orden_taller_venta_generada(conn, orden_id, venta_existente["id"])
-                return {
-                    "ok": True,
-                    "orden_id": orden_id,
-                    "venta_id": venta_existente["id"],
-                    "estado_orden": "facturada",
-                }
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"La orden ya tiene una venta generada: #{venta_existente['id']}",
+                )
 
             if orden["estado"] != "terminada":
                 raise HTTPException(
