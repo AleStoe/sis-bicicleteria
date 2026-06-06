@@ -23,6 +23,12 @@ export function cambiarEstadoOrdenTaller(ordenId, data) {
 }
 
 export function agregarItemOrdenTaller(ordenId, data) {
+  console.log("SERVICE agregarItemOrdenTaller", {
+    ordenId,
+    data,
+    url: `/ordenes_taller/${ordenId}/items`,
+  });
+
   return apiRequest(`/ordenes_taller/${ordenId}/items`, {
     method: "POST",
     body: JSON.stringify(data),

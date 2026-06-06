@@ -1,16 +1,8 @@
 import { apiRequest } from "./api";
 
-export function listarServiciosTaller(params = {}) {
-  const searchParams = new URLSearchParams();
-
-  Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && String(value).trim() !== "") {
-      searchParams.set(key, String(value).trim());
-    }
-  });
-
-  const qs = searchParams.toString();
-  return apiRequest(`/servicios_taller/${qs ? `?${qs}` : ""}`);
+export function listarServiciosTaller(incluirInactivos = false) {
+  const qs = incluirInactivos ? "?incluir_inactivos=true" : "";
+  return apiRequest(`/servicios_taller/${qs}`);
 }
 
 export function obtenerServicioTaller(servicioId) {
