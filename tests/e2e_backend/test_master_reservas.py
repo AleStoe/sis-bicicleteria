@@ -88,4 +88,4 @@ def test_master_reserva_flujo_completo(client, db_conn, seed_venta_basica):
     ]
 
     montos = sorted(_dec(m["monto"]) for m in ingresos)
-    assert montos == [Decimal("5000"), Decimal("19440")]
+    assert montos == [Decimal("4500.00"), Decimal("19440.00")]

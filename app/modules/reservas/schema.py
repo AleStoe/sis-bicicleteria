@@ -7,7 +7,12 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 MedioPago = Literal["efectivo", "transferencia", "mercadopago", "tarjeta"]
 TipoReserva = Literal["comun"]
 EstadoReserva = Literal["activa", "vencida", "cancelada", "convertida_en_venta"]
-
+MedioPagoReserva = Literal[
+    "efectivo",
+    "transferencia",
+    "mercadopago",
+    "tarjeta",
+]
 
 class ReservaItemCreateInput(BaseModel):
     id_variante: int = Field(gt=0)
@@ -26,18 +31,43 @@ class ReservaItemCreateInput(BaseModel):
 
 class ReservaPagoInicialInput(BaseModel):
     registrar: bool = False
-    medio_pago: MedioPago | None = None
-    monto: Decimal = Field(default=Decimal("0"), ge=0)
-    nota: str | None = Field(default=None, max_length=500)
+    medio_pago: MedioPagoReserva | None = None
+
+    # Camino correcto V2: base comercial de la seña.
+    monto_base: Decimal | None = Field(default=None, gt=0)
+
+    # Compatibilidad temporal V1.
+    monto: Decimal | None = Field(default=None, gt=0)
+
+    cuotas: int | None = Field(default=None, gt=0)
+    entidad: str | None = Field(default=None, max_length=80)
+    id_tarjeta_plan: int | None = Field(default=None, gt=0)
+
+    nota: str | None = None
 
     @model_validator(mode="after")
-    def validar_si_registra(self):
-        if self.registrar:
-            if self.medio_pago is None:
-                raise ValueError("Si registrar es true, medio_pago es obligatorio")
-            if self.monto <= 0:
-                raise ValueError("Si registrar es true, el monto debe ser mayor a 0")
+    def validar_pago_inicial(self):
+        if not self.registrar:
+            return self
+
+        if self.medio_pago is None:
+            raise ValueError("Debe informar medio_pago para registrar la seña")
+
+        if self.monto_base is None and self.monto is None:
+            raise ValueError("Debe informar monto_base para registrar la seña")
+
+        if self.medio_pago == "tarjeta":
+            if self.cuotas is None and self.id_tarjeta_plan is None:
+                raise ValueError("La seña con tarjeta requiere cuotas o plan de tarjeta")
+
+        if self.medio_pago != "tarjeta" and self.id_tarjeta_plan is not None:
+            raise ValueError("Solo una seña con tarjeta puede usar id_tarjeta_plan")
+
         return self
+
+    @property
+    def base(self) -> Decimal | None:
+        return self.monto_base if self.monto_base is not None else self.monto
 
 
 class ReservaCreateInput(BaseModel):

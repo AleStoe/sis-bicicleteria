@@ -77,7 +77,7 @@ def test_circuito_reserva_senia_conversion_venta_entrega_stock_caja(
         and m["submedio"] == "efectivo"
     ]
     assert len(ingresos) == 1
-    assert _dec(ingresos[0]["monto"]) == Decimal("5000")
+    assert _dec(ingresos[0]["monto"]) == Decimal("4500.00")
 
     # 5. Convertir reserva a venta
     conversion_response = client.post(
@@ -164,4 +164,4 @@ def test_circuito_reserva_senia_conversion_venta_entrega_stock_caja(
     ]
 
     montos = sorted(_dec(m["monto"]) for m in ingresos_finales)
-    assert montos == [Decimal("5000"), Decimal("19440")]
+    assert montos == [Decimal("4500.00"), Decimal("19440")]

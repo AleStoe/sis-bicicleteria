@@ -186,13 +186,30 @@ def crear_reserva(data):
                     )
 
             # =====================================================
-            # 4. SEÑA Y SALDO
+            # 4. SEÑA / PAGO Y SALDO
             # =====================================================
             sena = Decimal("0")
             pago = data.get("pago_inicial")
 
             if pago and pago.get("registrar"):
-                sena = to_decimal(pago["monto"])
+                resultado_pago = pagos_service.registrar_pago(
+                    conn,
+                    {
+                        "id_sucursal": data["id_sucursal"],
+                        "id_cliente": data["id_cliente"],
+                        "monto_base": pago.get("monto_base") or pago.get("monto"),
+                        "medio_pago": pago["medio_pago"],
+                        "cuotas": pago.get("cuotas"),
+                        "entidad": pago.get("entidad"),
+                        "id_tarjeta_plan": pago.get("id_tarjeta_plan"),
+                        "origen_tipo": "reserva",
+                        "origen_id": reserva_id,
+                        "nota": pago.get("nota"),
+                        "id_usuario": data["id_usuario"],
+                    },
+                )
+
+                sena = to_decimal(resultado_pago["monto_base_aplicado"])
 
             saldo = total_estimado - sena
 
@@ -203,24 +220,6 @@ def crear_reserva(data):
                 sena,
                 saldo,
             )
-
-            # =====================================================
-            # 5. PAGO (SEÑA)
-            # =====================================================
-            if pago and pago.get("registrar"):
-                pagos_service.registrar_pago(
-                    conn,
-                    {
-                        "id_sucursal": data["id_sucursal"],
-                        "id_cliente": data["id_cliente"],
-                        "monto": pago["monto"],
-                        "medio_pago": pago["medio_pago"],
-                        "origen_tipo": "reserva",
-                        "origen_id": reserva_id,
-                        "nota": pago.get("nota"),
-                        "id_usuario": data["id_usuario"],
-                    },
-                )
 
             # =====================================================
             # 6. EVENTO
