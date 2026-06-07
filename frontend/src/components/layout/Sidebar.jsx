@@ -35,6 +35,7 @@ const groups = [
       { to: "/ventas/nueva", label: "Nueva Venta", icon: ShoppingCart },
       { to: "/ventas", label: "Ventas", icon: Receipt },
       { to: "/caja", label: "Caja", icon: DollarSign },
+      { to: "/gastos", label: "Gastos", icon: Receipt },
       { to: "/pagos", label: "Pagos", icon: CreditCard },
       { to: "/configuracion-comercial", label: "Config. Comercial", icon: Settings2 },
     ],

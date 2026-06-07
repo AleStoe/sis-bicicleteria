@@ -6,6 +6,7 @@ import VentasListPage from "./pages/VentasListPage";
 import VentaDetallePage from "./pages/VentaDetallePage";
 import StockPage from "./pages/StockPage";
 import CajaPage from "./pages/CajaPage";
+import GastosPage from "./pages/GastosPage";
 import ClientesListPage from "./pages/ClientesListPage";
 import ClienteDetallePage from "./pages/ClienteDetallePage";
 import ClienteFormPage from "./pages/ClienteFormPage";
@@ -45,6 +46,7 @@ export default function App() {
           <Route path="/ventas/:ventaId" element={<VentaDetallePage />} />
           <Route path="/stock" element={<StockPage />} />
           <Route path="/caja" element={<CajaPage />} />
+          <Route path="/gastos" element={<GastosPage />} />
           <Route path="/taller" element={<TallerListPage />} />
           <Route path="/taller/nueva" element={<TallerNuevaOrdenPage />} />
           <Route path="/taller/:ordenId" element={<TallerDetallePage />} />
