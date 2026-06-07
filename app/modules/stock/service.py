@@ -17,10 +17,21 @@ def _manejar_error_transaccional(conn, exc: Exception):
 # CONSULTAS (READ ONLY)
 # =========================================================
 
-def listar_stock():
+def listar_stock(filtros: dict | None = None):
+    filtros = filtros or {}
     conn = get_connection()
     try:
-        return repository.get_stock_sucursal(conn)
+        return repository.get_stock_sucursal(conn, **filtros)
+    finally:
+        conn.close()
+
+
+def obtener_resumen_stock(filtros: dict | None = None):
+    filtros = filtros or {}
+    filtros = {k: v for k, v in filtros.items() if k not in {"ordenar_por", "orden", "limit", "offset"}}
+    conn = get_connection()
+    try:
+        return repository.get_stock_resumen(conn, **filtros)
     finally:
         conn.close()
 

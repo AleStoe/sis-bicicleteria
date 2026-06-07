@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { crearAjusteStock, crearIngresoStock, listarStock } from "../services/stockService";
+import { crearAjusteStock, crearIngresoStock, listarStock, obtenerResumenStock } from "../services/stockService";
 import { listarProveedores } from "../services/proveedoresService";
 import { CURRENT_USER_ID, CURRENT_SUCURSAL_ID } from "../config/appConfig";
 import { formatMoney, formatNumber } from "../utils/formatters";
@@ -16,9 +16,19 @@ export default function StockPage() {
   const navigate = useNavigate();
 
   const [stock, setStock] = useState([]);
+  const [stockBase, setStockBase] = useState([]);
+  const [resumenServer, setResumenServer] = useState(null);
   const [proveedores, setProveedores] = useState([]);
   const [query, setQuery] = useState("");
   const [filtroEstado, setFiltroEstado] = useState("todos");
+  const [tipoOperativo, setTipoOperativo] = useState("todos");
+  const [idCategoria, setIdCategoria] = useState("");
+  const [idMarca, setIdMarca] = useState("");
+  const [idProveedor, setIdProveedor] = useState("");
+  const [diasSinMovimiento, setDiasSinMovimiento] = useState("");
+  const [stockBajoUmbral, setStockBajoUmbral] = useState(2);
+  const [ordenarPor, setOrdenarPor] = useState("producto");
+  const [orden, setOrden] = useState("asc");
 
   const [loading, setLoading] = useState(true);
   const [procesando, setProcesando] = useState(false);
@@ -53,18 +63,66 @@ export default function StockPage() {
 
   useEffect(() => {
     cargarTodo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    cargarStock();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    query,
+    filtroEstado,
+    tipoOperativo,
+    idCategoria,
+    idMarca,
+    idProveedor,
+    diasSinMovimiento,
+    stockBajoUmbral,
+    ordenarPor,
+    orden,
+  ]);
+
   async function cargarTodo() {
-    await Promise.all([cargarStock(), cargarProveedores()]);
+    await Promise.all([cargarStockBase(), cargarStock(), cargarProveedores()]);
+  }
+
+  function stockParams(extra = {}) {
+    return {
+      q: query,
+      estado_stock: filtroEstado === "todos" ? "" : filtroEstado,
+      tipo_operativo: tipoOperativo === "todos" ? "" : tipoOperativo,
+      id_categoria: idCategoria,
+      id_marca: idMarca,
+      id_proveedor: idProveedor,
+      dias_sin_movimiento: diasSinMovimiento,
+      stock_bajo_umbral: stockBajoUmbral,
+      ordenar_por: ordenarPor,
+      orden,
+      limit: 500,
+      ...extra,
+    };
+  }
+
+  async function cargarStockBase() {
+    try {
+      const data = await listarStock({ limit: 2000, ordenar_por: "producto" });
+      setStockBase(data || []);
+    } catch (err) {
+      setError(err.message || "No se pudo cargar base de filtros de stock");
+    }
   }
 
   async function cargarStock() {
     try {
       setLoading(true);
       setError("");
-      const data = await listarStock();
+      const params = stockParams();
+      const [data, resumen] = await Promise.all([
+        listarStock(params),
+        obtenerResumenStock(params),
+      ]);
       setStock(data || []);
+      setResumenServer(resumen || null);
     } catch (err) {
       setError(err.message || "No se pudo cargar el stock");
     } finally {
@@ -103,32 +161,72 @@ export default function StockPage() {
     setModoPanel("detalle");
   }
 
-  const stockFiltrado = useMemo(() => {
-    const q = query.trim().toLowerCase();
+  function ordenarTabla(campo) {
+    const camposDescPorDefecto = new Set([
+      "stock",
+      "fisico",
+      "capital",
+      "ultima_venta",
+    ]);
 
-    return stock.filter((item) => {
-      const texto = [
-        item.sucursal_nombre,
-        item.producto_nombre,
-        item.nombre_variante,
-        item.sku,
-        item.codigo_barras,
-        item.codigo_proveedor,
-        item.variante_id,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
+    if (ordenarPor === campo) {
+      setOrden((actual) => (actual === "asc" ? "desc" : "asc"));
+      return;
+    }
 
-      const coincideTexto = !q || texto.includes(q);
-      const estado = getEstadoStock(item);
-      const coincideEstado = filtroEstado === "todos" || filtroEstado === estado;
+    setOrdenarPor(campo);
+    setOrden(camposDescPorDefecto.has(campo) ? "desc" : "asc");
+  }
 
-      return coincideTexto && coincideEstado;
+  const ordenLabel = {
+    producto: "Producto",
+    variante: "Variante",
+    stock: "Disponible",
+    fisico: "Físico",
+    capital: "Capital inmovilizado",
+    ultima_venta: "Última venta",
+    categoria: "Categoría",
+    marca: "Marca",
+    proveedor: "Proveedor",
+  };
+
+  const stockFiltrado = stock;
+
+  const filtroOpciones = useMemo(() => {
+    const categorias = new Map();
+    const marcas = new Map();
+
+    stockBase.forEach((item) => {
+      if (item.id_categoria && item.categoria_nombre) {
+        categorias.set(item.id_categoria, item.categoria_nombre);
+      }
+      if (item.id_marca && item.marca_nombre) {
+        marcas.set(item.id_marca, item.marca_nombre);
+      }
     });
-  }, [stock, query, filtroEstado]);
 
-  const resumen = useMemo(() => calcularResumenStock(stock), [stock]);
+    return {
+      categorias: [...categorias.entries()].sort((a, b) => a[1].localeCompare(b[1])),
+      marcas: [...marcas.entries()].sort((a, b) => a[1].localeCompare(b[1])),
+    };
+  }, [stockBase]);
+
+  const resumenLocal = useMemo(() => calcularResumenStock(stock), [stock]);
+  const resumen = resumenServer
+    ? {
+        variantes: resumenServer.total_items,
+        stockFisico: resumenServer.stock_fisico_total,
+        stockReservado: resumenLocal.stockReservado,
+        stockPendiente: resumenLocal.stockPendiente,
+        stockDisponible: resumenServer.stock_disponible_total,
+        sinDisponible: resumenServer.sin_stock,
+        stockBajo: resumenServer.stock_bajo,
+        reservados: resumenServer.reservado,
+        pendientes: resumenServer.pendiente_entrega,
+        inconsistentes: resumenServer.inconsistentes,
+        capitalInmovilizado: resumenServer.capital_inmovilizado_total,
+      }
+    : resumenLocal;
 
   async function handleIngreso(e) {
     e.preventDefault();
@@ -275,6 +373,8 @@ export default function StockPage() {
         <Metric label="Pendiente entrega" value={formatNumber(resumen.stockPendiente)} />
         <Metric label="Disponible" value={formatNumber(resumen.stockDisponible)} strong />
         <Metric label="Sin disponible" value={resumen.sinDisponible} danger={resumen.sinDisponible > 0} />
+        <Metric label="Stock bajo" value={resumen.stockBajo ?? resumen.reservados ?? 0} danger={(resumen.stockBajo ?? 0) > 0} />
+        <Metric label="Capital inmovilizado" value={formatMoney(resumen.capitalInmovilizado || 0)} strong />
         <Metric label="Inconsistencias" value={resumen.inconsistentes} danger={resumen.inconsistentes > 0} />
       </section>
 
@@ -297,10 +397,94 @@ export default function StockPage() {
           style={styles.searchInput}
         />
 
+        <div style={styles.advancedFilters}>
+          <label style={styles.filterField}>
+            <span style={styles.filterLabel}>Tipo</span>
+            <select value={tipoOperativo} onChange={(e) => setTipoOperativo(e.target.value)} style={styles.select}>
+              <option value="todos">Todos</option>
+              <option value="bicicleta">Bicicletas</option>
+              <option value="repuesto">Repuestos</option>
+              <option value="accesorio">Accesorios</option>
+              <option value="producto">Otros productos</option>
+              <option value="no_bicicletas">No bicicletas</option>
+            </select>
+          </label>
+
+          <label style={styles.filterField}>
+            <span style={styles.filterLabel}>Categoría</span>
+            <select value={idCategoria} onChange={(e) => setIdCategoria(e.target.value)} style={styles.select}>
+              <option value="">Todas</option>
+              {filtroOpciones.categorias.map(([id, nombre]) => (
+                <option key={id} value={id}>{nombre}</option>
+              ))}
+            </select>
+          </label>
+
+          <label style={styles.filterField}>
+            <span style={styles.filterLabel}>Marca</span>
+            <select value={idMarca} onChange={(e) => setIdMarca(e.target.value)} style={styles.select}>
+              <option value="">Todas</option>
+              {filtroOpciones.marcas.map(([id, nombre]) => (
+                <option key={id} value={id}>{nombre}</option>
+              ))}
+            </select>
+          </label>
+
+          <label style={styles.filterField}>
+            <span style={styles.filterLabel}>Proveedor</span>
+            <select value={idProveedor} onChange={(e) => setIdProveedor(e.target.value)} style={styles.select}>
+              <option value="">Todos</option>
+              {proveedores.map((p) => (
+                <option key={p.id} value={p.id}>{p.nombre}</option>
+              ))}
+            </select>
+          </label>
+
+          <label style={styles.filterField}>
+            <span style={styles.filterLabel}>Sin movimiento</span>
+            <select value={diasSinMovimiento} onChange={(e) => setDiasSinMovimiento(e.target.value)} style={styles.select}>
+              <option value="">No filtrar</option>
+              <option value="30">+30 días</option>
+              <option value="60">+60 días</option>
+              <option value="90">+90 días</option>
+              <option value="180">+180 días</option>
+              <option value="365">+365 días</option>
+            </select>
+          </label>
+
+          <label style={styles.filterField}>
+            <span style={styles.filterLabel}>Umbral bajo</span>
+            <input type="number" min="0" value={stockBajoUmbral} onChange={(e) => setStockBajoUmbral(Number(e.target.value))} style={styles.select} />
+          </label>
+
+          <label style={styles.filterField}>
+            <span style={styles.filterLabel}>Ordenar</span>
+            <select value={ordenarPor} onChange={(e) => setOrdenarPor(e.target.value)} style={styles.select}>
+              <option value="producto">Producto</option>
+              <option value="stock">Disponible</option>
+              <option value="fisico">Físico</option>
+              <option value="capital">Capital inmovilizado</option>
+              <option value="ultima_venta">Última venta</option>
+              <option value="categoria">Categoría</option>
+              <option value="marca">Marca</option>
+              <option value="proveedor">Proveedor</option>
+            </select>
+          </label>
+
+          <label style={styles.filterField}>
+            <span style={styles.filterLabel}>Orden</span>
+            <select value={orden} onChange={(e) => setOrden(e.target.value)} style={styles.select}>
+              <option value="asc">Ascendente</option>
+              <option value="desc">Descendente</option>
+            </select>
+          </label>
+        </div>
+
         <div style={styles.filterButtons}>
           <FilterButton label="Todos" value="todos" current={filtroEstado} onClick={setFiltroEstado} />
-          <FilterButton label="Sin stock" value="sin_disponible" current={filtroEstado} onClick={setFiltroEstado} />
+          <FilterButton label="Sin stock" value="sin_stock" current={filtroEstado} onClick={setFiltroEstado} />
           <FilterButton label="Reservado" value="reservado" current={filtroEstado} onClick={setFiltroEstado} />
+          <FilterButton label="Stock bajo" value="stock_bajo" current={filtroEstado} onClick={setFiltroEstado} />
           <FilterButton label="Pendiente" value="pendiente" current={filtroEstado} onClick={setFiltroEstado} />
           <FilterButton label="Inconsistente" value="inconsistente" current={filtroEstado} onClick={setFiltroEstado} />
         </div>
@@ -311,7 +495,7 @@ export default function StockPage() {
           <div>
             <h2 style={styles.cardTitle}>Inventario</h2>
             <p style={styles.mutedSmall}>
-              {stockFiltrado.length} resultado(s). Click para detalle; Ingreso y Ajuste operan desde el panel lateral.
+              {stockFiltrado.length} resultado(s). Ordenado por {ordenLabel[ordenarPor] || ordenarPor} {orden === "asc" ? "ascendente" : "descendente"}. Click en columnas para ordenar.
             </p>
           </div>
         </div>
@@ -325,6 +509,9 @@ export default function StockPage() {
               seleccionado={seleccionado}
               seleccionarItem={seleccionarItem}
               EstadoBadge={EstadoBadge}
+              ordenarPor={ordenarPor}
+              orden={orden}
+              onOrdenar={ordenarTabla}
               styles={{
                 table: styles.table,
                 thead: styles.thead,
@@ -422,7 +609,8 @@ function FilterButton({ label, value, current, onClick }) {
 
 function EstadoBadge({ estado }) {
   if (estado === "ok") return <span style={styles.okPill}>OK</span>;
-  if (estado === "sin_disponible") return <span style={styles.dangerPill}>Sin disponible</span>;
+  if (estado === "sin_stock" || estado === "sin_disponible") return <span style={styles.dangerPill}>Sin disponible</span>;
+  if (estado === "bajo" || estado === "stock_bajo") return <span style={styles.warningPill}>Stock bajo</span>;
   if (estado === "reservado") return <span style={styles.bluePill}>Reservado</span>;
   if (estado === "pendiente") return <span style={styles.warningPill}>Pendiente</span>;
   if (estado === "inconsistente") return <span style={styles.dangerPill}>Inconsistente</span>;
@@ -589,6 +777,22 @@ const styles = {
     boxSizing: "border-box",
     outline: "none",
     background: "#ffffff",
+  },
+  advancedFilters: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
+    gap: "10px",
+  },
+  filterField: { display: "grid", gap: "6px" },
+  filterLabel: { color: "#374151", fontSize: "12px", fontWeight: 900, textTransform: "uppercase" },
+  select: {
+    width: "100%",
+    border: "1px solid #d1d5db",
+    borderRadius: "12px",
+    padding: "10px 11px",
+    fontSize: "14px",
+    background: "#ffffff",
+    boxSizing: "border-box",
   },
   filterButtons: { display: "flex", gap: "8px", flexWrap: "wrap" },
   filter: {

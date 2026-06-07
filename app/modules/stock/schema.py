@@ -1,4 +1,5 @@
 from decimal import Decimal
+from datetime import datetime
 from pydantic import BaseModel, Field
 
 
@@ -6,6 +7,7 @@ class StockSucursalOut(BaseModel):
     sucursal_id: int
     sucursal_nombre: str
     variante_id: int
+    producto_id: int | None = None
     producto_nombre: str
     nombre_variante: str
     sku: str | None = None
@@ -15,6 +17,34 @@ class StockSucursalOut(BaseModel):
     stock_disponible: Decimal
     codigo_barras: str | None = None
     codigo_proveedor: str | None = None
+
+    id_categoria: int | None = None
+    categoria_nombre: str | None = None
+    id_marca: int | None = None
+    marca_nombre: str | None = None
+    id_proveedor: int | None = None
+    proveedor_nombre: str | None = None
+    producto_tipo_item: str | None = None
+    serializable: bool | None = None
+    tipo_operativo: str | None = None
+
+    costo_promedio_vigente: Decimal = Decimal("0")
+    capital_inmovilizado: Decimal = Decimal("0")
+    ultima_venta: datetime | None = None
+    dias_sin_movimiento: int | None = None
+
+
+class StockResumenOut(BaseModel):
+    total_items: int
+    con_stock: int
+    sin_stock: int
+    stock_bajo: int
+    reservado: int
+    pendiente_entrega: int
+    inconsistentes: int
+    stock_fisico_total: Decimal
+    stock_disponible_total: Decimal
+    capital_inmovilizado_total: Decimal
 
 
 class IngresoStockCreate(BaseModel):
@@ -41,6 +71,7 @@ class IngresoStockResponse(BaseModel):
     stock_nuevo: Decimal
     costo_promedio_anterior: Decimal
     costo_promedio_nuevo: Decimal
+
 
 class AjusteStockCreate(BaseModel):
     id_sucursal: int

@@ -8,38 +8,285 @@ from app.shared.money import to_decimal
 # CONSULTAS
 # =========================================================
 
-def get_stock_sucursal(conn):
-    with conn.cursor() as cur:
-        cur.execute(
-            """
+TIPO_OPERATIVO_SQL = """
+CASE
+    WHEN p.serializable = TRUE
+      OR POSITION('bicicleta' IN LOWER(COALESCE(c.nombre, ''))) > 0
+      OR POSITION('bicicleta' IN LOWER(COALESCE(p.nombre, ''))) > 0
+      OR p.rodado IS NOT NULL
+      OR p.tipo_bicicleta IS NOT NULL
+    THEN 'bicicleta'
+    WHEN POSITION('accesorio' IN LOWER(COALESCE(c.nombre, ''))) > 0
+      OR POSITION('accesorio' IN LOWER(COALESCE(p.nombre, ''))) > 0
+    THEN 'accesorio'
+    WHEN POSITION('repuesto' IN LOWER(COALESCE(c.nombre, ''))) > 0
+      OR POSITION('repuesto' IN LOWER(COALESCE(p.nombre, ''))) > 0
+    THEN 'repuesto'
+    ELSE 'producto'
+END
+"""
+
+
+def _stock_base_select():
+    return f"""
+        WITH ultimas_ventas AS (
             SELECT
-                s.id AS sucursal_id,
-                s.nombre AS sucursal_nombre,
-                v.id AS variante_id,
-                p.nombre AS producto_nombre,
-                v.nombre_variante,
-                v.sku,
-                v.codigo_barras,
-                v.codigo_proveedor,
-                ss.stock_fisico,
-                ss.stock_reservado,
-                ss.stock_vendido_pendiente_entrega,
-                (
-                    ss.stock_fisico
-                    - ss.stock_reservado
-                    - ss.stock_vendido_pendiente_entrega
-                ) AS stock_disponible
-            FROM stock_sucursal ss
-            INNER JOIN sucursales s
-                ON s.id = ss.id_sucursal
-            INNER JOIN variantes v
-                ON v.id = ss.id_variante
-            INNER JOIN productos p
-                ON p.id = v.id_producto
-            ORDER BY s.nombre, p.nombre, v.nombre_variante
+                vi.id_variante,
+                MAX(v.fecha) AS ultima_venta
+            FROM venta_items vi
+            INNER JOIN ventas v ON v.id = vi.id_venta
+            WHERE v.estado NOT IN ('anulada', 'devuelta')
+              AND vi.tipo_item = 'producto'
+            GROUP BY vi.id_variante
+        )
+        SELECT
+            s.id AS sucursal_id,
+            s.nombre AS sucursal_nombre,
+            v.id AS variante_id,
+            p.id AS producto_id,
+            p.nombre AS producto_nombre,
+            v.nombre_variante,
+            v.sku,
+            v.codigo_barras,
+            v.codigo_proveedor,
+            ss.stock_fisico,
+            ss.stock_reservado,
+            ss.stock_vendido_pendiente_entrega,
+            (
+                ss.stock_fisico
+                - ss.stock_reservado
+                - ss.stock_vendido_pendiente_entrega
+            ) AS stock_disponible,
+            c.id AS id_categoria,
+            c.nombre AS categoria_nombre,
+            m.id AS id_marca,
+            m.nombre AS marca_nombre,
+            pr.id AS id_proveedor,
+            pr.nombre AS proveedor_nombre,
+            p.tipo_item AS producto_tipo_item,
+            p.serializable,
+            {TIPO_OPERATIVO_SQL} AS tipo_operativo,
+            v.costo_promedio_vigente,
+            (ss.stock_fisico * v.costo_promedio_vigente)::numeric(14,2) AS capital_inmovilizado,
+            uv.ultima_venta,
+            CASE
+                WHEN uv.ultima_venta IS NULL THEN NULL
+                ELSE (CURRENT_DATE - uv.ultima_venta::date)::int
+            END AS dias_sin_movimiento
+        FROM stock_sucursal ss
+        INNER JOIN sucursales s ON s.id = ss.id_sucursal
+        INNER JOIN variantes v ON v.id = ss.id_variante
+        INNER JOIN productos p ON p.id = v.id_producto
+        INNER JOIN categorias c ON c.id = p.id_categoria
+        LEFT JOIN marcas m ON m.id = p.id_marca
+        LEFT JOIN proveedores pr ON pr.id = v.proveedor_preferido_id
+        LEFT JOIN ultimas_ventas uv ON uv.id_variante = v.id
+    """
+
+
+def _build_stock_filters(
+    *,
+    q=None,
+    id_sucursal=None,
+    id_categoria=None,
+    id_marca=None,
+    id_proveedor=None,
+    tipo_operativo=None,
+    estado_stock=None,
+    stock_bajo_umbral=2,
+    dias_sin_movimiento=None,
+):
+    where = ["p.activo = TRUE", "v.activo = TRUE"]
+    params = []
+
+    if q:
+        like = f"%{q.strip()}%"
+        where.append(
+            """
+            (
+                p.nombre ILIKE %s
+                OR v.nombre_variante ILIKE %s
+                OR v.sku ILIKE %s
+                OR v.codigo_barras ILIKE %s
+                OR v.codigo_proveedor ILIKE %s
+                OR c.nombre ILIKE %s
+                OR COALESCE(m.nombre, '') ILIKE %s
+                OR COALESCE(pr.nombre, '') ILIKE %s
+                OR CAST(v.id AS TEXT) = %s
+            )
             """
         )
+        params.extend([like, like, like, like, like, like, like, like, q.strip()])
+
+    if id_sucursal is not None:
+        where.append("ss.id_sucursal = %s")
+        params.append(id_sucursal)
+
+    if id_categoria is not None:
+        where.append("p.id_categoria = %s")
+        params.append(id_categoria)
+
+    if id_marca is not None:
+        where.append("p.id_marca = %s")
+        params.append(id_marca)
+
+    if id_proveedor is not None:
+        where.append("v.proveedor_preferido_id = %s")
+        params.append(id_proveedor)
+
+    if tipo_operativo and tipo_operativo != "todos":
+        if tipo_operativo == "no_bicicletas":
+            where.append(f"({TIPO_OPERATIVO_SQL}) <> 'bicicleta'")
+        else:
+            where.append(f"({TIPO_OPERATIVO_SQL}) = %s")
+            params.append(tipo_operativo)
+
+    disponible_sql = "(ss.stock_fisico - ss.stock_reservado - ss.stock_vendido_pendiente_entrega)"
+
+    if estado_stock and estado_stock != "todos":
+        if estado_stock == "con_stock":
+            where.append(f"{disponible_sql} > 0")
+        elif estado_stock in {"sin_stock", "sin_disponible"}:
+            where.append(f"{disponible_sql} <= 0")
+        elif estado_stock in {"stock_bajo", "bajo"}:
+            where.append(f"{disponible_sql} > 0 AND {disponible_sql} <= %s")
+            params.append(stock_bajo_umbral)
+        elif estado_stock == "reservado":
+            where.append("ss.stock_reservado > 0")
+        elif estado_stock == "pendiente":
+            where.append("ss.stock_vendido_pendiente_entrega > 0")
+        elif estado_stock == "inconsistente":
+            where.append(f"({disponible_sql} < 0 OR ss.stock_fisico < (ss.stock_reservado + ss.stock_vendido_pendiente_entrega))")
+
+    if dias_sin_movimiento is not None:
+        where.append(
+            """
+            ss.stock_fisico > 0
+            AND (uv.ultima_venta IS NULL OR uv.ultima_venta::date <= CURRENT_DATE - (%s::int))
+            """
+        )
+        params.append(dias_sin_movimiento)
+
+    return where, params
+
+
+def get_stock_sucursal(
+    conn,
+    *,
+    q=None,
+    id_sucursal=None,
+    id_categoria=None,
+    id_marca=None,
+    id_proveedor=None,
+    tipo_operativo=None,
+    estado_stock=None,
+    stock_bajo_umbral=2,
+    dias_sin_movimiento=None,
+    ordenar_por="producto",
+    orden="asc",
+    limit=500,
+    offset=0,
+):
+    order_map = {
+        "producto": "p.nombre",
+        "variante": "v.nombre_variante",
+        "stock": "stock_disponible",
+        "fisico": "ss.stock_fisico",
+        "capital": "capital_inmovilizado",
+        "ultima_venta": "uv.ultima_venta",
+        "categoria": "c.nombre",
+        "marca": "m.nombre",
+        "proveedor": "pr.nombre",
+    }
+    order_sql = order_map.get(ordenar_por or "producto", "p.nombre")
+    direction = "DESC" if str(orden).lower() == "desc" else "ASC"
+
+    where, params = _build_stock_filters(
+        q=q,
+        id_sucursal=id_sucursal,
+        id_categoria=id_categoria,
+        id_marca=id_marca,
+        id_proveedor=id_proveedor,
+        tipo_operativo=tipo_operativo,
+        estado_stock=estado_stock,
+        stock_bajo_umbral=stock_bajo_umbral,
+        dias_sin_movimiento=dias_sin_movimiento,
+    )
+
+    params.extend([limit, offset])
+
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            f"""
+            {_stock_base_select()}
+            WHERE {' AND '.join(where)}
+            ORDER BY {order_sql} {direction} NULLS LAST, p.nombre ASC, v.nombre_variante ASC
+            LIMIT %s OFFSET %s
+            """,
+            params,
+        )
         return cur.fetchall()
+
+
+def get_stock_resumen(
+    conn,
+    *,
+    q=None,
+    id_sucursal=None,
+    id_categoria=None,
+    id_marca=None,
+    id_proveedor=None,
+    tipo_operativo=None,
+    estado_stock=None,
+    stock_bajo_umbral=2,
+    dias_sin_movimiento=None,
+):
+    where, params = _build_stock_filters(
+        q=q,
+        id_sucursal=id_sucursal,
+        id_categoria=id_categoria,
+        id_marca=id_marca,
+        id_proveedor=id_proveedor,
+        tipo_operativo=tipo_operativo,
+        estado_stock=estado_stock,
+        stock_bajo_umbral=stock_bajo_umbral,
+        dias_sin_movimiento=dias_sin_movimiento,
+    )
+
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            f"""
+            SELECT
+                COUNT(*)::int AS total_items,
+                COUNT(*) FILTER (WHERE (ss.stock_fisico - ss.stock_reservado - ss.stock_vendido_pendiente_entrega) > 0)::int AS con_stock,
+                COUNT(*) FILTER (WHERE (ss.stock_fisico - ss.stock_reservado - ss.stock_vendido_pendiente_entrega) <= 0)::int AS sin_stock,
+                COUNT(*) FILTER (WHERE (ss.stock_fisico - ss.stock_reservado - ss.stock_vendido_pendiente_entrega) > 0 AND (ss.stock_fisico - ss.stock_reservado - ss.stock_vendido_pendiente_entrega) <= %s)::int AS stock_bajo,
+                COUNT(*) FILTER (WHERE ss.stock_reservado > 0)::int AS reservado,
+                COUNT(*) FILTER (WHERE ss.stock_vendido_pendiente_entrega > 0)::int AS pendiente_entrega,
+                COUNT(*) FILTER (WHERE (ss.stock_fisico - ss.stock_reservado - ss.stock_vendido_pendiente_entrega) < 0 OR ss.stock_fisico < (ss.stock_reservado + ss.stock_vendido_pendiente_entrega))::int AS inconsistentes,
+                COALESCE(SUM(ss.stock_fisico), 0)::numeric(14,3) AS stock_fisico_total,
+                COALESCE(SUM(ss.stock_fisico - ss.stock_reservado - ss.stock_vendido_pendiente_entrega), 0)::numeric(14,3) AS stock_disponible_total,
+                COALESCE(SUM(ss.stock_fisico * v.costo_promedio_vigente), 0)::numeric(14,2) AS capital_inmovilizado_total
+            FROM stock_sucursal ss
+            INNER JOIN sucursales s ON s.id = ss.id_sucursal
+            INNER JOIN variantes v ON v.id = ss.id_variante
+            INNER JOIN productos p ON p.id = v.id_producto
+            INNER JOIN categorias c ON c.id = p.id_categoria
+            LEFT JOIN marcas m ON m.id = p.id_marca
+            LEFT JOIN proveedores pr ON pr.id = v.proveedor_preferido_id
+            LEFT JOIN (
+                SELECT vi.id_variante, MAX(v2.fecha) AS ultima_venta
+                FROM venta_items vi
+                INNER JOIN ventas v2 ON v2.id = vi.id_venta
+                WHERE v2.estado NOT IN ('anulada', 'devuelta')
+                  AND vi.tipo_item = 'producto'
+                GROUP BY vi.id_variante
+            ) uv ON uv.id_variante = v.id
+            WHERE {' AND '.join(where)}
+            """,
+            [stock_bajo_umbral, *params],
+        )
+        return cur.fetchone()
 
 
 def obtener_stock_disponible(conn, id_sucursal: int, id_variante: int) -> Decimal:

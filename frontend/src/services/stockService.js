@@ -1,7 +1,23 @@
 import { apiRequest } from "./api";
 
-export function listarStock() {
-  return apiRequest("/stock/");
+function cleanParams(params = {}) {
+  const search = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") {
+      search.append(key, value);
+    }
+  });
+  return search.toString();
+}
+
+export function listarStock(params = {}) {
+  const query = cleanParams(params);
+  return apiRequest(`/stock/${query ? `?${query}` : ""}`);
+}
+
+export function obtenerResumenStock(params = {}) {
+  const query = cleanParams(params);
+  return apiRequest(`/stock/resumen${query ? `?${query}` : ""}`);
 }
 
 export function crearIngresoStock(data) {
