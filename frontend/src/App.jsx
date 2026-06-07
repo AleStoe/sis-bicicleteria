@@ -37,7 +37,7 @@ import CapitalRetirosPage from "./pages/CapitalRetirosPage";
 import CapitalRetirosParticipantePerfilPage from "./pages/CapitalRetirosParticipantePerfilPage";
 import RentabilidadPage from "./pages/RentabilidadPage";
 import DashboardPage from "./pages/DashboardPage";
-
+import GastosPage from "./pages/GastosPage"
 
 export default function App() {
   return (
@@ -70,7 +70,7 @@ export default function App() {
           <Route path="/serializadas" element={<BicicletasSerializadasPage />} />
           <Route path="/proveedores" element={<ProveedoresPage />} />
           <Route path="/precios" element={<PreciosPage />} />
-        <Route path="/catalogo" element={<CatalogoPage />} />
+          <Route path="/catalogo" element={<CatalogoPage />} />
         {/*  <Route path="/stock/ingreso" element={<IngresoMercaderiaPage />} />*/}
           <Route path="/mercaderia/alta" element={<AltaMercaderiaPage />} />
           <Route path="/ventas/:ventaId/cobro" element={<VentaCobroPage />} />
@@ -83,6 +83,7 @@ export default function App() {
           <Route path="/capital-retiros/participantes/:participanteId" element={<CapitalRetirosParticipantePerfilPage />}/>
           <Route path="/rentabilidad" element={<RentabilidadPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/gastos" element={<GastosPage />} />
         </Routes>
       </AppLayout>
     </BrowserRouter>
