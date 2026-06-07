@@ -18,6 +18,7 @@ import {
   Settings2,
   PiggyBank,
   BarChart3,
+  LayoutDashboard,
 } from "lucide-react";
 import { sidebarContainerStyle } from "../../styles/layout/appLayoutStyles";
 import {
@@ -31,6 +32,12 @@ import {
 } from "../../styles/layout/sidebarStyles";
 
 const groups = [
+  {
+    title: "Inicio",
+    links: [
+      { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+    ],
+  },
   {
     title: "Mostrador",
     links: [

@@ -18,7 +18,7 @@ from app.modules.documentos.routes import router as documentos_router
 from app.modules.servicios_taller.routes import router as servicios_taller_router
 from app.modules.capital_retiros.routes import router as capital_retiros_router
 from app.modules.rentabilidad.routes import router as rentabilidad_router
-
+from app.modules.dashboard.routes import router as dashboard_router
 
 router = APIRouter()
 
@@ -41,3 +41,4 @@ router.include_router(documentos_router,prefix="/documentos", tags=["Documentos"
 router.include_router(servicios_taller_router,prefix="/servicios_taller",tags=["Servicios Taller"],)
 router.include_router(capital_retiros_router, prefix="/capital-retiros", tags=["Capital y Retiros"],)
 router.include_router(rentabilidad_router, prefix="/rentabilidad", tags=["Rentabilidad"],)
+router.include_router(dashboard_router, prefix="/dashboard", tags=["Dashboard"])

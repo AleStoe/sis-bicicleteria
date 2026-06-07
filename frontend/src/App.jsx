@@ -36,6 +36,7 @@ import ServiciosPage from "./pages/ServiciosPage";
 import CapitalRetirosPage from "./pages/CapitalRetirosPage";
 import CapitalRetirosParticipantePerfilPage from "./pages/CapitalRetirosParticipantePerfilPage";
 import RentabilidadPage from "./pages/RentabilidadPage";
+import DashboardPage from "./pages/DashboardPage";
 
 
 export default function App() {
@@ -81,6 +82,7 @@ export default function App() {
           <Route path="/capital-retiros" element={<CapitalRetirosPage />} />
           <Route path="/capital-retiros/participantes/:participanteId" element={<CapitalRetirosParticipantePerfilPage />}/>
           <Route path="/rentabilidad" element={<RentabilidadPage />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
         </Routes>
       </AppLayout>
     </BrowserRouter>
