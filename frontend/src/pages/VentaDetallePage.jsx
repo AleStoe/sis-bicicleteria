@@ -490,7 +490,7 @@ async function handleDevolverSerializada(item) {
   }
 
   const { venta, items = [], situacion_financiera } = data;
-
+  console.log("VENTA DETALLE venta", venta);
   const totalFinal = Number(venta.total_final || 0);
   const subtotalBase = Number(venta.subtotal_base || 0);
   const factorDevolucion = subtotalBase > 0 ? totalFinal / subtotalBase : 1;
@@ -558,7 +558,23 @@ const estaCerradaOperativamente =
         saldoPendiente={saldoPendiente}
         formatMoney={formatMoney}
       />
+      {venta.id_reserva_origen && (
+          <section style={reservaOrigenStyle}>
+            <div>
+              <strong>Venta generada desde reserva #{venta.id_reserva_origen}</strong>
+              <div style={reservaOrigenTextStyle}>
+                Esta venta proviene de una reserva. La seña previa puede explicar parte de la cobertura financiera no cobrada.
+              </div>
+            </div>
 
+            <a
+              href={`/reservas/${venta.id_reserva_origen}`}
+              style={reservaOrigenLinkStyle}
+            >
+              Ver reserva
+            </a>
+          </section>
+        )}
       <VentaSituacionFinanciera
         venta={venta}
         coberturaNoCobrada={coberturaNoCobrada}
@@ -625,3 +641,33 @@ const estaCerradaOperativamente =
     </div>
   );
 }
+
+const reservaOrigenStyle = {
+  background: "#eef4ff",
+  border: "1px solid #c7d7fe",
+  color: "#175cd3",
+  borderRadius: "14px",
+  padding: "14px 16px",
+  margin: "12px 0",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "12px",
+  flexWrap: "wrap",
+};
+
+const reservaOrigenTextStyle = {
+  marginTop: "4px",
+  fontSize: "13px",
+  color: "#344054",
+};
+
+const reservaOrigenLinkStyle = {
+  textDecoration: "none",
+  background: "white",
+  color: "#175cd3",
+  border: "1px solid #c7d7fe",
+  borderRadius: "10px",
+  padding: "8px 12px",
+  fontWeight: 800,
+};

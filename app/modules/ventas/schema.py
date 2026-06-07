@@ -169,6 +169,7 @@ class VentaDetalleCabeceraOutput(BaseModel):
     recargo_total: Decimal
     total_final: Decimal
     saldo_pendiente: Decimal
+    id_reserva_origen: Optional[int] = None
 
 
 class VentaDetalleItemOutput(BaseModel):

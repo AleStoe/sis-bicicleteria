@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   cancelarReserva,
@@ -59,6 +59,7 @@ export default function ReservaDetallePage() {
 
   useEffect(() => {
     cargarReserva();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reservaId]);
 
   async function cargarReserva() {
@@ -173,14 +174,30 @@ export default function ReservaDetallePage() {
     }
   }
 
-  if (loading) return <p style={{ padding: "24px" }}>Cargando reserva...</p>;
-  if (!data) return <p style={{ padding: "24px" }}>No se encontró la reserva.</p>;
+  const reserva = data?.reserva;
+  const items = data?.items || [];
+  const eventos = data?.eventos || [];
+  const pagos = data?.pagos || [];
 
-  const reserva = data.reserva;
-  const items = data.items || [];
-  const eventos = data.eventos || [];
-  const pagos = data.pagos || [];
+  const resumenPagos = useMemo(() => {
+    return pagos.reduce(
+      (acc, pago) => {
+        acc.base += Number(pago.monto_base_aplicado ?? pago.monto_base ?? pago.monto_total_cobrado ?? 0);
+        acc.descuento += Number(pago.monto_descuento_aplicado ?? pago.descuento_aplicado ?? 0);
+        acc.recargo += Number(pago.monto_recargo_aplicado ?? pago.recargo_aplicado ?? pago.monto_recargo_financiero ?? 0);
+        acc.cobrado += Number(pago.monto_total_cobrado ?? 0);
+        return acc;
+      },
+      { base: 0, descuento: 0, recargo: 0, cobrado: 0 }
+    );
+  }, [pagos]);
+
+  if (loading) return <p style={{ padding: "24px" }}>Cargando reserva...</p>;
+  if (!data || !reserva) return <p style={{ padding: "24px" }}>No se encontró la reserva.</p>;
+
   const puedeOperar = reserva.estado === "activa";
+
+  const totalesItems = items.reduce((acc, item) => acc + Number(item.subtotal_estimado || 0), 0);
 
   return (
     <div style={pageStyle}>
@@ -193,13 +210,20 @@ export default function ReservaDetallePage() {
         </div>
 
         <div style={actionsStyle}>
-          <button onClick={cargarReserva}>Refrescar</button>
+          <button onClick={cargarReserva} style={secondaryBtnStyle}>Refrescar</button>
           <Link to="/reservas" style={linkBtnStyle}>Volver</Link>
         </div>
       </div>
 
       {mensaje && <div style={successStyle}>{mensaje}</div>}
       {error && <div style={alertStyle}>Error: {error}</div>}
+
+      <section style={summaryCardsStyle}>
+        <Metric label="Total estimado" value={formatMoney(totalesItems)} />
+        <Metric label="Base señada" value={formatMoney(reserva.sena_total)} />
+        <Metric label="Saldo base" value={formatMoney(reserva.saldo_estimado)} highlight />
+        <Metric label="Cobrado real" value={formatMoney(resumenPagos.cobrado)} />
+      </section>
 
       <div style={gridStyle}>
         <section style={cardStyle}>
@@ -209,8 +233,8 @@ export default function ReservaDetallePage() {
             <Info label="Cliente" value={`${reserva.cliente_nombre} #${reserva.id_cliente}`} />
             <Info label="Sucursal" value={`${reserva.sucursal_nombre} #${reserva.id_sucursal}`} />
             <Info label="Vencimiento" value={reserva.fecha_vencimiento ? formatDate(reserva.fecha_vencimiento) : "-"} />
-            <Info label="Seña total" value={formatMoney(reserva.sena_total)} />
-            <Info label="Saldo estimado" value={formatMoney(reserva.saldo_estimado)} />
+            <Info label="Base señada" value={formatMoney(reserva.sena_total)} />
+            <Info label="Saldo base estimado" value={formatMoney(reserva.saldo_estimado)} />
             <Info label="Seña perdida" value={reserva.sena_perdida ? "Sí" : "No"} />
             <Info label="Nota" value={reserva.nota || "-"} full />
           </div>
@@ -221,15 +245,15 @@ export default function ReservaDetallePage() {
 
           {puedeOperar ? (
             <div style={{ display: "grid", gap: "10px" }}>
-              <button onClick={handleConvertir} disabled={procesando}>
+              <button onClick={handleConvertir} disabled={procesando} style={primaryBtnStyle}>
                 Convertir a venta
               </button>
 
-              <button onClick={handleVencer} disabled={procesando}>
+              <button onClick={handleVencer} disabled={procesando} style={secondaryBtnStyle}>
                 Marcar vencida
               </button>
 
-              <button onClick={handleCancelar} disabled={procesando}>
+              <button onClick={handleCancelar} disabled={procesando} style={dangerBtnStyle}>
                 Cancelar reserva
               </button>
             </div>
@@ -240,7 +264,7 @@ export default function ReservaDetallePage() {
           )}
 
           <div style={noteStyle}>
-            Convertir a venta mueve stock reservado a pendiente de entrega. Si hay saldo, la venta queda pagada parcial.
+            Al convertir a venta, la base señada queda cubierta y el saldo base pendiente continúa en la venta.
           </div>
         </aside>
       </div>
@@ -284,17 +308,19 @@ export default function ReservaDetallePage() {
 
       <div style={twoColStyle}>
         <section style={cardStyle}>
-          <h2 style={cardTitleStyle}>Pagos / señas</h2>
+          <div style={sectionHeaderStyle}>
+            <div>
+              <h2 style={cardTitleStyle}>Pagos / señas</h2>
+              <p style={mutedStyle}>Base aplicada y cobrado real pueden diferir por descuentos o recargos.</p>
+            </div>
+          </div>
+
           {pagos.length === 0 ? (
             <div>No hay pagos registrados.</div>
           ) : (
-            <div style={{ display: "grid", gap: "8px" }}>
+            <div style={{ display: "grid", gap: "10px" }}>
               {pagos.map((pago) => (
-                <div key={pago.id} style={eventStyle}>
-                  <strong>{pago.medio_pago} · {formatMoney(pago.monto_total_cobrado)}</strong>
-                  <span style={mutedStyle}>{formatDate(pago.fecha)} · {pago.estado} · Usuario #{pago.id_usuario}</span>
-                  {pago.nota && <div>{pago.nota}</div>}
-                </div>
+                <PagoCard key={pago.id} pago={pago} />
               ))}
             </div>
           )}
@@ -317,6 +343,7 @@ export default function ReservaDetallePage() {
           )}
         </section>
       </div>
+
       <ConfirmModal
         open={Boolean(confirmConfig)}
         title={confirmConfig?.title}
@@ -348,6 +375,72 @@ export default function ReservaDetallePage() {
   );
 }
 
+function PagoCard({ pago }) {
+  const base = pago.monto_base_aplicado ?? pago.monto_base ?? pago.monto_total_cobrado;
+  const descuento = pago.monto_descuento_aplicado ?? pago.descuento_aplicado ?? 0;
+  const recargo = pago.monto_recargo_aplicado ?? pago.recargo_aplicado ?? pago.monto_recargo_financiero ?? 0;
+  const cobrado = pago.monto_total_cobrado ?? 0;
+  const tieneDetalleFinanciero =
+    pago.monto_base_aplicado !== undefined ||
+    pago.monto_descuento_aplicado !== undefined ||
+    pago.monto_recargo_aplicado !== undefined ||
+    pago.monto_base !== undefined ||
+    pago.monto_recargo_financiero !== undefined;
+
+  return (
+    <div style={paymentCardStyle}>
+      <div style={paymentTopStyle}>
+        <div>
+          <strong>{capitalizar(pago.medio_pago)} · {formatMoney(cobrado)}</strong>
+          <div style={mutedStyle}>{formatDate(pago.fecha)} · {pago.estado} · Usuario #{pago.id_usuario}</div>
+        </div>
+        <span style={paymentBadgeStyle}>Pago #{pago.id}</span>
+      </div>
+
+      {tieneDetalleFinanciero ? (
+        <div style={paymentGridStyle}>
+          <MiniMoney label="Base aplicada" value={base} />
+          <MiniMoney label="Descuento" value={descuento} />
+          <MiniMoney label="Recargo" value={recargo} />
+          <MiniMoney label="Cobrado real" value={cobrado} strong />
+        </div>
+      ) : (
+        <div style={noteStyle}>
+          Este pago no trae detalle financiero desde el backend. Mostrando solo el total cobrado.
+        </div>
+      )}
+
+      {(pago.cuotas || pago.entidad || pago.tarjeta_plan_nombre) && (
+        <div style={cardMetaStyle}>
+          {pago.tarjeta_plan_nombre ? `${pago.tarjeta_plan_nombre} · ` : ""}
+          {pago.entidad ? `${pago.entidad} · ` : ""}
+          {pago.cuotas ? `${pago.cuotas} cuota(s)` : ""}
+        </div>
+      )}
+
+      {pago.nota && <div>{pago.nota}</div>}
+    </div>
+  );
+}
+
+function MiniMoney({ label, value, strong = false }) {
+  return (
+    <div style={miniMoneyStyle}>
+      <span style={mutedStyle}>{label}</span>
+      <strong style={strong ? { fontSize: "17px" } : undefined}>{formatMoney(value)}</strong>
+    </div>
+  );
+}
+
+function Metric({ label, value, highlight = false }) {
+  return (
+    <div style={metricStyle}>
+      <span style={mutedStyle}>{label}</span>
+      <strong style={highlight ? metricHighlightStyle : metricValueStyle}>{value}</strong>
+    </div>
+  );
+}
+
 function Info({ label, value, full = false }) {
   return (
     <div style={{ gridColumn: full ? "1 / -1" : "auto", background: "#f9fafb", border: "1px solid #eaecf0", borderRadius: "12px", padding: "12px" }}>
@@ -357,21 +450,40 @@ function Info({ label, value, full = false }) {
   );
 }
 
+function capitalizar(texto) {
+  if (!texto) return "-";
+  return String(texto).charAt(0).toUpperCase() + String(texto).slice(1);
+}
+
 const pageStyle = { padding: "24px", background: "#f6f7fb", minHeight: "100vh" };
 const headerStyle = { display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "center", marginBottom: "16px", flexWrap: "wrap" };
 const actionsStyle = { display: "flex", gap: "10px", flexWrap: "wrap" };
 const mutedStyle = { color: "#667085", margin: "4px 0 0", fontSize: "13px" };
 const cardStyle = { background: "white", borderRadius: "14px", boxShadow: "0 2px 10px rgba(0,0,0,.08)", padding: "16px", marginBottom: "16px" };
 const cardTitleStyle = { marginTop: 0, marginBottom: "14px", fontSize: "20px" };
+const summaryCardsStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: "16px", marginBottom: "16px" };
+const metricStyle = { background: "white", borderRadius: "14px", boxShadow: "0 2px 10px rgba(0,0,0,.08)", padding: "16px", display: "grid", gap: "6px" };
+const metricValueStyle = { fontSize: "22px" };
+const metricHighlightStyle = { fontSize: "22px", color: "#0b5bd3" };
 const gridStyle = { display: "grid", gridTemplateColumns: "minmax(360px,1.4fr) minmax(300px,.8fr)", gap: "16px", alignItems: "start" };
 const infoGridStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: "12px" };
 const linkBtnStyle = { textDecoration: "none", padding: "8px 12px", borderRadius: "10px", border: "1px solid #d0d5dd", color: "#111827", background: "white" };
+const primaryBtnStyle = { width: "100%", border: "none", background: "#0b5bd3", color: "white", borderRadius: "12px", padding: "12px", fontWeight: 900, cursor: "pointer" };
+const secondaryBtnStyle = { padding: "10px 12px", borderRadius: "10px", border: "1px solid #d0d5dd", background: "white", color: "#111827", fontWeight: "bold", cursor: "pointer" };
+const dangerBtnStyle = { width: "100%", border: "1px solid #f4c7c3", background: "#fff1f0", color: "#b42318", borderRadius: "12px", padding: "12px", fontWeight: 900, cursor: "pointer" };
 const alertStyle = { background: "#fff1f0", color: "#b42318", padding: "12px", borderRadius: "10px", border: "1px solid #f4c7c3", marginBottom: "16px" };
 const successStyle = { background: "#e8fff0", color: "#146c2e", padding: "12px", borderRadius: "10px", border: "1px solid #b7ebc6", marginBottom: "16px" };
 const noteStyle = { background: "#f9fafb", borderLeft: "4px solid #111827", padding: "12px", borderRadius: "8px", color: "#344054", marginTop: "12px" };
 const tableHeaderStyle = { padding: "16px 18px", borderBottom: "1px solid #eee" };
 const tableStyle = { width: "100%", borderCollapse: "collapse", minWidth: "850px" };
-const thStyle = { textAlign: "left", padding: "12px 10px", borderBottom: "1px solid #e5e7eb" };
+const thStyle = { textAlign: "left", padding: "12px 10px", borderBottom: "1px solid #e5e7eb", fontSize: "13px", color: "#475467" };
 const tdStyle = { padding: "10px", verticalAlign: "top" };
 const twoColStyle = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" };
 const eventStyle = { background: "#f9fafb", border: "1px solid #eaecf0", borderRadius: "12px", padding: "12px", display: "grid", gap: "5px" };
+const sectionHeaderStyle = { display: "flex", justifyContent: "space-between", gap: "12px", flexWrap: "wrap", alignItems: "start" };
+const paymentCardStyle = { background: "#f9fafb", border: "1px solid #eaecf0", borderRadius: "14px", padding: "12px", display: "grid", gap: "10px" };
+const paymentTopStyle = { display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "start" };
+const paymentBadgeStyle = { background: "white", border: "1px solid #d0d5dd", borderRadius: "999px", padding: "4px 8px", fontSize: "12px", fontWeight: "bold", whiteSpace: "nowrap" };
+const paymentGridStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: "8px" };
+const miniMoneyStyle = { background: "white", borderRadius: "10px", border: "1px solid #eaecf0", padding: "10px", display: "grid", gap: "4px" };
+const cardMetaStyle = { background: "#eef4ff", color: "#175cd3", borderRadius: "10px", padding: "8px 10px", fontWeight: "bold", fontSize: "13px" };
