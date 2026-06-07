@@ -30,3 +30,10 @@ export function editarTarjetaPlan(planId, data) {
     body: JSON.stringify(data),
   });
 }
+
+export function simularReglasComerciales(data) {
+  return apiRequest("/reglas-comerciales/simular", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
