@@ -37,7 +37,7 @@ const TRANSICIONES_UI = {
   esperando_aprobacion: ["en_reparacion", "cancelada"],
   esperando_repuestos: ["en_reparacion", "cancelada"],
   en_reparacion: ["esperando_repuestos", "terminada", "cancelada"],
-  terminada: ["facturada", "lista_para_retirar"],
+  terminada: [],
   facturada: ["lista_para_retirar"],
   lista_para_retirar: ["retirada"],
   retirada: [],
@@ -118,17 +118,53 @@ export default function TallerDetallePage() {
   const resumen = useMemo(() => {
     return items.reduce(
       (acc, item) => {
+        const cancelado = item.etapa === "cancelado";
+        const aprobado = item.aprobado === true;
+        const ejecutado = item.etapa === "ejecutado";
+
         acc.items += 1;
+        if (!cancelado) acc.activos += 1;
         if (item.etapa === "presupuestado") acc.presupuestados += 1;
         if (item.etapa === "agregado") acc.aprobados += 1;
-        if (item.etapa === "ejecutado") acc.ejecutados += 1;
-        if (item.etapa === "cancelado") acc.cancelados += 1;
-        acc.total += item.etapa === "cancelado" ? 0 : Number(item.subtotal || 0);
+        if (ejecutado) acc.ejecutados += 1;
+        if (cancelado) acc.cancelados += 1;
+        if (!cancelado && !aprobado) acc.pendientesAprobacion += 1;
+        if (!cancelado && aprobado && !ejecutado) acc.pendientesEjecucion += 1;
+        if (!cancelado && ejecutado && aprobado) acc.facturables += 1;
+        acc.total += cancelado ? 0 : Number(item.subtotal || 0);
         return acc;
       },
-      { items: 0, presupuestados: 0, aprobados: 0, ejecutados: 0, cancelados: 0, total: 0 }
+      {
+        items: 0,
+        activos: 0,
+        presupuestados: 0,
+        aprobados: 0,
+        ejecutados: 0,
+        cancelados: 0,
+        pendientesAprobacion: 0,
+        pendientesEjecucion: 0,
+        facturables: 0,
+        total: 0,
+      }
     );
   }, [items]);
+
+  const puedeTerminarTrabajo =
+    orden?.estado === "en_reparacion" &&
+    resumen.activos > 0 &&
+    resumen.pendientesAprobacion === 0 &&
+    resumen.pendientesEjecucion === 0;
+
+  const puedeGenerarVenta =
+    orden?.estado === "terminada" &&
+    !orden?.id_venta_generada &&
+    resumen.facturables > 0;
+
+  const puedeMarcarListaParaRetirar =
+    orden?.estado === "facturada" &&
+    Boolean(orden?.id_venta_generada);
+
+  const puedeMarcarRetirada = orden?.estado === "lista_para_retirar";
 
   const variantesFiltradas = useMemo(() => {
     const q = normalizarTexto(busquedaVariante);
@@ -190,7 +226,14 @@ export default function TallerDetallePage() {
 
   const estadosPermitidos = useMemo(() => {
     if (!orden) return [];
-    return TRANSICIONES_UI[orden.estado] || [];
+
+    return (TRANSICIONES_UI[orden.estado] || []).filter((estado) => {
+      if (estado === "lista_para_retirar" && !orden.id_venta_generada) {
+        return false;
+      }
+
+      return true;
+    });
   }, [orden]);
 
   function cambiarTipoItem(tipoItem) {
@@ -275,10 +318,14 @@ export default function TallerDetallePage() {
     }
   }
 
-  async function agregarItem(e) {
+ async function agregarItem(e) {
     e.preventDefault();
 
+    console.log("SUBMIT agregarItem");
+    console.log("itemForm al submit:", itemForm);
+
     const esServicio = itemForm.tipo_item === "servicio";
+    console.log("esServicio:", esServicio);
     if (esServicio && !itemForm.id_servicio_taller) {
       setError("Seleccioná un servicio para agregar al trabajo");
       return;
@@ -324,7 +371,19 @@ export default function TallerDetallePage() {
             id_usuario: 1,
           };
 
-      await agregarItemOrdenTaller(ordenId, payload);
+      console.log("================================");
+      console.log("AGREGAR ITEM");
+      console.log("ordenId:", ordenId);
+      console.log("payload:", payload);
+      console.log("tipo:", itemForm.tipo_item);
+
+      const resultado = await agregarItemOrdenTaller(
+        ordenId,
+        payload
+      );
+
+      console.log("respuesta:", resultado);
+      console.log("================================");
       
       setItemForm({ tipo_item: itemForm.tipo_item, id_variante: "", id_servicio_taller: "", cantidad: "1", precio_unitario: "" });
       setBusquedaVariante("");
@@ -332,7 +391,22 @@ export default function TallerDetallePage() {
       await refrescarOrden();
       setMensaje(esServicio ? "Servicio agregado correctamente" : "Repuesto agregado correctamente");
     } catch (err) {
-      setError(err?.detail || err?.message || "No se pudo agregar el item");
+      console.error("ERROR agregarItem");
+      console.error(err);
+
+      if (err?.response) {
+        console.error("response:", err.response);
+      }
+
+      if (err?.detail) {
+        console.error("detail:", err.detail);
+      }
+
+      setError(
+        err?.detail ||
+        err?.message ||
+        "No se pudo agregar el item"
+      );
     } finally {
       setGuardando(false);
     }
@@ -414,10 +488,33 @@ export default function TallerDetallePage() {
       setMensaje(`Venta #${resultado.venta_id} generada desde taller`);
       navigate(`/ventas/${resultado.venta_id}/cobro`);
     } catch (err) {
-      setError(err.message || "No se pudo generar la venta desde taller");
+      setError(err?.detail || err?.message || "No se pudo generar la venta desde taller");
     } finally {
       setGuardando(false);
     }
+  }
+
+  async function cambiarEstadoDirecto(nuevoEstadoDirecto, mensajeOk) {
+    try {
+      setGuardando(true);
+      setError("");
+      setMensaje("");
+      await cambiarEstadoOrdenTaller(ordenId, {
+        nuevo_estado: nuevoEstadoDirecto,
+        id_usuario: 1,
+      });
+      await refrescarOrden();
+      setMensaje(mensajeOk || `Estado actualizado a ${labelEstado(nuevoEstadoDirecto)}`);
+    } catch (err) {
+      setError(err?.detail || err?.message || "No se pudo actualizar el estado");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  function irACobrarVenta() {
+    if (!orden?.id_venta_generada) return;
+    navigate(`/ventas/${orden.id_venta_generada}/cobro`);
   }
 
 
@@ -594,13 +691,12 @@ export default function TallerDetallePage() {
                 </div>
               )}
 
-              {itemForm.tipo_item === "servicio" && !itemForm.id_servicio_taller && (
-                <div style={styles.formWarning}>
-                  Primero elegí un servicio en “Servicio seleccionado”.
-                </div>
-              )}
-
               <div style={styles.itemFormRow}>
+                {itemForm.tipo_item === "servicio" && !itemForm.id_servicio_taller && (
+                  <div style={styles.error}>
+                    Primero elegí un servicio en “Servicio seleccionado”.
+                  </div>
+                )}
                 <label style={styles.field}>
                   <span style={styles.label}>Cantidad</span>
                   <input type="number" min="0.01" step="0.01" value={itemForm.cantidad} onChange={(e) => setItemForm((p) => ({ ...p, cantidad: e.target.value }))} style={styles.input} />
@@ -683,6 +779,23 @@ export default function TallerDetallePage() {
         </section>
 
         <aside style={styles.sidePanel}>
+          <OperadorPanel
+            orden={orden}
+            resumen={resumen}
+            guardando={guardando}
+            puedeTerminarTrabajo={puedeTerminarTrabajo}
+            puedeGenerarVenta={puedeGenerarVenta}
+            puedeMarcarListaParaRetirar={puedeMarcarListaParaRetirar}
+            puedeMarcarRetirada={puedeMarcarRetirada}
+            onPasarPresupuestada={() => cambiarEstadoDirecto("presupuestada", "Orden marcada como presupuestada")}
+            onPasarEnReparacion={() => cambiarEstadoDirecto("en_reparacion", "Orden marcada en reparación")}
+            onTerminar={() => cambiarEstadoDirecto("terminada", "Trabajo marcado como terminado")}
+            onGenerarVenta={generarVenta}
+            onCobrar={irACobrarVenta}
+            onListaParaRetirar={() => cambiarEstadoDirecto("lista_para_retirar", "Orden lista para retirar")}
+            onRetirada={() => cambiarEstadoDirecto("retirada", "Orden marcada como retirada")}
+          />
+
           <section style={styles.card}>
             <h2 style={styles.sideTitle}>Presupuesto</h2>
             <div style={styles.billingBox}>
@@ -708,14 +821,21 @@ export default function TallerDetallePage() {
                 </>
               ) : orden.estado === "terminada" ? (
                 <>
-                  <p style={styles.muted}>
-                    El trabajo está terminado. Generá la venta para cobrar con el flujo normal de ventas.
-                  </p>
-
+                  {items.some((item) => item.tipo_item === "servicio" && item.etapa === "ejecutado") ? (
+                    <p style={styles.warningText}>
+                      Esta orden tiene servicios ejecutados. Todavía no generes venta desde taller hasta adaptar Ventas para líneas sin variante.
+                    </p>
+                  ) : (
+                    <p style={styles.muted}>El trabajo está terminado. Generá la venta para cobrar con el flujo normal de ventas.</p>
+                  )}
                   <button
                     type="button"
                     onClick={generarVenta}
-                    disabled={guardando || resumen.ejecutados === 0}
+                    disabled={
+                      guardando ||
+                      resumen.ejecutados === 0 ||
+                      items.some((item) => item.tipo_item === "servicio" && item.etapa === "ejecutado")
+                    }
                     style={styles.primaryButton}
                   >
                     Generar venta
@@ -728,7 +848,7 @@ export default function TallerDetallePage() {
           </section>
 
           <section style={styles.card}>
-            <h2 style={styles.sideTitle}>Estado operativo</h2>
+            <h2 style={styles.sideTitle}>Estado manual</h2>
             <form onSubmit={cambiarEstado} style={styles.statusForm}>
               <Info label="Actual" value={<EstadoBadge estado={orden.estado} />} />
               <label style={styles.field}>
@@ -741,7 +861,7 @@ export default function TallerDetallePage() {
               </label>
               <button type="submit" disabled={guardando || nuevoEstado === orden.estado} style={styles.primaryButton}>Actualizar estado</button>
             </form>
-            <div style={styles.note}>El backend define transiciones válidas. Si una transición falla, no la fuerces desde el front.</div>
+            <div style={styles.note}>Uso avanzado. El flujo recomendado está arriba; este selector queda para casos puntuales.</div>
           </section>
 
           <section style={styles.card}>
@@ -779,6 +899,159 @@ export default function TallerDetallePage() {
         onConfirm={promptConfig?.onConfirm}
         onCancel={promptConfig?.onCancel}
       />
+    </div>
+  );
+}
+
+function OperadorPanel({
+  orden,
+  resumen,
+  guardando,
+  puedeTerminarTrabajo,
+  puedeGenerarVenta,
+  puedeMarcarListaParaRetirar,
+  puedeMarcarRetirada,
+  onPasarPresupuestada,
+  onPasarEnReparacion,
+  onTerminar,
+  onGenerarVenta,
+  onCobrar,
+  onListaParaRetirar,
+  onRetirada,
+}) {
+  const paso = getPasoOperativo(orden, resumen);
+  const accion = getAccionPrincipal({
+    orden,
+    resumen,
+    puedeTerminarTrabajo,
+    puedeGenerarVenta,
+    puedeMarcarListaParaRetirar,
+    puedeMarcarRetirada,
+    onPasarPresupuestada,
+    onPasarEnReparacion,
+    onTerminar,
+    onGenerarVenta,
+    onCobrar,
+    onListaParaRetirar,
+    onRetirada,
+  });
+
+  return (
+    <section style={{ ...styles.card, ...styles.operatorCard }}>
+      <div style={styles.operatorHeader}>
+        <div>
+          <p style={styles.eyebrow}>Guía del operador</p>
+          <h2 style={styles.sideTitle}>{paso.titulo}</h2>
+        </div>
+        <span style={styles.operatorStep}>{paso.numero}/6</span>
+      </div>
+
+      <p style={styles.operatorText}>{paso.descripcion}</p>
+
+      <div style={styles.operatorProgress}>
+        {[
+          ["1", "Ingreso"],
+          ["2", "Presupuesto"],
+          ["3", "Reparación"],
+          ["4", "Facturar"],
+          ["5", "Cobrar"],
+          ["6", "Retiro"],
+        ].map(([numero, label]) => (
+          <div
+            key={numero}
+            style={
+              Number(numero) <= paso.numero
+                ? styles.progressDotActive
+                : styles.progressDot
+            }
+            title={label}
+          >
+            {numero}
+          </div>
+        ))}
+      </div>
+
+      <div style={styles.checkList}>
+        <CheckLine
+          ok={resumen.activos > 0}
+          label={
+            resumen.activos > 0
+              ? `${resumen.activos} item/s activos cargados`
+              : "Cargá al menos un item activo"
+          }
+        />
+        <CheckLine
+          ok={resumen.pendientesAprobacion === 0 && resumen.activos > 0}
+          label={
+            resumen.pendientesAprobacion === 0 && resumen.activos > 0
+              ? "Todo aprobado"
+              : `${resumen.pendientesAprobacion} item/s sin aprobar`
+          }
+        />
+        <CheckLine
+          ok={resumen.pendientesEjecucion === 0 && resumen.activos > 0}
+          label={
+            resumen.pendientesEjecucion === 0 && resumen.activos > 0
+              ? "Todo ejecutado"
+              : `${resumen.pendientesEjecucion} item/s aprobados sin ejecutar`
+          }
+        />
+        <CheckLine
+          ok={Boolean(orden.id_venta_generada)}
+          label={
+            orden.id_venta_generada
+              ? `Venta #${orden.id_venta_generada} generada`
+              : "Venta pendiente de generar"
+          }
+        />
+      </div>
+
+      {accion.mensaje && (
+        <div style={accion.tipo === "warning" ? styles.operatorWarning : styles.operatorInfo}>
+          {accion.mensaje}
+        </div>
+      )}
+
+      {accion.label && (
+        <button
+          type="button"
+          onClick={accion.onClick}
+          disabled={guardando || accion.disabled}
+          style={{
+            ...styles.operatorPrimary,
+            opacity: guardando || accion.disabled ? 0.55 : 1,
+            cursor: guardando || accion.disabled ? "not-allowed" : "pointer",
+          }}
+        >
+          {accion.label}
+        </button>
+      )}
+
+      {accion.secondaryLabel && (
+        <button
+          type="button"
+          onClick={accion.secondaryOnClick}
+          disabled={guardando || accion.secondaryDisabled}
+          style={{
+            ...styles.operatorSecondary,
+            opacity: guardando || accion.secondaryDisabled ? 0.55 : 1,
+            cursor: guardando || accion.secondaryDisabled ? "not-allowed" : "pointer",
+          }}
+        >
+          {accion.secondaryLabel}
+        </button>
+      )}
+    </section>
+  );
+}
+
+function CheckLine({ ok, label }) {
+  return (
+    <div style={styles.checkLine}>
+      <span style={ok ? styles.checkOk : styles.checkPending}>
+        {ok ? "✓" : "!"}
+      </span>
+      <span>{label}</span>
     </div>
   );
 }
@@ -977,7 +1250,208 @@ function prioridadTipoTaller(item) {
   return 4;
 }
 
+function getPasoOperativo(orden, resumen) {
+  if (!orden) {
+    return {
+      numero: 1,
+      titulo: "Cargando orden",
+      descripcion: "Esperá a que el sistema cargue la información.",
+    };
+  }
+
+  if (orden.estado === "cancelada") {
+    return {
+      numero: 1,
+      titulo: "Orden cancelada",
+      descripcion: "No hay acciones operativas disponibles para esta orden.",
+    };
+  }
+
+  if (orden.estado === "retirada") {
+    return {
+      numero: 6,
+      titulo: "Bicicleta retirada",
+      descripcion: "Circuito terminado. No deberían hacerse más cambios operativos.",
+    };
+  }
+
+  if (orden.estado === "lista_para_retirar") {
+    return {
+      numero: 6,
+      titulo: "Lista para entregar",
+      descripcion: "La venta ya fue generada. Confirmá la retirada cuando el cliente se lleve la bicicleta.",
+    };
+  }
+
+  if (orden.estado === "facturada") {
+    return {
+      numero: 5,
+      titulo: "Cobro y retiro",
+      descripcion: "La venta ya existe. Cobrá la venta y luego marcá la orden como lista para retirar.",
+    };
+  }
+
+  if (orden.estado === "terminada") {
+    return {
+      numero: 4,
+      titulo: "Trabajo terminado",
+      descripcion: "Ahora corresponde generar la venta. No marques lista para retirar antes de facturar.",
+    };
+  }
+
+  if (orden.estado === "en_reparacion") {
+    if (resumen.pendientesEjecucion > 0 || resumen.pendientesAprobacion > 0 || resumen.activos === 0) {
+      return {
+        numero: 3,
+        titulo: "Ejecutar trabajo",
+        descripcion: "Aprobá y ejecutá todos los items activos antes de marcar la orden como terminada.",
+      };
+    }
+
+    return {
+      numero: 3,
+      titulo: "Trabajo listo para terminar",
+      descripcion: "Todos los items activos están ejecutados. Ya podés marcar el trabajo como terminado.",
+    };
+  }
+
+  if (orden.estado === "presupuestada" || orden.estado === "esperando_aprobacion") {
+    return {
+      numero: 2,
+      titulo: "Presupuesto pendiente",
+      descripcion: "Revisá items, aprobaciones y pasá la orden a reparación cuando corresponda.",
+    };
+  }
+
+  return {
+    numero: 1,
+    titulo: "Ingreso de orden",
+    descripcion: "Cargá repuestos o servicios, imprimí presupuesto y pasá a presupuestada.",
+  };
+}
+
+function getAccionPrincipal({
+  orden,
+  resumen,
+  puedeTerminarTrabajo,
+  puedeGenerarVenta,
+  puedeMarcarListaParaRetirar,
+  puedeMarcarRetirada,
+  onPasarPresupuestada,
+  onPasarEnReparacion,
+  onTerminar,
+  onGenerarVenta,
+  onCobrar,
+  onListaParaRetirar,
+  onRetirada,
+}) {
+  if (!orden || orden.estado === "cancelada" || orden.estado === "retirada") {
+    return {
+      label: null,
+      mensaje: "Sin acciones principales disponibles.",
+      tipo: "info",
+    };
+  }
+
+  if (orden.estado === "ingresada") {
+    return {
+      label: "Marcar presupuestada",
+      onClick: onPasarPresupuestada,
+      disabled: resumen.activos === 0,
+      mensaje:
+        resumen.activos === 0
+          ? "Cargá al menos un repuesto o servicio antes de presupuestar."
+          : "Siguiente paso recomendado: presupuestar.",
+      tipo: resumen.activos === 0 ? "warning" : "info",
+    };
+  }
+
+  if (orden.estado === "presupuestada" || orden.estado === "esperando_aprobacion") {
+    return {
+      label: "Pasar a reparación",
+      onClick: onPasarEnReparacion,
+      disabled: resumen.activos === 0 || resumen.pendientesAprobacion > 0,
+      mensaje:
+        resumen.pendientesAprobacion > 0
+          ? "Hay items sin aprobar. Aprobá o cancelá antes de reparar."
+          : "Cuando el cliente aprueba, pasá la orden a reparación.",
+      tipo: resumen.pendientesAprobacion > 0 ? "warning" : "info",
+    };
+  }
+
+  if (orden.estado === "en_reparacion") {
+    return {
+      label: "Marcar trabajo terminado",
+      onClick: onTerminar,
+      disabled: !puedeTerminarTrabajo,
+      mensaje:
+        !puedeTerminarTrabajo
+          ? "Para terminar, todos los items activos deben estar aprobados y ejecutados."
+          : "Todo ejecutado. Ya podés marcar el trabajo como terminado.",
+      tipo: !puedeTerminarTrabajo ? "warning" : "info",
+    };
+  }
+
+  if (orden.estado === "terminada") {
+    return {
+      label: "Generar venta",
+      onClick: onGenerarVenta,
+      disabled: !puedeGenerarVenta,
+      mensaje:
+        resumen.facturables === 0
+          ? "No hay items ejecutados para facturar."
+          : "Generá la venta antes de marcar la orden como lista para retirar.",
+      tipo: resumen.facturables === 0 ? "warning" : "info",
+    };
+  }
+
+  if (orden.estado === "facturada") {
+    return {
+      label: "Cobrar venta",
+      onClick: onCobrar,
+      disabled: !orden.id_venta_generada,
+      secondaryLabel: "Marcar lista para retirar",
+      secondaryOnClick: onListaParaRetirar,
+      secondaryDisabled: !puedeMarcarListaParaRetirar,
+      mensaje:
+        "Cobrada o con deuda autorizada, marcá la bicicleta como lista para retirar.",
+      tipo: "info",
+    };
+  }
+
+  if (orden.estado === "lista_para_retirar") {
+    return {
+      label: "Marcar retirada",
+      onClick: onRetirada,
+      disabled: !puedeMarcarRetirada,
+      mensaje: "Usá este paso cuando el cliente efectivamente retire la bicicleta.",
+      tipo: "info",
+    };
+  }
+
+  return {
+    label: null,
+    mensaje: "Revisá el estado actual de la orden.",
+    tipo: "info",
+  };
+}
+
 const styles = {
+  operatorCard: { border: "1px solid #fed7aa", background: "linear-gradient(180deg, #fff7ed 0%, #ffffff 56%)" },
+  operatorHeader: { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start" },
+  operatorStep: { background: "#0f172a", color: "white", borderRadius: 999, padding: "7px 10px", fontWeight: 1000, fontSize: 12 },
+  operatorText: { margin: "8px 0 0", color: "#475569", fontWeight: 800, lineHeight: 1.45 },
+  operatorProgress: { display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6, marginTop: 14 },
+  progressDot: { height: 30, borderRadius: 999, display: "grid", placeItems: "center", background: "#f1f5f9", border: "1px solid #e2e8f0", color: "#64748b", fontWeight: 1000, fontSize: 12 },
+  progressDotActive: { height: 30, borderRadius: 999, display: "grid", placeItems: "center", background: "#f97316", border: "1px solid #fb923c", color: "white", fontWeight: 1000, fontSize: 12 },
+  checkList: { display: "grid", gap: 8, marginTop: 14 },
+  checkLine: { display: "flex", gap: 8, alignItems: "center", color: "#334155", fontWeight: 850, fontSize: 13 },
+  checkOk: { width: 22, height: 22, borderRadius: 999, display: "grid", placeItems: "center", background: "#dcfce7", color: "#166534", fontWeight: 1000 },
+  checkPending: { width: 22, height: 22, borderRadius: 999, display: "grid", placeItems: "center", background: "#fef3c7", color: "#92400e", fontWeight: 1000 },
+  operatorWarning: { background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", borderRadius: 14, padding: 12, fontWeight: 850, marginTop: 14 },
+  operatorInfo: { background: "#eff6ff", border: "1px solid #bfdbfe", color: "#1d4ed8", borderRadius: 14, padding: 12, fontWeight: 850, marginTop: 14 },
+  operatorPrimary: { width: "100%", border: "none", background: "#f97316", color: "white", borderRadius: 13, padding: "13px 16px", fontWeight: 1000, marginTop: 12, boxShadow: "0 10px 20px rgba(249,115,22,.22)" },
+  operatorSecondary: { width: "100%", border: "1px solid #fed7aa", background: "white", color: "#c2410c", borderRadius: 13, padding: "12px 16px", fontWeight: 1000, marginTop: 8 },
   page: { minHeight: "100vh", padding: 20, background: "#f1f5f9", color: "#0f172a" },
   hero: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, padding: 22, borderRadius: 24, background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)", color: "white", boxShadow: "0 18px 40px rgba(15,23,42,.18)", marginBottom: 16 },
   kicker: { margin: 0, color: "#fb923c", fontSize: 12, fontWeight: 1000, textTransform: "uppercase", letterSpacing: ".08em" },
@@ -1016,7 +1490,6 @@ const styles = {
   partBadge: { background: "#eff6ff", color: "#1d4ed8", borderRadius: 999, padding: "5px 8px", fontSize: 12, fontWeight: 1000 },
   optionPrice: { whiteSpace: "nowrap", fontSize: 15 },
   selectedItemBox: { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", background: "#ecfdf5", border: "1px solid #bbf7d0", borderRadius: 16, padding: 12 },
-  formWarning: { background: "#fff1f0", color: "#b42318", border: "1px solid #fecdca", borderRadius: 14, padding: 12, fontWeight: 800 },
   itemFormRow: { display: "grid", gridTemplateColumns: "160px 180px minmax(180px, 1fr)", gap: 12, alignItems: "end" },
   field: { display: "grid", gap: 7, fontSize: 14, fontWeight: 900 },
   label: { color: "#334155" },

@@ -458,10 +458,13 @@ async function handleDevolverSerializada(item) {
     }
   }
   const totalPagadoReal = useMemo(() => {
-    return pagos
-      .filter((pago) => pago.estado === "confirmado")
-      .reduce((acc, pago) => acc + Number(pago.monto_total_cobrado || 0), 0);
-  }, [pagos]);
+    return Number(
+      data?.situacion_financiera?.total_pagado_confirmado ??
+        pagos
+          .filter((pago) => pago.estado === "confirmado")
+          .reduce((acc, pago) => acc + Number(pago.monto_total_cobrado || 0), 0)
+    );
+  }, [data, pagos]);
   function tienePagosExternosConfirmados() {
     return (pagos ?? []).some(
       (p) =>
@@ -492,9 +495,8 @@ async function handleDevolverSerializada(item) {
   const subtotalBase = Number(venta.subtotal_base || 0);
   const factorDevolucion = subtotalBase > 0 ? totalFinal / subtotalBase : 1;
   const saldoPendiente = Number(venta.saldo_pendiente || 0);
-  const cubiertoNoPago = Math.max(
-    totalFinal - totalPagadoReal - saldoPendiente,
-    0
+  const cubiertoNoPago = Number(
+    situacion_financiera?.monto_cubierto_sin_pago_real ?? 0
   );
 
 const estadosFinales = ["anulada", "devuelta"];

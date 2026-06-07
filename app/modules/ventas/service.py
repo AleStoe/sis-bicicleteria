@@ -1,4 +1,5 @@
 from decimal import Decimal
+from psycopg.rows import dict_row
 from app.modules.pagos import service as pagos_service
 from app.shared.money import to_decimal
 from fastapi import HTTPException
@@ -1034,18 +1035,56 @@ def obtener_venta(venta_id: int):
 
         items = get_venta_items_by_venta_id(conn, venta_id)
 
-        deuda_abierta = deudas_service.obtener_deuda_abierta_por_origen(
+        deuda_asociada = deudas_repository.get_deuda_por_origen(
             conn,
             origen_tipo=ORIGEN_VENTA,
             origen_id=venta_id,
         )
 
         total_final = redondear_monto(venta["total_final"])
-        saldo_pendiente = redondear_monto(venta["saldo_pendiente"])
 
-        total_pagado_confirmado = redondear_monto(
+        total_pagado_directo_venta = redondear_monto(
             get_total_pagado_confirmado_por_venta(conn, venta_id)
         )
+
+        pagos_deuda = (
+            deudas_repository.get_pagos_confirmados_deuda(
+                conn,
+                deuda_asociada["id"],
+            )
+            if deuda_asociada is not None
+            else []
+        )
+
+        total_pagado_deuda_cobrado = redondear_monto(
+            sum(
+                redondear_monto(pago["monto_total_cobrado"] or 0)
+                for pago in pagos_deuda
+            )
+        )
+
+        total_base_cancelada_deuda = redondear_monto(
+            sum(
+                redondear_monto(pago["monto_base_aplicado"] or 0)
+                for pago in pagos_deuda
+            )
+        )
+
+        cobertura_no_cobrada_deuda = redondear_monto(
+            total_base_cancelada_deuda - total_pagado_deuda_cobrado
+        )
+
+        if cobertura_no_cobrada_deuda < Decimal("0"):
+            cobertura_no_cobrada_deuda = Decimal("0.00")
+
+        total_pagado_confirmado = redondear_monto(
+            total_pagado_directo_venta + total_pagado_deuda_cobrado
+        )
+
+        if deuda_asociada is not None:
+            saldo_pendiente = redondear_monto(deuda_asociada["saldo_actual"])
+        else:
+            saldo_pendiente = redondear_monto(venta["saldo_pendiente"])
 
         credito_aplicado_real = redondear_monto(
             creditos_repository.get_total_credito_aplicado_a_venta(
@@ -1061,15 +1100,6 @@ def obtener_venta(venta_id: int):
             )
         )
 
-        monto_cubierto_sin_pago_real = redondear_monto(
-            total_final - total_pagado_confirmado - saldo_pendiente
-        )
-
-        # Tolerancia financiera por redondeo de centavos.
-        # No debe mostrarse como crédito/ajuste real.
-        if abs(monto_cubierto_sin_pago_real) <= Decimal("0.01"):
-            monto_cubierto_sin_pago_real = Decimal("0.00")
-
         deuda_cancelada_por_devolucion = redondear_monto(
             deudas_repository.get_total_deuda_cancelada_por_devolucion_venta(
                 conn,
@@ -1077,19 +1107,45 @@ def obtener_venta(venta_id: int):
             )
         )
 
+        monto_cubierto_sin_pago_real = redondear_monto(
+            total_final
+            - total_pagado_confirmado
+            - saldo_pendiente
+            - credito_aplicado_real
+        )
+
+        if monto_cubierto_sin_pago_real < Decimal("0"):
+            monto_cubierto_sin_pago_real = Decimal("0.00")
+
+        if abs(monto_cubierto_sin_pago_real) <= Decimal("0.01"):
+            monto_cubierto_sin_pago_real = Decimal("0.00")
+
+        tiene_deuda = (
+            deuda_asociada is not None
+            and redondear_monto(deuda_asociada["saldo_actual"]) > Decimal("0")
+        )
+
+        deuda_payload = (
+            {
+                "id": deuda_asociada["id"],
+                "saldo_actual": deuda_asociada["saldo_actual"],
+                "estado": deuda_asociada["estado"],
+                "origen_tipo": deuda_asociada["origen_tipo"],
+                "origen_id": deuda_asociada["origen_id"],
+            }
+            if deuda_asociada is not None
+            else None
+        )
+
+        venta_response = {
+            **venta,
+            "saldo_pendiente": saldo_pendiente,
+        }
+
         situacion_financiera = {
-            "tiene_deuda": deuda_abierta is not None,
-            "deuda_abierta": (
-                {
-                    "id": deuda_abierta["id"],
-                    "saldo_actual": deuda_abierta["saldo_actual"],
-                    "estado": deuda_abierta["estado"],
-                    "origen_tipo": deuda_abierta["origen_tipo"],
-                    "origen_id": deuda_abierta["origen_id"],
-                }
-                if deuda_abierta is not None
-                else None
-            ),
+            "tiene_deuda": tiene_deuda,
+            "deuda_abierta": deuda_payload if tiene_deuda else None,
+            "deuda_asociada": deuda_payload,
             "total_final": total_final,
             "total_pagado_confirmado": total_pagado_confirmado,
             "saldo_pendiente": saldo_pendiente,
@@ -1099,11 +1155,14 @@ def obtener_venta(venta_id: int):
                 "credito_generado_devolucion": credito_generado_devolucion,
                 "deuda_cancelada_por_devolucion": deuda_cancelada_por_devolucion,
                 "cobertura_no_cobrada": monto_cubierto_sin_pago_real,
+                "pagos_directos_venta": total_pagado_directo_venta,
+                "pagos_deuda_cobrado": total_pagado_deuda_cobrado,
+                "base_cancelada_por_pagos_deuda": total_base_cancelada_deuda,
             },
         }
 
         return {
-            "venta": venta,
+            "venta": venta_response,
             "items": items,
             "situacion_financiera": situacion_financiera,
         }

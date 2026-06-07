@@ -350,3 +350,40 @@ def get_total_deuda_cancelada_por_devolucion_venta(conn, venta_id: int) -> Decim
         )
         row = cur.fetchone()
         return Decimal(str(row["total"] or 0))
+
+def get_deuda_por_origen(conn, origen_tipo: str, origen_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT *
+            FROM deudas_cliente
+            WHERE origen_tipo = %s
+              AND origen_id = %s
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (origen_tipo, origen_id),
+        )
+        return cur.fetchone()
+
+
+def get_pagos_confirmados_deuda(conn, deuda_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT
+                id,
+                monto_total_cobrado,
+                monto_base_aplicado,
+                monto_recargo_aplicado,
+                estado,
+                nota
+            FROM pagos
+            WHERE origen_tipo = 'deuda_cliente'
+              AND origen_id = %s
+              AND estado = 'confirmado'
+            ORDER BY id
+            """,
+            (deuda_id,),
+        )
+        return cur.fetchall()
