@@ -16,6 +16,8 @@ import {
   Users,
   Wrench,
   Settings2,
+  PiggyBank,
+  BarChart3,
 } from "lucide-react";
 import { sidebarContainerStyle } from "../../styles/layout/appLayoutStyles";
 import {
@@ -34,10 +36,20 @@ const groups = [
     links: [
       { to: "/ventas/nueva", label: "Nueva Venta", icon: ShoppingCart },
       { to: "/ventas", label: "Ventas", icon: Receipt },
+      { to: "/reservas", label: "Reservas", icon: ClipboardList },
+      { to: "/clientes", label: "Clientes", icon: Users },
+    ],
+  },
+  {
+    title: "Finanzas",
+    links: [
       { to: "/caja", label: "Caja", icon: DollarSign },
-      { to: "/gastos", label: "Gastos", icon: Receipt },
       { to: "/pagos", label: "Pagos", icon: CreditCard },
-      { to: "/configuracion-comercial", label: "Config. Comercial", icon: Settings2 },
+      { to: "/gastos", label: "Gastos", icon: Receipt },
+      { to: "/deudas", label: "Deudas", icon: FileSearch },
+      { to: "/creditos", label: "Créditos", icon: HandCoins },
+      { to: "/capital-retiros", label: "Capital y Retiros", icon: PiggyBank },
+      { to: "/rentabilidad", label: "Rentabilidad", icon: BarChart3 },
     ],
   },
   {
@@ -50,24 +62,15 @@ const groups = [
       { to: "/catalogo", label: "Catálogo", icon: Tags },
       { to: "/precios", label: "Precios", icon: Calculator },
       { to: "/proveedores", label: "Proveedores", icon: HandCoins },
-      { to: "/servicios-taller", label: "Servicios Taller", icon: Wrench },
-      
-    ],
-  },
-  {
-    title: "Clientes",
-    links: [
-      { to: "/clientes", label: "Clientes", icon: Users },
-      { to: "/deudas", label: "Deudas", icon: FileSearch },
-      { to: "/creditos", label: "Créditos", icon: HandCoins },
-      { to: "/reservas", label: "Reservas", icon: ClipboardList },
     ],
   },
   {
     title: "Taller y control",
     links: [
       { to: "/taller", label: "Taller", icon: Wrench },
+      { to: "/servicios-taller", label: "Servicios Taller", icon: Wrench },
       { to: "/auditoria", label: "Auditoría", icon: Gauge },
+      { to: "/configuracion-comercial", label: "Config. Comercial", icon: Settings2 },
     ],
   },
 ];

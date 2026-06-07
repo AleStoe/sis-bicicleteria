@@ -6,7 +6,6 @@ import VentasListPage from "./pages/VentasListPage";
 import VentaDetallePage from "./pages/VentaDetallePage";
 import StockPage from "./pages/StockPage";
 import CajaPage from "./pages/CajaPage";
-import GastosPage from "./pages/GastosPage";
 import ClientesListPage from "./pages/ClientesListPage";
 import ClienteDetallePage from "./pages/ClienteDetallePage";
 import ClienteFormPage from "./pages/ClienteFormPage";
@@ -34,6 +33,11 @@ import AltaBicicletaPage from "./pages/AltaBicicletaPage";
 import CatalogoProductoDetallePage from "./pages/CatalogoProductoDetallePage";
 import ConfiguracionComercialPage from "./pages/ConfiguracionComercialPage";
 import ServiciosPage from "./pages/ServiciosPage";
+import CapitalRetirosPage from "./pages/CapitalRetirosPage";
+import CapitalRetirosParticipantePerfilPage from "./pages/CapitalRetirosParticipantePerfilPage";
+import RentabilidadPage from "./pages/RentabilidadPage";
+
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -46,7 +50,6 @@ export default function App() {
           <Route path="/ventas/:ventaId" element={<VentaDetallePage />} />
           <Route path="/stock" element={<StockPage />} />
           <Route path="/caja" element={<CajaPage />} />
-          <Route path="/gastos" element={<GastosPage />} />
           <Route path="/taller" element={<TallerListPage />} />
           <Route path="/taller/nueva" element={<TallerNuevaOrdenPage />} />
           <Route path="/taller/:ordenId" element={<TallerDetallePage />} />
@@ -75,7 +78,9 @@ export default function App() {
           <Route path="/catalogo/productos/:productoId" element={<CatalogoProductoDetallePage />} />
           <Route path="/configuracion-comercial" element={<ConfiguracionComercialPage />} />
           <Route path="/servicios-taller" element={<ServiciosPage />} />
-
+          <Route path="/capital-retiros" element={<CapitalRetirosPage />} />
+          <Route path="/capital-retiros/participantes/:participanteId" element={<CapitalRetirosParticipantePerfilPage />}/>
+          <Route path="/rentabilidad" element={<RentabilidadPage />} />
         </Routes>
       </AppLayout>
     </BrowserRouter>
