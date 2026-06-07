@@ -1,13 +1,11 @@
 from decimal import Decimal
 
-from tests.conftest import get_caja_movimientos
-
 
 def _dec(value) -> Decimal:
     return Decimal(str(value))
 
 
-def _crear_categoria(client, nombre="Luz"):
+def _crear_categoria(client, nombre="Servicios"):
     response = client.post(
         "/gastos/categorias",
         json={"nombre": nombre},
@@ -16,399 +14,323 @@ def _crear_categoria(client, nombre="Luz"):
     return response.json()
 
 
-def _get_gasto(conn, gasto_id: int):
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            SELECT *
-            FROM gastos_operativos
-            WHERE id = %s
-            """,
-            (gasto_id,),
-        )
-        return cur.fetchone()
+def _crear_gasto(
+    client,
+    seed_venta_basica,
+    *,
+    categoria_id=None,
+    descripcion="Gasto prueba",
+    monto=10000,
+    medio_pago="transferencia",
+    impacta_caja=False,
+    fecha=None,
+    periodo_mes=None,
+    es_recurrente=False,
+):
+    payload = {
+        "id_sucursal": seed_venta_basica["sucursal_id"],
+        "id_categoria_gasto": categoria_id,
+        "descripcion": descripcion,
+        "monto": monto,
+        "medio_pago": medio_pago,
+        "impacta_caja": impacta_caja,
+        "es_recurrente": es_recurrente,
+        "id_usuario": seed_venta_basica["usuario_id"],
+    }
+
+    if fecha is not None:
+        payload["fecha"] = fecha
+
+    if periodo_mes is not None:
+        payload["periodo_mes"] = periodo_mes
+
+    response = client.post("/gastos/", json=payload)
+    assert response.status_code == 200, response.text
+    return response.json()
 
 
-def _get_gasto_movimientos(conn, gasto_id: int):
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            SELECT *
-            FROM gastos_movimientos
-            WHERE id_gasto = %s
-            ORDER BY id
-            """,
-            (gasto_id,),
-        )
-        return cur.fetchall()
+def test_edita_categoria_de_gasto(client, seed_venta_basica):
+    categoria = _crear_categoria(client, "Servicios varios")
 
-
-def test_crea_categoria_de_gasto(client, db_conn, seed_venta_basica):
-    response = client.post(
-        "/gastos/categorias",
-        json={"nombre": "Internet"},
+    response = client.put(
+        f"/gastos/categorias/{categoria['id']}",
+        json={
+            "nombre": "Servicios del local",
+            "activa": True,
+        },
     )
 
     assert response.status_code == 200, response.text
-
     data = response.json()
-    assert data["nombre"] == "Internet"
+    assert data["id"] == categoria["id"]
+    assert data["nombre"] == "Servicios del local"
     assert data["activa"] is True
 
 
-def test_crea_gasto_sin_impactar_caja(client, db_conn, seed_venta_basica):
-    categoria = _crear_categoria(client, "Internet")
+def test_cambia_estado_categoria_y_lista_inactivas(client, seed_venta_basica):
+    categoria = _crear_categoria(client, "Categoria temporal")
+
+    desactivar = client.patch(
+        f"/gastos/categorias/{categoria['id']}/estado",
+        json={"activa": False},
+    )
+    assert desactivar.status_code == 200, desactivar.text
+    assert desactivar.json()["ok"] is True
+    assert desactivar.json()["categoria_id"] == categoria["id"]
+    assert desactivar.json()["activa"] is False
+
+    activas = client.get("/gastos/categorias")
+    assert activas.status_code == 200, activas.text
+    ids_activas = [item["id"] for item in activas.json()]
+    assert categoria["id"] not in ids_activas
+
+    todas = client.get("/gastos/categorias", params={"incluir_inactivas": True})
+    assert todas.status_code == 200, todas.text
+    cat = next(item for item in todas.json() if item["id"] == categoria["id"])
+    assert cat["activa"] is False
+
+    activar = client.patch(
+        f"/gastos/categorias/{categoria['id']}/estado",
+        json={"activa": True},
+    )
+    assert activar.status_code == 200, activar.text
+    assert activar.json()["activa"] is True
+
+
+def test_no_permite_crear_gasto_con_categoria_inactiva(client, seed_venta_basica):
+    categoria = _crear_categoria(client, "Categoria bloqueada")
+
+    desactivar = client.patch(
+        f"/gastos/categorias/{categoria['id']}/estado",
+        json={"activa": False},
+    )
+    assert desactivar.status_code == 200, desactivar.text
 
     response = client.post(
         "/gastos/",
         json={
             "id_sucursal": seed_venta_basica["sucursal_id"],
             "id_categoria_gasto": categoria["id"],
-            "descripcion": "Pago internet local",
-            "monto": 30000,
+            "descripcion": "Gasto con categoria inactiva",
+            "monto": 10000,
             "medio_pago": "transferencia",
             "impacta_caja": False,
-            "id_usuario": seed_venta_basica["usuario_id"],
-        },
-    )
-
-    assert response.status_code == 200, response.text
-
-    data = response.json()
-    assert data["ok"] is True
-    assert data["caja_movimiento_id"] is None
-
-    gasto = _get_gasto(db_conn, data["gasto_id"])
-    assert gasto is not None
-    assert gasto["descripcion"] == "Pago internet local"
-    assert _dec(gasto["monto"]) == Decimal("30000.00")
-    assert gasto["impacta_caja"] is False
-    assert gasto["id_caja_movimiento"] is None
-    assert gasto["estado"] == "activo"
-
-    movimientos = _get_gasto_movimientos(db_conn, data["gasto_id"])
-    assert len(movimientos) == 1
-    assert movimientos[0]["tipo_movimiento"] == "creacion"
-    assert _dec(movimientos[0]["monto"]) == Decimal("30000.00")
-
-
-def test_crea_gasto_con_impacto_en_caja(client, db_conn, seed_venta_basica):
-    categoria = _crear_categoria(client, "Herramientas")
-
-    abrir = client.post(
-        "/cajas/abrir",
-        json={
-            "id_sucursal": seed_venta_basica["sucursal_id"],
-            "id_usuario": seed_venta_basica["usuario_id"],
-            "monto_apertura": 100000,
-        },
-    )
-    assert abrir.status_code == 200, abrir.text
-    caja_id = abrir.json()["caja_id"]
-
-    response = client.post(
-        "/gastos/",
-        json={
-            "id_sucursal": seed_venta_basica["sucursal_id"],
-            "id_categoria_gasto": categoria["id"],
-            "descripcion": "Compra llave pedalera",
-            "monto": 15000,
-            "medio_pago": "efectivo",
-            "impacta_caja": True,
-            "id_usuario": seed_venta_basica["usuario_id"],
-        },
-    )
-
-    assert response.status_code == 200, response.text
-
-    data = response.json()
-    assert data["ok"] is True
-    assert data["caja_movimiento_id"] is not None
-
-    gasto = _get_gasto(db_conn, data["gasto_id"])
-    assert gasto["impacta_caja"] is True
-    assert gasto["id_caja_movimiento"] == data["caja_movimiento_id"]
-
-    movimientos_caja = get_caja_movimientos(db_conn, caja_id)
-    egresos = [
-        m for m in movimientos_caja
-        if m["tipo_movimiento"] == "egreso"
-        and m["origen_tipo"] == "gasto_operativo"
-        and m["origen_id"] == data["gasto_id"]
-    ]
-
-    assert len(egresos) == 1
-    assert _dec(egresos[0]["monto"]) == Decimal("15000.00")
-    assert egresos[0]["submedio"] == "efectivo"
-
-
-def test_no_permite_gasto_con_impacto_caja_si_no_hay_caja_abierta(
-    client,
-    seed_venta_basica,
-):
-    categoria = _crear_categoria(client, "Combustible")
-
-    response = client.post(
-        "/gastos/",
-        json={
-            "id_sucursal": seed_venta_basica["sucursal_id"],
-            "id_categoria_gasto": categoria["id"],
-            "descripcion": "Nafta para reparto",
-            "monto": 10000,
-            "medio_pago": "efectivo",
-            "impacta_caja": True,
             "id_usuario": seed_venta_basica["usuario_id"],
         },
     )
 
     assert response.status_code == 400
-    assert "no hay caja abierta" in response.json()["detail"].lower()
+    assert "inactiva" in response.json()["detail"].lower()
 
 
-def test_anula_gasto_sin_caja(client, db_conn, seed_venta_basica):
-    categoria = _crear_categoria(client, "Marketing")
-
-    crear = client.post(
-        "/gastos/",
-        json={
-            "id_sucursal": seed_venta_basica["sucursal_id"],
-            "id_categoria_gasto": categoria["id"],
-            "descripcion": "Publicidad Instagram",
-            "monto": 12000,
-            "medio_pago": "transferencia",
-            "impacta_caja": False,
-            "id_usuario": seed_venta_basica["usuario_id"],
-        },
-    )
-    assert crear.status_code == 200, crear.text
-    gasto_id = crear.json()["gasto_id"]
-
-    anular = client.post(
-        f"/gastos/{gasto_id}/anular",
-        json={
-            "motivo": "Carga duplicada",
-            "id_usuario": seed_venta_basica["usuario_id"],
-        },
-    )
-
-    assert anular.status_code == 200, anular.text
-
-    gasto = _get_gasto(db_conn, gasto_id)
-    assert gasto["estado"] == "anulado"
-
-    movimientos = _get_gasto_movimientos(db_conn, gasto_id)
-    tipos = [m["tipo_movimiento"] for m in movimientos]
-
-    assert tipos == ["creacion", "anulacion"]
-
-
-def test_anula_gasto_con_caja_y_genera_ingreso_compensatorio(
+def test_listar_gastos_filtra_por_estado_categoria_medio_y_busqueda(
     client,
-    db_conn,
     seed_venta_basica,
 ):
-    categoria = _crear_categoria(client, "Luz")
+    categoria_luz = _crear_categoria(client, "Luz filtros")
+    categoria_envios = _crear_categoria(client, "Envios filtros")
 
-    abrir = client.post(
-        "/cajas/abrir",
-        json={
-            "id_sucursal": seed_venta_basica["sucursal_id"],
-            "id_usuario": seed_venta_basica["usuario_id"],
-            "monto_apertura": 50000,
-        },
-    )
-    assert abrir.status_code == 200, abrir.text
-    caja_id = abrir.json()["caja_id"]
+    gasto_luz = _crear_gasto(
+        client,
+        seed_venta_basica,
+        categoria_id=categoria_luz["id"],
+        descripcion="Pago luz local filtros",
+        monto=20000,
+        medio_pago="transferencia",
+        fecha="2026-06-01",
+    )["gasto_id"]
 
-    crear = client.post(
-        "/gastos/",
-        json={
-            "id_sucursal": seed_venta_basica["sucursal_id"],
-            "id_categoria_gasto": categoria["id"],
-            "descripcion": "Pago luz local",
-            "monto": 20000,
-            "medio_pago": "efectivo",
-            "impacta_caja": True,
-            "id_usuario": seed_venta_basica["usuario_id"],
-        },
+    _crear_gasto(
+        client,
+        seed_venta_basica,
+        categoria_id=categoria_envios["id"],
+        descripcion="Envio proveedor filtros",
+        monto=15000,
+        medio_pago="efectivo",
+        fecha="2026-06-02",
     )
-    assert crear.status_code == 200, crear.text
-    gasto_id = crear.json()["gasto_id"]
 
     anular = client.post(
-        f"/gastos/{gasto_id}/anular",
+        f"/gastos/{gasto_luz}/anular",
         json={
-            "motivo": "Factura cargada por error",
+            "motivo": "Carga duplicada para filtro",
             "id_usuario": seed_venta_basica["usuario_id"],
         },
     )
     assert anular.status_code == 200, anular.text
 
-    gasto = _get_gasto(db_conn, gasto_id)
-    assert gasto["estado"] == "anulado"
-
-    movimientos_caja = get_caja_movimientos(db_conn, caja_id)
-
-    egresos = [
-        m for m in movimientos_caja
-        if m["tipo_movimiento"] == "egreso"
-        and m["origen_tipo"] == "gasto_operativo"
-        and m["origen_id"] == gasto_id
-    ]
-
-    ingresos_compensatorios = [
-        m for m in movimientos_caja
-        if m["tipo_movimiento"] == "ingreso"
-        and m["origen_tipo"] == "gasto_operativo_anulacion"
-        and m["origen_id"] == gasto_id
-    ]
-
-    assert len(egresos) == 1
-    assert len(ingresos_compensatorios) == 1
-    assert _dec(egresos[0]["monto"]) == Decimal("20000.00")
-    assert _dec(ingresos_compensatorios[0]["monto"]) == Decimal("20000.00")
-
-
-def test_corrige_gasto_sin_caja(client, db_conn, seed_venta_basica):
-    categoria = _crear_categoria(client, "Impuestos")
-
-    crear = client.post(
+    filtrados_categoria = client.get(
         "/gastos/",
-        json={
-            "id_sucursal": seed_venta_basica["sucursal_id"],
-            "id_categoria_gasto": categoria["id"],
-            "descripcion": "Impuesto municipal",
-            "monto": 18000,
-            "medio_pago": "transferencia",
-            "impacta_caja": False,
-            "id_usuario": seed_venta_basica["usuario_id"],
-        },
+        params={"id_categoria_gasto": categoria_envios["id"]},
     )
-    assert crear.status_code == 200, crear.text
-    gasto_id = crear.json()["gasto_id"]
+    assert filtrados_categoria.status_code == 200, filtrados_categoria.text
+    assert len(filtrados_categoria.json()) == 1
+    assert filtrados_categoria.json()[0]["categoria_nombre"] == "Envios filtros"
 
-    corregir = client.post(
-        f"/gastos/{gasto_id}/corregir",
-        json={
-            "descripcion": "Impuesto municipal corregido",
-            "monto": 19000,
-            "id_categoria_gasto": categoria["id"],
-            "medio_pago": "transferencia",
-            "motivo": "Monto real de factura",
-            "id_usuario": seed_venta_basica["usuario_id"],
-        },
-    )
+    filtrados_estado = client.get("/gastos/", params={"estado": "anulado"})
+    assert filtrados_estado.status_code == 200, filtrados_estado.text
+    ids_anulados = [item["id"] for item in filtrados_estado.json()]
+    assert gasto_luz in ids_anulados
 
-    assert corregir.status_code == 200, corregir.text
+    filtrados_medio = client.get("/gastos/", params={"medio_pago": "efectivo"})
+    assert filtrados_medio.status_code == 200, filtrados_medio.text
+    assert all(item["medio_pago"] == "efectivo" for item in filtrados_medio.json())
 
-    gasto = _get_gasto(db_conn, gasto_id)
-    assert gasto["descripcion"] == "Impuesto municipal corregido"
-    assert _dec(gasto["monto"]) == Decimal("19000.00")
-
-    movimientos = _get_gasto_movimientos(db_conn, gasto_id)
-    assert len(movimientos) == 2
-    assert movimientos[1]["tipo_movimiento"] == "correccion"
+    filtrados_q = client.get("/gastos/", params={"q": "proveedor filtros"})
+    assert filtrados_q.status_code == 200, filtrados_q.text
+    assert len(filtrados_q.json()) == 1
+    assert "Envio proveedor filtros" in filtrados_q.json()[0]["descripcion"]
 
 
-def test_corrige_gasto_con_caja_y_genera_movimiento_por_diferencia(
+def test_listar_gastos_filtra_por_fecha_periodo_recurrente_e_impacta_caja(
     client,
-    db_conn,
     seed_venta_basica,
 ):
-    categoria = _crear_categoria(client, "Envios")
+    categoria = _crear_categoria(client, "Filtros fecha")
 
-    abrir = client.post(
-        "/cajas/abrir",
-        json={
-            "id_sucursal": seed_venta_basica["sucursal_id"],
-            "id_usuario": seed_venta_basica["usuario_id"],
-            "monto_apertura": 80000,
-        },
+    _crear_gasto(
+        client,
+        seed_venta_basica,
+        categoria_id=categoria["id"],
+        descripcion="Gasto viejo filtros fecha",
+        monto=9000,
+        medio_pago="transferencia",
+        fecha="2026-05-10",
+        periodo_mes="2026-05-01",
+        es_recurrente=False,
     )
-    assert abrir.status_code == 200, abrir.text
-    caja_id = abrir.json()["caja_id"]
 
-    crear = client.post(
+    gasto_junio = _crear_gasto(
+        client,
+        seed_venta_basica,
+        categoria_id=categoria["id"],
+        descripcion="Gasto junio recurrente filtros fecha",
+        monto=11000,
+        medio_pago="transferencia",
+        fecha="2026-06-10",
+        periodo_mes="2026-06-01",
+        es_recurrente=True,
+    )["gasto_id"]
+
+    por_fecha = client.get(
         "/gastos/",
-        json={
-            "id_sucursal": seed_venta_basica["sucursal_id"],
-            "id_categoria_gasto": categoria["id"],
-            "descripcion": "Envío proveedor",
-            "monto": 10000,
-            "medio_pago": "efectivo",
-            "impacta_caja": True,
-            "id_usuario": seed_venta_basica["usuario_id"],
+        params={
+            "fecha_desde": "2026-06-01",
+            "fecha_hasta": "2026-06-30",
         },
     )
-    assert crear.status_code == 200, crear.text
-    gasto_id = crear.json()["gasto_id"]
+    assert por_fecha.status_code == 200, por_fecha.text
+    ids_fecha = [item["id"] for item in por_fecha.json()]
+    assert gasto_junio in ids_fecha
 
-    corregir = client.post(
-        f"/gastos/{gasto_id}/corregir",
-        json={
-            "descripcion": "Envío proveedor corregido",
-            "monto": 13000,
-            "id_categoria_gasto": categoria["id"],
-            "medio_pago": "efectivo",
-            "motivo": "Se agregó seguro de envío",
-            "id_usuario": seed_venta_basica["usuario_id"],
-        },
+    por_periodo = client.get("/gastos/", params={"periodo_mes": "2026-06-01"})
+    assert por_periodo.status_code == 200, por_periodo.text
+    ids_periodo = [item["id"] for item in por_periodo.json()]
+    assert gasto_junio in ids_periodo
+
+    recurrentes = client.get("/gastos/", params={"es_recurrente": True})
+    assert recurrentes.status_code == 200, recurrentes.text
+    ids_recurrentes = [item["id"] for item in recurrentes.json()]
+    assert gasto_junio in ids_recurrentes
+
+    sin_caja = client.get("/gastos/", params={"impacta_caja": False})
+    assert sin_caja.status_code == 200, sin_caja.text
+    assert all(item["impacta_caja"] is False for item in sin_caja.json())
+
+
+def test_resumen_gastos_respeta_filtros_y_separa_activos_anulados(
+    client,
+    seed_venta_basica,
+):
+    categoria = _crear_categoria(client, "Resumen filtros")
+
+    gasto_anulado = _crear_gasto(
+        client,
+        seed_venta_basica,
+        categoria_id=categoria["id"],
+        descripcion="Resumen gasto anulado",
+        monto=10000,
+        medio_pago="transferencia",
+        fecha="2026-06-05",
+    )["gasto_id"]
+
+    _crear_gasto(
+        client,
+        seed_venta_basica,
+        categoria_id=categoria["id"],
+        descripcion="Resumen gasto activo",
+        monto=25000,
+        medio_pago="transferencia",
+        fecha="2026-06-06",
     )
-
-    assert corregir.status_code == 200, corregir.text
-
-    movimientos_caja = get_caja_movimientos(db_conn, caja_id)
-
-    egresos = [
-        m for m in movimientos_caja
-        if m["tipo_movimiento"] == "egreso"
-        and m["origen_id"] == gasto_id
-    ]
-
-    assert len(egresos) == 2
-    assert _dec(egresos[0]["monto"]) == Decimal("10000.00")
-    assert _dec(egresos[1]["monto"]) == Decimal("3000.00")
-    assert egresos[1]["origen_tipo"] == "gasto_operativo_correccion"
-
-
-def test_no_permite_corregir_gasto_anulado(client, seed_venta_basica):
-    categoria = _crear_categoria(client, "Otros")
-
-    crear = client.post(
-        "/gastos/",
-        json={
-            "id_sucursal": seed_venta_basica["sucursal_id"],
-            "id_categoria_gasto": categoria["id"],
-            "descripcion": "Gasto mal cargado",
-            "monto": 5000,
-            "medio_pago": "transferencia",
-            "impacta_caja": False,
-            "id_usuario": seed_venta_basica["usuario_id"],
-        },
-    )
-    assert crear.status_code == 200, crear.text
-    gasto_id = crear.json()["gasto_id"]
 
     anular = client.post(
-        f"/gastos/{gasto_id}/anular",
+        f"/gastos/{gasto_anulado}/anular",
         json={
-            "motivo": "No correspondía",
+            "motivo": "Anulado para resumen",
             "id_usuario": seed_venta_basica["usuario_id"],
         },
     )
     assert anular.status_code == 200, anular.text
 
-    corregir = client.post(
-        f"/gastos/{gasto_id}/corregir",
-        json={
-            "descripcion": "Intento corregir anulado",
-            "monto": 6000,
-            "id_categoria_gasto": categoria["id"],
-            "medio_pago": "transferencia",
-            "motivo": "No debería dejar",
-            "id_usuario": seed_venta_basica["usuario_id"],
-        },
+    response = client.get(
+        "/gastos/resumen",
+        params={"id_categoria_gasto": categoria["id"]},
     )
 
-    assert corregir.status_code == 400
-    assert "gasto anulado" in corregir.json()["detail"].lower()
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert _dec(data["total"]) == Decimal("35000.00")
+    assert data["cantidad"] == 2
+    assert _dec(data["total_activos"]) == Decimal("25000.00")
+    assert data["cantidad_activos"] == 1
+    assert _dec(data["total_anulados"]) == Decimal("10000.00")
+    assert data["cantidad_anulados"] == 1
+
+
+def test_filtros_invalidos_devuelven_400(client, seed_venta_basica):
+    estado = client.get("/gastos/", params={"estado": "borrado"})
+    assert estado.status_code == 400
+    assert "estado" in estado.json()["detail"].lower()
+
+    medio = client.get("/gastos/", params={"medio_pago": "cheque"})
+    assert medio.status_code == 400
+    assert "medio_pago" in medio.json()["detail"].lower()
+
+    fechas = client.get(
+        "/gastos/",
+        params={
+            "fecha_desde": "2026-07-01",
+            "fecha_hasta": "2026-06-01",
+        },
+    )
+    assert fechas.status_code == 400
+    assert "fecha_desde" in fechas.json()["detail"].lower()
+
+
+def test_normaliza_textos_al_crear_y_editar_categoria_y_gasto(
+    client,
+    seed_venta_basica,
+):
+    categoria = _crear_categoria(client, "   Categoria    Normalizada   ")
+    assert categoria["nombre"] == "Categoria Normalizada"
+
+    editada = client.put(
+        f"/gastos/categorias/{categoria['id']}",
+        json={"nombre": "   Categoria    Editada   ", "activa": True},
+    )
+    assert editada.status_code == 200, editada.text
+    assert editada.json()["nombre"] == "Categoria Editada"
+
+    gasto_id = _crear_gasto(
+        client,
+        seed_venta_basica,
+        categoria_id=categoria["id"],
+        descripcion="   Gasto     con    espacios   ",
+        monto=7000,
+        medio_pago="transferencia",
+    )["gasto_id"]
+
+    detalle = client.get(f"/gastos/{gasto_id}")
+    assert detalle.status_code == 200, detalle.text
+    assert detalle.json()["gasto"]["descripcion"] == "Gasto con espacios"

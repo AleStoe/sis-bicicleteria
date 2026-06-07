@@ -18,7 +18,7 @@ def get_categoria_by_id(conn, categoria_id: int):
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
-            SELECT id, nombre, activa
+            SELECT id, nombre, activa, created_at
             FROM gasto_categorias
             WHERE id = %s
             """,
@@ -34,7 +34,7 @@ def insert_categoria(conn, nombre: str):
             INSERT INTO gasto_categorias (nombre)
             VALUES (%s)
             ON CONFLICT (nombre)
-            DO UPDATE SET nombre = EXCLUDED.nombre
+            DO UPDATE SET activa = TRUE
             RETURNING id, nombre, activa, created_at
             """,
             (nombre,),
@@ -42,16 +42,55 @@ def insert_categoria(conn, nombre: str):
         return cur.fetchone()
 
 
-def get_categorias(conn):
+def get_categorias(conn, incluir_inactivas: bool = False):
+    with conn.cursor(row_factory=dict_row) as cur:
+        if incluir_inactivas:
+            cur.execute(
+                """
+                SELECT id, nombre, activa, created_at
+                FROM gasto_categorias
+                ORDER BY activa DESC, nombre
+                """
+            )
+        else:
+            cur.execute(
+                """
+                SELECT id, nombre, activa, created_at
+                FROM gasto_categorias
+                WHERE activa = TRUE
+                ORDER BY nombre
+                """
+            )
+        return cur.fetchall()
+
+
+def update_categoria(conn, categoria_id: int, nombre: str, activa: bool):
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
-            SELECT id, nombre, activa, created_at
-            FROM gasto_categorias
-            ORDER BY nombre
-            """
+            UPDATE gasto_categorias
+            SET nombre = %s,
+                activa = %s
+            WHERE id = %s
+            RETURNING id, nombre, activa, created_at
+            """,
+            (nombre, activa, categoria_id),
         )
-        return cur.fetchall()
+        return cur.fetchone()
+
+
+def update_categoria_estado(conn, categoria_id: int, activa: bool):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            UPDATE gasto_categorias
+            SET activa = %s
+            WHERE id = %s
+            RETURNING id, nombre, activa, created_at
+            """,
+            (activa, categoria_id),
+        )
+        return cur.fetchone()
 
 
 def insert_gasto_operativo(conn, data: dict):
@@ -152,10 +191,65 @@ def insert_gasto_movimiento(conn, data: dict):
         return cur.fetchone()["id"]
 
 
-def get_gastos(conn):
+def _build_gastos_where(filtros: dict):
+    where = []
+    params = []
+
+    if filtros.get("id_sucursal") is not None:
+        where.append("g.id_sucursal = %s")
+        params.append(filtros["id_sucursal"])
+
+    if filtros.get("id_categoria_gasto") is not None:
+        where.append("g.id_categoria_gasto = %s")
+        params.append(filtros["id_categoria_gasto"])
+
+    if filtros.get("estado") is not None:
+        where.append("g.estado = %s")
+        params.append(filtros["estado"])
+
+    if filtros.get("medio_pago") is not None:
+        where.append("g.medio_pago = %s")
+        params.append(filtros["medio_pago"])
+
+    if filtros.get("impacta_caja") is not None:
+        where.append("g.impacta_caja = %s")
+        params.append(filtros["impacta_caja"])
+
+    if filtros.get("es_recurrente") is not None:
+        where.append("g.es_recurrente = %s")
+        params.append(filtros["es_recurrente"])
+
+    if filtros.get("fecha_desde") is not None:
+        where.append("g.fecha >= %s")
+        params.append(filtros["fecha_desde"])
+
+    if filtros.get("fecha_hasta") is not None:
+        where.append("g.fecha <= %s")
+        params.append(filtros["fecha_hasta"])
+
+    if filtros.get("periodo_mes") is not None:
+        where.append("g.periodo_mes = %s")
+        params.append(filtros["periodo_mes"])
+
+    if filtros.get("q"):
+        where.append("g.descripcion ILIKE %s")
+        params.append(f"%{filtros['q']}%")
+
+    if not where:
+        return "", params
+
+    return "WHERE " + " AND ".join(where), params
+
+
+def get_gastos(conn, filtros: dict | None = None):
+    filtros = filtros or {}
+    where_sql, params = _build_gastos_where(filtros)
+    limit = filtros.get("limit", 200)
+    offset = filtros.get("offset", 0)
+
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
-            """
+            f"""
             SELECT
                 g.id,
                 g.fecha,
@@ -177,10 +271,37 @@ def get_gastos(conn):
             FROM gastos_operativos g
             LEFT JOIN sucursales s ON s.id = g.id_sucursal
             LEFT JOIN gasto_categorias gc ON gc.id = g.id_categoria_gasto
+            {where_sql}
             ORDER BY g.fecha DESC, g.id DESC
-            """
+            LIMIT %s OFFSET %s
+            """,
+            (*params, limit, offset),
         )
         return cur.fetchall()
+
+
+def get_gastos_resumen(conn, filtros: dict | None = None):
+    filtros = filtros or {}
+    where_sql, params = _build_gastos_where(filtros)
+
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            f"""
+            SELECT
+                COALESCE(SUM(g.monto), 0) AS total,
+                COUNT(*)::int AS cantidad,
+                COALESCE(SUM(g.monto) FILTER (WHERE g.estado = 'activo'), 0) AS total_activos,
+                COUNT(*) FILTER (WHERE g.estado = 'activo')::int AS cantidad_activos,
+                COALESCE(SUM(g.monto) FILTER (WHERE g.estado = 'anulado'), 0) AS total_anulados,
+                COUNT(*) FILTER (WHERE g.estado = 'anulado')::int AS cantidad_anulados
+            FROM gastos_operativos g
+            LEFT JOIN sucursales s ON s.id = g.id_sucursal
+            LEFT JOIN gasto_categorias gc ON gc.id = g.id_categoria_gasto
+            {where_sql}
+            """,
+            params,
+        )
+        return cur.fetchone()
 
 
 def get_gasto_by_id(conn, gasto_id: int):

@@ -2,11 +2,20 @@ from decimal import Decimal
 from typing import Optional, List
 from datetime import date, datetime
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 
 
 class GastoCategoriaCreateInput(BaseModel):
     nombre: str = Field(min_length=2, max_length=100)
+
+
+class GastoCategoriaUpdateInput(BaseModel):
+    nombre: str = Field(min_length=2, max_length=100)
+    activa: bool = True
+
+
+class GastoCategoriaEstadoInput(BaseModel):
+    activa: bool
 
 
 class GastoCategoriaOutput(BaseModel):
@@ -35,6 +44,12 @@ class GastoCreateInput(BaseModel):
     origen_id: Optional[int] = Field(default=None, gt=0)
 
     id_usuario: int = Field(gt=0)
+
+    @model_validator(mode="after")
+    def validar_medio_pago_si_impacta_caja(self):
+        # Si impacta caja y no se informa medio, el service usa efectivo por compatibilidad.
+        # No bloqueamos para no romper payloads viejos.
+        return self
 
 
 class GastoCorregirInput(BaseModel):
@@ -106,3 +121,18 @@ class GastoEstadoOutput(BaseModel):
     estado: str
     movimiento_id: int
     caja_movimiento_id: Optional[int] = None
+
+
+class GastoCategoriaEstadoOutput(BaseModel):
+    ok: bool
+    categoria_id: int
+    activa: bool
+
+
+class GastoResumenOutput(BaseModel):
+    total: Decimal
+    cantidad: int
+    total_activos: Decimal
+    cantidad_activos: int
+    total_anulados: Decimal
+    cantidad_anulados: int
