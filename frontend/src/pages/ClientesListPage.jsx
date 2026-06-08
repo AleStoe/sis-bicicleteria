@@ -2,8 +2,33 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { listarClientes } from "../services/clientesService";
 
+
+const MOBILE_BREAKPOINT = 760;
+
+function useIsMobile(breakpoint = MOBILE_BREAKPOINT) {
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia(`(max-width: ${breakpoint}px)`).matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const mq = window.matchMedia(`(max-width: ${breakpoint}px)`);
+    const onChange = (event) => setIsMobile(event.matches);
+
+    setIsMobile(mq.matches);
+    mq.addEventListener("change", onChange);
+
+    return () => mq.removeEventListener("change", onChange);
+  }, [breakpoint]);
+
+  return isMobile;
+}
+
 export default function ClientesListPage() {
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
 
   const [clientes, setClientes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -64,8 +89,8 @@ export default function ClientesListPage() {
   }
 
   return (
-    <div style={pageStyle}>
-      <header style={headerStyle}>
+    <div style={{ ...pageStyle, ...(isMobile ? pageMobileStyle : {}) }}>
+      <header style={{ ...headerStyle, ...(isMobile ? headerMobileStyle : {}) }}>
         <div>
           <h1 style={titleStyle}>Clientes</h1>
           <p style={subtitleStyle}>
@@ -73,7 +98,7 @@ export default function ClientesListPage() {
           </p>
         </div>
 
-        <div style={headerActionsStyle}>
+        <div style={{ ...headerActionsStyle, ...(isMobile ? headerActionsMobileStyle : {}) }}>
           <button type="button" onClick={cargarClientes} style={secondaryBtnStyle}>
             {buscando ? "Buscando..." : "Refrescar"}
           </button>
@@ -86,7 +111,7 @@ export default function ClientesListPage() {
 
       {error && <div style={alertStyle}>Error: {error}</div>}
 
-      <section style={statsGridStyle}>
+      <section style={{ ...statsGridStyle, ...(isMobile ? statsGridMobileStyle : {}) }}>
         <div style={statCardStyle}>
           <span>Total listado</span>
           <strong>{clientes.length}</strong>
@@ -104,13 +129,13 @@ export default function ClientesListPage() {
       </section>
 
       <section style={filterCardStyle}>
-        <form onSubmit={buscar} style={filterFormStyle}>
+        <form onSubmit={buscar} style={{ ...filterFormStyle, ...(isMobile ? filterFormMobileStyle : {}) }}>
           <input
             type="text"
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
             placeholder="Ej: Juan, 291..., 30-..., razón social"
-            style={inputStyle}
+            style={{ ...inputStyle, ...(isMobile ? inputMobileStyle : {}) }}
           />
 
           <label style={checkStyle}>
@@ -142,6 +167,8 @@ export default function ClientesListPage() {
 
         {clientes.length === 0 ? (
           <div style={emptyStyle}>No hay clientes para mostrar.</div>
+        ) : isMobile ? (
+          <ClientesMobileList clientes={clientes} abrirCliente={abrirCliente} />
         ) : (
           <div style={tableWrapStyle}>
             <table style={tableStyle}>
@@ -207,6 +234,61 @@ export default function ClientesListPage() {
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+
+function ClientesMobileList({ clientes, abrirCliente }) {
+  return (
+    <div style={mobileListStyle}>
+      {clientes.map((cliente) => (
+        <article key={cliente.id} style={mobileClientCardStyle}>
+          <div style={mobileClientHeaderStyle}>
+            <div style={mobileClientTitleWrapStyle}>
+              <strong style={mobileClientNameStyle}>{cliente.nombre}</strong>
+              <span style={mutedStyle}>Cliente #{cliente.id}</span>
+            </div>
+
+            <span style={cliente.activo ? activeBadgeStyle : inactiveBadgeStyle}>
+              {cliente.activo ? "Activo" : "Inactivo"}
+            </span>
+          </div>
+
+          <div style={mobileInfoGridStyle}>
+            <MobileInfo label="Teléfono" value={cliente.telefono || "-"} />
+            <MobileInfo label="DNI" value={cliente.dni || "-"} />
+            <MobileInfo label="Tipo" value={renderTipo(cliente.tipo_cliente)} />
+            <MobileInfo label="IVA" value={renderCondicionIva(cliente.condicion_iva)} />
+            <MobileInfo
+              label="Fiscal"
+              value={
+                cliente.cuit || cliente.razon_social
+                  ? `${cliente.cuit || "-"} · ${cliente.razon_social || "-"}`
+                  : "Sin datos fiscales"
+              }
+              full
+            />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => abrirCliente(cliente.id)}
+            style={mobileDetailButtonStyle}
+          >
+            Ver detalle
+          </button>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function MobileInfo({ label, value, full = false }) {
+  return (
+    <div style={{ ...mobileInfoBoxStyle, ...(full ? mobileInfoBoxFullStyle : {}) }}>
+      <span>{label}</span>
+      <strong>{value || "-"}</strong>
     </div>
   );
 }
@@ -470,4 +552,106 @@ const alertStyle = {
 const emptyStyle = {
   padding: "22px",
   color: "#667085",
+};
+
+const pageMobileStyle = {
+  padding: "10px",
+  overflowX: "hidden",
+};
+
+const headerMobileStyle = {
+  display: "grid",
+  gridTemplateColumns: "1fr",
+  gap: "12px",
+};
+
+const headerActionsMobileStyle = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  width: "100%",
+};
+
+const statsGridMobileStyle = {
+  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+  gap: "8px",
+};
+
+const filterFormMobileStyle = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: "10px",
+  alignItems: "stretch",
+};
+
+const inputMobileStyle = {
+  minWidth: 0,
+  gridColumn: "1 / -1",
+  width: "100%",
+  boxSizing: "border-box",
+};
+
+const mobileListStyle = {
+  display: "grid",
+  gap: "10px",
+  padding: "12px",
+};
+
+const mobileClientCardStyle = {
+  border: "1px solid #e2e8f0",
+  borderRadius: "16px",
+  background: "white",
+  padding: "12px",
+  display: "grid",
+  gap: "12px",
+};
+
+const mobileClientHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: "10px",
+};
+
+const mobileClientTitleWrapStyle = {
+  minWidth: 0,
+  display: "grid",
+  gap: "3px",
+};
+
+const mobileClientNameStyle = {
+  color: "#101828",
+  fontSize: "18px",
+  lineHeight: 1.2,
+  overflowWrap: "anywhere",
+};
+
+const mobileInfoGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: "8px",
+};
+
+const mobileInfoBoxStyle = {
+  border: "1px solid #e2e8f0",
+  borderRadius: "12px",
+  padding: "9px 10px",
+  background: "#f8fafc",
+  display: "grid",
+  gap: "3px",
+  color: "#667085",
+  minWidth: 0,
+};
+
+const mobileInfoBoxFullStyle = {
+  gridColumn: "1 / -1",
+};
+
+const mobileDetailButtonStyle = {
+  border: "none",
+  background: "#0b5bd3",
+  color: "white",
+  borderRadius: "12px",
+  padding: "11px 12px",
+  fontWeight: 900,
+  cursor: "pointer",
 };
