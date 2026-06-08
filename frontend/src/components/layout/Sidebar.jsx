@@ -32,12 +32,7 @@ import {
 } from "../../styles/layout/sidebarStyles";
 
 const groups = [
-  {
-    title: "Inicio",
-    links: [
-      { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-    ],
-  },
+  { title: "Inicio", links: [{ to: "/dashboard", label: "Dashboard", icon: LayoutDashboard }] },
   {
     title: "Mostrador",
     links: [
@@ -82,7 +77,7 @@ const groups = [
   },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ onNavigate }) {
   return (
     <aside style={sidebarContainerStyle}>
       <div style={sidebarHeaderStyle}>
@@ -96,6 +91,7 @@ export default function Sidebar() {
               borderRadius: 12,
               background: "linear-gradient(135deg, #FF6A00, #ea5f00)",
               boxShadow: "0 8px 22px rgba(255,106,0,.25)",
+              flexShrink: 0,
             }}
           >
             <Bike size={22} color="white" strokeWidth={2.4} />
@@ -126,9 +122,8 @@ export default function Sidebar() {
                 <NavLink
                   key={link.to}
                   to={link.to}
-                  style={({ isActive }) =>
-                    isActive ? navItemActiveStyle : navItemStyle
-                  }
+                  onClick={onNavigate}
+                  style={({ isActive }) => (isActive ? navItemActiveStyle : navItemStyle)}
                 >
                   <Icon style={navIconStyle} size={18} strokeWidth={2.2} />
                   <span style={navItemLabelStyle}>{link.label}</span>
