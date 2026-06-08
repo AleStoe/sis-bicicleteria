@@ -74,6 +74,38 @@ import {
 const ID_USUARIO = CURRENT_USER_ID;
 const ID_SUCURSAL = CURRENT_SUCURSAL_ID;
 const DEFAULT_LIMIT = 80;
+const MOBILE_BREAKPOINT = 760;
+
+function formatMoneyPOS(value) {
+  return Number(value || 0).toLocaleString("es-AR", {
+    style: "currency",
+    currency: "ARS",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function useIsMobile(breakpoint = MOBILE_BREAKPOINT) {
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia(`(max-width: ${breakpoint}px)`).matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mediaQuery = window.matchMedia(`(max-width: ${breakpoint}px)`);
+    const handleChange = (event) => setIsMobile(event.matches);
+
+    setIsMobile(mediaQuery.matches);
+    mediaQuery.addEventListener("change", handleChange);
+
+    return () => mediaQuery.removeEventListener("change", handleChange);
+  }, [breakpoint]);
+
+  return isMobile;
+}
+
 
 export default function NuevaVentaPage() {
   const navigate = useNavigate();
@@ -100,10 +132,18 @@ export default function NuevaVentaPage() {
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
   const [mensajePOS, setMensajePOS] = useState("");
+  const [carritoMobileAbierto, setCarritoMobileAbierto] = useState(false);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     cargarInicial();
   }, []);
+
+  useEffect(() => {
+    if (!isMobile) {
+      setCarritoMobileAbierto(false);
+    }
+  }, [isMobile]);
 
   useEffect(() => {
     const handle = setTimeout(() => {
@@ -523,6 +563,8 @@ async function handleBuscarEnter(e) {
   function irACobrar() {
     if (!validarVentaAntesDeFinalizar()) return;
 
+    setCarritoMobileAbierto(false);
+
     navigate("/ventas/checkout", {
       state: {
         ventaDraft: {
@@ -544,32 +586,64 @@ async function handleBuscarEnter(e) {
     return <p style={{ padding: "24px" }}>Cargando venta rápida...</p>;
   }
 
+  const cantidadItemsCarrito = items.reduce(
+    (acc, item) => acc + Number(item.cantidad || 0),
+    0
+  );
+
+  const carritoSidebar = (
+    <VentaCarritoSidebar
+      clientes={clientes}
+      clienteId={clienteId}
+      tipoPrecio={tipoPrecio}
+      items={items}
+      total={total}
+      observaciones={observaciones}
+      usarCredito={usarCredito}
+      serializadasPorVariante={serializadasPorVariante}
+      cargandoSerializadas={cargandoSerializadas}
+      onCambiarCliente={handleCambiarCliente}
+      onCambiarTipoPrecio={setTipoPrecio}
+      onCargarSerializadas={cargarSerializadasDisponibles}
+      onSeleccionarSerializada={seleccionarSerializada}
+      onCambiarCantidad={cambiarCantidad}
+      onQuitarItem={quitarItem}
+      onActualizarItem={actualizarItemCarrito}
+      onObservacionesChange={setObservaciones}
+      onUsarCreditoChange={setUsarCredito}
+      onVaciar={vaciarVenta}
+      onIrACobrar={irACobrar}
+    />
+  );
+
   return (
-    <div style={pageStyle}>
-      <header style={topBarStyle}>
-        <div style={brandStyle}>
+    <div style={{ ...pageStyle, ...(isMobile ? posMobileStyles.page : {}) }}>
+      <header style={{ ...topBarStyle, ...(isMobile ? posMobileStyles.topBar : {}) }}>
+        <div style={{ ...brandStyle, ...(isMobile ? posMobileStyles.brand : {}) }}>
           <span style={bikeStyle}>🚲</span>
           <div>
             <strong>Sistema de Ventas - Bicicletería</strong>
-            <div style={topSubtleStyle}>POS real: crear, cobrar y entregar desde checkout</div>
+            {!isMobile && (
+              <div style={topSubtleStyle}>POS real: crear, cobrar y entregar desde checkout</div>
+            )}
           </div>
         </div>
 
-        <div style={topSearchWrapStyle}>
+        <div style={{ ...topSearchWrapStyle, ...(isMobile ? posMobileStyles.topSearchWrap : {}) }}>
           <input
             ref={searchRef}
             value={codigoRapido}
             onChange={(e) => setCodigoRapido(e.target.value)}
             onKeyDown={handleBuscarEnter}
-            placeholder="Escanear o ingresar código rápido... (F2)"
-            style={topSearchStyle}
+            placeholder={isMobile ? "Escanear código..." : "Escanear o ingresar código rápido... (F2)"}
+            style={{ ...topSearchStyle, ...(isMobile ? posMobileStyles.topSearch : {}) }}
           />
           <span style={searchIconStyle}>⌕</span>
         </div>
 
-        <div style={topRightStyle}>
-          <span>Caja: CAJA 1</span>
-          <span>Usuario #{ID_USUARIO}</span>
+        <div style={{ ...topRightStyle, ...(isMobile ? posMobileStyles.topRight : {}) }}>
+          {!isMobile && <span>Caja: CAJA 1</span>}
+          {!isMobile && <span>Usuario #{ID_USUARIO}</span>}
           <Link to="/ventas" style={topLinkStyle}>Historial</Link>
         </div>
       </header>
@@ -577,11 +651,12 @@ async function handleBuscarEnter(e) {
       {error && <div style={alertStyle}>Error: {error}</div>}
       {mensaje && <div style={successStyle}>{mensaje}</div>}
       {mensajePOS && (
-          <div style={posMessageStyle}>
-            {mensajePOS}
-          </div>
-        )}
-      <main style={layoutStyle}>
+        <div style={posMessageStyle}>
+          {mensajePOS}
+        </div>
+      )}
+
+      <main style={isMobile ? posMobileStyles.layout : layoutStyle}>
         <CatalogoPOSPanel
           query={query}
           categoriaId={categoriaId}
@@ -594,33 +669,208 @@ async function handleBuscarEnter(e) {
           onRecargarCatalogo={cargarCatalogo}
           onCategoriaChange={setCategoriaId}
           onAgregarItem={agregarItem}
+          isMobile={isMobile}
         />
 
-        <aside style={rightPanelStyle}>
-          <VentaCarritoSidebar
-            clientes={clientes}
-            clienteId={clienteId}
-            tipoPrecio={tipoPrecio}
-            items={items}
-            total={total}
-            observaciones={observaciones}
-            usarCredito={usarCredito}
-            serializadasPorVariante={serializadasPorVariante}
-            cargandoSerializadas={cargandoSerializadas}
-            onCambiarCliente={handleCambiarCliente}
-            onCambiarTipoPrecio={setTipoPrecio}
-            onCargarSerializadas={cargarSerializadasDisponibles}
-            onSeleccionarSerializada={seleccionarSerializada}
-            onCambiarCantidad={cambiarCantidad}
-            onQuitarItem={quitarItem}
-            onActualizarItem={actualizarItemCarrito}
-            onObservacionesChange={setObservaciones}
-            onUsarCreditoChange={setUsarCredito}
-            onVaciar={vaciarVenta}
-            onIrACobrar={irACobrar}
-          />
-        </aside>
+        {!isMobile && (
+          <aside style={rightPanelStyle}>
+            {carritoSidebar}
+          </aside>
+        )}
       </main>
+
+      {isMobile && (
+        <>
+          <div style={posMobileStyles.bottomBar}>
+            <div style={posMobileStyles.bottomTotalBox}>
+              <span style={posMobileStyles.bottomLabel}>Carrito</span>
+              <strong style={posMobileStyles.bottomTotal}>{formatMoneyPOS(total)}</strong>
+              <span style={posMobileStyles.bottomMeta}>{cantidadItemsCarrito || 0} ítem(s)</span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setCarritoMobileAbierto(true)}
+              style={posMobileStyles.bottomButton}
+            >
+              Ver carrito
+            </button>
+          </div>
+
+          {carritoMobileAbierto && (
+            <div style={posMobileStyles.drawerOverlay}>
+              <button
+                type="button"
+                aria-label="Cerrar carrito"
+                onClick={() => setCarritoMobileAbierto(false)}
+                style={posMobileStyles.backdrop}
+              />
+
+              <section style={posMobileStyles.drawerPanel}>
+                <div style={posMobileStyles.drawerHeader}>
+                  <div>
+                    <strong>Carrito de venta</strong>
+                    <p style={posMobileStyles.drawerSubtitle}>{cantidadItemsCarrito || 0} ítem(s) · {formatMoneyPOS(total)}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCarritoMobileAbierto(false)}
+                    style={posMobileStyles.closeButton}
+                  >
+                    Cerrar
+                  </button>
+                </div>
+
+                <div style={posMobileStyles.drawerContent}>
+                  {carritoSidebar}
+                </div>
+              </section>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
+
+const posMobileStyles = {
+  page: {
+    padding: 10,
+    paddingBottom: 96,
+    overflowX: "hidden",
+  },
+  topBar: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: 10,
+    padding: 12,
+    borderRadius: 16,
+  },
+  brand: {
+    minWidth: 0,
+  },
+  topSearchWrap: {
+    width: "100%",
+  },
+  topSearch: {
+    width: "100%",
+    minWidth: 0,
+    boxSizing: "border-box",
+  },
+  topRight: {
+    justifyContent: "flex-start",
+    width: "100%",
+  },
+  layout: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: 12,
+  },
+  bottomBar: {
+    position: "fixed",
+    left: 10,
+    right: 10,
+    bottom: 10,
+    zIndex: 60,
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) auto",
+    alignItems: "center",
+    gap: 10,
+    padding: 12,
+    borderRadius: 18,
+    background: "#0f172a",
+    color: "white",
+    boxShadow: "0 18px 45px rgba(15, 23, 42, 0.35)",
+  },
+  bottomTotalBox: {
+    minWidth: 0,
+    display: "grid",
+    gap: 2,
+  },
+  bottomLabel: {
+    color: "#cbd5e1",
+    fontSize: 11,
+    fontWeight: 900,
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+  },
+  bottomTotal: {
+    fontSize: 18,
+    lineHeight: 1,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+  bottomMeta: {
+    color: "#cbd5e1",
+    fontSize: 12,
+    fontWeight: 800,
+  },
+  bottomButton: {
+    border: "none",
+    borderRadius: 14,
+    padding: "13px 14px",
+    background: "#f97316",
+    color: "white",
+    fontWeight: 1000,
+    cursor: "pointer",
+    boxShadow: "0 10px 20px rgba(249, 115, 22, 0.28)",
+  },
+  drawerOverlay: {
+    position: "fixed",
+    inset: 0,
+    zIndex: 80,
+    display: "grid",
+    alignItems: "end",
+  },
+  backdrop: {
+    position: "absolute",
+    inset: 0,
+    border: "none",
+    background: "rgba(15, 23, 42, 0.52)",
+    cursor: "pointer",
+  },
+  drawerPanel: {
+    position: "relative",
+    zIndex: 1,
+    width: "100%",
+    maxHeight: "92vh",
+    background: "white",
+    borderRadius: "24px 24px 0 0",
+    padding: 14,
+    boxShadow: "0 -18px 45px rgba(15, 23, 42, 0.24)",
+    boxSizing: "border-box",
+    overflow: "hidden",
+    display: "grid",
+    gridTemplateRows: "auto minmax(0, 1fr)",
+  },
+  drawerHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 10,
+    paddingBottom: 10,
+    borderBottom: "1px solid #e2e8f0",
+  },
+  drawerSubtitle: {
+    margin: "3px 0 0",
+    color: "#64748b",
+    fontSize: 12,
+    fontWeight: 800,
+  },
+  closeButton: {
+    border: "1px solid #cbd5e1",
+    borderRadius: 12,
+    background: "white",
+    color: "#0f172a",
+    padding: "9px 11px",
+    fontWeight: 1000,
+    cursor: "pointer",
+  },
+  drawerContent: {
+    minHeight: 0,
+    overflowY: "auto",
+    paddingTop: 12,
+    paddingBottom: 12,
+  },
+};

@@ -12,20 +12,21 @@ export default function CatalogoPOSPanel({
   onRecargarCatalogo,
   onCategoriaChange,
   onAgregarItem,
+  isMobile = false,
 }) {
   const catalogoVisible = catalogo.filter((producto) => {
     if (!producto.stockeable) return true;
     return Number(producto.stock_disponible || 0) > 0;
   });
   return (
-    <section style={leftPanelStyle}>
-      <div style={searchRowStyle}>
+    <section style={{ ...leftPanelStyle, ...(isMobile ? mobileLeftPanelStyle : {}) }}>
+      <div style={{ ...searchRowStyle, ...(isMobile ? mobileSearchRowStyle : {}) }}>
         <input
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           onKeyDown={onBuscarEnter}
           placeholder="Producto, talle, SKU o código de barras"
-          style={searchStyle}
+          style={{ ...searchStyle, ...(isMobile ? mobileSearchStyle : {}) }}
         />
         <button onClick={onRecargarCatalogo} style={iconButtonStyle} disabled={buscando}>
           {buscando ? "..." : "↻"}
@@ -53,7 +54,7 @@ export default function CatalogoPOSPanel({
         ))}
       </div>
 
-      <div style={catalogListStyle}>
+      <div style={{ ...catalogListStyle, ...(isMobile ? mobileCatalogListStyle : {}) }}>
         {catalogoVisible.length === 0 ? (
           <div style={emptyStyle}>No hay productos para mostrar.</div>
         ) : (
@@ -132,4 +133,26 @@ const emptyStyle = {
   padding: "40px",
   textAlign: "center",
   color: "#667085",
+};
+
+
+const mobileLeftPanelStyle = {
+  borderRadius: "16px",
+  padding: "10px",
+};
+
+const mobileSearchRowStyle = {
+  gap: "6px",
+  marginBottom: "10px",
+};
+
+const mobileSearchStyle = {
+  minWidth: 0,
+  fontSize: 14,
+};
+
+const mobileCatalogListStyle = {
+  maxHeight: "none",
+  overflowY: "visible",
+  paddingRight: 0,
 };
