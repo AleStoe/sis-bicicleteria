@@ -1,3 +1,4 @@
+import { useBreakpoint } from "../../ui";
 import VentaItemVendidoCard from "./VentaItemVendidoCard";
 
 export default function VentaItemsVendidos({
@@ -7,11 +8,13 @@ export default function VentaItemsVendidos({
   onDevolverItem,
   onDevolverSerializada,
 }) {
+  const { isMobile } = useBreakpoint();
+
   return (
-    <section style={itemsCardStyle}>
-      <div style={itemsHeaderStyle}>
+    <section style={{ ...itemsCardStyle, ...(isMobile ? itemsCardMobileStyle : {}) }}>
+      <div style={{ ...itemsHeaderStyle, ...(isMobile ? itemsHeaderMobileStyle : {}) }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: "20px" }}>Items vendidos</h2>
+          <h2 style={{ margin: 0, fontSize: isMobile ? "18px" : "20px" }}>Items vendidos</h2>
 
           <span style={mutedStyle}>
             Productos y bicicletas asociados a la venta.
@@ -22,7 +25,7 @@ export default function VentaItemsVendidos({
       {items.length === 0 ? (
         <div style={{ padding: "18px" }}>La venta no tiene items.</div>
       ) : (
-        <div style={itemsGridStyle}>
+        <div style={{ ...itemsGridStyle, ...(isMobile ? itemsGridMobileStyle : {}) }}>
           {items.map((item) => (
             <VentaItemVendidoCard
               key={item.id}
@@ -40,22 +43,45 @@ export default function VentaItemsVendidos({
 }
 
 const itemsCardStyle = {
-  background: "white",
-  borderRadius: "14px",
-  boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
-  padding: "16px",
+  background: "#ffffff",
+  borderRadius: "16px",
+  padding: "18px",
+  marginBottom: "18px",
+  border: "1px solid #e5e7eb",
+  boxShadow: "0 8px 20px rgba(15, 23, 42, 0.06)",
+};
+
+const itemsCardMobileStyle = {
+  padding: "14px",
+  borderRadius: "16px",
 };
 
 const itemsHeaderStyle = {
-  marginBottom: "16px",
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "12px",
+  alignItems: "center",
+  marginBottom: "14px",
+};
+
+const itemsHeaderMobileStyle = {
+  display: "grid",
+  gridTemplateColumns: "1fr",
+};
+
+const mutedStyle = {
+  display: "block",
+  marginTop: "4px",
+  color: "#667085",
+  fontSize: "13px",
+  fontWeight: 700,
 };
 
 const itemsGridStyle = {
   display: "grid",
-  gap: "14px",
+  gap: "12px",
 };
 
-const mutedStyle = {
-  color: "#667085",
-  fontSize: "13px",
+const itemsGridMobileStyle = {
+  gap: "10px",
 };

@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { AlertCircle, CheckCircle2 } from "lucide-react";
-import { Button, Card, Badge } from "../../ui";
+import { Button, Card, Badge, useBreakpoint } from "../../ui";
 
 export default function VentaAccionesPanel({
   venta,
@@ -14,6 +14,7 @@ export default function VentaAccionesPanel({
   onAnular,
   onDevolverCompleta,
 }) {
+  const { isMobile } = useBreakpoint();
   const hayAccionesPrimarias =
     puedeCobrar || puedeEntregar || puedeAnular || puedeDevolver;
 
@@ -28,7 +29,7 @@ export default function VentaAccionesPanel({
       }
     >
       {estaCerradaOperativamente && (
-        <div style={closedStateStyle}>
+        <div style={{ ...closedStateStyle, ...(isMobile ? closedStateMobileStyle : {}) }}>
           <CheckCircle2 size={18} />
           <div>
             <strong>Venta cerrada operativamente</strong>
@@ -40,10 +41,10 @@ export default function VentaAccionesPanel({
       )}
 
       {hayAccionesPrimarias ? (
-        <div style={actionGridStyle}>
+        <div style={{ ...actionGridStyle, ...(isMobile ? actionGridMobileStyle : {}) }}>
           {puedeCobrar && (
             <Link to={`/ventas/${venta.id}/cobro`} style={{ textDecoration: "none" }}>
-              <Button fullWidth> Cobrar venta </Button>
+              <Button fullWidth>Cobrar venta</Button>
             </Link>
           )}
 
@@ -70,31 +71,30 @@ export default function VentaAccionesPanel({
           )}
 
           {puedeDevolver && (
-              <div style={dangerZoneStyle}>
-                <div style={dangerZoneText}>
-                  <strong>Operación destructiva</strong>
-                  <span>Devuelve stock y genera crédito al cliente. No revierte pagos.</span>
-                </div>
-
-                <Button
-                  fullWidth
-                  variant="outline"
-                  onClick={onDevolverCompleta}
-                  disabled={procesando}
-                  style={dangerReturnButtonStyle}
-                >
-                  ↩ Generar devolución completa y crédito
-                </Button>
+            <div style={dangerZoneStyle}>
+              <div style={dangerZoneText}>
+                <strong>Operación destructiva</strong>
+                <span>Devuelve stock y genera crédito al cliente. No revierte pagos.</span>
               </div>
-            )}
+
+              <Button
+                fullWidth
+                variant="outline"
+                onClick={onDevolverCompleta}
+                disabled={procesando}
+                style={dangerReturnButtonStyle}
+              >
+                ↩ Generar devolución completa y crédito
+              </Button>
+            </div>
+          )}
         </div>
       ) : !estaCerradaOperativamente ? (
-        <div style={emptyActionsStyle}>
+        <div style={{ ...emptyActionsStyle, ...(isMobile ? emptyActionsMobileStyle : {}) }}>
           <AlertCircle size={18} />
           No hay acciones operativas disponibles para el estado actual.
         </div>
       ) : null}
-
     </Card>
   );
 }
@@ -103,6 +103,10 @@ const actionGridStyle = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
   gap: "10px",
+};
+
+const actionGridMobileStyle = {
+  gridTemplateColumns: "1fr",
 };
 
 const closedStateStyle = {
@@ -116,6 +120,11 @@ const closedStateStyle = {
   padding: 14,
 };
 
+const closedStateMobileStyle = {
+  display: "grid",
+  gridTemplateColumns: "auto 1fr",
+};
+
 const emptyActionsStyle = {
   display: "flex",
   gap: 10,
@@ -127,13 +136,8 @@ const emptyActionsStyle = {
   padding: 14,
 };
 
-const smallNoteStyle = {
-  marginTop: "12px",
-  background: "#f9fafb",
-  borderLeft: "4px solid #111827",
-  padding: "12px",
-  borderRadius: "8px",
-  color: "#344054",
+const emptyActionsMobileStyle = {
+  alignItems: "flex-start",
 };
 
 const smallMutedStyle = {
@@ -141,6 +145,7 @@ const smallMutedStyle = {
   fontSize: 13,
   color: "#067647",
 };
+
 const dangerZoneStyle = {
   border: "1px solid #fecdca",
   background: "#fef3f2",

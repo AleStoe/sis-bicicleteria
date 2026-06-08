@@ -1,5 +1,5 @@
 import EstadoVentaBadge from "../EstadoVentaBadge";
-import { MetricCard } from "../../ui";
+import { MetricCard, useBreakpoint } from "../../ui";
 
 export default function VentaResumenCards({
   venta,
@@ -9,12 +9,14 @@ export default function VentaResumenCards({
   saldoPendiente,
   formatMoney,
 }) {
+  const { isMobile } = useBreakpoint();
+
   return (
     <section
       style={{
         display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
-        gap: "12px",
+        gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(auto-fit, minmax(190px, 1fr))",
+        gap: isMobile ? "8px" : "12px",
       }}
     >
       <MetricCard label="Total final" value={formatMoney(totalFinal)} />

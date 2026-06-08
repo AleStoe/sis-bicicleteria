@@ -1,4 +1,5 @@
 import { formatMoney } from "../../../utils/formatters";
+import { useBreakpoint } from "../../ui";
 import VentaItemVendidoAcciones from "./VentaItemVendidoAcciones";
 
 export default function VentaItemVendidoCard({
@@ -8,6 +9,7 @@ export default function VentaItemVendidoCard({
   onDevolverItem,
   onDevolverSerializada,
 }) {
+  const { isMobile } = useBreakpoint();
   const cantidadDevuelta = Number(item.cantidad_devuelta || 0);
   const cantidadVendida = Number(item.cantidad || 0);
 
@@ -20,11 +22,11 @@ export default function VentaItemVendidoCard({
     Number(item.precio_lista) !== Number(item.precio_final);
 
   return (
-    <article style={itemCardStyle}>
-      <div style={mainRowStyle}>
+    <article style={{ ...itemCardStyle, ...(isMobile ? itemCardMobileStyle : {}) }}>
+      <div style={{ ...mainRowStyle, ...(isMobile ? mainRowMobileStyle : {}) }}>
         <div style={productBlockStyle}>
           <div style={titleRowStyle}>
-            <h3 style={titleStyle}>{item.descripcion_snapshot}</h3>
+            <h3 style={{ ...titleStyle, ...(isMobile ? titleMobileStyle : {}) }}>{item.descripcion_snapshot}</h3>
 
             {item.bonificado && <Badge tone="success">Bonificado</Badge>}
             {item.motivo_precio_manual && <Badge tone="warning">Precio manual</Badge>}
@@ -45,27 +47,28 @@ export default function VentaItemVendidoCard({
           </div>
         </div>
 
-        <div style={subtotalBlockStyle}>
+        <div style={{ ...subtotalBlockStyle, ...(isMobile ? subtotalBlockMobileStyle : {}) }}>
           <span>Subtotal</span>
-          <strong style={{ fontSize: 20 }}>{formatMoney(item.subtotal)}</strong>
+          <strong style={{ fontSize: isMobile ? 18 : 20 }}>{formatMoney(item.subtotal)}</strong>
         </div>
       </div>
 
-      <div style={bottomRowStyle}>
-        <div style={moneyGridStyle}>
+      <div style={{ ...bottomRowStyle, ...(isMobile ? bottomRowMobileStyle : {}) }}>
+        <div style={{ ...moneyGridStyle, ...(isMobile ? moneyGridMobileStyle : {}) }}>
           {tienePrecioDiferente ? (
             <>
-              <Metric label="Precio lista" value={formatMoney(item.precio_lista)} />
-              <Metric label="Precio final" value={formatMoney(item.precio_final)} />
+              <Metric label="Precio lista" value={formatMoney(item.precio_lista)} isMobile={isMobile} />
+              <Metric label="Precio final" value={formatMoney(item.precio_final)} isMobile={isMobile} />
             </>
           ) : (
-            <Metric label="Precio" value={formatMoney(item.precio_final)} />
+            <Metric label="Precio" value={formatMoney(item.precio_final)} isMobile={isMobile} />
           )}
 
           {cantidadDevuelta > 0 && (
             <Metric
               label="Devuelto"
               value={cantidadDevuelta.toLocaleString("es-AR")}
+              isMobile={isMobile}
             />
           )}
         </div>
@@ -82,9 +85,9 @@ export default function VentaItemVendidoCard({
   );
 }
 
-function Metric({ label, value }) {
+function Metric({ label, value, isMobile = false }) {
   return (
-    <div style={metricStyle}>
+    <div style={{ ...metricStyle, ...(isMobile ? metricMobileStyle : {}) }}>
       <span>{label}</span>
       <strong>{value}</strong>
     </div>
@@ -112,6 +115,12 @@ const itemCardStyle = {
   display: "grid",
   gap: 12,
   boxShadow: "0 1px 2px rgba(16, 24, 40, 0.04)",
+  minWidth: 0,
+};
+
+const itemCardMobileStyle = {
+  padding: 12,
+  borderRadius: 16,
 };
 
 const mainRowStyle = {
@@ -119,6 +128,10 @@ const mainRowStyle = {
   gridTemplateColumns: "1fr auto",
   gap: 14,
   alignItems: "start",
+};
+
+const mainRowMobileStyle = {
+  gridTemplateColumns: "1fr",
 };
 
 const productBlockStyle = {
@@ -142,6 +155,10 @@ const titleStyle = {
   color: "#111827",
 };
 
+const titleMobileStyle = {
+  fontSize: 16,
+};
+
 const metaStyle = {
   color: "#667085",
   fontSize: 12,
@@ -159,6 +176,11 @@ const subtotalBlockStyle = {
   textAlign: "right",
 };
 
+const subtotalBlockMobileStyle = {
+  minWidth: 0,
+  textAlign: "left",
+};
+
 const bottomRowStyle = {
   display: "flex",
   justifyContent: "space-between",
@@ -167,12 +189,24 @@ const bottomRowStyle = {
   flexWrap: "wrap",
 };
 
+const bottomRowMobileStyle = {
+  display: "grid",
+  gridTemplateColumns: "1fr",
+  gap: 10,
+};
+
 const moneyGridStyle = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(220px, max-content))",
   gap: 10,
   alignItems: "center",
   width: "fit-content",
+};
+
+const moneyGridMobileStyle = {
+  gridTemplateColumns: "1fr 1fr",
+  width: "100%",
+  gap: 8,
 };
 
 const metricStyle = {
@@ -184,6 +218,10 @@ const metricStyle = {
   color: "#667085",
   fontSize: 12,
   minWidth: 180,
+};
+
+const metricMobileStyle = {
+  minWidth: 0,
 };
 
 const badgeBaseStyle = {

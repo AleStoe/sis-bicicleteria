@@ -1,3 +1,5 @@
+import { useBreakpoint } from "../../ui";
+
 export default function VentaItemVendidoAcciones({
   venta,
   item,
@@ -5,16 +7,18 @@ export default function VentaItemVendidoAcciones({
   onDevolverItem,
   onDevolverSerializada,
 }) {
+  const { isMobile } = useBreakpoint();
+
   if (venta.estado !== "entregada") {
     return null;
   }
 
   return (
-    <div style={actionsRowStyle}>
+    <div style={{ ...actionsRowStyle, ...(isMobile ? actionsRowMobileStyle : {}) }}>
       <button
         onClick={() => onDevolverItem(item)}
         disabled={procesando}
-        style={secondaryBtnStyle}
+        style={{ ...secondaryBtnStyle, ...(isMobile ? buttonMobileStyle : {}) }}
       >
         Devolver item
       </button>
@@ -23,7 +27,7 @@ export default function VentaItemVendidoAcciones({
         <button
           onClick={() => onDevolverSerializada(item)}
           disabled={procesando}
-          style={warnBtnStyle}
+          style={{ ...warnBtnStyle, ...(isMobile ? buttonMobileStyle : {}) }}
         >
           Devolver serializada
         </button>
@@ -36,6 +40,12 @@ const actionsRowStyle = {
   display: "flex",
   gap: "8px",
   flexWrap: "wrap",
+};
+
+const actionsRowMobileStyle = {
+  display: "grid",
+  gridTemplateColumns: "1fr",
+  width: "100%",
 };
 
 const secondaryBtnStyle = {
@@ -56,4 +66,9 @@ const warnBtnStyle = {
   padding: "10px 12px",
   fontWeight: 800,
   cursor: "pointer",
+};
+
+const buttonMobileStyle = {
+  width: "100%",
+  minHeight: 44,
 };

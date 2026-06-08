@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import { formatMoney } from "../../../utils/formatters";
-import { Card, MetricCard, Badge, Button } from "../../ui";
+import { Card, MetricCard, Badge, Button, useBreakpoint } from "../../ui";
 
 export default function VentaSituacionFinanciera({
   venta,
@@ -12,6 +12,7 @@ export default function VentaSituacionFinanciera({
   tieneDeuda,
   deuda,
 }) {
+  const { isMobile } = useBreakpoint();
   const estado = venta?.estado;
   const esDevuelta = estado === "devuelta" || estado === "devuelta_parcial";
 
@@ -96,7 +97,7 @@ export default function VentaSituacionFinanciera({
 
         {tieneDeuda && deuda ? (
           <div style={warningStyle}>
-            <div style={headerRowStyle}>
+            <div style={{ ...headerRowStyle, ...(isMobile ? headerRowMobileStyle : {}) }}>
               <div>
                 <strong>Saldo formalizado en cuenta corriente</strong>
                 <div style={smallMutedStyle}>
@@ -108,7 +109,7 @@ export default function VentaSituacionFinanciera({
               <Badge variant="warning">Deuda abierta</Badge>
             </div>
 
-            <div style={metricsGridStyle}>
+            <div style={{ ...metricsGridStyle, ...(isMobile ? metricsGridMobileStyle : {}) }}>
               <MetricCard
                 label="Saldo actual"
                 value={formatMoney(deuda.saldo_actual)}
@@ -119,7 +120,7 @@ export default function VentaSituacionFinanciera({
             </div>
 
             <Link to={`/deudas/${deuda.id}`} style={{ textDecoration: "none" }}>
-              <Button variant="outline">
+              <Button variant="outline" fullWidth={isMobile}>
                 <span style={buttonContentStyle}>
                   Ir a deuda
                   <ArrowRight size={16} />
@@ -129,7 +130,7 @@ export default function VentaSituacionFinanciera({
           </div>
         ) : (
           <div style={successStyle}>
-            <div style={headerRowStyle}>
+            <div style={{ ...headerRowStyle, ...(isMobile ? headerRowMobileStyle : {}) }}>
               <div>
                 <strong>Sin deuda pendiente</strong>
                 <div style={smallMutedStyle}>
@@ -195,10 +196,19 @@ const headerRowStyle = {
   alignItems: "flex-start",
 };
 
+const headerRowMobileStyle = {
+  display: "grid",
+  gridTemplateColumns: "1fr",
+};
+
 const metricsGridStyle = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
   gap: "10px",
+};
+
+const metricsGridMobileStyle = {
+  gridTemplateColumns: "1fr 1fr",
 };
 
 const smallMutedStyle = {

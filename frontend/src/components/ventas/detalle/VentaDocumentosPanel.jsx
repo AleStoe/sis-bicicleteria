@@ -1,4 +1,7 @@
+import { useBreakpoint } from "../../ui";
+
 export default function VentaDocumentosPanel({ ventaId }) {
+  const { isMobile } = useBreakpoint();
   const baseUrl = `http://127.0.0.1:8000/documentos/ventas/${ventaId}/comprobante-x`;
 
   function abrirComprobante() {
@@ -6,7 +9,7 @@ export default function VentaDocumentosPanel({ ventaId }) {
   }
 
   return (
-    <section style={panelStyle}>
+    <section style={{ ...panelStyle, ...(isMobile ? panelMobileStyle : {}) }}>
       <div>
         <h3 style={titleStyle}>Documentos</h3>
         <p style={textStyle}>
@@ -14,8 +17,12 @@ export default function VentaDocumentosPanel({ ventaId }) {
         </p>
       </div>
 
-      <div style={actionsStyle}>
-        <button type="button" onClick={abrirComprobante} style={primaryButtonStyle}>
+      <div style={{ ...actionsStyle, ...(isMobile ? actionsMobileStyle : {}) }}>
+        <button
+          type="button"
+          onClick={abrirComprobante}
+          style={{ ...primaryButtonStyle, ...(isMobile ? primaryButtonMobileStyle : {}) }}
+        >
           Ver Comprobante X
         </button>
       </div>
@@ -34,6 +41,13 @@ const panelStyle = {
   justifyContent: "space-between",
   alignItems: "center",
   gap: "16px",
+};
+
+const panelMobileStyle = {
+  display: "grid",
+  gridTemplateColumns: "1fr",
+  padding: "14px",
+  gap: "12px",
 };
 
 const titleStyle = {
@@ -55,6 +69,11 @@ const actionsStyle = {
   flexWrap: "wrap",
 };
 
+const actionsMobileStyle = {
+  display: "grid",
+  gridTemplateColumns: "1fr",
+};
+
 const primaryButtonStyle = {
   border: "none",
   borderRadius: "12px",
@@ -63,4 +82,9 @@ const primaryButtonStyle = {
   background: "#111827",
   color: "#ffffff",
   fontWeight: 700,
+};
+
+const primaryButtonMobileStyle = {
+  width: "100%",
+  minHeight: 44,
 };

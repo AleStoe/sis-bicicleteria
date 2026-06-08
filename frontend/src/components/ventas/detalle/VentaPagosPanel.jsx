@@ -1,8 +1,12 @@
+import { useBreakpoint } from "../../ui";
+
 export default function VentaPagosPanel({ pagos = [], formatMoney }) {
+  const { isMobile } = useBreakpoint();
+
   if (!pagos.length) return null;
 
   return (
-    <section style={styles.card}>
+    <section style={{ ...styles.card, ...(isMobile ? styles.cardMobile : {}) }}>
       <div style={styles.header}>
         <h3 style={styles.title}>Pagos registrados</h3>
         <span style={styles.count}>{pagos.length}</span>
@@ -14,7 +18,7 @@ export default function VentaPagosPanel({ pagos = [], formatMoney }) {
 
           return (
             <div key={pago.id} style={styles.paymentCard}>
-              <div style={styles.paymentTop}>
+              <div style={{ ...styles.paymentTop, ...(isMobile ? styles.paymentTopMobile : {}) }}>
                 <div>
                   <div style={styles.method}>{renderMedioPago(pago)}</div>
                   <div style={styles.meta}>
@@ -22,26 +26,21 @@ export default function VentaPagosPanel({ pagos = [], formatMoney }) {
                   </div>
                 </div>
 
-                <strong style={styles.amount}>
+                <strong style={{ ...styles.amount, ...(isMobile ? styles.amountMobile : {}) }}>
                   {formatMoney(pago.monto_total_cobrado)}
                 </strong>
               </div>
 
               {esTarjeta && (
                 <div style={styles.cardDetail}>
-                  <Row
-                    label="Plan"
-                    value={pago.tarjeta_plan_nombre || "Plan tarjeta"}
-                  />
-                  <Row label="Cuotas" value={pago.cuotas || "-"} />
-                  <Row
-                    label="Base sin recargo"
-                    value={formatMoney(pago.monto_base)}
-                  />
+                  <Row label="Plan" value={pago.tarjeta_plan_nombre || "Plan tarjeta"} isMobile={isMobile} />
+                  <Row label="Cuotas" value={pago.cuotas || "-"} isMobile={isMobile} />
+                  <Row label="Base sin recargo" value={formatMoney(pago.monto_base)} isMobile={isMobile} />
                   <Row
                     label="Recargo financiero"
                     value={`+ ${formatMoney(pago.monto_recargo_financiero)}`}
                     tone="warning"
+                    isMobile={isMobile}
                   />
                   <Row
                     label="% aplicado"
@@ -50,11 +49,13 @@ export default function VentaPagosPanel({ pagos = [], formatMoney }) {
                         ? `${Number(pago.porcentaje_recargo_aplicado).toFixed(2)}%`
                         : "-"
                     }
+                    isMobile={isMobile}
                   />
                   <Row
                     label="Total cobrado"
                     value={formatMoney(pago.monto_neto_liquidado)}
                     strong
+                    isMobile={isMobile}
                   />
                 </div>
               )}
@@ -68,14 +69,15 @@ export default function VentaPagosPanel({ pagos = [], formatMoney }) {
   );
 }
 
-function Row({ label, value, tone, strong = false }) {
+function Row({ label, value, tone, strong = false, isMobile = false }) {
   return (
-    <div style={styles.row}>
+    <div style={{ ...styles.row, ...(isMobile ? styles.rowMobile : {}) }}>
       <span>{label}</span>
       <strong
         style={{
           color: tone === "warning" ? "#b54708" : "#111827",
           fontSize: strong ? 15 : 13,
+          textAlign: isMobile ? "left" : "right",
         }}
       >
         {value}
@@ -104,6 +106,10 @@ const styles = {
     padding: 14,
     display: "grid",
     gap: 12,
+  },
+  cardMobile: {
+    padding: 12,
+    borderRadius: 16,
   },
   header: {
     display: "flex",
@@ -136,12 +142,17 @@ const styles = {
     background: "#f9fafb",
     display: "grid",
     gap: 10,
+    minWidth: 0,
   },
   paymentTop: {
     display: "flex",
     justifyContent: "space-between",
     gap: 12,
     alignItems: "flex-start",
+  },
+  paymentTopMobile: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
   },
   method: {
     fontWeight: 900,
@@ -155,6 +166,11 @@ const styles = {
   amount: {
     color: "#111827",
     fontSize: 17,
+    whiteSpace: "nowrap",
+  },
+  amountMobile: {
+    whiteSpace: "normal",
+    fontSize: 18,
   },
   cardDetail: {
     borderTop: "1px solid #eaecf0",
@@ -168,6 +184,11 @@ const styles = {
     gap: 12,
     fontSize: 13,
     color: "#667085",
+  },
+  rowMobile: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: 2,
   },
   note: {
     fontSize: 12,
