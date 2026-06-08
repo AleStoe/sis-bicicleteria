@@ -19,6 +19,7 @@ import {
   PiggyBank,
   BarChart3,
   LayoutDashboard,
+  UserCog,
 } from "lucide-react";
 import { sidebarContainerStyle } from "../../styles/layout/appLayoutStyles";
 import {
@@ -72,6 +73,7 @@ const groups = [
       { to: "/taller", label: "Taller", icon: Wrench },
       { to: "/servicios-taller", label: "Servicios Taller", icon: Wrench },
       { to: "/auditoria", label: "Auditoría", icon: Gauge },
+      { to: "/usuarios", label: "Usuarios", icon: UserCog },
       { to: "/configuracion-comercial", label: "Config. Comercial", icon: Settings2 },
     ],
   },

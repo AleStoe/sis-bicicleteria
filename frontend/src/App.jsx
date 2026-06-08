@@ -38,6 +38,8 @@ import CapitalRetirosParticipantePerfilPage from "./pages/CapitalRetirosParticip
 import RentabilidadPage from "./pages/RentabilidadPage";
 import DashboardPage from "./pages/DashboardPage";
 import GastosPage from "./pages/GastosPage"
+import UsuariosPage from "./pages/UsuariosPage";
+
 
 export default function App() {
   return (
@@ -84,6 +86,7 @@ export default function App() {
           <Route path="/rentabilidad" element={<RentabilidadPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/gastos" element={<GastosPage />} />
+          <Route path="/usuarios" element={<UsuariosPage />} />
         </Routes>
       </AppLayout>
     </BrowserRouter>
