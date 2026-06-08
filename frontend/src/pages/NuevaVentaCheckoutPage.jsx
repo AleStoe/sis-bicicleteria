@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import CheckoutVentaPanel from "../components/ventas/CheckoutVentaPanel";
 import CheckoutClienteVentaCard from "../components/ventas/checkout/CheckoutClienteVentaCard";
@@ -12,6 +12,29 @@ import {
   getClienteNombre,
 } from "../helpers/checkoutVentaHelper";
 
+const MOBILE_BREAKPOINT = 760;
+
+function useIsMobile(breakpoint = MOBILE_BREAKPOINT) {
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia(`(max-width: ${breakpoint}px)`).matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const mq = window.matchMedia(`(max-width: ${breakpoint}px)`);
+    const onChange = (event) => setIsMobile(event.matches);
+
+    setIsMobile(mq.matches);
+    mq.addEventListener("change", onChange);
+
+    return () => mq.removeEventListener("change", onChange);
+  }, [breakpoint]);
+
+  return isMobile;
+}
+
 export default function NuevaVentaCheckoutPage() {
   const navigate = useNavigate();
   const { state } = useLocation();
@@ -19,6 +42,8 @@ export default function NuevaVentaCheckoutPage() {
   const [checkoutEstado, setCheckoutEstado] = useState(null);
   const [guardando, setGuardando] = useState(false);
   const toast = useToast();
+  const isMobile = useIsMobile();
+
   const clienteNombre = useMemo(() => getClienteNombre(draft), [draft]);
 
   const resumenCheckout = useMemo(
@@ -32,8 +57,8 @@ export default function NuevaVentaCheckoutPage() {
 
   if (!draft) {
     return (
-      <div style={styles.page}>
-        <section style={styles.emptyCard}>
+      <div style={{ ...styles.page, ...(isMobile ? styles.pageMobile : {}) }}>
+        <section style={{ ...styles.emptyCard, ...(isMobile ? styles.emptyCardMobile : {}) }}>
           <h1 style={styles.emptyTitle}>No hay venta para cobrar</h1>
           <p style={styles.emptyText}>
             Armá el carrito desde Nueva Venta y después entrá al cobro.
@@ -51,10 +76,7 @@ export default function NuevaVentaCheckoutPage() {
   }
 
   async function finalizarCheckout(payloadCheckout) {
-    const {
-      pagos = [],
-      entregar_ahora,
-    } = payloadCheckout;
+    const { pagos = [], entregar_ahora } = payloadCheckout;
 
     const errorValidacion = validarVentaAntesDeCrear({
       clienteId: draft.clienteId,
@@ -82,7 +104,6 @@ export default function NuevaVentaCheckoutPage() {
       setGuardando(true);
       console.log("PAYLOAD FINAL VENTA CHECKOUT PAGE", payload);
       console.log("PAYLOAD CHECKOUT RECIBIDO", payloadCheckout);
-      console.log("PAYLOAD FINAL VENTA CHECKOUT PAGE", payload);
       const resultado = await crearVenta(payload);
 
       if (entregar_ahora) {
@@ -100,23 +121,25 @@ export default function NuevaVentaCheckoutPage() {
   }
 
   return (
-    <div style={styles.page}>
-      <header style={styles.header}>
+    <div style={{ ...styles.page, ...(isMobile ? styles.pageMobile : {}) }}>
+      <header style={{ ...styles.header, ...(isMobile ? styles.headerMobile : {}) }}>
         <button type="button" onClick={() => navigate(-1)} style={styles.backBtn}>
           ← Carrito
         </button>
 
         <div style={styles.headerText}>
           <span style={styles.kicker}>Paso 2 de 2</span>
-          <h1 style={styles.title}>Cobrar venta</h1>
-          <p style={styles.subtitle}>
+          <h1 style={{ ...styles.title, ...(isMobile ? styles.titleMobile : {}) }}>
+            Cobrar venta
+          </h1>
+          <p style={{ ...styles.subtitle, ...(isMobile ? styles.subtitleMobile : {}) }}>
             Elegí el medio de pago, tocá “Completar saldo” y cargá el pago.
           </p>
         </div>
       </header>
 
-      <main style={styles.layout}>
-        <section style={styles.checkoutCard}>
+      <main style={{ ...styles.layout, ...(isMobile ? styles.layoutMobile : {}) }}>
+        <section style={{ ...styles.checkoutCard, ...(isMobile ? styles.checkoutCardMobile : {}) }}>
           <CheckoutClienteVentaCard draft={draft} clienteNombre={clienteNombre} />
 
           <CheckoutVentaPanel
@@ -132,12 +155,14 @@ export default function NuevaVentaCheckoutPage() {
           />
         </section>
 
-        <CheckoutResumenLateral
-          draft={draft}
-          clienteNombre={clienteNombre}
-          resumen={resumenCheckout}
-          onQuitarPago={checkoutEstado?.quitarPago}
-        />
+        <div style={isMobile ? styles.resumenMobile : undefined}>
+          <CheckoutResumenLateral
+            draft={draft}
+            clienteNombre={clienteNombre}
+            resumen={resumenCheckout}
+            onQuitarPago={checkoutEstado?.quitarPago}
+          />
+        </div>
       </main>
     </div>
   );
@@ -200,6 +225,7 @@ const styles = {
     borderRadius: 24,
     padding: 18,
     boxShadow: "0 16px 35px rgba(15, 23, 42, 0.08)",
+    minWidth: 0,
   },
   emptyCard: {
     maxWidth: 520,
@@ -225,5 +251,37 @@ const styles = {
     padding: "12px 16px",
     fontWeight: 900,
     cursor: "pointer",
+  },
+  pageMobile: {
+    padding: 10,
+    overflowX: "hidden",
+  },
+  headerMobile: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: 10,
+    marginBottom: 12,
+  },
+  titleMobile: {
+    fontSize: 25,
+  },
+  subtitleMobile: {
+    fontSize: 13,
+    lineHeight: 1.35,
+  },
+  layoutMobile: {
+    gridTemplateColumns: "1fr",
+    gap: 12,
+  },
+  checkoutCardMobile: {
+    padding: 12,
+    borderRadius: 18,
+  },
+  resumenMobile: {
+    minWidth: 0,
+  },
+  emptyCardMobile: {
+    margin: "32px auto",
+    padding: 18,
   },
 };

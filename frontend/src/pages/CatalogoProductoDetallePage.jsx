@@ -15,6 +15,28 @@ const ID_SUCURSAL_DEFAULT = 1;
 const TAB_OPERATIVO = "operativo";
 const TAB_VARIANTES = "variantes";
 const TAB_FICHA = "ficha";
+const MOBILE_BREAKPOINT = 760;
+
+function useIsMobile(breakpoint = MOBILE_BREAKPOINT) {
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia(`(max-width: ${breakpoint}px)`).matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const mq = window.matchMedia(`(max-width: ${breakpoint}px)`);
+    const onChange = (event) => setIsMobile(event.matches);
+
+    setIsMobile(mq.matches);
+    mq.addEventListener("change", onChange);
+
+    return () => mq.removeEventListener("change", onChange);
+  }, [breakpoint]);
+
+  return isMobile;
+}
 
 function normalizarTexto(valor) {
   return String(valor || "")
@@ -40,6 +62,7 @@ function valorMostrar(valor) {
 export default function CatalogoProductoDetallePage() {
   const { productoId } = useParams();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
 
   const [producto, setProducto] = useState(null);
   const [variantes, setVariantes] = useState([]);
@@ -193,33 +216,33 @@ export default function CatalogoProductoDetallePage() {
   }
 
   return (
-    <div style={styles.page}>
-      <header style={styles.header}>
+    <div style={{ ...styles.page, ...(isMobile ? styles.pageMobile : {}) }}>
+      <header style={{ ...styles.header, ...(isMobile ? styles.headerMobile : {}) }}>
         <div>
           <button type="button" onClick={() => navigate("/catalogo")} style={styles.backButton}>
             ← Volver al catálogo
           </button>
           <p style={styles.kicker}>Detalle operativo</p>
-          <h1 style={styles.title}>{producto.nombre}</h1>
-          <p style={styles.subtitle}>Producto #{producto.id} · {valorMostrar(categoriaNombre)} · {valorMostrar(marcaNombre)}</p>
+          <h1 style={{ ...styles.title, ...(isMobile ? styles.titleMobile : {}) }}>{producto.nombre}</h1>
+          <p style={{ ...styles.subtitle, ...(isMobile ? styles.subtitleMobile : {}) }}>Producto #{producto.id} · {valorMostrar(categoriaNombre)} · {valorMostrar(marcaNombre)}</p>
         </div>
 
-        <div style={styles.headerActions}>
+        <div style={{ ...styles.headerActions, ...(isMobile ? styles.headerActionsMobile : {}) }}>
           <button type="button" onClick={cargar} style={styles.secondaryButton}>Refrescar</button>
         </div>
       </header>
 
-      <section style={styles.topGrid}>
-        <article style={styles.imageCard}>
+      <section style={{ ...styles.topGrid, ...(isMobile ? styles.topGridMobile : {}) }}>
+        <article style={{ ...styles.imageCard, ...(isMobile ? styles.imageCardMobile : {}) }}>
           {imagenPrincipal ? (
-            <img src={getImageUrl(imagenPrincipal)} alt={producto.nombre} style={styles.heroImage} />
+            <img src={getImageUrl(imagenPrincipal)} alt={producto.nombre} style={{ ...styles.heroImage, ...(isMobile ? styles.heroImageMobile : {}) }} />
           ) : (
-            <div style={styles.imagePlaceholder}>Sin imagen principal</div>
+            <div style={{ ...styles.imagePlaceholder, ...(isMobile ? styles.imagePlaceholderMobile : {}) }}>Sin imagen principal</div>
           )}
         </article>
 
-        <article style={styles.summaryCard}>
-          <div style={styles.summaryHeader}>
+        <article style={{ ...styles.summaryCard, ...(isMobile ? styles.summaryCardMobile : {}) }}>
+          <div style={{ ...styles.summaryHeader, ...(isMobile ? styles.summaryHeaderMobile : {}) }}>
             <div>
               <h2 style={styles.sectionTitle}>Estado del producto</h2>
               <p style={styles.muted}>Datos útiles para venta, stock y reposición.</p>
@@ -227,7 +250,7 @@ export default function CatalogoProductoDetallePage() {
             <StatusPill tone={estadoOperativo.tone}>{estadoOperativo.label}</StatusPill>
           </div>
 
-          <div style={styles.stockGrid}>
+          <div style={{ ...styles.stockGrid, ...(isMobile ? styles.stockGridMobile : {}) }}>
             <Metric label="Disponible" value={formatNumber(resumenOperativo.disponible)} tone="ok" />
             <Metric label="Físico" value={formatNumber(resumenOperativo.fisico)} tone="info" />
             <Metric label="Reservado" value={formatNumber(resumenOperativo.reservado)} tone="muted" />
@@ -245,14 +268,14 @@ export default function CatalogoProductoDetallePage() {
         </article>
       </section>
 
-      <nav style={styles.tabs}>
+      <nav style={{ ...styles.tabs, ...(isMobile ? styles.tabsMobile : {}) }}>
         <TabButton active={tabActiva === TAB_OPERATIVO} onClick={() => setTabActiva(TAB_OPERATIVO)}>Operativo</TabButton>
         <TabButton active={tabActiva === TAB_VARIANTES} onClick={() => setTabActiva(TAB_VARIANTES)}>Variantes ({resumenOperativo.variantes})</TabButton>
         <TabButton active={tabActiva === TAB_FICHA} onClick={() => setTabActiva(TAB_FICHA)}>Ficha técnica ({fichaTecnica.length})</TabButton>
       </nav>
 
       {tabActiva === TAB_OPERATIVO && (
-        <section style={styles.card}>
+        <section style={{ ...styles.card, ...(isMobile ? styles.cardMobile : {}) }}>
           <div style={styles.sectionHeader}>
             <div>
               <h2 style={styles.sectionTitle}>Información operativa</h2>
@@ -260,7 +283,7 @@ export default function CatalogoProductoDetallePage() {
             </div>
           </div>
 
-          <div style={styles.infoGrid}>
+          <div style={{ ...styles.infoGrid, ...(isMobile ? styles.infoGridMobile : {}) }}>
             <Info label="Nombre" value={producto.nombre} />
             <Info label="Categoría" value={categoriaNombre} />
             <Info label="Marca" value={marcaNombre} />
@@ -275,7 +298,7 @@ export default function CatalogoProductoDetallePage() {
       )}
 
       {tabActiva === TAB_VARIANTES && (
-        <section style={styles.card}>
+        <section style={{ ...styles.card, ...(isMobile ? styles.cardMobile : {}) }}>
           <div style={styles.sectionHeader}>
             <div>
               <h2 style={styles.sectionTitle}>Variantes comerciales</h2>
@@ -286,13 +309,13 @@ export default function CatalogoProductoDetallePage() {
           {variantes.length === 0 ? (
             <div style={styles.empty}>Este producto no tiene variantes.</div>
           ) : (
-            <div style={styles.variantesGrid}>
+            <div style={{ ...styles.variantesGrid, ...(isMobile ? styles.variantesGridMobile : {}) }}>
               {variantes.map((variante) => {
                 const itemPOS = itemsPOS.find((item) => String(item.id_variante) === String(variante.id));
 
                 return (
-                  <article key={variante.id} style={styles.varianteCard}>
-                    <div style={styles.varianteHeader}>
+                  <article key={variante.id} style={{ ...styles.varianteCard, ...(isMobile ? styles.varianteCardMobile : {}) }}>
+                    <div style={{ ...styles.varianteHeader, ...(isMobile ? styles.varianteHeaderMobile : {}) }}>
                       <div>
                         <strong style={styles.varianteTitle}>{variante.nombre_variante || "Única"}</strong>
                         <p style={styles.smallText}>Variante #{variante.id}</p>
@@ -300,7 +323,7 @@ export default function CatalogoProductoDetallePage() {
                       <StatusPill tone={variante.activo === false ? "danger" : "ok"}>{variante.activo === false ? "Inactiva" : "Activa"}</StatusPill>
                     </div>
 
-                    <div style={styles.varianteBody}>
+                    <div style={{ ...styles.varianteBody, ...(isMobile ? styles.varianteBodyMobile : {}) }}>
                       <Info label="Disponible" value={formatNumber(itemPOS?.stock_disponible ?? 0)} />
                       <Info label="Físico" value={formatNumber(itemPOS?.stock_fisico ?? 0)} />
                       <Info label="Reservado" value={formatNumber(itemPOS?.stock_reservado ?? 0)} />
@@ -322,7 +345,7 @@ export default function CatalogoProductoDetallePage() {
       )}
 
       {tabActiva === TAB_FICHA && (
-        <section style={styles.card}>
+        <section style={{ ...styles.card, ...(isMobile ? styles.cardMobile : {}) }}>
           <div style={styles.sectionHeader}>
             <div>
               <h2 style={styles.sectionTitle}>Ficha técnica</h2>
@@ -333,7 +356,7 @@ export default function CatalogoProductoDetallePage() {
           {fichaTecnica.length === 0 ? (
             <div style={styles.empty}>Este producto no tiene ficha técnica cargada.</div>
           ) : (
-            <div style={styles.fichaGrid}>
+            <div style={{ ...styles.fichaGrid, ...(isMobile ? styles.fichaGridMobile : {}) }}>
               {fichaTecnica.map((item) => (
                 <div key={item.id} style={styles.fichaItem}>
                   <div style={styles.fichaGrupo}>{item.grupo || "GENERAL"}</div>
@@ -672,4 +695,91 @@ const styles = {
     color: "#b42318",
     fontWeight: 900,
   },
+  pageMobile: {
+    padding: 10,
+    gap: 12,
+    overflowX: "hidden",
+  },
+  headerMobile: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    padding: 14,
+    borderRadius: 18,
+  },
+  titleMobile: {
+    fontSize: 25,
+    lineHeight: 1.15,
+  },
+  subtitleMobile: {
+    fontSize: 13,
+    lineHeight: 1.35,
+  },
+  headerActionsMobile: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    width: "100%",
+  },
+  topGridMobile: {
+    gridTemplateColumns: "1fr",
+    gap: 12,
+  },
+  imageCardMobile: {
+    padding: 12,
+    borderRadius: 18,
+    minHeight: 0,
+  },
+  heroImageMobile: {
+    minHeight: 190,
+    maxHeight: 230,
+  },
+  imagePlaceholderMobile: {
+    minHeight: 180,
+  },
+  summaryCardMobile: {
+    padding: 14,
+    borderRadius: 18,
+  },
+  summaryHeaderMobile: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+  },
+  stockGridMobile: {
+    gridTemplateColumns: "1fr 1fr",
+    gap: 8,
+  },
+  tabsMobile: {
+    flexWrap: "nowrap",
+    overflowX: "auto",
+    paddingBottom: 4,
+    WebkitOverflowScrolling: "touch",
+  },
+  cardMobile: {
+    padding: 14,
+    borderRadius: 18,
+  },
+  infoGridMobile: {
+    gridTemplateColumns: "1fr",
+    gap: 8,
+  },
+  variantesGridMobile: {
+    gap: 10,
+  },
+  varianteCardMobile: {
+    padding: 12,
+    borderRadius: 16,
+  },
+  varianteHeaderMobile: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: 8,
+  },
+  varianteBodyMobile: {
+    gridTemplateColumns: "1fr 1fr",
+    gap: 8,
+  },
+  fichaGridMobile: {
+    gridTemplateColumns: "1fr",
+    gap: 8,
+  },
+
 };

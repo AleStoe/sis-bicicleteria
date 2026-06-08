@@ -10,6 +10,28 @@ import CatalogoDetalleModal from "../components/catalogo/CatalogoDetalleModal";
 import { formatMoney, formatNumber } from "../utils/formatters";
 const ID_SUCURSAL_DEFAULT = 1;
 const LIMIT = 24;
+const MOBILE_BREAKPOINT = 760;
+
+function useIsMobile(breakpoint = MOBILE_BREAKPOINT) {
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia(`(max-width: ${breakpoint}px)`).matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const mediaQuery = window.matchMedia(`(max-width: ${breakpoint}px)`);
+    const handleChange = (event) => setIsMobile(event.matches);
+
+    setIsMobile(mediaQuery.matches);
+    mediaQuery.addEventListener("change", handleChange);
+
+    return () => mediaQuery.removeEventListener("change", handleChange);
+  }, [breakpoint]);
+
+  return isMobile;
+}
 
 function getTituloItem(item) {
   return [item.producto_nombre, item.nombre_variante].filter(Boolean).join(" - ");
@@ -55,6 +77,7 @@ export default function CatalogoPage() {
   const [mensaje, setMensaje] = useState("");
   const [detalle, setDetalle] = useState(null);
   const [seleccionadoId, setSeleccionadoId] = useState(null);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     cargarCategorias();
@@ -167,17 +190,17 @@ export default function CatalogoPage() {
   }
 
   return (
-    <div style={styles.page}>
-      <header style={styles.hero}>
+    <div style={{ ...styles.page, ...(isMobile ? styles.pageMobile : {}) }}>
+      <header style={{ ...styles.hero, ...(isMobile ? styles.heroMobile : {}) }}>
         <div>
           <span style={styles.kicker}>Catálogo operativo</span>
-          <h1 style={styles.title}>Catálogo</h1>
-          <p style={styles.subtitle}>
+          <h1 style={{ ...styles.title, ...(isMobile ? styles.titleMobile : {}) }}>Catálogo</h1>
+          <p style={{ ...styles.subtitle, ...(isMobile ? styles.subtitleMobile : {}) }}>
             Productos y variantes listos para POS, stock, imágenes, precios y alertas de venta.
           </p>
         </div>
 
-        <div style={styles.heroActions}>
+        <div style={{ ...styles.heroActions, ...(isMobile ? styles.heroActionsMobile : {}) }}>
           <button type="button" onClick={() => cargarCatalogo()} style={styles.secondaryHeroButton}>
             ↻ Refrescar
           </button>
@@ -193,7 +216,7 @@ export default function CatalogoPage() {
       {mensaje && <div style={styles.success}>{mensaje}</div>}
       {error && <div style={styles.alert}>Error: {error}</div>}
 
-      <section style={styles.metricsGrid}>
+      <section style={{ ...styles.metricsGrid, ...(isMobile ? styles.metricsGridMobile : {}) }}>
         <Metric label="Total filtrado" value={total} tone="dark" />
         <Metric label="Disponibles" value={resumen.disponibles} tone="ok" />
         <Metric label="Stock disponible" value={formatNumber(resumen.stockDisponible)} tone="info" />
@@ -202,7 +225,7 @@ export default function CatalogoPage() {
         <Metric label="Serializables" value={resumen.serializables} tone="orange" />
       </section>
 
-      <section style={styles.filtersCard}>
+      <section style={{ ...styles.filtersCard, ...(isMobile ? styles.filtersCardMobile : {}) }}>
         <div style={styles.searchBox}>
           <span>🔎</span>
           <input
@@ -218,7 +241,7 @@ export default function CatalogoPage() {
             placeholder="Buscar por producto, variante, marca, SKU, código de barras o proveedor..."
             style={styles.searchInput}
           />
-          <kbd style={styles.kbd}>/</kbd>
+          {!isMobile && <kbd style={styles.kbd}>/</kbd>}
         </div>
 
         <select
@@ -238,9 +261,9 @@ export default function CatalogoPage() {
         </select>
       </section>
 
-      <main style={styles.layout}>
+      <main style={{ ...styles.layout, ...(isMobile ? styles.layoutMobile : {}) }}>
         <section style={styles.catalogPanel}>
-          <div style={styles.panelHeader}>
+          <div style={{ ...styles.panelHeader, ...(isMobile ? styles.panelHeaderMobile : {}) }}>
             <div>
               <h2 style={styles.panelTitle}>Listado</h2>
               <p style={styles.panelSubtitle}>
@@ -248,7 +271,7 @@ export default function CatalogoPage() {
               </p>
             </div>
 
-            <div style={styles.pager}>
+            <div style={{ ...styles.pager, ...(isMobile ? styles.pagerMobile : {}) }}>
               <button type="button" disabled={!puedeAnterior} onClick={irAnterior} style={puedeAnterior ? styles.pagerButton : styles.pagerButtonDisabled}>
                 ← Anterior
               </button>
@@ -263,7 +286,7 @@ export default function CatalogoPage() {
           ) : items.length === 0 ? (
             <div style={styles.empty}>No hay productos para mostrar.</div>
           ) : (
-            <div style={styles.cardsGrid}>
+            <div style={{ ...styles.cardsGrid, ...(isMobile ? styles.cardsGridMobile : {}) }}>
               {items.map((item) => (
                 <CatalogoCard
                   key={item.id_variante}
@@ -271,13 +294,14 @@ export default function CatalogoPage() {
                   selected={seleccionado?.id_variante === item.id_variante}
                   onSelect={() => setSeleccionadoId(item.id_variante)}
                   onOpenDetail={() => setDetalle(item)}
+                  isMobile={isMobile}
                 />
               ))}
             </div>
           )}
         </section>
 
-        <aside style={styles.sidePanel}>
+        <aside style={{ ...styles.sidePanel, ...(isMobile ? styles.sidePanelMobile : {}) }}>
           {seleccionado ? (
             <PanelPreviewCatalogo
               item={seleccionado}
@@ -303,15 +327,33 @@ export default function CatalogoPage() {
   );
 }
 
-function CatalogoCard({ item, selected, onSelect, onOpenDetail }) {
+function CatalogoCard({ item, selected, onSelect, onOpenDetail, isMobile }) {
+  const stockColumns = isMobile
+    ? "1fr"
+    : Number(item.stock_reservado || 0) > 0
+      ? "repeat(3, 1fr)"
+      : "repeat(2, 1fr)";
+
   return (
-    <article style={selected ? styles.cardSelected : styles.card} onClick={onSelect}>
-      <div style={styles.cardImageWrap} onDoubleClick={onOpenDetail}>
-        <ProductImage url={item.imagen_principal} size={96} />
+    <article
+      style={{
+        ...(selected ? styles.cardSelected : styles.card),
+        ...(isMobile ? styles.cardMobile : {}),
+      }}
+      onClick={onSelect}
+    >
+      <div
+        style={{
+          ...styles.cardImageWrap,
+          ...(isMobile ? styles.cardImageWrapMobile : {}),
+        }}
+        onDoubleClick={onOpenDetail}
+      >
+        <ProductImage url={item.imagen_principal} size={isMobile ? 74 : 96} />
       </div>
 
       <div style={styles.cardBody}>
-        <div style={styles.cardTop}>
+        <div style={{ ...styles.cardTop, ...(isMobile ? styles.cardTopMobile : {}) }}>
           <div style={styles.cardTitleWrap}>
             <strong style={styles.cardTitle}>{item.producto_nombre}</strong>
             <span style={styles.cardVariant}>{item.nombre_variante}</span>
@@ -322,35 +364,19 @@ function CatalogoCard({ item, selected, onSelect, onOpenDetail }) {
         <div style={styles.tagsRow}>
           {item.marca_nombre && <span style={styles.tag}>{item.marca_nombre}</span>}
           <span style={styles.tag}>{item.categoria_nombre}</span>
-          {item.serializable && (
-            <span style={styles.serialTag}>
-              Serializada
-            </span>
-          )}
+          {item.serializable && <span style={styles.serialTag}>Serializada</span>}
         </div>
 
-       <div
-          style={{
-            ...styles.stockStrip,
-            gridTemplateColumns:
-              Number(item.stock_reservado || 0) > 0
-                ? "repeat(3, 1fr)"
-                : "repeat(2, 1fr)",
-          }}
-        >
+        <div style={{ ...styles.stockStrip, gridTemplateColumns: stockColumns }}>
           <StockMini label="Disponible" value={item.stock_disponible} tone="ok" />
           <StockMini label="Físico" value={item.stock_fisico} tone="info" />
 
           {Number(item.stock_reservado || 0) > 0 && (
-            <StockMini
-              label="Reservado"
-              value={item.stock_reservado}
-              tone="muted"
-            />
+            <StockMini label="Reservado" value={item.stock_reservado} tone="muted" />
           )}
         </div>
 
-        <div style={styles.priceGrid}>
+        <div style={{ ...styles.priceGrid, ...(isMobile ? styles.priceGridMobile : {}) }}>
           <div style={styles.priceBox}>
             <span>Minorista</span>
             <strong>{formatMoney(item.precio_minorista)}</strong>
@@ -364,30 +390,25 @@ function CatalogoCard({ item, selected, onSelect, onOpenDetail }) {
         <div
           style={{
             ...styles.codesBox,
-            gridTemplateColumns: `repeat(${
-              [
-                item.sku,
-                item.codigo_barras,
-                item.codigo_proveedor,
-              ].filter(Boolean).length || 1
-            }, minmax(0,1fr))`,
+            gridTemplateColumns: isMobile
+              ? "1fr"
+              : `repeat(${[item.sku, item.codigo_barras, item.codigo_proveedor].filter(Boolean).length || 1}, minmax(0,1fr))`,
           }}
         >
-          {item.sku && (
-            <CodePill label="SKU" value={item.sku} />
-          )}
-
-          {item.codigo_barras && (
-            <CodePill label="EAN" value={item.codigo_barras} />
-          )}
-
-          {item.codigo_proveedor && (
-            <CodePill label="Prov" value={item.codigo_proveedor} />
-          )}
+          {item.sku && <CodePill label="SKU" value={item.sku} />}
+          {item.codigo_barras && <CodePill label="EAN" value={item.codigo_barras} />}
+          {item.codigo_proveedor && <CodePill label="Prov" value={item.codigo_proveedor} />}
         </div>
 
         <div style={styles.cardActions}>
-          <button type="button" onClick={(e) => { e.stopPropagation(); onOpenDetail(); }} style={styles.secondaryButton}>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenDetail();
+            }}
+            style={styles.secondaryButton}
+          >
             Ver detalle
           </button>
         </div>
@@ -1107,4 +1128,75 @@ const styles = {
     fontWeight: 1000,
     cursor: "pointer",
   },
+  pageMobile: {
+    padding: 10,
+    overflowX: "hidden",
+  },
+  heroMobile: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    alignItems: "start",
+    padding: 16,
+    borderRadius: 18,
+  },
+  titleMobile: {
+    fontSize: 26,
+  },
+  subtitleMobile: {
+    fontSize: 13,
+    lineHeight: 1.35,
+  },
+  heroActionsMobile: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    width: "100%",
+  },
+  metricsGridMobile: {
+    gridTemplateColumns: "1fr 1fr",
+    gap: 8,
+  },
+  filtersCardMobile: {
+    gridTemplateColumns: "1fr",
+    padding: 10,
+    borderRadius: 16,
+  },
+  layoutMobile: {
+    gridTemplateColumns: "1fr",
+    gap: 12,
+  },
+  panelHeaderMobile: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    alignItems: "stretch",
+    padding: 12,
+  },
+  pagerMobile: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+  },
+  cardsGridMobile: {
+    gridTemplateColumns: "1fr",
+    padding: 10,
+  },
+  cardMobile: {
+    gridTemplateColumns: "82px minmax(0, 1fr)",
+    gap: 10,
+    padding: 10,
+    borderRadius: 16,
+  },
+  cardImageWrapMobile: {
+    minHeight: 82,
+    borderRadius: 14,
+  },
+  cardTopMobile: {
+    gridTemplateColumns: "1fr",
+  },
+  priceGridMobile: {
+    gridTemplateColumns: "1fr",
+  },
+  sidePanelMobile: {
+    position: "static",
+    top: "auto",
+  },
+
 };
