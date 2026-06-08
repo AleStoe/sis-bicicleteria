@@ -21,6 +21,7 @@ export default function StockPage() {
   const [proveedores, setProveedores] = useState([]);
   const [query, setQuery] = useState("");
   const [filtroEstado, setFiltroEstado] = useState("todos");
+  const [filtrosAvanzadosAbiertos, setFiltrosAvanzadosAbiertos] = useState(false);
   const [tipoOperativo, setTipoOperativo] = useState("todos");
   const [idCategoria, setIdCategoria] = useState("");
   const [idMarca, setIdMarca] = useState("");
@@ -319,24 +320,24 @@ export default function StockPage() {
 
   if (loading) {
     return (
-      <div style={styles.page}>
+      <div className="erp-page erp-stock-page" style={styles.page}>
         <section style={styles.loadingCard}>Cargando stock...</section>
       </div>
     );
   }
 
   return (
-    <div style={styles.page}>
-      <header style={styles.header}>
+    <div className="erp-page erp-stock-page" style={styles.page}>
+      <header className="erp-page-header" style={styles.header}>
         <div>
           <p style={styles.eyebrow}>Inventario / Control operativo</p>
           <h1 style={styles.title}>Stock</h1>
-          <p style={styles.subtitle}>
+          <p className="erp-mobile-compact-text" style={styles.subtitle}>
             Control de físico, reservado, pendiente de entrega y disponible.
           </p>
         </div>
 
-        <div style={styles.actionsHeader}>
+        <div className="erp-page-actions" style={styles.actionsHeader}>
           <button type="button" onClick={cargarTodo} style={styles.secondaryButton}>
             Refrescar
           </button>
@@ -366,7 +367,7 @@ export default function StockPage() {
         </div>
       )}
 
-      <section style={styles.metricGrid}>
+      <section className="erp-metric-grid" style={styles.metricGrid}>
         <Metric label="Variantes" value={resumen.variantes} />
         <Metric label="Físico" value={formatNumber(resumen.stockFisico)} />
         <Metric label="Reservado" value={formatNumber(resumen.stockReservado)} />
@@ -378,7 +379,7 @@ export default function StockPage() {
         <Metric label="Inconsistencias" value={resumen.inconsistentes} danger={resumen.inconsistentes > 0} />
       </section>
 
-      <section style={styles.searchCard}>
+      <section className="erp-card erp-search-card" style={styles.searchCard}>
         <div>
           <h2 style={styles.searchTitle}>Buscar en stock</h2>
           <p style={styles.searchHelp}>Producto, variante, código, SKU, sucursal o ID.</p>
@@ -397,7 +398,18 @@ export default function StockPage() {
           style={styles.searchInput}
         />
 
-        <div style={styles.advancedFilters}>
+        <button
+          type="button"
+          className="erp-mobile-filter-toggle"
+          onClick={() => setFiltrosAvanzadosAbiertos((actual) => !actual)}
+        >
+          {filtrosAvanzadosAbiertos ? "Ocultar filtros avanzados" : "Mostrar filtros avanzados"}
+        </button>
+
+        <div
+          className={`erp-collapsible-filters ${filtrosAvanzadosAbiertos ? "is-open" : ""}`}
+          style={styles.advancedFilters}
+        >
           <label style={styles.filterField}>
             <span style={styles.filterLabel}>Tipo</span>
             <select value={tipoOperativo} onChange={(e) => setTipoOperativo(e.target.value)} style={styles.select}>
@@ -480,7 +492,7 @@ export default function StockPage() {
           </label>
         </div>
 
-        <div style={styles.filterButtons}>
+        <div className="erp-filter-buttons" style={styles.filterButtons}>
           <FilterButton label="Todos" value="todos" current={filtroEstado} onClick={setFiltroEstado} />
           <FilterButton label="Sin stock" value="sin_stock" current={filtroEstado} onClick={setFiltroEstado} />
           <FilterButton label="Reservado" value="reservado" current={filtroEstado} onClick={setFiltroEstado} />
@@ -490,7 +502,7 @@ export default function StockPage() {
         </div>
       </section>
 
-      <section style={styles.tableCard}>
+      <section className="erp-card" style={styles.tableCard}>
         <div style={styles.tableHeader}>
           <div>
             <h2 style={styles.cardTitle}>Inventario</h2>
@@ -503,7 +515,7 @@ export default function StockPage() {
         {stockFiltrado.length === 0 ? (
           <div style={styles.empty}>No hay stock para mostrar con esos filtros.</div>
         ) : (
-          <div style={styles.tableWrap}>
+          <div className="erp-responsive-table-shell" style={styles.tableWrap}>
             <StockTable
               stockFiltrado={stockFiltrado}
               seleccionado={seleccionado}

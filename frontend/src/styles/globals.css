@@ -81,3 +81,204 @@ svg {
     width: 100% !important;
   }
 }
+
+/* =========================================================
+   Responsive ERP base v1
+   Reglas reutilizables para migrar pantallas sin duplicar CSS.
+   ========================================================= */
+
+:root {
+  --erp-mobile-breakpoint: 768px;
+}
+
+.erp-page {
+  width: 100%;
+  min-width: 0;
+}
+
+.erp-page-header {
+  min-width: 0;
+}
+
+.erp-page-actions {
+  min-width: 0;
+}
+
+.erp-action-row,
+.erp-filter-row {
+  min-width: 0;
+}
+
+.erp-card {
+  min-width: 0;
+}
+
+.erp-card > * {
+  min-width: 0;
+}
+
+.erp-mobile-filter-toggle {
+  display: none;
+}
+
+.erp-filter-buttons {
+  min-width: 0;
+}
+
+.erp-responsive-drawer-overlay {
+  overscroll-behavior: contain;
+}
+
+.erp-responsive-drawer {
+  min-width: 0;
+}
+
+.erp-responsive-table-shell {
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.erp-responsive-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.erp-responsive-actions > * {
+  min-width: 0;
+}
+
+@media (max-width: 768px) {
+  .erp-page {
+    padding: 12px !important;
+  }
+
+  .erp-page-header {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+    margin-bottom: 12px !important;
+  }
+
+  .erp-page-header h1 {
+    font-size: 24px !important;
+    line-height: 1.12 !important;
+  }
+
+  .erp-page-header p {
+    max-width: 100%;
+  }
+
+  .erp-page-actions {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    width: 100% !important;
+    gap: 8px !important;
+  }
+
+  .erp-page-actions > button,
+  .erp-page-actions > a {
+    width: 100% !important;
+    min-height: 42px !important;
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+    white-space: normal !important;
+  }
+
+  .erp-mobile-compact-text {
+    display: none !important;
+  }
+
+  .erp-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .erp-metric-grid > * {
+    padding: 11px !important;
+    border-radius: 14px !important;
+  }
+
+  .erp-metric-grid strong {
+    font-size: 19px !important;
+    line-height: 1.12 !important;
+    overflow-wrap: anywhere;
+  }
+
+  .erp-card,
+  .erp-search-card {
+    padding: 12px !important;
+    border-radius: 16px !important;
+  }
+
+  .erp-mobile-filter-toggle {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    min-height: 42px;
+    width: 100%;
+    border: 1px solid #d1d5db;
+    border-radius: 12px;
+    background: #ffffff;
+    color: #111827;
+    font-weight: 900;
+    cursor: pointer;
+  }
+
+  .erp-collapsible-filters {
+    display: none !important;
+  }
+
+  .erp-collapsible-filters.is-open {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+  }
+
+  .erp-filter-buttons {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+  }
+
+  .erp-filter-buttons button {
+    flex: 0 0 auto;
+    min-height: 38px;
+  }
+
+  .erp-mobile-stack {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+  }
+
+  .erp-mobile-full-width {
+    width: 100% !important;
+  }
+
+  .erp-mobile-full-width > * {
+    width: 100% !important;
+  }
+
+  .erp-responsive-drawer-overlay {
+    justify-content: stretch !important;
+    background: rgba(15, 23, 42, 0.5) !important;
+  }
+
+  .erp-responsive-drawer {
+    width: 100vw !important;
+    max-width: none !important;
+    height: 100dvh !important;
+    border-radius: 0 !important;
+  }
+
+  .erp-drawer-actions-mobile {
+    grid-template-columns: 1fr !important;
+  }
+
+  .erp-hide-mobile {
+    display: none !important;
+  }
+}

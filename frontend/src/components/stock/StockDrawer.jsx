@@ -21,8 +21,8 @@ export default function StockDrawer({
   const costoUnitarioIngreso = calcularCostoUnitarioIngreso(ingresoForm);
 
   return (
-    <aside style={styles.overlay} onClick={cerrarPanel}>
-      <div style={styles.drawer} onClick={(e) => e.stopPropagation()}>
+    <aside className="erp-responsive-drawer-overlay" style={styles.overlay} onClick={cerrarPanel}>
+      <div className="erp-responsive-drawer" style={styles.drawer} onClick={(e) => e.stopPropagation()}>
         <div style={styles.header}>
           <div>
             <p style={styles.eyebrow}>Detalle de stock</p>
@@ -79,7 +79,7 @@ export default function StockDrawer({
             />
             <InfoRow label="Disponible" value={formatNumber(seleccionado.stock_disponible)} />
 
-            <div style={styles.actions}>
+            <div className="erp-drawer-actions-mobile" style={styles.actions}>
               <button type="button" style={styles.primaryButton} onClick={() => setModoPanel("ingreso")}>
                 Registrar ingreso
               </button>
