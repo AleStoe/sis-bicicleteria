@@ -1,4 +1,4 @@
-import { Card, Table } from "../ui";
+import { Card, ResponsiveTableCards } from "../ui";
 import MovimientoCajaBadge, {
   getMovimientoMontoColor,
 } from "./MovimientoCajaBadge";
@@ -16,13 +16,14 @@ const MOVIMIENTOS_COLUMNS = [
 export default function CajaMovimientosTable({ movimientos, formatCurrency }) {
   return (
     <Card title="Movimientos" subtitle="Historial completo de movimientos de caja">
-      <Table
+      <ResponsiveTableCards
         columns={MOVIMIENTOS_COLUMNS}
         data={movimientos}
         emptyMessage="Sin movimientos registrados."
+        cardKey={(mov, index) => mov.id || `${mov.fecha}-${index}`}
         renderRow={(mov) => (
           <>
-            <td style={tdStyle}>{new Date(mov.fecha).toLocaleString("es-AR")}</td>
+            <td style={tdStyle}>{formatFecha(mov.fecha)}</td>
             <td style={tdStyle}>
               <MovimientoCajaBadge movimiento={mov} />
             </td>
@@ -41,9 +42,52 @@ export default function CajaMovimientosTable({ movimientos, formatCurrency }) {
             <td style={tdStyle}>{mov.nota || "-"}</td>
           </>
         )}
+        renderCard={(mov) => (
+          <div style={styles.mobileCardContent}>
+            <div style={styles.mobileHeader}>
+              <div>
+                <MovimientoCajaBadge movimiento={mov} />
+                <div style={styles.mobileDate}>{formatFecha(mov.fecha)}</div>
+              </div>
+
+              <strong
+                style={{
+                  ...styles.mobileAmount,
+                  color: getMovimientoMontoColor(mov),
+                }}
+              >
+                {formatCurrency(mov.monto)}
+              </strong>
+            </div>
+
+            <div style={styles.mobileGrid}>
+              <MobileField label="Submedio" value={mov.submedio || "-"} />
+              <MobileField label="Origen" value={formatOrigen(mov)} />
+              <MobileField
+                label="Usuario"
+                value={mov.id_usuario ? `Usuario #${mov.id_usuario}` : "-"}
+              />
+              <MobileField label="Nota" value={mov.nota || "-"} full />
+            </div>
+          </div>
+        )}
       />
     </Card>
   );
+}
+
+function MobileField({ label, value, full = false }) {
+  return (
+    <div style={{ ...styles.mobileField, ...(full ? styles.mobileFieldFull : {}) }}>
+      <span>{label}</span>
+      <strong>{value || "-"}</strong>
+    </div>
+  );
+}
+
+function formatFecha(fecha) {
+  if (!fecha) return "-";
+  return new Date(fecha).toLocaleString("es-AR");
 }
 
 function formatOrigen(movimiento) {
@@ -57,4 +101,44 @@ function formatOrigen(movimiento) {
 const tdStyle = {
   padding: "12px 16px",
   whiteSpace: "nowrap",
+};
+
+const styles = {
+  mobileCardContent: {
+    display: "grid",
+    gap: "12px",
+  },
+  mobileHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: "12px",
+  },
+  mobileDate: {
+    marginTop: "6px",
+    color: "#64748b",
+    fontSize: "12px",
+    fontWeight: 800,
+  },
+  mobileAmount: {
+    fontSize: "17px",
+    whiteSpace: "nowrap",
+  },
+  mobileGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: "8px",
+  },
+  mobileField: {
+    border: "1px solid #e2e8f0",
+    borderRadius: "12px",
+    padding: "10px",
+    background: "#f8fafc",
+    display: "grid",
+    gap: "3px",
+    minWidth: 0,
+  },
+  mobileFieldFull: {
+    gridColumn: "1 / -1",
+  },
 };

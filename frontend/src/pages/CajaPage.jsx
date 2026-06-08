@@ -8,7 +8,7 @@ import {
   registrarAjusteCaja,
 } from "../services/cajaService";
 import { formatCurrency } from "../utils/formatters";
-import { PageHeader, Button } from "../components/ui";
+import { PageHeader, Button, useBreakpoint } from "../components/ui";
 import CajaAlert from "../components/caja/CajaAlert";
 import CajaAperturaCard from "../components/caja/CajaAperturaCard";
 import CajaResumenCards from "../components/caja/CajaResumenCards";
@@ -38,6 +38,7 @@ export default function CajaPage() {
     nota: "",
   });
   const [confirmConfig, setConfirmConfig] = useState(null);
+  const isMobile = useBreakpoint();
 
   function pedirConfirmacion(config) {
     return new Promise((resolve) => {
@@ -59,43 +60,44 @@ export default function CajaPage() {
     cargarCaja();
   }, []);
 
-async function cargarCaja() {
-  try {
-    setLoading(true);
-    setError("");
-    setMensaje("");
-
-    const cajaAbierta = await obtenerCajaAbierta(ID_SUCURSAL);
-    const detalleCaja = await obtenerCajaDetalle(cajaAbierta.caja.id);
-
-    setDetalle(detalleCaja);
-    setMontoReal(String(detalleCaja.efectivo_teorico ?? ""));
-  } catch (err) {
-    const msg = String(err?.message || "");
-
-    if (
-      msg.toLowerCase().includes("no hay caja abierta") ||
-      msg.toLowerCase().includes("404")
-    ) {
-      setDetalle(null);
+  async function cargarCaja() {
+    try {
+      setLoading(true);
       setError("");
-      return;
+      setMensaje("");
+
+      const cajaAbierta = await obtenerCajaAbierta(ID_SUCURSAL);
+      const detalleCaja = await obtenerCajaDetalle(cajaAbierta.caja.id);
+
+      setDetalle(detalleCaja);
+      setMontoReal(String(detalleCaja.efectivo_teorico ?? ""));
+    } catch (err) {
+      const msg = String(err?.message || "");
+
+      if (
+        msg.toLowerCase().includes("no hay caja abierta") ||
+        msg.toLowerCase().includes("404")
+      ) {
+        setDetalle(null);
+        setError("");
+        return;
+      }
+
+      setDetalle(null);
+
+      if (msg.toLowerCase().includes("failed to fetch")) {
+        setError(
+          "No se pudo conectar con el servidor. Revisá que el backend esté encendido."
+        );
+        return;
+      }
+
+      setError(msg || "No se pudo cargar la caja");
+    } finally {
+      setLoading(false);
     }
-
-    setDetalle(null);
-
-    if (msg.toLowerCase().includes("failed to fetch")) {
-      setError(
-        "No se pudo conectar con el servidor. Revisá que el backend esté encendido."
-      );
-      return;
-    }
-
-    setError(msg || "No se pudo cargar la caja");
-  } finally {
-    setLoading(false);
   }
-}
+
   async function handleAbrirCaja(e) {
     e.preventDefault();
     setError("");
@@ -150,18 +152,14 @@ async function cargarCaja() {
     }
 
     const confirmado = await pedirConfirmacion({
-    title: "Registrar egreso",
-    message: `Vas a registrar un EGRESO de ${formatCurrency(monto)}.
+      title: "Registrar egreso",
+      message: `Vas a registrar un EGRESO de ${formatCurrency(monto)}.\n\nMotivo: ${nota}\n\nEsta operación impacta en caja. ¿Confirmás?`,
+      confirmText: "Registrar egreso",
+      cancelText: "Cancelar",
+      variant: "danger",
+    });
 
-  Motivo: ${nota}
-
-  Esta operación impacta en caja. ¿Confirmás?`,
-    confirmText: "Registrar egreso",
-    cancelText: "Cancelar",
-    variant: "danger",
-  });
-
-  if (!confirmado) return;
+    if (!confirmado) return;
 
     try {
       setProcesando(true);
@@ -206,18 +204,14 @@ async function cargarCaja() {
 
     const direccionTexto = ajuste.direccion === "positivo" ? "POSITIVO" : "NEGATIVO";
     const confirmado = await pedirConfirmacion({
-    title: "Registrar ajuste de caja",
-    message: `Vas a registrar un AJUSTE ${direccionTexto} de ${formatCurrency(monto)}.
+      title: "Registrar ajuste de caja",
+      message: `Vas a registrar un AJUSTE ${direccionTexto} de ${formatCurrency(monto)}.\n\nMotivo: ${nota}\n\nLos ajustes deben usarse solo para corregir diferencias reales de caja. ¿Confirmás?`,
+      confirmText: "Registrar ajuste",
+      cancelText: "Cancelar",
+      variant: "warning",
+    });
 
-  Motivo: ${nota}
-
-  Los ajustes deben usarse solo para corregir diferencias reales de caja. ¿Confirmás?`,
-    confirmText: "Registrar ajuste",
-    cancelText: "Cancelar",
-    variant: "warning",
-  });
-
-  if (!confirmado) return;
+    if (!confirmado) return;
 
     try {
       setProcesando(true);
@@ -261,19 +255,14 @@ async function cargarCaja() {
     }
 
     const confirmado = await pedirConfirmacion({
-    title: "Cerrar caja",
-    message: `¿Seguro que querés cerrar la caja?
+      title: "Cerrar caja",
+      message: `¿Seguro que querés cerrar la caja?\n\nEfectivo teórico: ${formatCurrency(detalle.efectivo_teorico)}\nEfectivo contado: ${formatCurrency(cierreReal)}\n\nDespués del cierre no deberías registrar más movimientos en esta caja.`,
+      confirmText: "Cerrar caja",
+      cancelText: "Cancelar",
+      variant: "danger",
+    });
 
-  Efectivo teórico: ${formatCurrency(detalle.efectivo_teorico)}
-  Efectivo contado: ${formatCurrency(cierreReal)}
-
-  Después del cierre no deberías registrar más movimientos en esta caja.`,
-    confirmText: "Cerrar caja",
-    cancelText: "Cancelar",
-    variant: "danger",
-  });
-
-  if (!confirmado) return;
+    if (!confirmado) return;
 
     try {
       setProcesando(true);
@@ -325,7 +314,7 @@ async function cargarCaja() {
   }
 
   return (
-    <div>
+    <div style={isMobile ? styles.pageMobile : undefined}>
       <PageHeader
         title="Caja"
         subtitle="Control de apertura, movimientos y cierre de caja"
@@ -353,7 +342,7 @@ async function cargarCaja() {
 
           <CajaTotalesSubmedio totales={totales} formatCurrency={formatCurrency} />
 
-          <div style={styles.operacionesGrid}>
+          <div style={{ ...styles.operacionesGrid, ...(isMobile ? styles.operacionesGridMobile : {}) }}>
             <CajaEgresoCard
               egreso={egreso}
               setEgreso={setEgreso}
@@ -385,10 +374,9 @@ async function cargarCaja() {
             movimientos={detalle.movimientos ?? []}
             formatCurrency={formatCurrency}
           />
-          
         </>
-          
       )}
+
       <ConfirmModal
         open={Boolean(confirmConfig)}
         title={confirmConfig?.title}
@@ -404,10 +392,18 @@ async function cargarCaja() {
 }
 
 const styles = {
+  pageMobile: {
+    padding: "0 0 12px",
+    overflowX: "hidden",
+  },
   operacionesGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
     gap: "16px",
     marginBottom: "16px",
+  },
+  operacionesGridMobile: {
+    gridTemplateColumns: "1fr",
+    gap: "12px",
   },
 };

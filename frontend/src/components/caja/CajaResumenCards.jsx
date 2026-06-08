@@ -1,8 +1,10 @@
-import { MetricCard } from "../ui";
+import { MetricCard, useBreakpoint } from "../ui";
 
 export default function CajaResumenCards({ detalle, formatCurrency }) {
+  const isMobile = useBreakpoint();
+
   return (
-    <div style={styles.grid}>
+    <div style={{ ...styles.grid, ...(isMobile ? styles.gridMobile : {}) }}>
       <MetricCard label="Estado" value={detalle.caja.estado} />
       <MetricCard label="Fecha" value={detalle.caja.fecha} />
       <MetricCard
@@ -26,5 +28,9 @@ const styles = {
     gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
     gap: "12px",
     marginBottom: "16px",
+  },
+  gridMobile: {
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: "10px",
   },
 };

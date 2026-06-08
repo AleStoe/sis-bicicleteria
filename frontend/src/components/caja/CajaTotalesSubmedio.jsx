@@ -1,8 +1,10 @@
-import { MetricCard } from "../ui";
+import { MetricCard, useBreakpoint } from "../ui";
 
 export default function CajaTotalesSubmedio({ totales, formatCurrency }) {
+  const isMobile = useBreakpoint();
+
   return (
-    <div style={styles.grid}>
+    <div style={{ ...styles.grid, ...(isMobile ? styles.gridMobile : {}) }}>
       <MetricCard
         label="Neto de movimientos en efectivo"
         value={formatCurrency(totales.efectivo)}
@@ -27,5 +29,9 @@ const styles = {
     gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
     gap: "12px",
     marginBottom: "16px",
+  },
+  gridMobile: {
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: "10px",
   },
 };
