@@ -12,6 +12,8 @@ import DeudaPagoPanel from "../components/deudas/detalle/DeudaPagoPanel";
 import DeudaMovimientosTable from "../components/deudas/detalle/DeudaMovimientosTable";
 import DeudaOrigenPanel from "../components/deudas/detalle/DeudaOrigenPanel";
 
+const MOBILE_BREAKPOINT = 760;
+
 const PAGO_FORM_INICIAL = {
   monto_base: "",
   medio_pago: "efectivo",
@@ -19,6 +21,27 @@ const PAGO_FORM_INICIAL = {
   entidad: "",
   nota: "",
 };
+
+function useIsMobile(breakpoint = MOBILE_BREAKPOINT) {
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia(`(max-width: ${breakpoint}px)`).matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const mq = window.matchMedia(`(max-width: ${breakpoint}px)`);
+    const onChange = (event) => setIsMobile(event.matches);
+
+    setIsMobile(mq.matches);
+    mq.addEventListener("change", onChange);
+
+    return () => mq.removeEventListener("change", onChange);
+  }, [breakpoint]);
+
+  return isMobile;
+}
 
 function normalizarMonto(value) {
   if (value === undefined || value === null || String(value).trim() === "") {
@@ -55,6 +78,7 @@ function buildPagoPayload(pagoForm) {
 
 export default function DeudaDetallePage() {
   const { deudaId } = useParams();
+  const isMobile = useIsMobile();
 
   const [detalle, setDetalle] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -188,13 +212,13 @@ export default function DeudaDetallePage() {
   const movimientos = detalle.movimientos || [];
 
   return (
-    <div style={pageStyle}>
+    <div style={{ ...pageStyle, ...(isMobile ? pageMobileStyle : {}) }}>
       <DeudaHeader deuda={deuda} onRefresh={cargarDetalle} />
 
       {mensaje && <div style={successStyle}>{mensaje}</div>}
       {error && <div style={alertStyle}>Error: {error}</div>}
 
-      <section style={gridStyle}>
+      <section style={isMobile ? gridMobileStyle : gridStyle}>
         <DeudaResumenPanel deuda={deuda} />
 
         <DeudaPagoPanel
@@ -211,7 +235,9 @@ export default function DeudaDetallePage() {
 
       <DeudaOrigenPanel origen={detalle.origen} />
 
-      <DeudaMovimientosTable movimientos={movimientos} />
+      <div style={isMobile ? movimientosMobileWrapStyle : undefined}>
+        <DeudaMovimientosTable movimientos={movimientos} />
+      </div>
     </div>
   );
 }
@@ -221,11 +247,28 @@ const pageStyle = {
   gap: "16px",
 };
 
+const pageMobileStyle = {
+  gap: "12px",
+  overflowX: "hidden",
+};
+
 const gridStyle = {
   display: "grid",
   gridTemplateColumns: "minmax(360px, 1.4fr) minmax(320px, 0.8fr)",
   gap: "16px",
   alignItems: "start",
+};
+
+const gridMobileStyle = {
+  display: "grid",
+  gridTemplateColumns: "1fr",
+  gap: "12px",
+  alignItems: "start",
+};
+
+const movimientosMobileWrapStyle = {
+  minWidth: 0,
+  overflowX: "auto",
 };
 
 const alertStyle = {
