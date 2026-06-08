@@ -18,6 +18,30 @@ import { PromptModal } from "../components/ui/PromptModal";
 const ID_USUARIO = 1;
 const ID_SUCURSAL_DEFAULT = 1;
 
+const MOBILE_BREAKPOINT = 760;
+
+function useIsMobile(breakpoint = MOBILE_BREAKPOINT) {
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia(`(max-width: ${breakpoint}px)`).matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const mq = window.matchMedia(`(max-width: ${breakpoint}px)`);
+    const onChange = (event) => setIsMobile(event.matches);
+
+    setIsMobile(mq.matches);
+    mq.addEventListener("change", onChange);
+
+    return () => mq.removeEventListener("change", onChange);
+  }, [breakpoint]);
+
+  return isMobile;
+}
+
+
 const FORM_GASTO_INICIAL = {
   descripcion: "",
   monto: "",
@@ -79,6 +103,7 @@ export default function GastosPage() {
   const [confirmConfig, setConfirmConfig] = useState(null);
   const [promptConfig, setPromptConfig] = useState(null);
   const [mostrarCategoriasInactivas, setMostrarCategoriasInactivas] = useState(false);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     cargarCategorias();
@@ -446,17 +471,17 @@ export default function GastosPage() {
   const gastoActivoSeleccionado = gastoSeleccionado && gastoSeleccionado.estado !== "anulado";
 
   return (
-    <div style={styles.page}>
-      <header style={styles.hero}>
+    <div style={{ ...styles.page, ...(isMobile ? styles.pageMobile : {}) }}>
+      <header style={{ ...styles.hero, ...(isMobile ? styles.heroMobile : {}) }}>
         <div>
           <p style={styles.kicker}>Finanzas</p>
-          <h1 style={styles.title}>Gastos operativos</h1>
-          <p style={styles.subtitle}>
+          <h1 style={{ ...styles.title, ...(isMobile ? styles.titleMobile : {}) }}>Gastos operativos</h1>
+          <p style={{ ...styles.subtitle, ...(isMobile ? styles.subtitleMobile : {}) }}>
             Registrá gastos reales del negocio sin mezclarlos con retiros, préstamos o distribución de ganancias.
           </p>
         </div>
 
-        <button type="button" onClick={cargarTodo} disabled={cargando} style={styles.secondaryHeroButton}>
+        <button type="button" onClick={cargarTodo} disabled={cargando} style={{ ...styles.secondaryHeroButton, ...(isMobile ? styles.heroButtonMobile : {}) }}>
           {cargando ? "Cargando..." : "↻ Actualizar"}
         </button>
       </header>
@@ -464,16 +489,16 @@ export default function GastosPage() {
       {mensaje && <div style={styles.success}>{mensaje}</div>}
       {error && <div style={styles.error}>Error: {error}</div>}
 
-      <section style={styles.summaryGrid}>
+      <section style={{ ...styles.summaryGrid, ...(isMobile ? styles.summaryGridMobile : {}) }}>
         <SummaryCard label="Gastos activos" value={formatMoney(resumen?.total_activos || 0)} sub={`${resumen?.cantidad_activos || 0} registro(s)`} />
         <SummaryCard label="Gastos anulados" value={formatMoney(resumen?.total_anulados || 0)} sub={`${resumen?.cantidad_anulados || 0} registro(s)`} />
         <SummaryCard label="Total filtrado" value={formatMoney(resumen?.total || 0)} sub={`${resumen?.cantidad || 0} registro(s)`} />
         <SummaryCard label="Vista actual" value={String(gastos.length)} sub="gastos en tabla" />
       </section>
 
-      <main style={styles.layout}>
-        <section style={styles.leftColumn}>
-          <div style={styles.card}>
+      <main style={{ ...styles.layout, ...(isMobile ? styles.layoutMobile : {}) }}>
+        <section style={{ ...styles.leftColumn, ...(isMobile ? styles.leftColumnMobile : {}) }}>
+          <div style={{ ...styles.card, ...(isMobile ? styles.cardMobile : {}) }}>
             <div style={styles.sectionHeader}>
               <div>
                 <p style={styles.eyebrow}>Alta</p>
@@ -497,7 +522,7 @@ export default function GastosPage() {
                 />
               </label>
 
-              <div style={styles.formRow}>
+              <div style={{ ...styles.formRow, ...(isMobile ? styles.formRowMobile : {}) }}>
                 <label style={styles.field}>
                   <span style={styles.label}>Monto *</span>
                   <input
@@ -539,7 +564,7 @@ export default function GastosPage() {
                 </select>
               </label>
 
-              <div style={styles.formRow}>
+              <div style={{ ...styles.formRow, ...(isMobile ? styles.formRowMobile : {}) }}>
                 <label style={styles.field}>
                   <span style={styles.label}>Fecha</span>
                   <input
@@ -596,7 +621,7 @@ export default function GastosPage() {
             </form>
           </div>
 
-          <div style={styles.card}>
+          <div style={{ ...styles.card, ...(isMobile ? styles.cardMobile : {}) }}>
             <div style={styles.sectionHeader}>
               <div>
                 <p style={styles.eyebrow}>Categorías</p>
@@ -649,12 +674,12 @@ export default function GastosPage() {
 
             <div style={styles.categoryList}>
               {categorias.map((categoria) => (
-                <div key={categoria.id} style={styles.categoryItem}>
+                <div key={categoria.id} style={{ ...styles.categoryItem, ...(isMobile ? styles.categoryItemMobile : {}) }}>
                   <div>
                     <strong>{categoria.nombre}</strong>
                     <div style={styles.tdMutedText}>#{categoria.id}</div>
                   </div>
-                  <div style={styles.categoryActions}>
+                  <div style={{ ...styles.categoryActions, ...(isMobile ? styles.categoryActionsMobile : {}) }}>
                     <span style={{ ...styles.badge, ...(categoria.activa ? styles.badgeOk : styles.badgeOff) }}>
                       {categoria.activa ? "Activa" : "Inactiva"}
                     </span>
@@ -679,7 +704,7 @@ export default function GastosPage() {
           </div>
         </section>
 
-        <section style={styles.cardNoPadding}>
+        <section style={{ ...styles.cardNoPadding, ...(isMobile ? styles.cardNoPaddingMobile : {}) }}>
           <div style={styles.tableHeader}>
             <div>
               <p style={styles.eyebrow}>Listado</p>
@@ -688,7 +713,7 @@ export default function GastosPage() {
             </div>
           </div>
 
-          <form onSubmit={aplicarFiltros} style={styles.filters}>
+          <form onSubmit={aplicarFiltros} style={{ ...styles.filters, ...(isMobile ? styles.filtersMobile : {}) }}>
             <input
               value={filtros.q}
               onChange={(e) => actualizarFiltro("q", e.target.value)}
@@ -753,8 +778,8 @@ export default function GastosPage() {
             </button>
           </form>
 
-          <div style={styles.contentGrid}>
-            <div style={styles.tableWrapper}>
+          <div style={{ ...styles.contentGrid, ...(isMobile ? styles.contentGridMobile : {}) }}>
+            <div style={{ ...styles.tableWrapper, ...(isMobile ? styles.tableWrapperMobile : {}) }}>
               <table style={styles.table}>
                 <thead>
                   <tr>
@@ -822,7 +847,7 @@ export default function GastosPage() {
               </table>
             </div>
 
-            <aside style={styles.detailPanel}>
+            <aside style={{ ...styles.detailPanel, ...(isMobile ? styles.detailPanelMobile : {}) }}>
               <p style={styles.eyebrow}>Detalle</p>
               {gastoSeleccionado ? (
                 <>
@@ -997,4 +1022,22 @@ const styles = {
   movementsTitle: { margin: 0, fontSize: 16 },
   movementItem: { display: "flex", justifyContent: "space-between", gap: 10, padding: "12px 0", borderBottom: "1px solid #e2e8f0" },
   movementAmount: { fontWeight: 1000, whiteSpace: "nowrap" },
+  pageMobile: { padding: 10, overflowX: "hidden" },
+  heroMobile: { display: "grid", gridTemplateColumns: "1fr", alignItems: "start", padding: 16, borderRadius: 18 },
+  titleMobile: { fontSize: 26, lineHeight: 1.1 },
+  subtitleMobile: { fontSize: 13, lineHeight: 1.35 },
+  heroButtonMobile: { width: "100%", textAlign: "center" },
+  summaryGridMobile: { gridTemplateColumns: "1fr 1fr", gap: 8 },
+  layoutMobile: { gridTemplateColumns: "1fr", gap: 12 },
+  leftColumnMobile: { gap: 12 },
+  cardMobile: { padding: 14, borderRadius: 18 },
+  cardNoPaddingMobile: { borderRadius: 18 },
+  formRowMobile: { gridTemplateColumns: "1fr", gap: 10 },
+  categoryItemMobile: { display: "grid", gridTemplateColumns: "1fr", alignItems: "stretch" },
+  categoryActionsMobile: { justifyContent: "flex-start" },
+  filtersMobile: { gridTemplateColumns: "1fr", gap: 9, padding: 12 },
+  contentGridMobile: { gridTemplateColumns: "1fr" },
+  tableWrapperMobile: { overflowX: "auto", WebkitOverflowScrolling: "touch" },
+  detailPanelMobile: { borderLeft: "none", borderTop: "1px solid #e2e8f0" },
+
 };
