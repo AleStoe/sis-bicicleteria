@@ -19,6 +19,7 @@ from app.modules.servicios_taller.routes import router as servicios_taller_route
 from app.modules.capital_retiros.routes import router as capital_retiros_router
 from app.modules.rentabilidad.routes import router as rentabilidad_router
 from app.modules.dashboard.routes import router as dashboard_router
+from app.modules.usuarios.routes import router as usuarios_router
 
 router = APIRouter()
 
@@ -42,3 +43,4 @@ router.include_router(servicios_taller_router,prefix="/servicios_taller",tags=["
 router.include_router(capital_retiros_router, prefix="/capital-retiros", tags=["Capital y Retiros"],)
 router.include_router(rentabilidad_router, prefix="/rentabilidad", tags=["Rentabilidad"],)
 router.include_router(dashboard_router, prefix="/dashboard", tags=["Dashboard"])
+router.include_router(usuarios_router, prefix="/usuarios", tags=["Usuarios"])
