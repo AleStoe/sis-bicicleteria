@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { listarClientes, listarBicicletasCliente, crearBicicletaCliente } from "../services/clientesService";
 import { crearOrdenTaller } from "../services/tallerService";
+import { useBreakpoint } from "../components/ui";
 
 export default function TallerNuevaOrdenPage() {
   const navigate = useNavigate();
@@ -16,6 +17,7 @@ export default function TallerNuevaOrdenPage() {
   const [error, setError] = useState("");
   const [mostrarNuevaBici, setMostrarNuevaBici] = useState(false);
   const [nuevaBici, setNuevaBici] = useState({ marca: "", modelo: "", rodado: "", color: "", numero_cuadro: "", notas: "" });
+  const isMobile = useBreakpoint();
 
   useEffect(() => {
     cargarClientes();
@@ -150,21 +152,21 @@ export default function TallerNuevaOrdenPage() {
   if (loading) return <div style={styles.state}>Cargando nueva orden...</div>;
 
   return (
-    <div style={styles.page}>
-      <header style={styles.hero}>
+    <div style={{ ...styles.page, ...(isMobile ? styles.pageMobile : {}) }}>
+      <header style={{ ...styles.hero, ...(isMobile ? styles.heroMobile : {}) }}>
         <div>
           <p style={styles.kicker}>Taller / ingreso</p>
-          <h1 style={styles.title}>Nueva orden de taller</h1>
-          <p style={styles.subtitle}>Cliente real, bicicleta identificada y problema claro antes de presupuestar.</p>
+          <h1 style={{ ...styles.title, ...(isMobile ? styles.titleMobile : {}) }}>Nueva orden de taller</h1>
+          <p style={{ ...styles.subtitle, ...(isMobile ? styles.subtitleMobile : {}) }}>Cliente real, bicicleta identificada y problema claro antes de presupuestar.</p>
         </div>
 
-        <Link to="/taller" style={styles.secondaryHeroButton}>← Volver</Link>
+        <Link to="/taller" style={{ ...styles.secondaryHeroButton, ...(isMobile ? styles.heroButtonMobile : {}) }}>← Volver</Link>
       </header>
 
       {error && <div style={styles.error}>Error: {error}</div>}
 
-      <main style={styles.layout}>
-        <section style={styles.card}>
+      <main style={{ ...styles.layout, ...(isMobile ? styles.layoutMobile : {}) }}>
+        <section style={{ ...styles.card, ...(isMobile ? styles.cardMobile : {}) }}>
           <div style={styles.sectionHeader}>
             <div>
               <p style={styles.eyebrow}>Paso 1</p>
@@ -205,7 +207,7 @@ export default function TallerNuevaOrdenPage() {
               )}
             </div>
 
-            <button type="button" onClick={() => setMostrarNuevaBici((v) => !v)} style={styles.secondaryButton}>
+            <button type="button" onClick={() => setMostrarNuevaBici((v) => !v)} style={{ ...styles.secondaryButton, ...(isMobile ? styles.buttonMobile : {}) }}>
               {mostrarNuevaBici ? "Ocultar carga de bicicleta" : "＋ Cargar bicicleta del cliente"}
             </button>
 
@@ -220,14 +222,14 @@ export default function TallerNuevaOrdenPage() {
               />
             </label>
 
-            <button type="submit" disabled={guardando} style={styles.primaryButton}>
+            <button type="submit" disabled={guardando} style={{ ...styles.primaryButton, ...(isMobile ? styles.buttonMobile : {}) }}>
               {guardando ? "Creando..." : "Crear orden de taller"}
             </button>
           </form>
         </section>
 
-        <aside style={styles.sidePanel}>
-          <section style={styles.sideCard}>
+        <aside style={{ ...styles.sidePanel, ...(isMobile ? styles.sidePanelMobile : {}) }}>
+          <section style={{ ...styles.sideCard, ...(isMobile ? styles.sideCardMobile : {}) }}>
             <h2 style={styles.sideTitle}>Resumen de ingreso</h2>
             <Info label="Cliente" value={clienteSeleccionado?.nombre || "-"} />
             <Info label="Teléfono" value={clienteSeleccionado?.telefono || "-"} />
@@ -239,7 +241,7 @@ export default function TallerNuevaOrdenPage() {
       </main>
 
       {mostrarNuevaBici && (
-        <section style={styles.card}>
+        <section style={{ ...styles.card, ...(isMobile ? styles.cardMobile : {}) }}>
           <div style={styles.sectionHeader}>
             <div>
               <p style={styles.eyebrow}>Paso auxiliar</p>
@@ -248,14 +250,14 @@ export default function TallerNuevaOrdenPage() {
             </div>
           </div>
 
-          <form onSubmit={guardarBicicleta} style={styles.bikeGrid}>
+          <form onSubmit={guardarBicicleta} style={{ ...styles.bikeGrid, ...(isMobile ? styles.bikeGridMobile : {}) }}>
             <Input label="Marca" value={nuevaBici.marca} onChange={(v) => cambiarNuevaBici("marca", v)} required />
             <Input label="Modelo" value={nuevaBici.modelo} onChange={(v) => cambiarNuevaBici("modelo", v)} required />
             <Input label="Rodado" value={nuevaBici.rodado} onChange={(v) => cambiarNuevaBici("rodado", v)} />
             <Input label="Color" value={nuevaBici.color} onChange={(v) => cambiarNuevaBici("color", v)} />
             <Input label="Número de cuadro" value={nuevaBici.numero_cuadro} onChange={(v) => cambiarNuevaBici("numero_cuadro", v)} />
             <Input label="Notas" value={nuevaBici.notas} onChange={(v) => cambiarNuevaBici("notas", v)} />
-            <button type="submit" disabled={guardando} style={{ ...styles.primaryButton, gridColumn: "1 / -1", width: "fit-content" }}>
+            <button type="submit" disabled={guardando} style={{ ...styles.primaryButton, gridColumn: "1 / -1", width: isMobile ? "100%" : "fit-content" }}>
               {guardando ? "Guardando..." : "Guardar bicicleta"}
             </button>
           </form>
@@ -266,8 +268,9 @@ export default function TallerNuevaOrdenPage() {
 }
 
 function Input({ label, value, onChange, required = false }) {
+  const isMobile = useBreakpoint();
   return (
-    <label style={styles.field}>
+    <label style={{ ...styles.field, ...(isMobile ? styles.fieldMobile : {}) }}>
       <span style={styles.label}>{label}{required ? " *" : ""}</span>
       <input value={value} onChange={(e) => onChange(e.target.value)} style={styles.input} />
     </label>
@@ -275,8 +278,9 @@ function Input({ label, value, onChange, required = false }) {
 }
 
 function Info({ label, value }) {
+  const isMobile = useBreakpoint();
   return (
-    <div style={styles.infoBox}>
+    <div style={{ ...styles.infoBox, ...(isMobile ? styles.infoBoxMobile : {}) }}>
       <span>{label}</span>
       <strong>{value || "-"}</strong>
     </div>
@@ -322,4 +326,17 @@ const styles = {
   note: { marginTop: 4, background: "rgba(249,115,22,.14)", border: "1px solid rgba(251,146,60,.32)", color: "#fed7aa", borderRadius: 16, padding: 14, fontWeight: 800 },
   bikeGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 14 },
   state: { padding: 24, fontWeight: 900 },
+  pageMobile: { padding: 10, overflowX: "hidden" },
+  heroMobile: { display: "grid", gridTemplateColumns: "1fr", gap: 14, padding: 18, borderRadius: 22, marginBottom: 12 },
+  titleMobile: { fontSize: 27, lineHeight: 1.08 },
+  subtitleMobile: { fontSize: 14, lineHeight: 1.35 },
+  heroButtonMobile: { display: "block", width: "100%", textAlign: "center", boxSizing: "border-box" },
+  layoutMobile: { gridTemplateColumns: "1fr", gap: 12 },
+  cardMobile: { padding: 14, borderRadius: 18, marginBottom: 12 },
+  buttonMobile: { width: "100%", textAlign: "center" },
+  sidePanelMobile: { position: "static" },
+  sideCardMobile: { borderRadius: 18, padding: 14 },
+  bikeGridMobile: { gridTemplateColumns: "1fr", gap: 10 },
+  fieldMobile: { minWidth: 0 },
+  infoBoxMobile: { padding: 10, borderRadius: 12 },
 };

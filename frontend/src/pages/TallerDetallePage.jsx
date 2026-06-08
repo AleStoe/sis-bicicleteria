@@ -13,40 +13,54 @@ import {
   generarVentaDesdeOrdenTaller,
   getPresupuestoTallerUrl,
 } from "../services/tallerService";
-import { formatDate, formatMoney, formatNumber } from "../utils/formatters";
+import { formatDate, formatMoney } from "../utils/formatters";
 import { EstadoBadge } from "./TallerListPage";
 import { PromptModal } from "../components/ui/PromptModal";
-import ProductImage from "../components/catalogo/ProductImage";
+import {
+  Info,
+  ItemCard,
+  Metric,
+  OperadorPanel,
+  ServicioTallerOption,
+  TallerItemOption,
+} from "../components/taller/detalle/TallerDetalleWidgets";
+import { ESTADOS, TRANSICIONES_UI } from "../components/taller/detalle/tallerDetalleConstants";
+import { styles } from "../components/taller/detalle/tallerDetalleStyles";
+import {
+  descripcionBicicletaOrden,
+  esItemPermitidoParaTaller,
+  humanizarEvento,
+  labelEstado,
+  nombreClienteOrden,
+  normalizarTexto,
+  prioridadTipoTaller,
+} from "../components/taller/detalle/tallerDetalleUtils";
 
-const ESTADOS = [
-  "ingresada",
-  "presupuestada",
-  "esperando_aprobacion",
-  "esperando_repuestos",
-  "en_reparacion",
-  "terminada",
-  "facturada",
-  "lista_para_retirar",
-  "retirada",
-  "cancelada",
-];
+function useIsMobile(breakpoint = 760) {
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia(`(max-width: ${breakpoint}px)`).matches;
+  });
 
-const TRANSICIONES_UI = {
-  ingresada: ["presupuestada", "cancelada"],
-  presupuestada: ["esperando_aprobacion", "en_reparacion", "cancelada"],
-  esperando_aprobacion: ["en_reparacion", "cancelada"],
-  esperando_repuestos: ["en_reparacion", "cancelada"],
-  en_reparacion: ["esperando_repuestos", "terminada", "cancelada"],
-  terminada: [],
-  facturada: ["lista_para_retirar"],
-  lista_para_retirar: ["retirada"],
-  retirada: [],
-  cancelada: [],
-};
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mediaQuery = window.matchMedia(`(max-width: ${breakpoint}px)`);
+    const handleChange = (event) => setIsMobile(event.matches);
+
+    setIsMobile(mediaQuery.matches);
+    mediaQuery.addEventListener("change", handleChange);
+
+    return () => mediaQuery.removeEventListener("change", handleChange);
+  }, [breakpoint]);
+
+  return isMobile;
+}
 
 export default function TallerDetallePage() {
   const { ordenId } = useParams();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const [orden, setOrden] = useState(null);
   const [variantes, setVariantes] = useState([]);
   const [serviciosTaller, setServiciosTaller] = useState([]);
@@ -527,8 +541,8 @@ export default function TallerDetallePage() {
   if (!orden) return <div style={styles.state}>No se encontró la orden.</div>;
 
   return (
-    <div style={styles.page}>
-      <header style={styles.hero}>
+    <div style={{ ...styles.page, ...(isMobile ? styles.pageMobile : {}) }}>
+      <header style={{ ...styles.hero, ...(isMobile ? styles.heroMobile : {}) }}>
         <div>
           <p style={styles.kicker}>Orden de taller</p>
           <h1 style={styles.title}>Orden #{orden.id}</h1>
@@ -537,7 +551,7 @@ export default function TallerDetallePage() {
           </p>
         </div>
 
-        <div style={styles.heroActions}>
+        <div style={{ ...styles.heroActions, ...(isMobile ? styles.heroActionsMobile : {}) }}>
           <button type="button" onClick={cargarTodo} style={styles.secondaryHeroButton}>↻ Refrescar</button>
           <Link to="/taller" style={styles.secondaryHeroButton}>← Volver</Link>
         </div>
@@ -546,7 +560,7 @@ export default function TallerDetallePage() {
       {mensaje && <div style={styles.success}>{mensaje}</div>}
       {error && <div style={styles.error}>Error: {error}</div>}
 
-      <section style={styles.metricsGrid}>
+      <section style={{ ...styles.metricsGrid, ...(isMobile ? styles.metricsGridMobile : {}) }}>
         <Metric label="Estado" value={<EstadoBadge estado={orden.estado} />} tone="dark" />
         <Metric label="Total" value={formatMoney(orden.total_final)} tone="orange" />
         <Metric label="Saldo pendiente" value={formatMoney(orden.saldo_pendiente)} tone={Number(orden.saldo_pendiente || 0) > 0 ? "warning" : "ok"} />
@@ -556,8 +570,8 @@ export default function TallerDetallePage() {
         <Metric label="Pendientes" value={resumen.presupuestados + resumen.aprobados} tone="info" />
       </section>
 
-      <main style={styles.layout}>
-        <section style={styles.mainColumn}>
+      <main style={{ ...styles.layout, ...(isMobile ? styles.layoutMobile : {}) }}>
+        <section style={{ ...styles.mainColumn, ...(isMobile ? styles.mainColumnMobile : {}) }}>
           <section style={styles.card}>
             <div style={styles.sectionHeader}>
               <div>
@@ -578,7 +592,7 @@ export default function TallerDetallePage() {
             </div>
 
             <form onSubmit={agregarItem} style={styles.itemComposer}>
-              <div style={styles.tipoSelector}>
+              <div style={{ ...styles.tipoSelector, ...(isMobile ? styles.tipoSelectorMobile : {}) }}>
                 <button
                   type="button"
                   onClick={() => cambiarTipoItem("repuesto")}
@@ -691,7 +705,7 @@ export default function TallerDetallePage() {
                 </div>
               )}
 
-              <div style={styles.itemFormRow}>
+              <div style={{ ...styles.itemFormRow, ...(isMobile ? styles.itemFormRowMobile : {}) }}>
                 {itemForm.tipo_item === "servicio" && !itemForm.id_servicio_taller && (
                   <div style={styles.error}>
                     Primero elegí un servicio en “Servicio seleccionado”.
@@ -778,8 +792,9 @@ export default function TallerDetallePage() {
           </section>
         </section>
 
-        <aside style={styles.sidePanel}>
+        <aside style={{ ...styles.sidePanel, ...(isMobile ? styles.sidePanelMobile : {}) }}>
           <OperadorPanel
+            compact={isMobile}
             orden={orden}
             resumen={resumen}
             guardando={guardando}
@@ -901,658 +916,4 @@ export default function TallerDetallePage() {
       />
     </div>
   );
-}
-
-function OperadorPanel({
-  orden,
-  resumen,
-  guardando,
-  puedeTerminarTrabajo,
-  puedeGenerarVenta,
-  puedeMarcarListaParaRetirar,
-  puedeMarcarRetirada,
-  onPasarPresupuestada,
-  onPasarEnReparacion,
-  onTerminar,
-  onGenerarVenta,
-  onCobrar,
-  onListaParaRetirar,
-  onRetirada,
-}) {
-  const paso = getPasoOperativo(orden, resumen);
-  const accion = getAccionPrincipal({
-    orden,
-    resumen,
-    puedeTerminarTrabajo,
-    puedeGenerarVenta,
-    puedeMarcarListaParaRetirar,
-    puedeMarcarRetirada,
-    onPasarPresupuestada,
-    onPasarEnReparacion,
-    onTerminar,
-    onGenerarVenta,
-    onCobrar,
-    onListaParaRetirar,
-    onRetirada,
-  });
-
-  return (
-    <section style={{ ...styles.card, ...styles.operatorCard }}>
-      <div style={styles.operatorHeader}>
-        <div>
-          <p style={styles.eyebrow}>Guía del operador</p>
-          <h2 style={styles.sideTitle}>{paso.titulo}</h2>
-        </div>
-        <span style={styles.operatorStep}>{paso.numero}/6</span>
-      </div>
-
-      <p style={styles.operatorText}>{paso.descripcion}</p>
-
-      <div style={styles.operatorProgress}>
-        {[
-          ["1", "Ingreso"],
-          ["2", "Presupuesto"],
-          ["3", "Reparación"],
-          ["4", "Facturar"],
-          ["5", "Cobrar"],
-          ["6", "Retiro"],
-        ].map(([numero, label]) => (
-          <div
-            key={numero}
-            style={
-              Number(numero) <= paso.numero
-                ? styles.progressDotActive
-                : styles.progressDot
-            }
-            title={label}
-          >
-            {numero}
-          </div>
-        ))}
-      </div>
-
-      <div style={styles.checkList}>
-        <CheckLine
-          ok={resumen.activos > 0}
-          label={
-            resumen.activos > 0
-              ? `${resumen.activos} item/s activos cargados`
-              : "Cargá al menos un item activo"
-          }
-        />
-        <CheckLine
-          ok={resumen.pendientesAprobacion === 0 && resumen.activos > 0}
-          label={
-            resumen.pendientesAprobacion === 0 && resumen.activos > 0
-              ? "Todo aprobado"
-              : `${resumen.pendientesAprobacion} item/s sin aprobar`
-          }
-        />
-        <CheckLine
-          ok={resumen.pendientesEjecucion === 0 && resumen.activos > 0}
-          label={
-            resumen.pendientesEjecucion === 0 && resumen.activos > 0
-              ? "Todo ejecutado"
-              : `${resumen.pendientesEjecucion} item/s aprobados sin ejecutar`
-          }
-        />
-        <CheckLine
-          ok={Boolean(orden.id_venta_generada)}
-          label={
-            orden.id_venta_generada
-              ? `Venta #${orden.id_venta_generada} generada`
-              : "Venta pendiente de generar"
-          }
-        />
-      </div>
-
-      {accion.mensaje && (
-        <div style={accion.tipo === "warning" ? styles.operatorWarning : styles.operatorInfo}>
-          {accion.mensaje}
-        </div>
-      )}
-
-      {accion.label && (
-        <button
-          type="button"
-          onClick={accion.onClick}
-          disabled={guardando || accion.disabled}
-          style={{
-            ...styles.operatorPrimary,
-            opacity: guardando || accion.disabled ? 0.55 : 1,
-            cursor: guardando || accion.disabled ? "not-allowed" : "pointer",
-          }}
-        >
-          {accion.label}
-        </button>
-      )}
-
-      {accion.secondaryLabel && (
-        <button
-          type="button"
-          onClick={accion.secondaryOnClick}
-          disabled={guardando || accion.secondaryDisabled}
-          style={{
-            ...styles.operatorSecondary,
-            opacity: guardando || accion.secondaryDisabled ? 0.55 : 1,
-            cursor: guardando || accion.secondaryDisabled ? "not-allowed" : "pointer",
-          }}
-        >
-          {accion.secondaryLabel}
-        </button>
-      )}
-    </section>
-  );
-}
-
-function CheckLine({ ok, label }) {
-  return (
-    <div style={styles.checkLine}>
-      <span style={ok ? styles.checkOk : styles.checkPending}>
-        {ok ? "✓" : "!"}
-      </span>
-      <span>{label}</span>
-    </div>
-  );
-}
-
-function ServicioTallerOption({ servicio, selected, onSelect }) {
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      style={selected ? styles.tallerOptionSelected : styles.tallerOption}
-    >
-      <div style={styles.optionImageBox}>
-        <span style={styles.serviceIcon}>🛠</span>
-      </div>
-
-      <div style={styles.optionBody}>
-        <div style={styles.optionTop}>
-          <strong>{servicio.nombre}</strong>
-          <span style={styles.serviceBadge}>{selected ? "Seleccionado" : "Servicio"}</span>
-        </div>
-        <p>{servicio.descripcion || "Servicio de taller"}</p>
-        <div style={styles.optionMeta}>
-          {servicio.duracion_estimada_min != null && <span>{servicio.duracion_estimada_min} min</span>}
-          <span>Sin stock</span>
-        </div>
-      </div>
-
-      <strong style={styles.optionPrice}>{formatMoney(servicio.precio_sugerido)}</strong>
-    </button>
-  );
-}
-
-function TallerItemOption({ item, selected, onSelect }) {
-  const tipo = tipoTallerLabel(item);
-  const esServicio = tipo === "Servicio";
-
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      style={selected ? styles.tallerOptionSelected : styles.tallerOption}
-    >
-      <div style={styles.optionImageBox}>
-        {esServicio ? (
-          <span style={styles.serviceIcon}>🛠</span>
-        ) : (
-          <ProductImage url={item.imagen_principal} size={54} />
-        )}
-      </div>
-
-      <div style={styles.optionBody}>
-        <div style={styles.optionTop}>
-          <strong>{item.producto_nombre}</strong>
-          <span style={tipo === "Servicio" ? styles.serviceBadge : styles.partBadge}>{tipo}</span>
-        </div>
-        <p>{item.nombre_variante || "Única"}</p>
-        <div style={styles.optionMeta}>
-          {item.codigo_proveedor && <span>Prov: {item.codigo_proveedor}</span>}
-          {item.sku && <span>SKU: {item.sku}</span>}
-          {item.stock_disponible != null && !esServicio && <span>Stock: {formatNumber(item.stock_disponible)}</span>}
-        </div>
-      </div>
-
-      <strong style={styles.optionPrice}>{formatMoney(item.precio_minorista)}</strong>
-    </button>
-  );
-}
-
-function ItemCard({ item, guardando, onAprobar, onDesaprobar, onEjecutar, onRevertir, onCancelar }) {
-  return (
-    <article style={item.etapa === "cancelado" ? styles.itemCardMuted : styles.itemCard}>
-      <div style={styles.itemTop}>
-        <div>
-          <div style={styles.itemTitleLine}>
-            <span style={item.tipo_item === "servicio" ? styles.serviceBadge : styles.partBadge}>
-              {item.tipo_item === "servicio" ? "Servicio" : "Repuesto"}
-            </span>
-            <strong style={styles.itemTitle}>{item.descripcion_snapshot}</strong>
-          </div>
-          <p style={styles.muted}>#{item.id} · Cantidad {formatNumber(item.cantidad)} · {formatMoney(item.precio_unitario)} c/u</p>
-        </div>
-        <EtapaBadge etapa={item.etapa} aprobado={item.aprobado} />
-      </div>
-
-      <div style={styles.itemBottom}>
-        <strong>{formatMoney(item.subtotal)}</strong>
-        <div style={styles.itemActions}>
-          {item.etapa === "presupuestado" && (
-            <>
-              <button disabled={guardando} onClick={onAprobar} style={styles.smallPrimary}>Aprobar</button>
-              <button disabled={guardando} onClick={onCancelar} style={styles.smallDanger}>Cancelar</button>
-            </>
-          )}
-
-          {item.etapa === "agregado" && (
-            <>
-              <button disabled={guardando} onClick={onEjecutar} style={styles.smallPrimary}>Ejecutar</button>
-              <button disabled={guardando} onClick={onDesaprobar} style={styles.smallSecondary}>Desaprobar</button>
-              <button disabled={guardando} onClick={onCancelar} style={styles.smallDanger}>Cancelar</button>
-            </>
-          )}
-
-          {item.etapa === "ejecutado" && <button disabled={guardando} onClick={onRevertir} style={styles.smallSecondary}>Revertir</button>}
-          {item.etapa === "cancelado" && <span style={styles.smallMuted}>Sin acciones</span>}
-        </div>
-      </div>
-    </article>
-  );
-}
-
-function EtapaBadge({ etapa, aprobado }) {
-  const tone = etapa === "ejecutado" ? "ok" : etapa === "agregado" ? "info" : etapa === "cancelado" ? "danger" : "warning";
-  const label = etapa === "agregado" && aprobado ? "Aprobado" : labelEtapa(etapa);
-  return <span style={{ ...styles.stageBadge, ...(styles.stageTones[tone] || {}) }}>{label}</span>;
-}
-
-function Metric({ label, value, tone }) {
-  return (
-    <div style={{ ...styles.metric, ...(styles.metricTones[tone] || {}) }}>
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
-function Info({ label, value }) {
-  return (
-    <div style={styles.infoBox}>
-      <span>{label}</span>
-      <strong>{value || "-"}</strong>
-    </div>
-  );
-}
-
-function labelEstado(estado) {
-  const labels = {
-    ingresada: "Ingresada",
-    presupuestada: "Presupuestada",
-    esperando_aprobacion: "Esperando aprobación",
-    esperando_repuestos: "Esperando repuestos",
-    en_reparacion: "En reparación",
-    terminada: "Terminada",
-    facturada: "Facturada",
-    lista_para_retirar: "Lista para retirar",
-    retirada: "Retirada",
-    cancelada: "Cancelada",
-  };
-  return labels[estado] || estado;
-}
-
-function labelEtapa(etapa) {
-  const labels = { presupuestado: "Presupuestado", agregado: "Aprobado", ejecutado: "Ejecutado", cancelado: "Cancelado" };
-  return labels[etapa] || etapa;
-}
-
-function humanizarEvento(evento) {
-  return String(evento || "").replaceAll("_", " ");
-}
-
-function normalizarTexto(valor) {
-  return String(valor || "")
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-}
-
-function esBicicletaCatalogo(item) {
-  const texto = normalizarTexto([
-    item?.producto_nombre,
-    item?.nombre_variante,
-    item?.categoria_nombre,
-    item?.tipo_bicicleta,
-  ].filter(Boolean).join(" "));
-
-  return Boolean(item?.serializable) || texto.includes("bicicleta") || texto.includes("bici ");
-}
-
-function esItemPermitidoParaTaller(item) {
-  return !esBicicletaCatalogo(item);
-}
-
-function tipoTallerLabel(item) {
-  const texto = normalizarTexto([item?.categoria_nombre, item?.tipo_item, item?.producto_nombre].filter(Boolean).join(" "));
-  if (texto.includes("servicio")) return "Servicio";
-  if (texto.includes("repuesto")) return "Repuesto";
-  if (texto.includes("accesorio")) return "Accesorio";
-  return item?.tipo_item === "servicio" ? "Servicio" : "Insumo";
-}
-
-function prioridadTipoTaller(item) {
-  const tipo = tipoTallerLabel(item);
-  if (tipo === "Servicio") return 1;
-  if (tipo === "Repuesto") return 2;
-  if (tipo === "Accesorio") return 3;
-  return 4;
-}
-
-function getPasoOperativo(orden, resumen) {
-  if (!orden) {
-    return {
-      numero: 1,
-      titulo: "Cargando orden",
-      descripcion: "Esperá a que el sistema cargue la información.",
-    };
-  }
-
-  if (orden.estado === "cancelada") {
-    return {
-      numero: 1,
-      titulo: "Orden cancelada",
-      descripcion: "No hay acciones operativas disponibles para esta orden.",
-    };
-  }
-
-  if (orden.estado === "retirada") {
-    return {
-      numero: 6,
-      titulo: "Bicicleta retirada",
-      descripcion: "Circuito terminado. No deberían hacerse más cambios operativos.",
-    };
-  }
-
-  if (orden.estado === "lista_para_retirar") {
-    return {
-      numero: 6,
-      titulo: "Lista para entregar",
-      descripcion: "La venta ya fue generada. Confirmá la retirada cuando el cliente se lleve la bicicleta.",
-    };
-  }
-
-  if (orden.estado === "facturada") {
-    return {
-      numero: 5,
-      titulo: "Cobro y retiro",
-      descripcion: "La venta ya existe. Cobrá la venta y luego marcá la orden como lista para retirar.",
-    };
-  }
-
-  if (orden.estado === "terminada") {
-    return {
-      numero: 4,
-      titulo: "Trabajo terminado",
-      descripcion: "Ahora corresponde generar la venta. No marques lista para retirar antes de facturar.",
-    };
-  }
-
-  if (orden.estado === "en_reparacion") {
-    if (resumen.pendientesEjecucion > 0 || resumen.pendientesAprobacion > 0 || resumen.activos === 0) {
-      return {
-        numero: 3,
-        titulo: "Ejecutar trabajo",
-        descripcion: "Aprobá y ejecutá todos los items activos antes de marcar la orden como terminada.",
-      };
-    }
-
-    return {
-      numero: 3,
-      titulo: "Trabajo listo para terminar",
-      descripcion: "Todos los items activos están ejecutados. Ya podés marcar el trabajo como terminado.",
-    };
-  }
-
-  if (orden.estado === "presupuestada" || orden.estado === "esperando_aprobacion") {
-    return {
-      numero: 2,
-      titulo: "Presupuesto pendiente",
-      descripcion: "Revisá items, aprobaciones y pasá la orden a reparación cuando corresponda.",
-    };
-  }
-
-  return {
-    numero: 1,
-    titulo: "Ingreso de orden",
-    descripcion: "Cargá repuestos o servicios, imprimí presupuesto y pasá a presupuestada.",
-  };
-}
-
-function getAccionPrincipal({
-  orden,
-  resumen,
-  puedeTerminarTrabajo,
-  puedeGenerarVenta,
-  puedeMarcarListaParaRetirar,
-  puedeMarcarRetirada,
-  onPasarPresupuestada,
-  onPasarEnReparacion,
-  onTerminar,
-  onGenerarVenta,
-  onCobrar,
-  onListaParaRetirar,
-  onRetirada,
-}) {
-  if (!orden || orden.estado === "cancelada" || orden.estado === "retirada") {
-    return {
-      label: null,
-      mensaje: "Sin acciones principales disponibles.",
-      tipo: "info",
-    };
-  }
-
-  if (orden.estado === "ingresada") {
-    return {
-      label: "Marcar presupuestada",
-      onClick: onPasarPresupuestada,
-      disabled: resumen.activos === 0,
-      mensaje:
-        resumen.activos === 0
-          ? "Cargá al menos un repuesto o servicio antes de presupuestar."
-          : "Siguiente paso recomendado: presupuestar.",
-      tipo: resumen.activos === 0 ? "warning" : "info",
-    };
-  }
-
-  if (orden.estado === "presupuestada" || orden.estado === "esperando_aprobacion") {
-    return {
-      label: "Pasar a reparación",
-      onClick: onPasarEnReparacion,
-      disabled: resumen.activos === 0 || resumen.pendientesAprobacion > 0,
-      mensaje:
-        resumen.pendientesAprobacion > 0
-          ? "Hay items sin aprobar. Aprobá o cancelá antes de reparar."
-          : "Cuando el cliente aprueba, pasá la orden a reparación.",
-      tipo: resumen.pendientesAprobacion > 0 ? "warning" : "info",
-    };
-  }
-
-  if (orden.estado === "en_reparacion") {
-    return {
-      label: "Marcar trabajo terminado",
-      onClick: onTerminar,
-      disabled: !puedeTerminarTrabajo,
-      mensaje:
-        !puedeTerminarTrabajo
-          ? "Para terminar, todos los items activos deben estar aprobados y ejecutados."
-          : "Todo ejecutado. Ya podés marcar el trabajo como terminado.",
-      tipo: !puedeTerminarTrabajo ? "warning" : "info",
-    };
-  }
-
-  if (orden.estado === "terminada") {
-    return {
-      label: "Generar venta",
-      onClick: onGenerarVenta,
-      disabled: !puedeGenerarVenta,
-      mensaje:
-        resumen.facturables === 0
-          ? "No hay items ejecutados para facturar."
-          : "Generá la venta antes de marcar la orden como lista para retirar.",
-      tipo: resumen.facturables === 0 ? "warning" : "info",
-    };
-  }
-
-  if (orden.estado === "facturada") {
-    return {
-      label: "Cobrar venta",
-      onClick: onCobrar,
-      disabled: !orden.id_venta_generada,
-      secondaryLabel: "Marcar lista para retirar",
-      secondaryOnClick: onListaParaRetirar,
-      secondaryDisabled: !puedeMarcarListaParaRetirar,
-      mensaje:
-        "Cobrada o con deuda autorizada, marcá la bicicleta como lista para retirar.",
-      tipo: "info",
-    };
-  }
-
-  if (orden.estado === "lista_para_retirar") {
-    return {
-      label: "Marcar retirada",
-      onClick: onRetirada,
-      disabled: !puedeMarcarRetirada,
-      mensaje: "Usá este paso cuando el cliente efectivamente retire la bicicleta.",
-      tipo: "info",
-    };
-  }
-
-  return {
-    label: null,
-    mensaje: "Revisá el estado actual de la orden.",
-    tipo: "info",
-  };
-}
-
-const styles = {
-  operatorCard: { border: "1px solid #fed7aa", background: "linear-gradient(180deg, #fff7ed 0%, #ffffff 56%)" },
-  operatorHeader: { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start" },
-  operatorStep: { background: "#0f172a", color: "white", borderRadius: 999, padding: "7px 10px", fontWeight: 1000, fontSize: 12 },
-  operatorText: { margin: "8px 0 0", color: "#475569", fontWeight: 800, lineHeight: 1.45 },
-  operatorProgress: { display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6, marginTop: 14 },
-  progressDot: { height: 30, borderRadius: 999, display: "grid", placeItems: "center", background: "#f1f5f9", border: "1px solid #e2e8f0", color: "#64748b", fontWeight: 1000, fontSize: 12 },
-  progressDotActive: { height: 30, borderRadius: 999, display: "grid", placeItems: "center", background: "#f97316", border: "1px solid #fb923c", color: "white", fontWeight: 1000, fontSize: 12 },
-  checkList: { display: "grid", gap: 8, marginTop: 14 },
-  checkLine: { display: "flex", gap: 8, alignItems: "center", color: "#334155", fontWeight: 850, fontSize: 13 },
-  checkOk: { width: 22, height: 22, borderRadius: 999, display: "grid", placeItems: "center", background: "#dcfce7", color: "#166534", fontWeight: 1000 },
-  checkPending: { width: 22, height: 22, borderRadius: 999, display: "grid", placeItems: "center", background: "#fef3c7", color: "#92400e", fontWeight: 1000 },
-  operatorWarning: { background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", borderRadius: 14, padding: 12, fontWeight: 850, marginTop: 14 },
-  operatorInfo: { background: "#eff6ff", border: "1px solid #bfdbfe", color: "#1d4ed8", borderRadius: 14, padding: 12, fontWeight: 850, marginTop: 14 },
-  operatorPrimary: { width: "100%", border: "none", background: "#f97316", color: "white", borderRadius: 13, padding: "13px 16px", fontWeight: 1000, marginTop: 12, boxShadow: "0 10px 20px rgba(249,115,22,.22)" },
-  operatorSecondary: { width: "100%", border: "1px solid #fed7aa", background: "white", color: "#c2410c", borderRadius: 13, padding: "12px 16px", fontWeight: 1000, marginTop: 8 },
-  page: { minHeight: "100vh", padding: 20, background: "#f1f5f9", color: "#0f172a" },
-  hero: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, padding: 22, borderRadius: 24, background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)", color: "white", boxShadow: "0 18px 40px rgba(15,23,42,.18)", marginBottom: 16 },
-  kicker: { margin: 0, color: "#fb923c", fontSize: 12, fontWeight: 1000, textTransform: "uppercase", letterSpacing: ".08em" },
-  title: { margin: "3px 0 0", fontSize: 34, fontWeight: 1000, letterSpacing: "-.03em" },
-  subtitle: { margin: "8px 0 0", color: "#cbd5e1", fontWeight: 700 },
-  heroActions: { display: "flex", gap: 10, flexWrap: "wrap" },
-  secondaryHeroButton: { textDecoration: "none", border: "1px solid rgba(255,255,255,.22)", background: "rgba(255,255,255,.08)", color: "white", borderRadius: 14, padding: "12px 16px", fontWeight: 1000, cursor: "pointer" },
-  success: { background: "#ecfdf5", color: "#047857", border: "1px solid #86efac", borderRadius: 14, padding: 12, marginBottom: 14, fontWeight: 800 },
-  error: { background: "#fff1f0", color: "#b42318", border: "1px solid #fecdca", borderRadius: 14, padding: 12, marginBottom: 14, fontWeight: 800 },
-  metricsGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 16 },
-  metric: { background: "white", border: "1px solid #e2e8f0", borderRadius: 18, padding: 14, display: "grid", gap: 5, boxShadow: "0 10px 22px rgba(15,23,42,.06)" },
-  metricTones: { dark: { color: "#0f172a" }, ok: { color: "#047857", background: "#ecfdf5", borderColor: "#bbf7d0" }, info: { color: "#1d4ed8", background: "#eff6ff", borderColor: "#bfdbfe" }, warning: { color: "#b45309", background: "#fffbeb", borderColor: "#fde68a" }, muted: { color: "#475569", background: "#f8fafc" }, orange: { color: "#c2410c", background: "#fff7ed", borderColor: "#fed7aa" } },
-  layout: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) 360px", gap: 16, alignItems: "start" },
-  mainColumn: { display: "grid", gap: 16 },
-  card: { background: "white", border: "1px solid #e2e8f0", borderRadius: 22, padding: 18, boxShadow: "0 14px 30px rgba(15,23,42,.06)" },
-  cardNoPadding: { background: "white", border: "1px solid #e2e8f0", borderRadius: 22, overflow: "hidden", boxShadow: "0 14px 30px rgba(15,23,42,.06)" },
-  sectionHeader: { marginBottom: 14 },
-  eyebrow: { margin: 0, color: "#f97316", fontSize: 12, fontWeight: 1000, textTransform: "uppercase", letterSpacing: ".08em" },
-  cardTitle: { margin: "3px 0 0", fontSize: 22, letterSpacing: "-.02em" },
-  muted: { color: "#64748b", margin: "4px 0 0", fontWeight: 700 },
-  itemGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12, alignItems: "end" },
-  itemComposer: { display: "grid", gap: 12 },
-  tipoSelector: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 },
-  tipoButton: { border: "1px solid #cbd5e1", background: "white", color: "#334155", borderRadius: 14, padding: "12px 14px", fontWeight: 1000, cursor: "pointer" },
-  tipoButtonActive: { border: "1px solid #f97316", background: "#fff7ed", color: "#c2410c", borderRadius: 14, padding: "12px 14px", fontWeight: 1000, cursor: "pointer", boxShadow: "0 10px 22px rgba(249,115,22,.12)" },
-  selectorHint: { background: "#fff7ed", border: "1px solid #fed7aa", color: "#9a3412", borderRadius: 13, padding: "10px 12px", fontWeight: 800, fontSize: 13 },
-  itemsPicker: { display: "grid", gap: 10, maxHeight: 360, overflowY: "auto", paddingRight: 4 },
-  tallerOption: { width: "100%", border: "1px solid #e2e8f0", background: "white", borderRadius: 16, padding: 10, display: "grid", gridTemplateColumns: "64px minmax(0, 1fr) auto", gap: 12, alignItems: "center", textAlign: "left", cursor: "pointer" },
-  tallerOptionSelected: { width: "100%", border: "1px solid #f97316", background: "#fff7ed", borderRadius: 16, padding: 10, display: "grid", gridTemplateColumns: "64px minmax(0, 1fr) auto", gap: 12, alignItems: "center", textAlign: "left", cursor: "pointer", boxShadow: "0 10px 22px rgba(249,115,22,.15)" },
-  optionImageBox: { width: 58, height: 58, borderRadius: 14, background: "#f8fafc", border: "1px solid #e2e8f0", display: "grid", placeItems: "center", overflow: "hidden" },
-  serviceIcon: { fontSize: 28 },
-  optionBody: { minWidth: 0, display: "grid", gap: 4 },
-  optionTop: { display: "flex", gap: 8, justifyContent: "space-between", alignItems: "center" },
-  optionMeta: { display: "flex", gap: 8, flexWrap: "wrap", color: "#64748b", fontSize: 12, fontWeight: 800 },
-  serviceBadge: { background: "#ecfdf5", color: "#047857", borderRadius: 999, padding: "5px 8px", fontSize: 12, fontWeight: 1000 },
-  partBadge: { background: "#eff6ff", color: "#1d4ed8", borderRadius: 999, padding: "5px 8px", fontSize: 12, fontWeight: 1000 },
-  optionPrice: { whiteSpace: "nowrap", fontSize: 15 },
-  selectedItemBox: { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", background: "#ecfdf5", border: "1px solid #bbf7d0", borderRadius: 16, padding: 12 },
-  itemFormRow: { display: "grid", gridTemplateColumns: "160px 180px minmax(180px, 1fr)", gap: 12, alignItems: "end" },
-  field: { display: "grid", gap: 7, fontSize: 14, fontWeight: 900 },
-  label: { color: "#334155" },
-  input: { width: "100%", border: "1px solid #cbd5e1", borderRadius: 13, padding: "12px 13px", fontWeight: 700, color: "#0f172a", boxSizing: "border-box", background: "white" },
-  primaryButton: { border: "none", background: "#f97316", color: "white", borderRadius: 13, padding: "12px 16px", fontWeight: 1000, cursor: "pointer", boxShadow: "0 10px 20px rgba(249,115,22,.22)" },
-  secondaryButtonFull: { width: "100%", border: "1px solid #cbd5e1", background: "white", color: "#0f172a", borderRadius: 13, padding: "12px 16px", fontWeight: 1000, cursor: "pointer", textAlign: "center" },
-  tableHeader: { padding: 18, borderBottom: "1px solid #e2e8f0" },
-  itemsList: { display: "grid", gap: 10, padding: 16 },
-  itemCard: { border: "1px solid #e2e8f0", borderRadius: 18, padding: 14, display: "grid", gap: 12, background: "white" },
-  itemCardMuted: { border: "1px solid #e2e8f0", borderRadius: 18, padding: 14, display: "grid", gap: 12, background: "#f8fafc", opacity: 0.78 },
-  itemTop: { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start" },
-  itemTitleLine: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" },
-  itemTitle: { fontSize: 16 },
-  itemBottom: { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", borderTop: "1px solid #f1f5f9", paddingTop: 10 },
-  itemActions: { display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" },
-  smallPrimary: { border: "none", background: "#0f172a", color: "white", borderRadius: 11, padding: "8px 10px", fontWeight: 900, cursor: "pointer" },
-  smallSecondary: { border: "1px solid #cbd5e1", background: "white", color: "#0f172a", borderRadius: 11, padding: "8px 10px", fontWeight: 900, cursor: "pointer" },
-  smallDanger: { border: "1px solid #fecaca", background: "#fff1f0", color: "#b42318", borderRadius: 11, padding: "8px 10px", fontWeight: 900, cursor: "pointer" },
-  smallMuted: { color: "#64748b", fontWeight: 800 },
-  sidePanel: { display: "grid", gap: 16, position: "sticky", top: 16 },
-  sideTitle: { margin: "0 0 12px", fontSize: 20 },
-  statusForm: { display: "grid", gap: 12 },
-  billingBox: {
-    display: "grid",
-    gap: 10,
-  },
-  linkButton: {
-    display: "block",
-    textAlign: "center",
-    textDecoration: "none",
-    border: "none",
-    background: "#f97316",
-    color: "white",
-    borderRadius: 12,
-    padding: "11px 12px",
-    fontWeight: 1000,
-    cursor: "pointer",
-  },
-  note: { marginTop: 12, background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", borderRadius: 14, padding: 12, fontWeight: 800 },
-  warningText: { margin: 0, background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", borderRadius: 14, padding: 12, fontWeight: 800 },
-  infoBox: { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 14, padding: 12, display: "grid", gap: 5, color: "#64748b" },
-  timeline: { display: "grid", gap: 10, maxHeight: 480, overflowY: "auto" },
-  eventItem: { borderLeft: "4px solid #f97316", background: "#f8fafc", borderRadius: 14, padding: 12, display: "grid", gap: 4, color: "#334155" },
-  empty: { padding: 22, color: "#64748b", fontWeight: 900 },
-  emptySmall: { color: "#64748b", fontWeight: 900, background: "#f8fafc", borderRadius: 14, padding: 12 },
-  stageBadge: { borderRadius: 999, padding: "7px 10px", fontWeight: 1000, fontSize: 12, whiteSpace: "nowrap", border: "1px solid transparent" },
-  stageTones: { ok: { background: "#dcfce7", color: "#166534", borderColor: "#bbf7d0" }, info: { background: "#eff6ff", color: "#1d4ed8", borderColor: "#bfdbfe" }, warning: { background: "#fef3c7", color: "#92400e", borderColor: "#fde68a" }, danger: { background: "#fee2e2", color: "#991b1b", borderColor: "#fecaca" } },
-  state: { padding: 24, fontWeight: 900 },
-};
-
-function nombreClienteOrden(orden) {
-  return orden?.cliente_nombre || `Cliente #${orden?.id_cliente}`;
-}
-
-function descripcionBicicletaOrden(orden) {
-  if (orden?.bicicleta_descripcion) return orden.bicicleta_descripcion;
-
-  const partes = [
-    orden?.bicicleta_marca,
-    orden?.bicicleta_modelo,
-    orden?.bicicleta_rodado ? `R${orden.bicicleta_rodado}` : null,
-    orden?.bicicleta_color,
-  ].filter(Boolean);
-
-  return partes.length > 0 ? partes.join(" ") : `Bicicleta #${orden?.id_bicicleta_cliente}`;
 }

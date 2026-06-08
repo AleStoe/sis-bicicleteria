@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { listarOrdenesTaller } from "../services/tallerService";
 import { formatDate, formatMoney, formatNumber } from "../utils/formatters";
+import { useBreakpoint } from "../components/ui";
 
 const ESTADOS_ACTIVOS = new Set([
   "ingresada",
@@ -36,6 +37,7 @@ export default function TallerListPage() {
   const [error, setError] = useState("");
   const [estadoFiltro, setEstadoFiltro] = useState("activas");
   const [busqueda, setBusqueda] = useState("");
+  const isMobile = useBreakpoint();
 
   useEffect(() => {
     cargarOrdenes();
@@ -117,23 +119,23 @@ export default function TallerListPage() {
   if (loading) return <div style={styles.state}>Cargando taller...</div>;
 
   return (
-    <div style={styles.page}>
-      <header style={styles.hero}>
+    <div style={{ ...styles.page, ...(isMobile ? styles.pageMobile : {}) }}>
+      <header style={{ ...styles.hero, ...(isMobile ? styles.heroMobile : {}) }}>
         <div>
           <p style={styles.kicker}>Taller / reparaciones</p>
-          <h1 style={styles.title}>Taller</h1>
-          <p style={styles.subtitle}>Órdenes activas, reparación, repuestos y retiro de bicicletas.</p>
+          <h1 style={{ ...styles.title, ...(isMobile ? styles.titleMobile : {}) }}>Taller</h1>
+          <p style={{ ...styles.subtitle, ...(isMobile ? styles.subtitleMobile : {}) }}>Órdenes activas, reparación, repuestos y retiro de bicicletas.</p>
         </div>
 
-        <div style={styles.heroActions}>
-          <button type="button" onClick={cargarOrdenes} style={styles.secondaryHeroButton}>↻ Refrescar</button>
-          <Link to="/taller/nueva" style={styles.primaryHeroButton}>＋ Nueva orden</Link>
+        <div style={{ ...styles.heroActions, ...(isMobile ? styles.heroActionsMobile : {}) }}>
+          <button type="button" onClick={cargarOrdenes} style={{ ...styles.secondaryHeroButton, ...(isMobile ? styles.heroButtonMobile : {}) }}>↻ Refrescar</button>
+          <Link to="/taller/nueva" style={{ ...styles.primaryHeroButton, ...(isMobile ? styles.heroButtonMobile : {}) }}>＋ Nueva orden</Link>
         </div>
       </header>
 
       {error && <div style={styles.error}>Error: {error}</div>}
 
-      <section style={styles.metricsGrid}>
+      <section style={{ ...styles.metricsGrid, ...(isMobile ? styles.metricsGridMobile : {}) }}>
         <Metric label="Activas" value={resumen.activas} tone="dark" />
         <Metric label="Ingresadas" value={resumen.ingresadas} tone="info" />
         <Metric label="En reparación" value={resumen.enReparacion} tone="orange" />
@@ -142,8 +144,8 @@ export default function TallerListPage() {
         <Metric label="Total taller" value={formatMoney(resumen.totalImporte)} tone="muted" />
       </section>
 
-      <section style={styles.filtersCard}>
-        <div style={styles.searchBox}>
+      <section style={{ ...styles.filtersCard, ...(isMobile ? styles.filtersCardMobile : {}) }}>
+        <div style={{ ...styles.searchBox, ...(isMobile ? styles.searchBoxMobile : {}) }}>
           <span>🔎</span>
           <input
             ref={searchRef}
@@ -152,18 +154,18 @@ export default function TallerListPage() {
             placeholder="Buscar por orden, cliente, bici o problema..."
             style={styles.searchInput}
           />
-          <kbd style={styles.kbd}>/</kbd>
+          {!isMobile && <kbd style={styles.kbd}>/</kbd>}
         </div>
 
-        <select value={estadoFiltro} onChange={(e) => setEstadoFiltro(e.target.value)} style={styles.select}>
+        <select value={estadoFiltro} onChange={(e) => setEstadoFiltro(e.target.value)} style={{ ...styles.select, ...(isMobile ? styles.selectMobile : {}) }}>
           {ESTADOS.map((estado) => (
             <option key={estado.value} value={estado.value}>{estado.label}</option>
           ))}
         </select>
       </section>
 
-      <main style={styles.layout}>
-        <section style={styles.panel}>
+      <main style={{ ...styles.layout, ...(isMobile ? styles.layoutMobile : {}) }}>
+        <section style={{ ...styles.panel, ...(isMobile ? styles.panelMobile : {}) }}>
           <div style={styles.panelHeader}>
             <div>
               <h2 style={styles.panelTitle}>Órdenes</h2>
@@ -174,7 +176,7 @@ export default function TallerListPage() {
           {ordenesFiltradas.length === 0 ? (
             <div style={styles.empty}>No hay órdenes para mostrar.</div>
           ) : (
-            <div style={styles.ordersGrid}>
+            <div style={{ ...styles.ordersGrid, ...(isMobile ? styles.ordersGridMobile : {}) }}>
               {ordenesFiltradas.map((orden) => (
                 <OrdenCard key={orden.id} orden={orden} />
               ))}
@@ -182,7 +184,7 @@ export default function TallerListPage() {
           )}
         </section>
 
-        <aside style={styles.sidePanel}>
+        {!isMobile && <aside style={styles.sidePanel}>
           <section style={styles.sideCard}>
             <h2 style={styles.sideTitle}>Modo taller</h2>
             <p style={styles.sideMuted}>La vista abre en órdenes activas porque lo importante es no perder bicicletas pendientes.</p>
@@ -193,7 +195,7 @@ export default function TallerListPage() {
               <span>4. Dejar lista para retirar</span>
             </div>
           </section>
-        </aside>
+        </aside>}
       </main>
     </div>
   );
@@ -201,27 +203,28 @@ export default function TallerListPage() {
 
 function OrdenCard({ orden }) {
   const esFinal = ESTADOS_FINALES.has(orden.estado);
+  const isMobile = useBreakpoint();
 
   return (
-    <article style={esFinal ? styles.orderCardMuted : styles.orderCard}>
-      <div style={styles.orderTop}>
+    <article style={{ ...(esFinal ? styles.orderCardMuted : styles.orderCard), ...(isMobile ? styles.orderCardMobile : {}) }}>
+      <div style={{ ...styles.orderTop, ...(isMobile ? styles.orderTopMobile : {}) }}>
         <div>
           <p style={styles.orderNumber}>Orden #{orden.id}</p>
-          <h3 style={styles.orderProblem}>{orden.problema_reportado || "Sin problema reportado"}</h3>
+          <h3 style={{ ...styles.orderProblem, ...(isMobile ? styles.orderProblemMobile : {}) }}>{orden.problema_reportado || "Sin problema reportado"}</h3>
         </div>
         <EstadoBadge estado={orden.estado} />
       </div>
 
-      <div style={styles.orderMetaGrid}>
+      <div style={{ ...styles.orderMetaGrid, ...(isMobile ? styles.orderMetaGridMobile : {}) }}>
         <Info label="Fecha" value={formatDate(orden.fecha_ingreso)} />
         <Info label="Cliente" value={nombreClienteOrden(orden)} />
         <Info label="Bicicleta" value={descripcionBicicletaOrden(orden)} />
         <Info label="Presupuesto" value={resumenTotalOrden(orden)} />
       </div>
 
-      <div style={styles.orderFooter}>
+      <div style={{ ...styles.orderFooter, ...(isMobile ? styles.orderFooterMobile : {}) }}>
         <span style={styles.smallMuted}>Saldo: {formatMoney(orden.saldo_pendiente)}</span>
-        <Link to={`/taller/${orden.id}`} style={styles.detailButton}>Ver orden</Link>
+        <Link to={`/taller/${orden.id}`} style={{ ...styles.detailButton, ...(isMobile ? styles.detailButtonMobile : {}) }}>Ver orden</Link>
       </div>
     </article>
   );
@@ -233,8 +236,9 @@ export function EstadoBadge({ estado }) {
 }
 
 function Metric({ label, value, tone }) {
+  const isMobile = useBreakpoint();
   return (
-    <div style={{ ...styles.metric, ...(styles.metricTones[tone] || {}) }}>
+    <div style={{ ...styles.metric, ...(styles.metricTones[tone] || {}), ...(isMobile ? styles.metricMobile : {}) }}>
       <span>{label}</span>
       <strong>{value}</strong>
     </div>
@@ -242,8 +246,9 @@ function Metric({ label, value, tone }) {
 }
 
 function Info({ label, value }) {
+  const isMobile = useBreakpoint();
   return (
-    <div style={styles.infoBox}>
+    <div style={{ ...styles.infoBox, ...(isMobile ? styles.infoBoxMobile : {}) }}>
       <span>{label}</span>
       <strong>{value || "-"}</strong>
     </div>
@@ -333,4 +338,25 @@ const styles = {
   badgeTones: { ok: { background: "#dcfce7", color: "#166534", borderColor: "#bbf7d0" }, info: { background: "#eff6ff", color: "#1d4ed8", borderColor: "#bfdbfe" }, warning: { background: "#fef3c7", color: "#92400e", borderColor: "#fde68a" }, orange: { background: "#fff7ed", color: "#c2410c", borderColor: "#fed7aa" }, violet: { background: "#f5f3ff", color: "#6d28d9", borderColor: "#ddd6fe" }, danger: { background: "#fee2e2", color: "#991b1b", borderColor: "#fecaca" }, muted: { background: "#f1f5f9", color: "#475569", borderColor: "#e2e8f0" } },
   empty: { padding: 22, color: "#64748b", fontWeight: 900 },
   state: { padding: 24, fontWeight: 900 },
+  pageMobile: { padding: 10, overflowX: "hidden" },
+  heroMobile: { display: "grid", gridTemplateColumns: "1fr", gap: 14, padding: 18, borderRadius: 22, marginBottom: 12 },
+  titleMobile: { fontSize: 30 },
+  subtitleMobile: { fontSize: 15, lineHeight: 1.35 },
+  heroActionsMobile: { display: "grid", gridTemplateColumns: "1fr 1fr", width: "100%", gap: 10 },
+  heroButtonMobile: { width: "100%", textAlign: "center", padding: "13px 10px", boxSizing: "border-box" },
+  metricsGridMobile: { gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 },
+  metricMobile: { padding: 12, borderRadius: 16, minWidth: 0 },
+  filtersCardMobile: { gridTemplateColumns: "1fr", padding: 12, borderRadius: 18, gap: 10, marginBottom: 12 },
+  searchBoxMobile: { minHeight: 48, padding: "0 12px" },
+  selectMobile: { minHeight: 48 },
+  layoutMobile: { gridTemplateColumns: "1fr", gap: 12 },
+  panelMobile: { borderRadius: 18 },
+  ordersGridMobile: { padding: 12, gap: 10 },
+  orderCardMobile: { borderRadius: 16, padding: 12 },
+  orderTopMobile: { display: "grid", gridTemplateColumns: "1fr", gap: 8 },
+  orderProblemMobile: { fontSize: 16 },
+  orderMetaGridMobile: { gridTemplateColumns: "1fr 1fr", gap: 8 },
+  orderFooterMobile: { display: "grid", gridTemplateColumns: "1fr", gap: 9, alignItems: "stretch" },
+  detailButtonMobile: { display: "block", textAlign: "center", padding: "12px 14px" },
+  infoBoxMobile: { padding: 9, borderRadius: 12, minWidth: 0 },
 };
