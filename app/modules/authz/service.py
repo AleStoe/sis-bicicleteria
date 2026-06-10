@@ -34,12 +34,7 @@ def exigir_rol_admin(conn, id_usuario: int):
 
 
 def exigir_permiso(conn, id_usuario: int, permiso: str):
-    """
-    MVP ETAPA 1:
-    por ahora todos los permisos críticos requieren rol administrador.
-    Más adelante esto se reemplaza por rol_permisos/permisos sin romper llamadas.
-    """
-    if usuario_tiene_rol(conn, id_usuario, ROL_ADMINISTRADOR):
+    if repository.usuario_tiene_permiso(conn, id_usuario, permiso):
         return
 
     _forbidden(permiso)

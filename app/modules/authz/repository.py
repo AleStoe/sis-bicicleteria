@@ -14,3 +14,24 @@ def get_roles_usuario(conn, id_usuario: int):
             (id_usuario,),
         )
         return cur.fetchall()
+
+def usuario_tiene_permiso(conn, id_usuario: int, permiso: str) -> bool:
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT EXISTS (
+                SELECT 1
+                FROM usuario_roles ur
+                INNER JOIN rol_permisos rp
+                    ON rp.id_rol = ur.id_rol
+                INNER JOIN permisos p
+                    ON p.id = rp.id_permiso
+                WHERE ur.id_usuario = %s
+                  AND p.codigo = %s
+            ) AS tiene_permiso
+            """,
+            (id_usuario, permiso),
+        )
+
+        row = cur.fetchone()
+        return bool(row and row["tiene_permiso"])

@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from fastapi import HTTPException
 from psycopg.rows import dict_row
-from app.modules.authz.service import exigir_rol_admin
+from app.modules.authz.service import exigir_permiso_generar_deuda
 from app.db.connection import get_connection
 from app.shared.money import redondear_monto
 from app.modules.auditoria import service as auditoria_service
@@ -79,7 +79,7 @@ def crear_deuda_por_venta(data):
 
     try:
         with conn.transaction():
-            exigir_rol_admin(conn, data.id_usuario)
+            exigir_permiso_generar_deuda(conn, data.id_usuario)
 
             deuda = crear_deuda_desde_venta_entregada(
                 conn,
