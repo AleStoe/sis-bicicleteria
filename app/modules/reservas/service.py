@@ -6,6 +6,7 @@ from app.modules.stock import service as stock_service
 from app.modules.reservas import repository as reserva_repo
 from app.modules.pagos import service as pagos_service
 from app.modules.ventas import repository as ventas_repo
+from app.modules.authz.service import exigir_permiso_cancelar_reserva
 from app.modules.serializadas.repository import (
     get_bicicleta_serializada_for_update,
     update_bicicleta_serializada_estado,
@@ -253,6 +254,7 @@ def cancelar_reserva(data: dict):
 
     try:
         with conn.transaction():
+            exigir_permiso_cancelar_reserva(conn, data["id_usuario"])
             # =====================================================
             # 1. LOCK RESERVA
             # =====================================================
