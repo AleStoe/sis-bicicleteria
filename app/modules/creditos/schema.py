@@ -13,6 +13,9 @@ class CreditoMovimientoResponse(BaseModel):
     nota: str | None = None
     id_usuario: int
 
+    usuario_nombre: str | None = None
+    usuario_username: str | None = None
+
 
 class CreditoResponse(BaseModel):
     id: int

@@ -239,7 +239,7 @@ export default function CreditoDetallePage() {
                       {getOrigenFinancieroLabel(mov.origen_tipo, mov.origen_id)}
                     </td>
                     <td style={tdStyle}>{mov.nota || "-"}</td>
-                    <td style={tdStyle}>#{mov.id_usuario}</td>
+                    <td style={tdStyle}>{formatUsuario(mov)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -300,3 +300,13 @@ const tableHeaderStyle = { padding: "16px 18px", borderBottom: "1px solid #eee" 
 const tableStyle = { width: "100%", borderCollapse: "collapse", minWidth: "850px" };
 const thStyle = { textAlign: "left", padding: "12px 10px", borderBottom: "1px solid #e5e7eb" };
 const tdStyle = { padding: "10px", verticalAlign: "top" };
+
+function formatUsuario(mov) {
+  if (mov.usuario_nombre) {
+    return mov.usuario_username
+      ? `${mov.usuario_nombre} (@${mov.usuario_username})`
+      : mov.usuario_nombre;
+  }
+
+  return mov.id_usuario ? `Usuario #${mov.id_usuario}` : "-";
+}

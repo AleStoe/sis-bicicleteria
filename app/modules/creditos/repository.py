@@ -102,14 +102,26 @@ def get_creditos_cliente(conn, id_cliente: int):
         return cur.fetchall()
 
 
-def get_credito_movimientos_by_credito(conn, credito_id: int):
+def get_credito_movimientos(conn, credito_id: int):
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
-            SELECT *
-            FROM credito_movimientos
-            WHERE id_credito = %s
-            ORDER BY id
+            SELECT
+                cm.id,
+                cm.id_credito,
+                cm.tipo_movimiento,
+                cm.monto,
+                cm.origen_tipo,
+                cm.origen_id,
+                cm.nota,
+                cm.id_usuario,
+                u.nombre AS usuario_nombre,
+                u.username AS usuario_username
+            FROM credito_movimientos cm
+            LEFT JOIN usuarios u
+                ON u.id = cm.id_usuario
+            WHERE cm.id_credito = %s
+            ORDER BY cm.id ASC
             """,
             (credito_id,),
         )
@@ -170,19 +182,6 @@ def update_credito_saldo_y_estado(
             ),
         )
         return cur.fetchone()
-
-def get_credito_movimientos(conn, credito_id: int):
-    with conn.cursor(row_factory=dict_row) as cur:
-        cur.execute(
-            """
-            SELECT *
-            FROM credito_movimientos
-            WHERE id_credito = %s
-            ORDER BY id ASC
-            """,
-            (credito_id,),
-        )
-        return cur.fetchall()
 
 
 def get_creditos_disponibles_cliente_for_update(conn, id_cliente: int):
