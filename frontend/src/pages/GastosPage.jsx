@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSession } from "../context/SessionContext";
 import {
   anularGasto,
   cambiarEstadoCategoriaGasto,
@@ -15,8 +16,6 @@ import { formatDate, formatMoney } from "../utils/formatters";
 import { ConfirmModal } from "../components/ui/ConfirmModal";
 import { PromptModal } from "../components/ui/PromptModal";
 
-const ID_USUARIO = 1;
-const ID_SUCURSAL_DEFAULT = 1;
 
 const MOBILE_BREAKPOINT = 760;
 
@@ -73,6 +72,7 @@ const ESTADOS = [
 ];
 
 export default function GastosPage() {
+  const { usuarioId, sucursalId } = useSession();
   const [gastos, setGastos] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [resumen, setResumen] = useState(null);
@@ -214,7 +214,15 @@ export default function GastosPage() {
     }
     return "";
   }
+  function formatUsuario(item) {
+    if (item.usuario_nombre) {
+      return item.usuario_username
+        ? `${item.usuario_nombre} (@${item.usuario_username})`
+        : item.usuario_nombre;
+    }
 
+    return item.id_usuario ? `Usuario #${item.id_usuario}` : "-";
+  }
   async function guardarGasto(e) {
     e.preventDefault();
 
@@ -225,7 +233,7 @@ export default function GastosPage() {
     }
 
     const payload = {
-      id_sucursal: ID_SUCURSAL_DEFAULT,
+      id_sucursal: sucursalId,
       id_categoria_gasto: formGasto.id_categoria_gasto ? Number(formGasto.id_categoria_gasto) : null,
       descripcion: formGasto.descripcion.trim(),
       monto: Number(formGasto.monto),
@@ -234,7 +242,7 @@ export default function GastosPage() {
       fecha: formGasto.fecha || null,
       periodo_mes: formGasto.periodo_mes || null,
       es_recurrente: Boolean(formGasto.es_recurrente),
-      id_usuario: ID_USUARIO,
+      id_usuario: usuarioId,
     };
 
     try {
@@ -381,7 +389,7 @@ export default function GastosPage() {
       setMensaje("");
       await anularGasto(gasto.id, {
         motivo,
-        id_usuario: ID_USUARIO,
+        id_usuario: usuarioId,
       });
       setMensaje("Gasto anulado correctamente");
       await cargarGastos();
@@ -450,7 +458,7 @@ export default function GastosPage() {
         medio_pago: formGasto.medio_pago || null,
         periodo_mes: formGasto.periodo_mes || null,
         motivo,
-        id_usuario: ID_USUARIO,
+        id_usuario: usuarioId,
       });
 
       setFormGasto(FORM_GASTO_INICIAL);
@@ -804,7 +812,9 @@ export default function GastosPage() {
                     >
                       <td style={styles.tdStrong}>
                         #{gasto.id} · {gasto.descripcion}
-                        <div style={styles.tdMutedText}>{gasto.medio_pago || "-"} · usuario #{gasto.id_usuario}</div>
+                        <div style={styles.tdMutedText}>
+                          {gasto.medio_pago || "-"} · {formatUsuario(gasto)}
+                        </div>
                       </td>
                       <td style={styles.td}>{formatDate(gasto.fecha)}</td>
                       <td style={styles.td}>{gasto.categoria_nombre || "Sin categoría"}</td>

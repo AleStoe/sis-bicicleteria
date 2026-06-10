@@ -266,11 +266,14 @@ def get_gastos(conn, filtros: dict | None = None):
                 g.es_recurrente,
                 g.estado,
                 g.id_usuario,
+                u.nombre AS usuario_nombre,
+                u.username AS usuario_username,
                 g.created_at,
                 g.updated_at
             FROM gastos_operativos g
             LEFT JOIN sucursales s ON s.id = g.id_sucursal
             LEFT JOIN gasto_categorias gc ON gc.id = g.id_categoria_gasto
+            LEFT JOIN usuarios u ON u.id = g.id_usuario
             {where_sql}
             ORDER BY g.fecha DESC, g.id DESC
             LIMIT %s OFFSET %s
@@ -326,11 +329,14 @@ def get_gasto_by_id(conn, gasto_id: int):
                 g.origen_tipo,
                 g.origen_id,
                 g.id_usuario,
+                u.nombre AS usuario_nombre,
+                u.username AS usuario_username,
                 g.created_at,
                 g.updated_at
             FROM gastos_operativos g
             LEFT JOIN sucursales s ON s.id = g.id_sucursal
             LEFT JOIN gasto_categorias gc ON gc.id = g.id_categoria_gasto
+            LEFT JOIN usuarios u ON u.id = g.id_usuario
             WHERE g.id = %s
             """,
             (gasto_id,),
@@ -372,23 +378,25 @@ def get_gasto_movimientos(conn, gasto_id: int):
         cur.execute(
             """
             SELECT
-                id,
-                id_gasto,
-                tipo_movimiento,
-                monto,
-                detalle,
-                origen_tipo,
-                origen_id,
-                id_usuario,
-                created_at
-            FROM gastos_movimientos
-            WHERE id_gasto = %s
-            ORDER BY id
+                gm.id,
+                gm.id_gasto,
+                gm.tipo_movimiento,
+                gm.monto,
+                gm.detalle,
+                gm.origen_tipo,
+                gm.origen_id,
+                gm.id_usuario,
+                u.nombre AS usuario_nombre,
+                u.username AS usuario_username,
+                gm.created_at
+            FROM gastos_movimientos gm
+            LEFT JOIN usuarios u ON u.id = gm.id_usuario
+            WHERE gm.id_gasto = %s
+            ORDER BY gm.id
             """,
             (gasto_id,),
         )
         return cur.fetchall()
-
 
 def update_gasto_corregido(conn, gasto_id: int, data: dict):
     with conn.cursor() as cur:

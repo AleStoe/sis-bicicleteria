@@ -73,6 +73,8 @@ class GastoOutput(BaseModel):
     id: int
     fecha: date
     id_sucursal: Optional[int] = None
+    usuario_nombre: str | None = None
+    usuario_username: str | None = None
     sucursal_nombre: Optional[str] = None
     id_categoria_gasto: Optional[int] = None
     categoria_nombre: Optional[str] = None
@@ -93,6 +95,8 @@ class GastoMovimientoOutput(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    usuario_nombre: str | None = None
+    usuario_username: str | None = None
     id_gasto: int
     tipo_movimiento: str
     monto: Decimal
