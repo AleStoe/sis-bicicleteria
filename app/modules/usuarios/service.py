@@ -1,5 +1,5 @@
 from fastapi import HTTPException
-
+import bcrypt
 from app.db.connection import get_connection
 from .repository import (
     get_usuarios,
@@ -14,6 +14,19 @@ from .repository import (
     desactivar_usuario,
 )
 
+
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(
+        password.encode("utf-8"),
+        bcrypt.gensalt(),
+    ).decode("utf-8")
+
+
+def verificar_password(password: str, password_hash: str) -> bool:
+    return bcrypt.checkpw(
+        password.encode("utf-8"),
+        password_hash.encode("utf-8"),
+    )
 
 def _limpiar_texto(valor):
     if valor is None:
@@ -125,7 +138,9 @@ def crear_usuario_service(data):
             _validar_username_unico(conn, data.username)
             _validar_email_unico(conn, data.email)
 
-            usuario_id = insert_usuario(conn, data)
+            password_hash = hash_password(data.password)
+
+            usuario_id = insert_usuario(conn, data, password_hash)
             set_rol_usuario(conn, usuario_id, rol["id"])
 
         return {

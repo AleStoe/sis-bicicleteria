@@ -91,7 +91,7 @@ def get_rol_by_nombre(conn, rol: str):
         return cur.fetchone()
 
 
-def insert_usuario(conn, data):
+def insert_usuario(conn, data, password_hash: str):
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
@@ -109,7 +109,7 @@ def insert_usuario(conn, data):
                 data.nombre,
                 data.email,
                 data.username,
-                "temp_hash_cambiar_luego",
+                password_hash,
             ),
         )
         return cur.fetchone()["id"]
@@ -175,3 +175,25 @@ def desactivar_usuario(conn, usuario_id: int):
             """,
             (usuario_id,),
         )
+
+def get_usuario_login(conn, username: str):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT
+                u.id,
+                u.nombre,
+                u.username,
+                u.password_hash,
+                u.activo,
+                r.nombre AS rol
+            FROM usuarios u
+            LEFT JOIN usuario_roles ur
+                ON ur.id_usuario = u.id
+            LEFT JOIN roles r
+                ON r.id = ur.id_rol
+            WHERE lower(u.username) = lower(%s)
+            """,
+            (username,),
+        )
+        return cur.fetchone()
