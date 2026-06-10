@@ -81,7 +81,15 @@ export default function TallerDetallePage() {
     cantidad: "1",
     precio_unitario: "",
   });
+  function formatUsuario(item) {
+    if (item.usuario_nombre) {
+      return item.usuario_username
+        ? `${item.usuario_nombre} (@${item.usuario_username})`
+        : item.usuario_nombre;
+    }
 
+    return item.id_usuario ? `Usuario #${item.id_usuario}` : "-";
+  }
   function pedirPrompt(config) {
     return new Promise((resolve) => {
       setPromptConfig({
@@ -876,7 +884,9 @@ export default function TallerDetallePage() {
                 {eventos.slice().reverse().map((evento) => (
                   <div key={evento.id} style={styles.eventItem}>
                     <strong>{humanizarEvento(evento.tipo_evento)}</strong>
-                    <span>{formatDate(evento.fecha)} · Usuario #{evento.id_usuario}</span>
+                    <span>
+                      {formatDate(evento.fecha)} · {formatUsuario(evento)}
+                    </span>
                     {evento.detalle && <p>{evento.detalle}</p>}
                   </div>
                 ))}

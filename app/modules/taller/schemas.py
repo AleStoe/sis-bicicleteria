@@ -91,6 +91,10 @@ class OrdenTallerEventoResponse(BaseModel):
     tipo_evento: str
     detalle: str | None = None
     id_usuario: int
+
+    usuario_nombre: str | None = None
+    usuario_username: str | None = None
+
     created_at: datetime
 
 

@@ -430,16 +430,20 @@ def get_eventos_orden_taller(conn, orden_id: int):
         cur.execute(
             """
             SELECT
-                id,
-                id_orden_taller,
-                fecha,
-                tipo_evento,
-                detalle,
-                id_usuario,
-                created_at
-            FROM ordenes_taller_eventos
-            WHERE id_orden_taller = %s
-            ORDER BY fecha, id
+                ote.id,
+                ote.id_orden_taller,
+                ote.fecha,
+                ote.tipo_evento,
+                ote.detalle,
+                ote.id_usuario,
+                u.nombre AS usuario_nombre,
+                u.username AS usuario_username,
+                ote.created_at
+            FROM ordenes_taller_eventos ote
+            LEFT JOIN usuarios u
+                ON u.id = ote.id_usuario
+            WHERE ote.id_orden_taller = %s
+            ORDER BY ote.fecha, ote.id
             """,
             (orden_id,),
         )
