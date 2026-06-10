@@ -9,6 +9,10 @@ class AuditoriaEventoOutput(BaseModel):
     id: int
     fecha: Any
     id_usuario: int
+
+    usuario_nombre: Optional[str] = None
+    usuario_username: Optional[str] = None
+
     id_sucursal: Optional[int] = None
     entidad: str
     entidad_id: int

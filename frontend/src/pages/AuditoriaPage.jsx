@@ -230,7 +230,7 @@ export default function AuditoriaPage() {
                         <span style={{ ...styles.badge, ...severidad.style }}>{severidad.label}</span>
                         <EntidadBadge entidad={evento.entidad} />
                         <AccionBadge accion={evento.accion} />
-                        <span style={styles.miniMeta}>Usuario #{evento.id_usuario || "-"}</span>
+                        <span style={styles.miniMeta}>{evento.usuario_nombre || `Usuario #${evento.id_usuario || "-"}`}</span>
                         {evento.origen_tipo && <span style={styles.miniMeta}>Origen {evento.origen_tipo} #{evento.origen_id}</span>}
                       </div>
                     </div>
@@ -257,7 +257,14 @@ export default function AuditoriaPage() {
                 </div>
 
                 <Info label="Fecha" value={formatDate(eventoActual.fecha)} />
-                <Info label="Usuario" value={`#${eventoActual.id_usuario || "-"}`} />
+                <Info
+                  label="Usuario"
+                  value={
+                    eventoActual?.usuario_nombre
+                      ? `${eventoActual.usuario_nombre} (@${eventoActual.usuario_username || "sin usuario"})`
+                      : `#${eventoActual?.id_usuario || "-"}`
+                  }
+                />
                 <Info label="Sucursal" value={eventoActual.id_sucursal ? `#${eventoActual.id_sucursal}` : "-"} />
                 <Info label="Entidad" value={`${eventoActual.entidad || "-"} #${eventoActual.entidad_id || "-"}`} />
                 <Info label="Acción" value={humanizarTexto(eventoActual.accion)} />

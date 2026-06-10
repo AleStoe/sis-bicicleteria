@@ -37,23 +37,32 @@ def get_auditoria_eventos(conn, limit: int = 100):
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
-            SELECT *
-            FROM auditoria_eventos
-            ORDER BY id DESC
+            SELECT
+                ae.*,
+                u.nombre AS usuario_nombre,
+                u.username AS usuario_username
+            FROM auditoria_eventos ae
+            LEFT JOIN usuarios u
+                ON u.id = ae.id_usuario
+            ORDER BY ae.id DESC
             LIMIT %s
             """,
             (limit,),
         )
         return cur.fetchall()
 
-
 def get_auditoria_evento_by_id(conn, evento_id: int):
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
-            SELECT *
-            FROM auditoria_eventos
-            WHERE id = %s
+            SELECT
+                ae.*,
+                u.nombre AS usuario_nombre,
+                u.username AS usuario_username
+            FROM auditoria_eventos ae
+            LEFT JOIN usuarios u
+                ON u.id = ae.id_usuario
+            WHERE ae.id = %s
             """,
             (evento_id,),
         )

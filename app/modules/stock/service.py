@@ -1,7 +1,7 @@
 from app.db.connection import get_connection
 from app.modules.stock import repository
 from app.modules.auditoria import service as auditoria_service
-
+from app.modules.authz.service import exigir_permiso_ajustar_stock
 from app.shared.money import to_decimal
 # =========================================================
 # HELPERS
@@ -236,6 +236,7 @@ def crear_ingreso_stock(data: dict):
     conn = get_connection()
     try:
         with conn.transaction():
+            exigir_permiso_ajustar_stock(conn, data["id_usuario"])
             return repository.crear_ingreso_stock(conn, data)
     finally:
         conn.close()
