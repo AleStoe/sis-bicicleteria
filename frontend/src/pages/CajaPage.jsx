@@ -17,11 +17,9 @@ import CajaEgresoCard from "../components/caja/CajaEgresoCard";
 import CajaAjusteCard from "../components/caja/CajaAjusteCard";
 import CajaCierreCard from "../components/caja/CajaCierreCard";
 import CajaMovimientosTable from "../components/caja/CajaMovimientosTable";
-import { CURRENT_USER_ID } from "../config/appConfig";
+import { useSession } from "../context/SessionContext";
 import { ConfirmModal } from "../components/ui/ConfirmModal";
 
-const ID_SUCURSAL = 1;
-const ID_USUARIO = CURRENT_USER_ID;
 
 export default function CajaPage() {
   const [loading, setLoading] = useState(true);
@@ -39,6 +37,7 @@ export default function CajaPage() {
   });
   const [confirmConfig, setConfirmConfig] = useState(null);
   const isMobile = useBreakpoint();
+  const { usuarioId, sucursalId } = useSession();
 
   function pedirConfirmacion(config) {
     return new Promise((resolve) => {
@@ -58,7 +57,7 @@ export default function CajaPage() {
 
   useEffect(() => {
     cargarCaja();
-  }, []);
+  }, [sucursalId]);
 
   async function cargarCaja() {
     try {
@@ -66,7 +65,7 @@ export default function CajaPage() {
       setError("");
       setMensaje("");
 
-      const cajaAbierta = await obtenerCajaAbierta(ID_SUCURSAL);
+      const cajaAbierta = await obtenerCajaAbierta(sucursalId);
       const detalleCaja = await obtenerCajaDetalle(cajaAbierta.caja.id);
 
       setDetalle(detalleCaja);
@@ -114,9 +113,9 @@ export default function CajaPage() {
       setProcesando(true);
 
       await abrirCaja({
-        id_sucursal: ID_SUCURSAL,
+        id_sucursal: sucursalId,
         monto_apertura: apertura,
-        id_usuario: ID_USUARIO,
+        id_usuario: usuarioId,
       });
 
       setMensaje("Caja abierta correctamente");
@@ -167,7 +166,7 @@ export default function CajaPage() {
       await registrarEgresoCaja(detalle.caja.id, {
         monto,
         nota,
-        id_usuario: ID_USUARIO,
+        id_usuario: usuarioId,
       });
 
       setMensaje(`Egreso registrado: ${formatCurrency(monto)}`);
@@ -220,7 +219,7 @@ export default function CajaPage() {
         monto,
         direccion: ajuste.direccion,
         nota,
-        id_usuario: ID_USUARIO,
+        id_usuario: usuarioId,
       });
 
       setMensaje(
@@ -269,7 +268,7 @@ export default function CajaPage() {
 
       const resp = await cerrarCaja(detalle.caja.id, {
         monto_cierre_real: cierreReal,
-        id_usuario: ID_USUARIO,
+        id_usuario: usuarioId,
       });
 
       setMensaje(`Caja cerrada. Diferencia: ${formatCurrency(resp.diferencia)}`);

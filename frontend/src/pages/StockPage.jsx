@@ -2,18 +2,17 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { crearAjusteStock, crearIngresoStock, listarStock, obtenerResumenStock } from "../services/stockService";
 import { listarProveedores } from "../services/proveedoresService";
-import { CURRENT_USER_ID, CURRENT_SUCURSAL_ID } from "../config/appConfig";
+import { useSession } from "../context/SessionContext";
 import { formatMoney, formatNumber } from "../utils/formatters";
 import { getEstadoStock, calcularResumenStock } from "../utils/stockUtils";
 import { buildIngresoStockPayload, buildAjusteStockPayload } from "../builders/stockPayloadBuilder";
 import StockTable from "../components/stock/StockTable";
 import StockDrawer from "../components/stock/StockDrawer";
 
-const ID_USUARIO = CURRENT_USER_ID || 1;
-const ID_SUCURSAL_DEFAULT = CURRENT_SUCURSAL_ID || 1;
 
 export default function StockPage() {
   const navigate = useNavigate();
+  const { usuarioId, sucursalId } = useSession();
 
   const [stock, setStock] = useState([]);
   const [stockBase, setStockBase] = useState([]);
@@ -41,7 +40,7 @@ export default function StockPage() {
   const [modoPanel, setModoPanel] = useState("detalle");
 
   const [ingresoForm, setIngresoForm] = useState({
-    id_sucursal: ID_SUCURSAL_DEFAULT,
+    id_sucursal: sucursalId,
     id_variante: "",
     id_proveedor: "",
     cantidad_ingresada: "",
@@ -49,15 +48,15 @@ export default function StockPage() {
     gastos_adicionales: "0",
     origen_ingreso: "manual",
     observacion: "",
-    id_usuario: ID_USUARIO,
+    id_usuario: usuarioId,
   });
 
   const [ajusteForm, setAjusteForm] = useState({
-    id_sucursal: ID_SUCURSAL_DEFAULT,
+    id_sucursal: sucursalId,
     id_variante: "",
     cantidad: "",
     nota: "",
-    id_usuario: ID_USUARIO,
+    id_usuario: usuarioId,
     origen_tipo: "ajuste_manual",
     origen_id: null,
   });
@@ -248,7 +247,7 @@ export default function StockPage() {
       setMensaje("");
       setUltimoIngreso(null);
 
-      const payload = buildIngresoStockPayload({ ingresoForm, usuarioId: ID_USUARIO });
+      const payload = buildIngresoStockPayload({ ingresoForm, usuarioId: usuarioId });
       const res = await crearIngresoStock(payload);
 
       setUltimoIngreso({ ...res, id_proveedor: payload.id_proveedor });
@@ -299,7 +298,7 @@ export default function StockPage() {
       setMensaje("");
       setUltimoIngreso(null);
 
-      const payload = buildAjusteStockPayload({ ajusteForm, usuarioId: ID_USUARIO });
+      const payload = buildAjusteStockPayload({ ajusteForm, usuarioId: usuarioId });
       const res = await crearAjusteStock(payload);
 
       setMensaje(`Ajuste registrado. Disponible nuevo: ${formatNumber(res.stock_disponible_nuevo)}`);

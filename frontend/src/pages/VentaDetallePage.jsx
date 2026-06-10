@@ -17,7 +17,7 @@ import {
 } from "../services/ventasService";
 import VentaItemsVendidos from "../components/ventas/detalle/VentaItemsVendidos";
 import { listarPagosDeVenta } from "../services/pagosService";
-import { CURRENT_USER_ID } from "../config/appConfig";
+import { useSession } from "../context/SessionContext";
 import { formatMoney } from "../utils/formatters";
 import VentaAccionesPanel from "../components/ventas/detalle/VentaAccionesPanel";
 import VentaSituacionFinanciera from "../components/ventas/detalle/VentaSituacionFinanciera";
@@ -30,6 +30,7 @@ import {
 export default function VentaDetallePage() {
   const params = useParams();
   const ventaId = params.ventaId || params.id;
+  const { usuarioId } = useSession();
 
   const [data, setData] = useState(null);
   const [pagos, setPagos] = useState([]);
@@ -129,7 +130,7 @@ export default function VentaDetallePage() {
       setError("");
       setMensaje("");
 
-      await entregarVenta(ventaId, { id_usuario: CURRENT_USER_ID });
+      await entregarVenta(ventaId, { id_usuario: usuarioId });
       await cargarVenta();
 
       setMensaje("Venta entregada correctamente");
@@ -160,7 +161,7 @@ export default function VentaDetallePage() {
 
       const result = await anularVenta(ventaId, {
         motivo: motivo.trim(),
-        id_usuario: CURRENT_USER_ID,
+        id_usuario: usuarioId,
       });
 
       await cargarVenta();
@@ -255,7 +256,7 @@ export default function VentaDetallePage() {
 
       const result = await devolverVenta(ventaId, {
         motivo: motivo.trim(),
-        id_usuario: CURRENT_USER_ID,
+        id_usuario: usuarioId,
         modo_devolucion: modoDevolucion,
       });
 
@@ -378,7 +379,7 @@ export default function VentaDetallePage() {
           },
         ],
         motivo: motivo.trim(),
-        id_usuario: CURRENT_USER_ID,
+        id_usuario: usuarioId,
       });
 
       await cargarVenta();
@@ -440,7 +441,7 @@ async function handleDevolverSerializada(item) {
       const result = await devolverVentaSerializada(ventaId, {
         id_bicicleta_serializada: Number(item.id_bicicleta_serializada),
         motivo: motivo.trim(),
-        id_usuario: CURRENT_USER_ID,
+        id_usuario: usuarioId,
         modo_devolucion: modoDevolucion,
       });
 

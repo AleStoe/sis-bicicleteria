@@ -1,11 +1,9 @@
 import { useState } from "react";
+import { useSession } from "../context/SessionContext";
 import { crearVenta, entregarVenta } from "../services/ventasService";
-import { CURRENT_SUCURSAL_ID, CURRENT_USER_ID } from "../config/appConfig";
 import { validarVentaAntesDeCrear } from "../validators/ventasValidator";
 import { buildVentaPayload } from "../builders/ventasPayloadBuilder";
 
-const ID_USUARIO = CURRENT_USER_ID;
-const ID_SUCURSAL = CURRENT_SUCURSAL_ID;
 
 export default function useVentaFinalizacion({
   navigate,
@@ -18,7 +16,7 @@ export default function useVentaFinalizacion({
   setMensaje,
 }) {
   const [guardando, setGuardando] = useState(false);
-
+  const { usuarioId, sucursalId } = useSession();
   function validarVentaAntesDeFinalizar() {
     const errorValidacion = validarVentaAntesDeCrear({ clienteId, items });
 
@@ -33,8 +31,8 @@ export default function useVentaFinalizacion({
   function crearPayloadVenta(pagos = []) {
     return buildVentaPayload({
       clienteId,
-      sucursalId: ID_SUCURSAL,
-      usuarioId: ID_USUARIO,
+      sucursalId,
+      usuarioId,
       tipoPrecio,
       items,
       pagos,
@@ -57,7 +55,7 @@ export default function useVentaFinalizacion({
 
       if (entregar_ahora) {
         await entregarVenta(resultado.venta_id, {
-          id_usuario: ID_USUARIO,
+          id_usuario: usuarioId,
         });
       }
 

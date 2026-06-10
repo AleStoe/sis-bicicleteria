@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { listarClientes, listarBicicletasCliente, crearBicicletaCliente } from "../services/clientesService";
 import { crearOrdenTaller } from "../services/tallerService";
 import { useBreakpoint } from "../components/ui";
+import { useSession } from "../context/SessionContext";
 
 export default function TallerNuevaOrdenPage() {
   const navigate = useNavigate();
@@ -18,6 +19,7 @@ export default function TallerNuevaOrdenPage() {
   const [mostrarNuevaBici, setMostrarNuevaBici] = useState(false);
   const [nuevaBici, setNuevaBici] = useState({ marca: "", modelo: "", rodado: "", color: "", numero_cuadro: "", notas: "" });
   const isMobile = useBreakpoint();
+  const { usuarioId, sucursalId } = useSession();
 
   useEffect(() => {
     cargarClientes();
@@ -124,11 +126,11 @@ export default function TallerNuevaOrdenPage() {
       setGuardando(true);
       setError("");
       const orden = await crearOrdenTaller({
-        id_sucursal: 1,
+        id_sucursal: sucursalId,
         id_cliente: Number(clienteId),
         id_bicicleta_cliente: Number(bicicletaId),
         problema_reportado: problema.trim(),
-        id_usuario: 1,
+        id_usuario: usuarioId,
       });
 
       navigate(`/taller/${orden.id}`);

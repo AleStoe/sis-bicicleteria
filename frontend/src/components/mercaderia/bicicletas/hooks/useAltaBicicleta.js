@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSession } from "../../../../context/SessionContext";
 import {
   crearProducto,
   crearVariante,
@@ -9,14 +10,10 @@ import {
 } from "../../../../services/catalogoService";
 import { listarProveedores } from "../../../../services/proveedoresService";
 import { crearIngresoStock } from "../../../../services/stockService";
-import { CURRENT_USER_ID, CURRENT_SUCURSAL_ID } from "../../../../config/appConfig";
 import {
   generarNombreBicicleta,
   generarNombreVarianteBicicleta,
 } from "../utils/bicicletaNombre";
-
-const ID_USUARIO = CURRENT_USER_ID;
-const ID_SUCURSAL = CURRENT_SUCURSAL_ID;
 
 function varianteVacia() {
   return {
@@ -60,6 +57,7 @@ const initialForm = {
 };
 
 export default function useAltaBicicleta() {
+  const { usuarioId, sucursalId } = useSession();
   const [categorias, setCategorias] = useState([]);
   const [marcas, setMarcas] = useState([]);
   const [proveedores, setProveedores] = useState([]);
@@ -283,7 +281,7 @@ export default function useAltaBicicleta() {
         });
 
         await crearIngresoStock({
-          id_sucursal: ID_SUCURSAL,
+          id_sucursal: sucursalId,
           id_variante: variante.id,
           id_proveedor: Number(form.id_proveedor),
           cantidad_ingresada: Number(varianteForm.cantidad),
@@ -292,7 +290,7 @@ export default function useAltaBicicleta() {
           gastos_adicionales: 0,
           origen_ingreso: "manual",
           observacion: `Alta bicicleta ${nombreProducto} - ${nombreVariante}`,
-          id_usuario: ID_USUARIO,
+          id_usuario: usuarioId,
         });
 
         if (varianteForm.imagen_archivo) {

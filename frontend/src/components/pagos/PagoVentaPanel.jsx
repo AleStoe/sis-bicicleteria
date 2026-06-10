@@ -6,8 +6,7 @@ import {
   simularTramoPagoVenta,
 } from "../../services/pagosService";
 import { listarTarjetaPlanes } from "../../services/reglasComercialesService";
-import { CURRENT_USER_ID } from "../../config/appConfig";
-
+import { useSession } from "../../context/SessionContext";
 import PagoVentaResumen from "./PagoVentaResumen";
 import PagoVentaFormulario from "./PagoVentaFormulario";
 import PagoVentaPreview from "./PagoVentaPreview";
@@ -30,7 +29,7 @@ export default function PagoVentaPanel({
   const [simulando, setSimulando] = useState(false);
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
-
+  const { usuarioId } = useSession();
   const [form, setForm] = useState({
     modo: "base",
     medio_pago: "efectivo",
@@ -279,7 +278,7 @@ export default function PagoVentaPanel({
         monto_base: String(simulacion.monto_base_aplicado),
         cuotas: form.medio_pago === "tarjeta" ? Number(form.cuotas || 1) : null,
         entidad: form.entidad?.trim() || null,
-        id_usuario: CURRENT_USER_ID,
+        id_usuario: usuarioId,
         nota: form.nota?.trim() || null,
       });
 
@@ -317,7 +316,7 @@ export default function PagoVentaPanel({
 
       const resultado = await revertirPago(pago.id, {
         motivo: motivo.trim(),
-        id_usuario: CURRENT_USER_ID,
+        id_usuario: usuarioId,
       });
 
       await refrescarTodo();

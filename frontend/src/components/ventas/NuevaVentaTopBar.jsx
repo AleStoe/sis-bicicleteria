@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { CURRENT_USER_ID } from "../../config/appConfig";
+import { useSession } from "../../context/SessionContext";
 import {
   topBarStyle,
   brandStyle,
@@ -12,9 +12,9 @@ import {
   topLinkStyle,
 } from "../../styles/pages/nuevaVentaPageStyles";
 
-const ID_USUARIO = CURRENT_USER_ID;
 
 export default function NuevaVentaTopBar({ searchRef, query, onQueryChange, onBuscarEnter }) {
+  const { usuarioNombre } = useSession();
   return (
     <header style={topBarStyle}>
       <div style={brandStyle}>
@@ -39,7 +39,7 @@ export default function NuevaVentaTopBar({ searchRef, query, onQueryChange, onBu
 
       <div style={topRightStyle}>
         <span>Caja: CAJA 1</span>
-        <span>Usuario #{ID_USUARIO}</span>
+        <span>Usuario: {usuarioNombre}</span>
         <Link to="/ventas" style={topLinkStyle}>Historial</Link>
       </div>
     </header>

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
+import { useSession } from "../context/SessionContext";
 import { listarSerializadasDisponibles } from "../services/serializadasService";
-import { CURRENT_SUCURSAL_ID } from "../config/appConfig";
 import {
   crearLineId,
   getCodigoItemCatalogo,
@@ -9,8 +9,6 @@ import {
   getPrecioItemCatalogo,
   puedeAgregarItemCatalogo,
 } from "../helpers/ventasItemsHelper";
-
-const ID_SUCURSAL = CURRENT_SUCURSAL_ID;
 
 function mapProductoAItem(producto, tipoPrecio) {
   return {
@@ -37,6 +35,7 @@ function mapProductoAItem(producto, tipoPrecio) {
 }
 
 export default function useVentaCarrito({ tipoPrecio, setError, setMensaje }) {
+  const { sucursalId } = useSession();
   const [items, setItems] = useState([]);
   const [serializadasPorVariante, setSerializadasPorVariante] = useState({});
   const [cargandoSerializadas, setCargandoSerializadas] = useState({});
@@ -61,7 +60,7 @@ export default function useVentaCarrito({ tipoPrecio, setError, setMensaje }) {
 
       const data = await listarSerializadasDisponibles({
         id_variante: idVariante,
-        id_sucursal: ID_SUCURSAL,
+        id_sucursal: sucursalId,
       });
 
       setSerializadasPorVariante((p) => ({ ...p, [key]: data || [] }));

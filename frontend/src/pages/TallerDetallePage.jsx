@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { useSession } from "../context/SessionContext";
 import { listarVariantes } from "../services/catalogoService";
 import { listarServiciosTaller } from "../services/serviciosTallerService";
 import {
@@ -61,6 +62,7 @@ export default function TallerDetallePage() {
   const { ordenId } = useParams();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  const { usuarioId } = useSession();
   const [orden, setOrden] = useState(null);
   const [variantes, setVariantes] = useState([]);
   const [serviciosTaller, setServiciosTaller] = useState([]);
@@ -322,7 +324,7 @@ export default function TallerDetallePage() {
       setGuardando(true);
       setError("");
       setMensaje("");
-      await cambiarEstadoOrdenTaller(ordenId, { nuevo_estado: nuevoEstado, id_usuario: 1 });
+      await cambiarEstadoOrdenTaller(ordenId, { nuevo_estado: nuevoEstado, id_usuario: usuarioId });
       await refrescarOrden();
       setMensaje("Estado actualizado correctamente");
     } catch (err) {
@@ -335,11 +337,8 @@ export default function TallerDetallePage() {
  async function agregarItem(e) {
     e.preventDefault();
 
-    console.log("SUBMIT agregarItem");
-    console.log("itemForm al submit:", itemForm);
 
     const esServicio = itemForm.tipo_item === "servicio";
-    console.log("esServicio:", esServicio);
     if (esServicio && !itemForm.id_servicio_taller) {
       setError("Seleccioná un servicio para agregar al trabajo");
       return;
@@ -375,29 +374,22 @@ export default function TallerDetallePage() {
             id_servicio_taller: Number(itemForm.id_servicio_taller),
             cantidad: Number(itemForm.cantidad),
             precio_unitario: Number(itemForm.precio_unitario || 0),
-            id_usuario: 1,
+            id_usuario: usuarioId,
           }
         : {
             tipo_item: "repuesto",
             id_variante: Number(itemForm.id_variante),
             cantidad: Number(itemForm.cantidad),
             precio_unitario: Number(itemForm.precio_unitario || 0),
-            id_usuario: 1,
+            id_usuario: usuarioId,
           };
 
-      console.log("================================");
-      console.log("AGREGAR ITEM");
-      console.log("ordenId:", ordenId);
-      console.log("payload:", payload);
-      console.log("tipo:", itemForm.tipo_item);
 
       const resultado = await agregarItemOrdenTaller(
         ordenId,
         payload
       );
 
-      console.log("respuesta:", resultado);
-      console.log("================================");
       
       setItemForm({ tipo_item: itemForm.tipo_item, id_variante: "", id_servicio_taller: "", cantidad: "1", precio_unitario: "" });
       setBusquedaVariante("");
@@ -405,15 +397,11 @@ export default function TallerDetallePage() {
       await refrescarOrden();
       setMensaje(esServicio ? "Servicio agregado correctamente" : "Repuesto agregado correctamente");
     } catch (err) {
-      console.error("ERROR agregarItem");
-      console.error(err);
 
       if (err?.response) {
-        console.error("response:", err.response);
       }
 
       if (err?.detail) {
-        console.error("detail:", err.detail);
       }
 
       setError(
@@ -431,7 +419,7 @@ export default function TallerDetallePage() {
       setGuardando(true);
       setError("");
       setMensaje("");
-      await aprobarItemOrdenTaller(ordenId, item.id, { aprobado, id_usuario: 1 });
+      await aprobarItemOrdenTaller(ordenId, item.id, { aprobado, id_usuario: usuarioId });
       await refrescarOrden();
       setMensaje(aprobado ? "Item aprobado" : "Item marcado como no aprobado");
     } catch (err) {
@@ -446,7 +434,7 @@ export default function TallerDetallePage() {
       setGuardando(true);
       setError("");
       setMensaje("");
-      await ejecutarItemOrdenTaller(ordenId, item.id, 1);
+      await ejecutarItemOrdenTaller(ordenId, item.id, usuarioId);
       await refrescarOrden();
       setMensaje("Item ejecutado correctamente");
     } catch (err) {
@@ -464,7 +452,7 @@ export default function TallerDetallePage() {
       setGuardando(true);
       setError("");
       setMensaje("");
-      await revertirEjecucionItemOrdenTaller(ordenId, item.id, { id_usuario: 1, motivo: motivo.trim() });
+      await revertirEjecucionItemOrdenTaller(ordenId, item.id, { id_usuario: usuarioId, motivo: motivo.trim() });
       await refrescarOrden();
       setMensaje("Ejecución revertida correctamente");
     } catch (err) {
@@ -482,7 +470,7 @@ export default function TallerDetallePage() {
       setGuardando(true);
       setError("");
       setMensaje("");
-      await cancelarItemOrdenTaller(ordenId, item.id, { id_usuario: 1, motivo: motivo.trim() });
+      await cancelarItemOrdenTaller(ordenId, item.id, { id_usuario: usuarioId, motivo: motivo.trim() });
       await refrescarOrden();
       setMensaje("Item cancelado correctamente");
     } catch (err) {
@@ -497,7 +485,7 @@ export default function TallerDetallePage() {
       setGuardando(true);
       setError("");
       setMensaje("");
-      const resultado = await generarVentaDesdeOrdenTaller(ordenId, { id_usuario: 1 });
+      const resultado = await generarVentaDesdeOrdenTaller(ordenId, { id_usuario: usuarioId });
       await refrescarOrden();
       setMensaje(`Venta #${resultado.venta_id} generada desde taller`);
       navigate(`/ventas/${resultado.venta_id}/cobro`);
@@ -515,7 +503,7 @@ export default function TallerDetallePage() {
       setMensaje("");
       await cambiarEstadoOrdenTaller(ordenId, {
         nuevo_estado: nuevoEstadoDirecto,
-        id_usuario: 1,
+        id_usuario: usuarioId,
       });
       await refrescarOrden();
       setMensaje(mensajeOk || `Estado actualizado a ${labelEstado(nuevoEstadoDirecto)}`);

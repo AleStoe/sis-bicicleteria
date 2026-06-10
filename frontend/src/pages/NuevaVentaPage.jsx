@@ -11,7 +11,6 @@ import { listarSerializadasDisponibles } from "../services/serializadasService";
 import CarritoVentaPanel from "../components/ventas/CarritoVentaPanel";
 import CatalogoPOSPanel from "../components/ventas/catalogo/CatalogoPOSPanel";
 import VentaCarritoSidebar from "../components/ventas/pos/VentaCarritoSidebar";
-import { CURRENT_USER_ID, CURRENT_SUCURSAL_ID } from "../config/appConfig";
 import { validarVentaAntesDeCrear } from "../validators/ventasValidator";
 import { buildVentaPayload } from "../builders/ventasPayloadBuilder";
 import {
@@ -22,7 +21,7 @@ import {
   getPrecioItemCatalogo,
   puedeAgregarItemCatalogo,
 } from "../helpers/ventasItemsHelper";
-
+import { useSession } from "../context/SessionContext";
 import {
   pageStyle,
   topBarStyle,
@@ -71,8 +70,6 @@ import {
   posMessageStyle
 } from "../styles/pages/nuevaVentaPageStyles";
 
-const ID_USUARIO = CURRENT_USER_ID;
-const ID_SUCURSAL = CURRENT_SUCURSAL_ID;
 const DEFAULT_LIMIT = 80;
 const MOBILE_BREAKPOINT = 760;
 
@@ -110,7 +107,7 @@ function useIsMobile(breakpoint = MOBILE_BREAKPOINT) {
 export default function NuevaVentaPage() {
   const navigate = useNavigate();
   const searchRef = useRef(null);
-
+  const { usuarioId, sucursalId, usuarioActual } = useSession();
   const [catalogo, setCatalogo] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [clientes, setClientes] = useState([]);
@@ -187,7 +184,7 @@ export default function NuevaVentaPage() {
         listarCategorias(),
         listarClientes({ solo_activos: true }),
         listarCatalogoPOS({
-          id_sucursal: ID_SUCURSAL,
+          id_sucursal: sucursalId,
           limit: DEFAULT_LIMIT,
         }),
       ]);
@@ -218,7 +215,7 @@ export default function NuevaVentaPage() {
       setError("");
 
       const data = await listarCatalogoPOS({
-        id_sucursal: ID_SUCURSAL,
+        id_sucursal: sucursalId,
         query: query.trim() || undefined,
         categoria_id: categoriaId || undefined,
         limit: DEFAULT_LIMIT,
@@ -246,7 +243,7 @@ async function handleBuscarEnter(e) {
     setError("");
 
     const producto = await buscarCatalogoPOSExacto({
-      id_sucursal: ID_SUCURSAL,
+      id_sucursal: sucursalId,
       codigo,
     });
 
@@ -277,7 +274,7 @@ async function handleBuscarEnter(e) {
 
       const data = await listarSerializadasDisponibles({
         id_variante: idVariante,
-        id_sucursal: ID_SUCURSAL,
+        id_sucursal: sucursalId,
       });
 
       setSerializadasPorVariante((p) => ({
@@ -514,8 +511,8 @@ async function handleBuscarEnter(e) {
   } = {}) {
     return buildVentaPayload({
       clienteId,
-      sucursalId: ID_SUCURSAL,
-      usuarioId: ID_USUARIO,
+      sucursalId: sucursalId,
+      usuarioId: usuarioId,
       tipoPrecio,
       items,
       pagos,
@@ -548,7 +545,7 @@ async function handleBuscarEnter(e) {
 
       if (entregar_ahora) {
         await entregarVenta(resultado.venta_id, {
-          id_usuario: ID_USUARIO,
+          id_usuario: usuarioId,
         });
       }
 
@@ -575,8 +572,8 @@ async function handleBuscarEnter(e) {
           total,
           observaciones,
           usarCredito,
-          idUsuario: ID_USUARIO,
-          idSucursal: ID_SUCURSAL,
+          idUsuario: usuarioId,
+          idSucursal: sucursalId,
         },
       },
     });
@@ -643,7 +640,7 @@ async function handleBuscarEnter(e) {
 
         <div style={{ ...topRightStyle, ...(isMobile ? posMobileStyles.topRight : {}) }}>
           {!isMobile && <span>Caja: CAJA 1</span>}
-          {!isMobile && <span>Usuario #{ID_USUARIO}</span>}
+          {!isMobile && <span>Usuario #{usuarioId}</span>}
           <Link to="/ventas" style={topLinkStyle}>Historial</Link>
         </div>
       </header>

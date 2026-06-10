@@ -24,17 +24,14 @@ import {
   recalcularPreciosProveedor,
   sugerirPrecioVariante,
 } from "../services/preciosService";
-import { CURRENT_USER_ID, CURRENT_SUCURSAL_ID } from "../config/appConfig";
 import { formatMoney, formatPercent, formatDate } from "../utils/formatters";
-
-const ID_USUARIO = CURRENT_USER_ID || 1;
-const ID_SUCURSAL = CURRENT_SUCURSAL_ID || 1;
+import { useSession } from "../context/SessionContext";
 
 export default function PreciosPage() {
   const buscarRef = useRef(null);
 
   const [tab, setTab] = useState("manual");
-
+  const { usuarioId, sucursalId } = useSession();
   const [proveedores, setProveedores] = useState([]);
   const [reglas, setReglas] = useState([]);
 
@@ -126,7 +123,7 @@ export default function PreciosPage() {
       setSugerencia(null);
 
       const data = await listarCatalogoPOS({
-        id_sucursal: ID_SUCURSAL,
+        id_sucursal: sucursalId,
         query: query.trim(),
         limit: 20,
         offset: 0,
@@ -198,7 +195,7 @@ export default function PreciosPage() {
         precio_minorista: formPrecio.precio_minorista,
         precio_mayorista: formPrecio.precio_mayorista,
         motivo: formPrecio.motivo.trim(),
-        id_usuario: ID_USUARIO,
+        id_usuario: usuarioId,
         tipo_movimiento: "actualizacion_manual",
         origen_tipo: "precios_page",
         origen_id: null,
@@ -344,7 +341,7 @@ export default function PreciosPage() {
           idProveedor,
           tipoCliente,
           aplicar: true,
-          usuarioId: ID_USUARIO,
+          usuarioId,
           motivo: motivoMasivo,
         })
       );
@@ -404,7 +401,7 @@ export default function PreciosPage() {
       setError("");
       setMensaje("");
 
-      await desactivarReglaPrecio(reglaId, { id_usuario: ID_USUARIO });
+      await desactivarReglaPrecio(reglaId, { id_usuario: usuarioId });
 
       setMensaje("Regla desactivada.");
       const reglasData = await listarReglasPrecio({ solo_activas: false });

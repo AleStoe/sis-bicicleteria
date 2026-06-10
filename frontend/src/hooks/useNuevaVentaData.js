@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
+import { useSession } from "../context/SessionContext";
 import { listarCatalogoPOS, listarCategorias } from "../services/catalogoService";
 import { listarClientes } from "../services/clientesService";
-import { CURRENT_SUCURSAL_ID } from "../config/appConfig";
 
-const ID_SUCURSAL = CURRENT_SUCURSAL_ID;
 const DEFAULT_LIMIT = 80;
 
 function tipoPrecioParaCliente(cliente) {
@@ -11,6 +10,7 @@ function tipoPrecioParaCliente(cliente) {
 }
 
 export default function useNuevaVentaData() {
+  const { sucursalId } = useSession();
   const [catalogo, setCatalogo] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [clientes, setClientes] = useState([]);
@@ -47,7 +47,7 @@ export default function useNuevaVentaData() {
         listarCategorias(),
         listarClientes({ solo_activos: true }),
         listarCatalogoPOS({
-          id_sucursal: ID_SUCURSAL,
+          id_sucursal: sucursalId,
           limit: DEFAULT_LIMIT,
         }),
       ]);
@@ -78,7 +78,7 @@ export default function useNuevaVentaData() {
       setErrorData("");
 
       const data = await listarCatalogoPOS({
-        id_sucursal: ID_SUCURSAL,
+        id_sucursal: sucursalId,
         query: query.trim() || undefined,
         categoria_id: categoriaId || undefined,
         limit: DEFAULT_LIMIT,

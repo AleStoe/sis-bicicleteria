@@ -1,4 +1,5 @@
 import { NavLink } from "react-router-dom";
+import { useSession } from "../../context/SessionContext";
 import {
   Bike,
   Boxes,
@@ -80,6 +81,54 @@ const groups = [
 ];
 
 export default function Sidebar({ onNavigate }) {
+  const { esAdministrador, esEncargado, esOperador, esMecanico } = useSession();
+
+  const gruposVisibles = groups
+    .map((group) => ({
+      ...group,
+      links: group.links.filter((link) => {
+        if (esAdministrador) return true;
+
+        if (esEncargado) {
+          return ![
+            "/auditoria",
+            "/rentabilidad",
+            "/capital-retiros",
+            "/configuracion-comercial",
+            "/usuarios",
+          ].includes(link.to);
+        }
+
+        if (esOperador) {
+          return [
+            "/dashboard",
+            "/ventas/nueva",
+            "/ventas",
+            "/reservas",
+            "/clientes",
+            "/pagos",
+            "/deudas",
+            "/creditos",
+            "/stock",
+            "/catalogo",
+          ].includes(link.to);
+        }
+
+        if (esMecanico) {
+          return [
+            "/dashboard",
+            "/taller",
+            "/servicios-taller",
+            "/stock",
+            "/serializadas",
+          ].includes(link.to);
+        }
+
+        return false;
+      }),
+    }))
+    .filter((group) => group.links.length > 0);
+
   return (
     <aside style={sidebarContainerStyle}>
       <div style={sidebarHeaderStyle}>
@@ -113,7 +162,7 @@ export default function Sidebar({ onNavigate }) {
       </div>
 
       <nav style={navSectionStyle}>
-        {groups.map((group) => (
+        {gruposVisibles.map((group) => (
           <div key={group.title} style={{ display: "grid", gap: 6 }}>
             <div style={navGroupTitleStyle}>{group.title}</div>
 
@@ -125,7 +174,9 @@ export default function Sidebar({ onNavigate }) {
                   key={link.to}
                   to={link.to}
                   onClick={onNavigate}
-                  style={({ isActive }) => (isActive ? navItemActiveStyle : navItemStyle)}
+                  style={({ isActive }) =>
+                    isActive ? navItemActiveStyle : navItemStyle
+                  }
                 >
                   <Icon style={navIconStyle} size={18} strokeWidth={2.2} />
                   <span style={navItemLabelStyle}>{link.label}</span>

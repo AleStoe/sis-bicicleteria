@@ -3,10 +3,9 @@ import {
   crearSerializada,
   listarSerializadas,
 } from "../services/serializadasService";
-import { CURRENT_SUCURSAL_ID, CURRENT_USER_ID } from "../config/appConfig";
 import { listarCatalogoPOS } from "../services/catalogoService";
 import { getImageUrl } from "../utils/images";
-
+import { useSession } from "../context/SessionContext";
 const ESTADOS = [
   { value: "disponible", label: "Disponibles", emoji: "✅" },
   { value: "reservada", label: "Reservadas", emoji: "🟡" },
@@ -92,6 +91,7 @@ function getOperacionDetalle(bici) {
 }
 
 export default function BicicletasSerializadasPage() {
+  const { usuarioId, sucursalId } = useSession();
   const [bicis, setBicis] = useState([]);
   const [estado, setEstado] = useState("disponible");
   const [query, setQuery] = useState("");
@@ -108,11 +108,11 @@ export default function BicicletasSerializadasPage() {
   const [varianteSeleccionada, setVarianteSeleccionada] = useState(null);
 
   const [form, setForm] = useState({
-    id_variante: "",
-    id_sucursal_actual: CURRENT_SUCURSAL_ID,
-    numero_cuadro: "",
-    observaciones: "",
-  });
+      id_variante: "",
+      id_sucursal_actual: sucursalId,
+      numero_cuadro: "",
+      observaciones: "",
+    });
 
   useEffect(() => {
     cargarSerializadas();
@@ -128,7 +128,7 @@ export default function BicicletasSerializadasPage() {
         setBuscandoVariantes(true);
 
         const data = await listarCatalogoPOS({
-          id_sucursal: CURRENT_SUCURSAL_ID,
+          id_sucursal: sucursalId,
           query: queryVariante.trim() || undefined,
           limit: 80,
           offset: 0,
@@ -227,7 +227,7 @@ export default function BicicletasSerializadasPage() {
         id_sucursal_actual: Number(form.id_sucursal_actual),
         numero_cuadro: form.numero_cuadro.trim(),
         observaciones: form.observaciones.trim() || null,
-        id_usuario: CURRENT_USER_ID,
+        id_usuario: usuarioId,
       });
 
       setMensaje(`Bicicleta serializada creada. ID #${res.bicicleta_id}`);

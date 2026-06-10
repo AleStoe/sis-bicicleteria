@@ -14,7 +14,7 @@ import TallerNuevaOrdenPage from "./pages/TallerNuevaOrdenPage";
 import TallerDetallePage from "./pages/TallerDetallePage";
 import DeudasListPage from "./pages/DeudasListPage";
 import DeudaDetallePage from "./pages/DeudaDetallePage";
-import PagosPage from "./pages/PagosPage"
+import PagosPage from "./pages/PagosPage";
 import CreditosListPage from "./pages/CreditosListPage";
 import CreditoDetallePage from "./pages/CreditoDetallePage";
 import ReservasListPage from "./pages/ReservasListPage";
@@ -25,7 +25,6 @@ import BicicletasSerializadasPage from "./pages/BicicletasSerializadasPage";
 import ProveedoresPage from "./pages/ProveedoresPage";
 import PreciosPage from "./pages/PreciosPage";
 import CatalogoPage from "./pages/CatalogoPage";
-// import IngresoMercaderiaPage from "./pages/IngresoMercaderiaPage";
 import AltaMercaderiaPage from "./pages/AltaMercaderiaPage";
 import VentaCobroPage from "./pages/VentaCobroPage";
 import ClienteBicicletaDetallePage from "./pages/ClienteBicicletaDetallePage";
@@ -37,11 +36,22 @@ import CapitalRetirosPage from "./pages/CapitalRetirosPage";
 import CapitalRetirosParticipantePerfilPage from "./pages/CapitalRetirosParticipantePerfilPage";
 import RentabilidadPage from "./pages/RentabilidadPage";
 import DashboardPage from "./pages/DashboardPage";
-import GastosPage from "./pages/GastosPage"
+import GastosPage from "./pages/GastosPage";
 import UsuariosPage from "./pages/UsuariosPage";
-
+import SeleccionUsuarioPage from "./pages/SeleccionUsuarioPage";
+import { useSession } from "./context/SessionContext";
 
 export default function App() {
+  const { usuarioActual, cargandoSesion } = useSession();
+
+  if (cargandoSesion) {
+    return <div style={styles.loading}>Cargando sesión operativa...</div>;
+  }
+
+  if (!usuarioActual) {
+    return <SeleccionUsuarioPage />;
+  }
+
   return (
     <BrowserRouter>
       <AppLayout>
@@ -62,24 +72,23 @@ export default function App() {
           <Route path="/clientes/:clienteId/editar" element={<ClienteFormPage />} />
           <Route path="/deudas" element={<DeudasListPage />} />
           <Route path="/deudas/:deudaId" element={<DeudaDetallePage />} />
-          <Route path="/pagos" element={<PagosPage />} />  
+          <Route path="/pagos" element={<PagosPage />} />
           <Route path="/creditos" element={<CreditosListPage />} />
           <Route path="/creditos/:creditoId" element={<CreditoDetallePage />} />
           <Route path="/reservas" element={<ReservasListPage />} />
           <Route path="/reservas/nueva" element={<NuevaReservaPage />} />
-          <Route path="/reservas/:reservaId" element={<ReservaDetallePage />} /> 
-          <Route path="/auditoria" element={<AuditoriaPage />} /> 
+          <Route path="/reservas/:reservaId" element={<ReservaDetallePage />} />
+          <Route path="/auditoria" element={<AuditoriaPage />} />
           <Route path="/serializadas" element={<BicicletasSerializadasPage />} />
           <Route path="/proveedores" element={<ProveedoresPage />} />
           <Route path="/precios" element={<PreciosPage />} />
           <Route path="/catalogo" element={<CatalogoPage />} />
-        {/*  <Route path="/stock/ingreso" element={<IngresoMercaderiaPage />} />*/}
           <Route path="/mercaderia/alta" element={<AltaMercaderiaPage />} />
           <Route path="/ventas/:ventaId/cobro" element={<VentaCobroPage />} />
           <Route path="/clientes/:clienteId/bicicletas/:bicicletaId" element={<ClienteBicicletaDetallePage />}/>
           <Route path="/mercaderia/bicicletas/alta" element={<AltaBicicletaPage />} />
-          <Route path="/catalogo/productos/:productoId" element={<CatalogoProductoDetallePage />} />
-          <Route path="/configuracion-comercial" element={<ConfiguracionComercialPage />} />
+          <Route path="/catalogo/productos/:productoId" element={<CatalogoProductoDetallePage />}/>
+          <Route path="/configuracion-comercial" element={<ConfiguracionComercialPage />}/>
           <Route path="/servicios-taller" element={<ServiciosPage />} />
           <Route path="/capital-retiros" element={<CapitalRetirosPage />} />
           <Route path="/capital-retiros/participantes/:participanteId" element={<CapitalRetirosParticipantePerfilPage />}/>
@@ -92,3 +101,14 @@ export default function App() {
     </BrowserRouter>
   );
 }
+
+const styles = {
+  loading: {
+    minHeight: "100vh",
+    display: "grid",
+    placeItems: "center",
+    background: "#f1f5f9",
+    color: "#0f172a",
+    fontWeight: 900,
+  },
+};

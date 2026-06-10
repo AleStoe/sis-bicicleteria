@@ -11,7 +11,7 @@ import DeudaResumenPanel from "../components/deudas/detalle/DeudaResumenPanel";
 import DeudaPagoPanel from "../components/deudas/detalle/DeudaPagoPanel";
 import DeudaMovimientosTable from "../components/deudas/detalle/DeudaMovimientosTable";
 import DeudaOrigenPanel from "../components/deudas/detalle/DeudaOrigenPanel";
-
+import { useSession } from "../context/SessionContext";
 const MOBILE_BREAKPOINT = 760;
 
 const PAGO_FORM_INICIAL = {
@@ -72,7 +72,7 @@ function buildPagoPayload(pagoForm) {
         ? pagoForm.entidad.trim()
         : null,
     nota: pagoForm.nota.trim() || null,
-    id_usuario: 1,
+    id_usuario: usuarioId,
   };
 }
 
@@ -87,7 +87,7 @@ export default function DeudaDetallePage() {
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
   const [previewPago, setPreviewPago] = useState(null);
-
+  const { usuarioId } = useSession();
   const [pagoForm, setPagoForm] = useState(PAGO_FORM_INICIAL);
 
   useEffect(() => {
