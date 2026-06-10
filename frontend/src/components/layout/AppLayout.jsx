@@ -3,6 +3,7 @@ import { Menu, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import Sidebar from "./Sidebar";
 import useMediaQuery from "../../hooks/useMediaQuery";
+import { useSession } from "../../context/SessionContext";
 import {
   appShellStyle,
   mainContainerStyle,
@@ -18,6 +19,7 @@ import {
 export default function AppLayout({ children }) {
   const isMobile = useMediaQuery("(max-width: 900px)");
   const [menuOpen, setMenuOpen] = useState(false);
+  const { usuarioActual, cerrarSesionOperativa } = useSession();
 
   useEffect(() => {
     if (!isMobile) setMenuOpen(false);
@@ -62,9 +64,21 @@ export default function AppLayout({ children }) {
             </div>
           </div>
 
-          {!isMobile && (
-            <div style={subtleStyle}>Bicicletería · Taller · Caja · Stock</div>
-          )}
+          <div style={styles.sessionBox}>
+            {!isMobile && (
+              <div style={styles.sessionText}>
+                {formatUsuarioSesion(usuarioActual)}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={cerrarSesionOperativa}
+              style={styles.logoutButton}
+            >
+              Salir
+            </button>
+          </div>
         </header>
 
         <main style={contentStyle(isMobile)}>{children || <Outlet />}</main>
@@ -72,3 +86,42 @@ export default function AppLayout({ children }) {
     </div>
   );
 }
+
+function formatUsuarioSesion(usuario) {
+  if (!usuario) return "-";
+
+  if (usuario.nombre) {
+    return usuario.username
+      ? `${usuario.nombre} (@${usuario.username})`
+      : usuario.nombre;
+  }
+
+  return usuario.id ? `Usuario #${usuario.id}` : "-";
+}
+
+const styles = {
+  sessionBox: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 10,
+    minWidth: 0,
+  },
+  sessionText: {
+    color: "#64748b",
+    fontWeight: 900,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    maxWidth: 260,
+  },
+  logoutButton: {
+    border: "1px solid #cbd5e1",
+    background: "white",
+    color: "#0f172a",
+    borderRadius: 12,
+    padding: "9px 11px",
+    fontWeight: 1000,
+    cursor: "pointer",
+  },
+};

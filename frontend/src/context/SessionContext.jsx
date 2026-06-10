@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { listarUsuarios } from "../services/usuariosService";
+import { login as loginAuth } from "../services/authService";
 
 const SESSION_STORAGE_KEY = "erp_session_usuario";
 const SUCURSAL_DEFAULT = {
@@ -10,7 +10,6 @@ const SUCURSAL_DEFAULT = {
 const SessionContext = createContext(null);
 
 export function SessionProvider({ children }) {
-  const [usuarios, setUsuarios] = useState([]);
   const [usuarioActual, setUsuarioActual] = useState(null);
   const [cargandoSesion, setCargandoSesion] = useState(true);
   const [errorSesion, setErrorSesion] = useState("");
@@ -19,38 +18,36 @@ export function SessionProvider({ children }) {
     inicializarSesion();
   }, []);
 
-  async function inicializarSesion() {
+  function inicializarSesion() {
     try {
       setCargandoSesion(true);
       setErrorSesion("");
 
-      const data = await listarUsuarios({ solo_activos: true });
-      const usuariosActivos = Array.isArray(data) ? data : [];
-
-      setUsuarios(usuariosActivos);
-
       const guardado = localStorage.getItem(SESSION_STORAGE_KEY);
       const usuarioGuardado = guardado ? JSON.parse(guardado) : null;
 
-      const usuarioValido = usuariosActivos.find(
-        (usuario) => usuario.id === usuarioGuardado?.id,
-      );
-
-      if (usuarioValido) {
-        setUsuarioActual(normalizarUsuarioSesion(usuarioValido));
+      if (usuarioGuardado?.id) {
+        setUsuarioActual(normalizarUsuarioSesion(usuarioGuardado));
       }
     } catch (err) {
-      setErrorSesion(err.message || "No se pudo inicializar la sesión operativa");
+      localStorage.removeItem(SESSION_STORAGE_KEY);
+      setUsuarioActual(null);
+      setErrorSesion(err.message || "No se pudo inicializar la sesión");
     } finally {
       setCargandoSesion(false);
     }
   }
 
-  function seleccionarUsuario(usuario) {
+  async function iniciarSesion({ username, password }) {
+    setErrorSesion("");
+
+    const usuario = await loginAuth({ username, password });
     const normalizado = normalizarUsuarioSesion(usuario);
 
     localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(normalizado));
     setUsuarioActual(normalizado);
+
+    return normalizado;
   }
 
   function cerrarSesionOperativa() {
@@ -58,25 +55,33 @@ export function SessionProvider({ children }) {
     setUsuarioActual(null);
   }
 
+  // Compatibilidad temporal: algunos componentes viejos podrían seguir importando esto.
+  function seleccionarUsuario(usuario) {
+    const normalizado = normalizarUsuarioSesion(usuario);
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(normalizado));
+    setUsuarioActual(normalizado);
+  }
+
   const value = useMemo(
     () => ({
-      usuarios,
+      usuarios: usuarioActual ? [usuarioActual] : [],
       usuarioActual,
       sucursalActual: SUCURSAL_DEFAULT,
       cargandoSesion,
       errorSesion,
+      iniciarSesion,
       seleccionarUsuario,
       cerrarSesionOperativa,
       recargarUsuariosSesion: inicializarSesion,
       usuarioId: usuarioActual?.id ?? null,
-      sucursalId: SUCURSAL_DEFAULT.id,
+      sucursalId: usuarioActual?.id_sucursal ?? SUCURSAL_DEFAULT.id,
       rolActual: usuarioActual?.rol ?? null,
       esAdministrador: usuarioActual?.rol === "administrador",
       esEncargado: usuarioActual?.rol === "encargado",
       esOperador: usuarioActual?.rol === "operador",
       esMecanico: usuarioActual?.rol === "mecanico",
     }),
-    [usuarios, usuarioActual, cargandoSesion, errorSesion],
+    [usuarioActual, cargandoSesion, errorSesion],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
@@ -97,9 +102,9 @@ function normalizarUsuarioSesion(usuario) {
     id: usuario.id,
     nombre: usuario.nombre,
     username: usuario.username,
-    email: usuario.email,
+    email: usuario.email ?? null,
     rol: usuario.rol,
-    activo: usuario.activo,
-    id_sucursal: SUCURSAL_DEFAULT.id,
+    activo: usuario.activo ?? true,
+    id_sucursal: usuario.id_sucursal ?? SUCURSAL_DEFAULT.id,
   };
 }

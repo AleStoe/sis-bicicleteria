@@ -38,18 +38,18 @@ import RentabilidadPage from "./pages/RentabilidadPage";
 import DashboardPage from "./pages/DashboardPage";
 import GastosPage from "./pages/GastosPage";
 import UsuariosPage from "./pages/UsuariosPage";
-import SeleccionUsuarioPage from "./pages/SeleccionUsuarioPage";
+import LoginPage from "./pages/LoginPage";
 import { useSession } from "./context/SessionContext";
 
 export default function App() {
   const { usuarioActual, cargandoSesion } = useSession();
 
   if (cargandoSesion) {
-    return <div style={styles.loading}>Cargando sesión operativa...</div>;
+    return <div style={styles.loading}>Cargando sesión...</div>;
   }
 
   if (!usuarioActual) {
-    return <SeleccionUsuarioPage />;
+    return <LoginPage />;
   }
 
   return (
@@ -85,17 +85,18 @@ export default function App() {
           <Route path="/catalogo" element={<CatalogoPage />} />
           <Route path="/mercaderia/alta" element={<AltaMercaderiaPage />} />
           <Route path="/ventas/:ventaId/cobro" element={<VentaCobroPage />} />
-          <Route path="/clientes/:clienteId/bicicletas/:bicicletaId" element={<ClienteBicicletaDetallePage />}/>
+          <Route path="/clientes/:clienteId/bicicletas/:bicicletaId" element={<ClienteBicicletaDetallePage />} />
           <Route path="/mercaderia/bicicletas/alta" element={<AltaBicicletaPage />} />
-          <Route path="/catalogo/productos/:productoId" element={<CatalogoProductoDetallePage />}/>
-          <Route path="/configuracion-comercial" element={<ConfiguracionComercialPage />}/>
+          <Route path="/catalogo/productos/:productoId" element={<CatalogoProductoDetallePage />} />
+          <Route path="/configuracion-comercial" element={<ConfiguracionComercialPage />} />
           <Route path="/servicios-taller" element={<ServiciosPage />} />
           <Route path="/capital-retiros" element={<CapitalRetirosPage />} />
-          <Route path="/capital-retiros/participantes/:participanteId" element={<CapitalRetirosParticipantePerfilPage />}/>
+          <Route path="/capital-retiros/participantes/:participanteId" element={<CapitalRetirosParticipantePerfilPage />} />
           <Route path="/rentabilidad" element={<RentabilidadPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/gastos" element={<GastosPage />} />
           <Route path="/usuarios" element={<UsuariosPage />} />
+          <Route path="*" element={<Navigate to="/ventas/nueva" replace />} />
         </Routes>
       </AppLayout>
     </BrowserRouter>
