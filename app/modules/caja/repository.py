@@ -216,20 +216,24 @@ def get_caja_movimientos(conn, caja_id: int):
         cur.execute(
             """
             SELECT
-                id,
-                id_caja,
-                fecha,
-                tipo_movimiento,
-                submedio,
-                monto,
-                origen_tipo,
-                origen_id,
-                nota,
-                id_usuario,
-                direccion_ajuste
-            FROM caja_movimientos
-            WHERE id_caja = %s
-            ORDER BY fecha, id
+                cm.id,
+                cm.id_caja,
+                cm.fecha,
+                cm.tipo_movimiento,
+                cm.submedio,
+                cm.monto,
+                cm.origen_tipo,
+                cm.origen_id,
+                cm.nota,
+                cm.id_usuario,
+                u.nombre AS usuario_nombre,
+                u.username AS usuario_username,
+                cm.direccion_ajuste
+            FROM caja_movimientos cm
+            LEFT JOIN usuarios u
+                ON u.id = cm.id_usuario
+            WHERE cm.id_caja = %s
+            ORDER BY cm.fecha, cm.id
             """,
             (caja_id,),
         )

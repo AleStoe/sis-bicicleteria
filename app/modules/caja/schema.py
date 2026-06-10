@@ -56,7 +56,11 @@ class CajaMovimientoOutput(BaseModel):
     origen_tipo: str | None = None
     origen_id: int | None = None
     nota: str | None = None
+
     id_usuario: int
+    usuario_nombre: str | None = None
+    usuario_username: str | None = None
+
     direccion_ajuste: Literal["positivo", "negativo"] | None = None
 
 class CajaTotalesSubmedioOutput(BaseModel):

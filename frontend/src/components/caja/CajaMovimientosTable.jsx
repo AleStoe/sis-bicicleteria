@@ -38,7 +38,7 @@ export default function CajaMovimientosTable({ movimientos, formatCurrency }) {
               {formatCurrency(mov.monto)}
             </td>
             <td style={tdStyle}>{formatOrigen(mov)}</td>
-            <td style={tdStyle}>{mov.id_usuario ? `Usuario #${mov.id_usuario}` : "-"}</td>
+            <td style={tdStyle}>{formatUsuario(mov)}</td>
             <td style={tdStyle}>{mov.nota || "-"}</td>
           </>
         )}
@@ -65,7 +65,7 @@ export default function CajaMovimientosTable({ movimientos, formatCurrency }) {
               <MobileField label="Origen" value={formatOrigen(mov)} />
               <MobileField
                 label="Usuario"
-                value={mov.id_usuario ? `Usuario #${mov.id_usuario}` : "-"}
+                value={formatUsuario(mov)}
               />
               <MobileField label="Nota" value={mov.nota || "-"} full />
             </div>
@@ -83,6 +83,16 @@ function MobileField({ label, value, full = false }) {
       <strong>{value || "-"}</strong>
     </div>
   );
+}
+
+function formatUsuario(mov) {
+  if (mov.usuario_nombre) {
+    return mov.usuario_username
+      ? `${mov.usuario_nombre} (@${mov.usuario_username})`
+      : mov.usuario_nombre;
+  }
+
+  return mov.id_usuario ? `Usuario #${mov.id_usuario}` : "-";
 }
 
 function formatFecha(fecha) {
