@@ -144,7 +144,8 @@ class ReservaEventoOutput(BaseModel):
     tipo_evento: str
     detalle: str | None = None
     id_usuario: int
-
+    usuario_nombre: str | None = None
+    usuario_username: str | None = None
 
 class ReservaPagoOutput(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -156,6 +157,8 @@ class ReservaPagoOutput(BaseModel):
     estado: str
     nota: str | None = None
     id_usuario: int
+    usuario_nombre: str | None = None
+    usuario_username: str | None = None
 
 
 class ReservaDetalleCabeceraOutput(BaseModel):

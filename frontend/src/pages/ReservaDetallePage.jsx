@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { useSession } from "../context/SessionContext";
 import {
   cancelarReserva,
   convertirReservaEnVenta,
@@ -11,12 +12,11 @@ import { EstadoReservaBadge } from "./ReservasListPage";
 import { ConfirmModal } from "../components/ui/ConfirmModal";
 import { PromptModal } from "../components/ui/PromptModal";
 
-const ID_USUARIO = 1;
 
 export default function ReservaDetallePage() {
   const { reservaId } = useParams();
   const navigate = useNavigate();
-
+  const { usuarioId } = useSession();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [procesando, setProcesando] = useState(false);
@@ -95,7 +95,7 @@ export default function ReservaDetallePage() {
 
       await vencerReserva(reservaId, {
         detalle,
-        id_usuario: ID_USUARIO,
+        id_usuario: usuarioId,
       });
 
       await cargarReserva();
@@ -134,7 +134,7 @@ export default function ReservaDetallePage() {
       await cancelarReserva(reservaId, {
         motivo: motivo.trim(),
         sena_perdida: senaPerdida,
-        id_usuario: ID_USUARIO,
+        id_usuario: usuarioId,
       });
 
       await cargarReserva();
@@ -162,7 +162,7 @@ export default function ReservaDetallePage() {
       setMensaje("");
 
       const res = await convertirReservaEnVenta(reservaId, {
-        id_usuario: ID_USUARIO,
+        id_usuario: usuarioId,
         observaciones,
       });
 
@@ -335,7 +335,7 @@ export default function ReservaDetallePage() {
               {eventos.map((evento) => (
                 <div key={evento.id} style={eventStyle}>
                   <strong>{evento.tipo_evento}</strong>
-                  <span style={mutedStyle}>{formatDate(evento.fecha)} · Usuario #{evento.id_usuario}</span>
+                  <span style={mutedStyle}>{formatDate(evento.fecha)} · {formatUsuario(evento)}</span>
                   {evento.detalle && <div>{evento.detalle}</div>}
                 </div>
               ))}
@@ -374,6 +374,15 @@ export default function ReservaDetallePage() {
     </div>
   );
 }
+function formatUsuario(item) {
+  if (item.usuario_nombre) {
+    return item.usuario_username
+      ? `${item.usuario_nombre} (@${item.usuario_username})`
+      : item.usuario_nombre;
+  }
+
+  return item.id_usuario ? `Usuario #${item.id_usuario}` : "-";
+}
 
 function PagoCard({ pago }) {
   const base = pago.monto_base_aplicado ?? pago.monto_base ?? pago.monto_total_cobrado;
@@ -392,7 +401,9 @@ function PagoCard({ pago }) {
       <div style={paymentTopStyle}>
         <div>
           <strong>{capitalizar(pago.medio_pago)} · {formatMoney(cobrado)}</strong>
-          <div style={mutedStyle}>{formatDate(pago.fecha)} · {pago.estado} · Usuario #{pago.id_usuario}</div>
+          <div style={mutedStyle}>
+            {formatDate(pago.fecha)} · {pago.estado} · {formatUsuario(pago)}
+          </div>
         </div>
         <span style={paymentBadgeStyle}>Pago #{pago.id}</span>
       </div>

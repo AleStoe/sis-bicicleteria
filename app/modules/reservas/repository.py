@@ -307,14 +307,17 @@ def get_reserva_eventos(conn, reserva_id: int):
         cur.execute(
             """
             SELECT
-                id,
-                fecha,
-                tipo_evento,
-                detalle,
-                id_usuario
-            FROM reserva_eventos
-            WHERE id_reserva = %s
-            ORDER BY fecha, id
+                re.id,
+                re.fecha,
+                re.tipo_evento,
+                re.detalle,
+                re.id_usuario,
+                u.nombre AS usuario_nombre,
+                u.username AS usuario_username
+            FROM reserva_eventos re
+            LEFT JOIN usuarios u ON u.id = re.id_usuario
+            WHERE re.id_reserva = %s
+            ORDER BY re.fecha, re.id
             """,
             (reserva_id,),
         )
@@ -326,17 +329,20 @@ def get_reserva_pagos(conn, reserva_id: int):
         cur.execute(
             """
             SELECT
-                id,
-                fecha,
-                medio_pago,
-                monto_total_cobrado,
-                estado,
-                nota,
-                id_usuario
-            FROM pagos
-            WHERE origen_tipo = 'reserva'
-              AND origen_id = %s
-            ORDER BY fecha, id
+                p.id,
+                p.fecha,
+                p.medio_pago,
+                p.monto_total_cobrado,
+                p.estado,
+                p.nota,
+                p.id_usuario,
+                u.nombre AS usuario_nombre,
+                u.username AS usuario_username
+            FROM pagos p
+            LEFT JOIN usuarios u ON u.id = p.id_usuario
+            WHERE p.origen_tipo = 'reserva'
+            AND p.origen_id = %s
+            ORDER BY p.fecha, p.id
             """,
             (reserva_id,),
         )
