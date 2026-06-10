@@ -94,25 +94,27 @@ def get_pagos(conn):
         cur.execute(
             """
             SELECT
-                id,
-                fecha,
-                id_cliente,
-                origen_tipo,
-                origen_id,
-                medio_pago,
-                monto_total_cobrado,
-                monto_base_aplicado,
-                monto_descuento_aplicado,
-                monto_recargo_aplicado,
-                estado,
-                nota,
-                id_usuario
-            FROM pagos
-            ORDER BY fecha DESC, id DESC
+                p.id,
+                p.fecha,
+                p.id_cliente,
+                p.origen_tipo,
+                p.origen_id,
+                p.medio_pago,
+                p.monto_total_cobrado,
+                p.monto_base_aplicado,
+                p.monto_descuento_aplicado,
+                p.monto_recargo_aplicado,
+                p.estado,
+                p.nota,
+                p.id_usuario,
+                u.nombre AS usuario_nombre,
+                u.username AS usuario_username
+            FROM pagos p
+            LEFT JOIN usuarios u ON u.id = p.id_usuario
+            ORDER BY p.fecha DESC, p.id DESC
             """
         )
         return cur.fetchall()
-
 
 def obtener_pagos_por_venta(conn, venta_id: int):
     with conn.cursor(row_factory=dict_row) as cur:

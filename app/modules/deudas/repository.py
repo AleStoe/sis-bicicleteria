@@ -105,15 +105,25 @@ def get_deudas(conn):
         )
         return cur.fetchall()
 
-
 def get_deuda_movimientos(conn, deuda_id: int):
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
-            SELECT *
-            FROM deuda_movimientos
-            WHERE id_deuda = %s
-            ORDER BY id
+            SELECT
+                dm.id,
+                dm.id_deuda,
+                dm.tipo_movimiento,
+                dm.monto,
+                dm.origen_tipo,
+                dm.origen_id,
+                dm.nota,
+                dm.id_usuario,
+                u.nombre AS usuario_nombre,
+                u.username AS usuario_username
+            FROM deuda_movimientos dm
+            LEFT JOIN usuarios u ON u.id = dm.id_usuario
+            WHERE dm.id_deuda = %s
+            ORDER BY dm.id
             """,
             (deuda_id,),
         )

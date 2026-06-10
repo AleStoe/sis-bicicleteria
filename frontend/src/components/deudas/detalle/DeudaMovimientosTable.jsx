@@ -28,12 +28,22 @@ export default function DeudaMovimientosTable({ movimientos }) {
               {mov.origen_tipo ? `${mov.origen_tipo} #${mov.origen_id}` : "-"}
             </td>
             <td style={tdStyle}>{mov.nota || "-"}</td>
-            <td style={tdStyle}>#{mov.id_usuario}</td>
+            <td style={tdStyle}>{formatUsuario(mov)}</td>
           </>
         )}
       />
     </Card>
   );
+}
+
+function formatUsuario(mov) {
+  if (mov.usuario_nombre) {
+    return mov.usuario_username
+      ? `${mov.usuario_nombre} (@${mov.usuario_username})`
+      : mov.usuario_nombre;
+  }
+
+  return mov.id_usuario ? `Usuario #${mov.id_usuario}` : "-";
 }
 
 const tdStyle = {

@@ -4,13 +4,14 @@ import { listarPagos, revertirPago } from "../services/pagosService";
 import { formatMoney, formatDate } from "../utils/formatters";
 import { PromptModal } from "../components/ui/PromptModal";
 
-const ID_USUARIO = 1;
+import { useSession } from "../context/SessionContext";
 
 const ESTADOS = ["todos", "confirmado", "revertido", "devuelto_externo"];
 const ORIGENES = ["todos", "venta", "deuda_cliente"];
 const MEDIOS = ["todos", "efectivo", "transferencia", "mercadopago", "tarjeta"];
 
 export default function PagosPage() {
+  const { usuarioId } = useSession();
   const [pagos, setPagos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [guardando, setGuardando] = useState(false);
@@ -144,7 +145,7 @@ export default function PagosPage() {
 
       await revertirPago(pago.id, {
         motivo: motivo.trim(),
-        id_usuario: ID_USUARIO,
+        id_usuario: usuarioId,
       });
 
       await cargarPagos();
@@ -400,7 +401,7 @@ function PagoDetalle({ pago, guardando, onRevertir }) {
         <Info label="Base aplicada" value={formatMoney(montoBase)} />
         <Info label="Recargo aplicado" value={formatMoney(recargo)} />
         <Info label="Diferencia no cobrada" value={formatMoney(diferencia)} />
-        <Info label="Usuario" value={pago.id_usuario ? `#${pago.id_usuario}` : "-"} />
+        <Info label="Usuario" value={formatUsuario(pago)} />
         <Info label="Fecha" value={formatDate(pago.fecha)} />
       </div>
 
@@ -447,6 +448,16 @@ function InfoCompact({ label, value }) {
       <strong>{value || "-"}</strong>
     </div>
   );
+}
+
+function formatUsuario(item) {
+  if (item.usuario_nombre) {
+    return item.usuario_username
+      ? `${item.usuario_nombre} (@${item.usuario_username})`
+      : item.usuario_nombre;
+  }
+
+  return item.id_usuario ? `Usuario #${item.id_usuario}` : "-";
 }
 
 function EstadoPagoBadge({ estado }) {

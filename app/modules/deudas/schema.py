@@ -74,6 +74,8 @@ class DeudaMovimientoOut(BaseModel):
     origen_id: Optional[int] = None
     nota: Optional[str] = None
     id_usuario: int
+    usuario_nombre: Optional[str] = None
+    usuario_username: Optional[str] = None
 
 
 class DeudaDetalleOut(BaseModel):
