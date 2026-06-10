@@ -82,6 +82,18 @@ function formatMoneyPOS(value) {
   });
 }
 
+function formatUsuarioSesion(usuario) {
+  if (!usuario) return "-";
+
+  if (usuario.nombre) {
+    return usuario.username
+      ? `${usuario.nombre} (@${usuario.username})`
+      : usuario.nombre;
+  }
+
+  return usuario.id ? `Usuario #${usuario.id}` : "-";
+}
+
 function useIsMobile(breakpoint = MOBILE_BREAKPOINT) {
   const [isMobile, setIsMobile] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -640,7 +652,7 @@ async function handleBuscarEnter(e) {
 
         <div style={{ ...topRightStyle, ...(isMobile ? posMobileStyles.topRight : {}) }}>
           {!isMobile && <span>Caja: CAJA 1</span>}
-          {!isMobile && <span>Usuario #{usuarioId}</span>}
+          {!isMobile && <span>{formatUsuarioSesion(usuarioActual)}</span>}
           <Link to="/ventas" style={topLinkStyle}>Historial</Link>
         </div>
       </header>
