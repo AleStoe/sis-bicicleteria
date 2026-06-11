@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Query
 
-from .schema import UsuarioCreateInput, UsuarioUpdateInput
+from .schema import UsuarioCreateInput, UsuarioUpdateInput, UsuarioPasswordResetInput
 from .service import (
     listar_usuarios_service,
     obtener_usuario_service,
@@ -8,6 +8,8 @@ from .service import (
     actualizar_usuario_service,
     activar_usuario_service,
     desactivar_usuario_service,
+    resetear_password_usuario_service
+    
 )
 
 router = APIRouter()
@@ -44,3 +46,7 @@ def activar_usuario(usuario_id: int):
 @router.patch("/{usuario_id}/desactivar")
 def desactivar_usuario(usuario_id: int):
     return desactivar_usuario_service(usuario_id)
+
+@router.patch("/{usuario_id}/password")
+def resetear_password_usuario(usuario_id: int, data: UsuarioPasswordResetInput):
+    return resetear_password_usuario_service(usuario_id, data)

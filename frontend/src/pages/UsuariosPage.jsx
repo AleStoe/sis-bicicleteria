@@ -5,12 +5,14 @@ import {
   desactivarUsuario,
   editarUsuario,
   listarUsuarios,
+  resetearPasswordUsuario,
 } from "../services/usuariosService";
 
 const FORM_INICIAL = {
   nombre: "",
   username: "",
   email: "",
+  password: "",
   rol: "operador",
   activo: true,
 };
@@ -32,6 +34,12 @@ export default function UsuariosPage() {
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
+
+  const [resetPasswordUsuario, setResetPasswordUsuario] = useState(null);
+  const [passwordForm, setPasswordForm] = useState({
+    password: "",
+    repetirPassword: "",
+  });
 
   useEffect(() => {
     cargarUsuarios();
@@ -60,9 +68,7 @@ export default function UsuariosPage() {
     await cargarUsuarios();
   }
 
-  const usuariosFiltrados = useMemo(() => {
-    return usuarios;
-  }, [usuarios]);
+  const usuariosFiltrados = useMemo(() => usuarios, [usuarios]);
 
   function actualizarCampo(campo, valor) {
     setForm((prev) => ({ ...prev, [campo]: valor }));
@@ -74,6 +80,7 @@ export default function UsuariosPage() {
       nombre: usuario.nombre || "",
       username: usuario.username || "",
       email: usuario.email || "",
+      password: "",
       rol: usuario.rol || "operador",
       activo: Boolean(usuario.activo),
     });
@@ -99,12 +106,26 @@ export default function UsuariosPage() {
       return;
     }
 
+    if (!editandoId && form.password.trim().length < 6) {
+      setError("La contraseña debe tener al menos 6 caracteres");
+      return;
+    }
+
+    if (!editandoId && form.password.trim().length > 72) {
+      setError("La contraseña no puede superar 72 caracteres");
+      return;
+    }
+
     const payload = {
       nombre: form.nombre.trim(),
       username: form.username.trim(),
       email: form.email.trim() || null,
       rol: form.rol,
     };
+
+    if (!editandoId) {
+      payload.password = form.password.trim();
+    }
 
     try {
       setGuardando(true);
@@ -153,6 +174,61 @@ export default function UsuariosPage() {
     }
   }
 
+  function abrirResetPassword(usuario) {
+    setResetPasswordUsuario(usuario);
+    setPasswordForm({
+      password: "",
+      repetirPassword: "",
+    });
+    setError("");
+    setMensaje("");
+  }
+
+  function cerrarResetPassword() {
+    setResetPasswordUsuario(null);
+    setPasswordForm({
+      password: "",
+      repetirPassword: "",
+    });
+  }
+
+  async function guardarResetPassword(e) {
+    e.preventDefault();
+
+    const password = passwordForm.password.trim();
+    const repetirPassword = passwordForm.repetirPassword.trim();
+
+    if (password.length < 6) {
+      setError("La nueva contraseña debe tener al menos 6 caracteres");
+      return;
+    }
+
+    if (password.length > 72) {
+      setError("La contraseña no puede superar 72 caracteres");
+      return;
+    }
+
+    if (password !== repetirPassword) {
+      setError("Las contraseñas no coinciden");
+      return;
+    }
+
+    try {
+      setGuardando(true);
+      setError("");
+      setMensaje("");
+
+      await resetearPasswordUsuario(resetPasswordUsuario.id, { password });
+
+      setMensaje(`Contraseña restablecida para ${resetPasswordUsuario.nombre}`);
+      cerrarResetPassword();
+    } catch (err) {
+      setError(err.message || "No se pudo restablecer la contraseña");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
   return (
     <div style={styles.page}>
       <header style={styles.hero}>
@@ -164,7 +240,12 @@ export default function UsuariosPage() {
           </p>
         </div>
 
-        <button type="button" onClick={cargarUsuarios} disabled={cargando} style={styles.secondaryHeroButton}>
+        <button
+          type="button"
+          onClick={cargarUsuarios}
+          disabled={cargando}
+          style={styles.secondaryHeroButton}
+        >
           {cargando ? "Cargando..." : "↻ Actualizar"}
         </button>
       </header>
@@ -177,7 +258,9 @@ export default function UsuariosPage() {
           <div style={styles.sectionHeader}>
             <div>
               <p style={styles.eyebrow}>{editandoId ? "Editar" : "Nuevo"}</p>
-              <h2 style={styles.cardTitle}>{editandoId ? `Usuario #${editandoId}` : "Crear usuario"}</h2>
+              <h2 style={styles.cardTitle}>
+                {editandoId ? `Usuario #${editandoId}` : "Crear usuario"}
+              </h2>
             </div>
 
             {editandoId && (
@@ -218,6 +301,19 @@ export default function UsuariosPage() {
                 style={styles.input}
               />
             </label>
+
+            {!editandoId && (
+              <label style={styles.field}>
+                <span style={styles.label}>Contraseña *</span>
+                <input
+                  type="password"
+                  value={form.password}
+                  onChange={(e) => actualizarCampo("password", e.target.value)}
+                  placeholder="Mínimo 6 caracteres"
+                  style={styles.input}
+                />
+              </label>
+            )}
 
             <label style={styles.field}>
               <span style={styles.label}>Rol *</span>
@@ -299,7 +395,9 @@ export default function UsuariosPage() {
                   <tr key={usuario.id}>
                     <td style={styles.tdStrong}>
                       {usuario.nombre}
-                      <div style={styles.tdMutedText}>#{usuario.id} · @{usuario.username}</div>
+                      <div style={styles.tdMutedText}>
+                        #{usuario.id} · @{usuario.username}
+                      </div>
                     </td>
 
                     <td style={styles.td}>{usuario.email || "-"}</td>
@@ -311,7 +409,12 @@ export default function UsuariosPage() {
                     </td>
 
                     <td style={styles.td}>
-                      <span style={{ ...styles.badge, ...(usuario.activo ? styles.badgeOk : styles.badgeOff) }}>
+                      <span
+                        style={{
+                          ...styles.badge,
+                          ...(usuario.activo ? styles.badgeOk : styles.badgeOff),
+                        }}
+                      >
                         {usuario.activo ? "Activo" : "Inactivo"}
                       </span>
                     </td>
@@ -319,6 +422,15 @@ export default function UsuariosPage() {
                     <td style={styles.tdActions}>
                       <button type="button" onClick={() => editar(usuario)} style={styles.smallSecondary}>
                         Editar
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => abrirResetPassword(usuario)}
+                        disabled={guardando}
+                        style={styles.smallSecondary}
+                      >
+                        Restablecer contraseña
                       </button>
 
                       {usuario.activo ? (
@@ -364,6 +476,61 @@ export default function UsuariosPage() {
           </div>
         </section>
       </main>
+
+      {resetPasswordUsuario && (
+        <div style={styles.modalOverlay}>
+          <form onSubmit={guardarResetPassword} style={styles.modalCard}>
+            <h2 style={styles.cardTitle}>Restablecer contraseña</h2>
+
+            <p style={styles.muted}>
+              Usuario: <strong>{resetPasswordUsuario.nombre}</strong> (@
+              {resetPasswordUsuario.username})
+            </p>
+
+            <label style={styles.field}>
+              <span style={styles.label}>Nueva contraseña</span>
+              <input
+                type="password"
+                value={passwordForm.password}
+                onChange={(e) =>
+                  setPasswordForm((prev) => ({
+                    ...prev,
+                    password: e.target.value,
+                  }))
+                }
+                style={styles.input}
+                placeholder="Mínimo 6 caracteres"
+              />
+            </label>
+
+            <label style={styles.field}>
+              <span style={styles.label}>Repetir contraseña</span>
+              <input
+                type="password"
+                value={passwordForm.repetirPassword}
+                onChange={(e) =>
+                  setPasswordForm((prev) => ({
+                    ...prev,
+                    repetirPassword: e.target.value,
+                  }))
+                }
+                style={styles.input}
+                placeholder="Repetí la contraseña"
+              />
+            </label>
+
+            <div style={styles.modalActions}>
+              <button type="button" onClick={cerrarResetPassword} style={styles.smallSecondary}>
+                Cancelar
+              </button>
+
+              <button type="submit" disabled={guardando} style={styles.smallPrimary}>
+                {guardando ? "Guardando..." : "Restablecer"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }
@@ -418,4 +585,7 @@ const styles = {
   badgeOk: { background: "#ecfdf5", color: "#047857" },
   badgeOff: { background: "#f1f5f9", color: "#64748b" },
   empty: { padding: 22, color: "#64748b", fontWeight: 900, textAlign: "center" },
+  modalOverlay: { position: "fixed", inset: 0, background: "rgba(15,23,42,.55)", display: "grid", placeItems: "center", padding: 20, zIndex: 100 },
+  modalCard: { width: "min(420px, 100%)", background: "white", borderRadius: 22, padding: 18, boxShadow: "0 24px 70px rgba(15,23,42,.35)", display: "grid", gap: 12 },
+  modalActions: { display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 8 },
 };

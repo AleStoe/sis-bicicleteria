@@ -197,3 +197,15 @@ def get_usuario_login(conn, username: str):
             (username,),
         )
         return cur.fetchone()
+    
+def update_usuario_password(conn, usuario_id: int, password_hash: str):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE usuarios
+            SET password_hash = %s,
+                updated_at = now()
+            WHERE id = %s
+            """,
+            (password_hash, usuario_id),
+        )

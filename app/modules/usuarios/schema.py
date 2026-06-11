@@ -19,3 +19,6 @@ class UsuarioUpdateInput(BaseModel):
     password: str | None = Field(default=None, min_length=6, max_length=72)
     rol: RolUsuario
     activo: bool = True
+
+class UsuarioPasswordResetInput(BaseModel):
+    password: str = Field(min_length=6, max_length=72)

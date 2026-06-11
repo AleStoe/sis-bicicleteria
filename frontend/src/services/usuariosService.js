@@ -39,3 +39,10 @@ export function desactivarUsuario(usuarioId) {
     method: "PATCH",
   });
 }
+
+export function resetearPasswordUsuario(usuarioId, data) {
+  return apiRequest(`/usuarios/${usuarioId}/password`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}

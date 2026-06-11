@@ -1,5 +1,6 @@
 from fastapi import HTTPException
 import bcrypt
+
 from app.db.connection import get_connection
 from .repository import (
     get_usuarios,
@@ -12,6 +13,7 @@ from .repository import (
     set_rol_usuario,
     activar_usuario,
     desactivar_usuario,
+    update_usuario_password,
 )
 
 
@@ -219,6 +221,24 @@ def desactivar_usuario_service(usuario_id: int):
             "ok": True,
             "usuario_id": usuario_id,
             "activo": False,
+        }
+    finally:
+        conn.close()
+
+def resetear_password_usuario_service(usuario_id: int, data):
+    conn = get_connection()
+
+    try:
+        with conn.transaction():
+            _obtener_usuario_o_404(conn, usuario_id)
+
+            password_hash = hash_password(data.password)
+
+            update_usuario_password(conn, usuario_id, password_hash)
+
+        return {
+            "ok": True,
+            "usuario_id": usuario_id,
         }
     finally:
         conn.close()
