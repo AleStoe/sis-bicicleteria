@@ -67,6 +67,8 @@ export default function CheckoutVentaPanel({
           agregarPago={checkout.agregarPago}
           sugerirMontoParaSaldar={checkout.sugerirMontoParaSaldar}
           previewSaldar={checkout.previewSaldar}
+          previewMontoActual={checkout.previewMontoActual}
+          pendienteActual={checkout.pendiente}
           errorLocal={checkout.errorLocal}
           simulando={checkout.simulando}
           planesTarjeta={checkout.planesTarjeta}

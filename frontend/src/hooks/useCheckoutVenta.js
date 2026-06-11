@@ -35,6 +35,7 @@ export default function useCheckoutVenta({
   const [simulacion, setSimulacion] = useState(null);
   const [simulando, setSimulando] = useState(false);
   const [previewSaldar, setPreviewSaldar] = useState(null);
+  const [previewMontoActual, setPreviewMontoActual] = useState(null);
   const [planesTarjeta, setPlanesTarjeta] = useState([]);
   const [planTarjetaId, setPlanTarjetaId] = useState("");
   const [usarCredito, setUsarCredito] = useState(usarCreditoInicial);
@@ -236,6 +237,7 @@ export default function useCheckoutVenta({
     setPagosDraft(pagosConTramo);
     setSimulacion(nuevaSimulacion);
     setPreviewSaldar(null);
+    setPreviewMontoActual(null);
     setMonto("");
     setErrorLocal("");
   }, [
@@ -253,6 +255,7 @@ export default function useCheckoutVenta({
       const nuevosPagos = pagosDraft.filter((pago) => pago.temp_id !== tempId);
       setPagosDraft(nuevosPagos);
       setPreviewSaldar(null);
+      setPreviewMontoActual(null);
       await recalcularSimulacion(nuevosPagos);
     },
     [pagosDraft, recalcularSimulacion]
@@ -312,6 +315,7 @@ export default function useCheckoutVenta({
     setErrorLocal("");
     setSimulacion(null);
     setPreviewSaldar(null);
+    setPreviewMontoActual(null);
     setMontoCreditoAAplicar("");
     setUsarCredito(true);
 
@@ -353,6 +357,63 @@ export default function useCheckoutVenta({
       cancelado = true;
     };
   }, [getDatosFinancierosPago, items, medioPago, pagosDraft, planTarjetaId, simularPagos, tipoPrecio]);
+
+
+  useEffect(() => {
+    let cancelado = false;
+    const montoTexto = String(monto || "").trim();
+    const montoBaseInput = Number(montoTexto);
+
+    async function simularMontoActual() {
+      if (!montoTexto || !Number.isFinite(montoBaseInput) || montoBaseInput <= 0) {
+        setPreviewMontoActual(null);
+        return;
+      }
+
+      const errorPlan = validarPlanTarjeta({
+        medioPago,
+        planTarjetaId,
+        planesTarjeta,
+      });
+
+      if (errorPlan) {
+        setPreviewMontoActual(null);
+        return;
+      }
+
+      const datosFinancieros = getDatosFinancierosPago();
+
+      const pagoDraft = {
+        temp_id: "preview-monto-actual",
+        medio_pago: medioPago,
+        monto_base: montoBaseInput,
+        cuotas: datosFinancieros.cuotas,
+        entidad: datosFinancieros.entidad,
+        nota: null,
+      };
+
+      const data = await simularPagos([...pagosDraft, pagoDraft], null, false);
+
+      if (cancelado || !data) return;
+
+      setPreviewMontoActual(data);
+    }
+
+    const handle = setTimeout(simularMontoActual, 250);
+
+    return () => {
+      cancelado = true;
+      clearTimeout(handle);
+    };
+  }, [
+    getDatosFinancierosPago,
+    medioPago,
+    monto,
+    pagosDraft,
+    planTarjetaId,
+    planesTarjeta,
+    simularPagos,
+  ]);
 
   useEffect(() => {
     onEstadoCheckoutChange?.({
@@ -412,6 +473,7 @@ export default function useCheckoutVenta({
     simulacionActiva,
     simulando,
     previewSaldar,
+    previewMontoActual,
     planesTarjeta,
     planTarjetaId,
     setPlanTarjetaId,

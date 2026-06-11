@@ -10,9 +10,22 @@ function formatMoney(value) {
   });
 }
 
+function formatearCliente(cliente) {
+  if (!cliente) return "";
+
+  const partes = [cliente.nombre];
+
+  if (cliente.dni) partes.push(`DNI ${cliente.dni}`);
+  if (cliente.telefono) partes.push(cliente.telefono);
+
+  return partes.filter(Boolean).join(" · ");
+}
+
 export default function VentaCarritoSidebar({
   clientes,
   clienteId,
+  clienteQuery,
+  buscandoClientes,
   tipoPrecio,
   items,
   total,
@@ -21,6 +34,7 @@ export default function VentaCarritoSidebar({
   serializadasPorVariante,
   cargandoSerializadas,
   onCambiarCliente,
+  onClienteQueryChange,
   onCambiarTipoPrecio,
   onCargarSerializadas,
   onSeleccionarSerializada,
@@ -35,6 +49,10 @@ export default function VentaCarritoSidebar({
   const cantidadItems = items.reduce(
     (acc, item) => acc + Number(item.cantidad || 0),
     0
+  );
+
+  const clienteSeleccionado = clientes.find(
+    (cliente) => Number(cliente.id) === Number(clienteId)
   );
 
   return (
@@ -56,27 +74,68 @@ export default function VentaCarritoSidebar({
       </div>
 
       <div style={styles.fieldsGrid}>
-        <label style={styles.fieldLabel}>
-          Cliente
-          <select
-            value={clienteId}
-            onChange={(e) => onCambiarCliente(e.target.value)}
-            style={styles.select}
-          >
-            {clientes.map((cliente) => (
-              <option key={cliente.id} value={cliente.id}>
-                {cliente.nombre} #{cliente.id}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div style={styles.clientColumn}>
+          <label style={styles.fieldLabel}>
+            Cliente
 
-        <label style={styles.fieldLabel}>
-          Precio
+            <input
+              value={clienteQuery}
+              onChange={(e) => onClienteQueryChange(e.target.value)}
+              placeholder="Buscar por nombre, DNI o teléfono..."
+              style={styles.clientSearchInput}
+            />
+          </label>
+
+          <div style={styles.clientResults}>
+            {buscandoClientes && (
+              <div style={styles.clientResultMuted}>Buscando clientes...</div>
+            )}
+
+            {!buscandoClientes && clientes.length === 0 && (
+              <div style={styles.clientResultMuted}>Sin resultados</div>
+            )}
+
+            {!buscandoClientes &&
+              clientes.slice(0, 5).map((cliente) => {
+                const activo = Number(cliente.id) === Number(clienteId);
+
+                return (
+                  <button
+                    key={cliente.id}
+                    type="button"
+                    onClick={() => onCambiarCliente(String(cliente.id))}
+                    style={
+                      activo ? styles.clientResultActive : styles.clientResult
+                    }
+                  >
+                    <span style={styles.clientResultName}>
+                      {cliente.nombre}
+                    </span>
+
+                    <span style={styles.clientResultMeta}>
+                      #{cliente.id}
+                      {cliente.dni ? ` · DNI ${cliente.dni}` : ""}
+                      {cliente.telefono ? ` · ${cliente.telefono}` : ""}
+                    </span>
+                  </button>
+                );
+              })}
+          </div>
+
+          {clienteSeleccionado && (
+            <span style={styles.selectedClientHint}>
+              Seleccionado: {formatearCliente(clienteSeleccionado)}
+            </span>
+          )}
+        </div>
+
+        <label style={styles.priceColumn}>
+          <span style={styles.priceLabel}>Precio</span>
+
           <select
             value={tipoPrecio}
-            onChange={(e) => onCambiarTipoPrecio(e.target.value)}
-            style={styles.select}
+            onChange={(event) => onCambiarTipoPrecio(event.target.value)}
+            style={styles.priceSelect}
           >
             <option value="minorista">Minorista</option>
             <option value="mayorista">Mayorista</option>
@@ -115,11 +174,13 @@ export default function VentaCarritoSidebar({
         />
         Usar saldo a favor
       </label>
+
       {usarCredito && (
         <div style={styles.creditHint}>
           Se aplicará automáticamente al cobrar si el cliente tiene saldo disponible.
         </div>
-      )}        
+      )}
+
       <div style={styles.totalCard}>
         <div>
           <span style={styles.totalLabel}>Total a cobrar</span>
@@ -181,17 +242,47 @@ const styles = {
   },
   fieldsGrid: {
     display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: 10,
+    gridTemplateColumns: "minmax(0, 1fr) 195px",
+    gap: 12,
+    alignItems: "start",
+  },
+  clientColumn: {
+    display: "grid",
+    gap: 6,
+    minWidth: 0,
   },
   fieldLabel: {
     display: "grid",
-    gap: 5,
+    gap: 6,
     fontSize: 12,
     fontWeight: 900,
     color: "#334155",
   },
-  select: {
+  priceColumn: {
+    display: "grid",
+    gap: 6,
+    alignSelf: "start",
+    minWidth: 0,
+  },
+  priceLabel: {
+    fontSize: 12,
+    fontWeight: 900,
+    color: "#334155",
+  },
+  priceSelect: {
+    width: "100%",
+    height: 44,
+    border: "1px solid #cbd5e1",
+    borderRadius: 10,
+    padding: "0 12px",
+    background: "white",
+    fontWeight: 800,
+    color: "#0f172a",
+    cursor: "pointer",
+  },
+  clientSearchInput: {
+    width: "100%",
+    boxSizing: "border-box",
     border: "1px solid #cbd5e1",
     borderRadius: 10,
     padding: "9px 10px",
@@ -199,6 +290,60 @@ const styles = {
     fontWeight: 800,
     color: "#0f172a",
     minWidth: 0,
+  },
+  clientResults: {
+    border: "1px solid #e2e8f0",
+    borderRadius: 12,
+    background: "#f8fafc",
+    padding: 5,
+    display: "grid",
+    gap: 4,
+    maxHeight: 178,
+    overflowY: "auto",
+  },
+  clientResult: {
+    width: "100%",
+    border: "1px solid transparent",
+    borderRadius: 9,
+    background: "white",
+    color: "#0f172a",
+    padding: "8px 9px",
+    textAlign: "left",
+    cursor: "pointer",
+    display: "grid",
+    gap: 2,
+  },
+  clientResultActive: {
+    width: "100%",
+    border: "1px solid #93c5fd",
+    borderRadius: 9,
+    background: "#eff6ff",
+    color: "#0f172a",
+    padding: "8px 9px",
+    textAlign: "left",
+    cursor: "pointer",
+    display: "grid",
+    gap: 2,
+  },
+  clientResultName: {
+    fontWeight: 950,
+    fontSize: 13,
+  },
+  clientResultMeta: {
+    color: "#64748b",
+    fontWeight: 800,
+    fontSize: 11,
+  },
+  clientResultMuted: {
+    padding: "8px 9px",
+    color: "#64748b",
+    fontWeight: 800,
+    fontSize: 12,
+  },
+  selectedClientHint: {
+    color: "#64748b",
+    fontWeight: 800,
+    fontSize: 11,
   },
   fieldBlock: {
     display: "grid",
@@ -223,6 +368,17 @@ const styles = {
     color: "#334155",
     fontWeight: 800,
     fontSize: 13,
+  },
+  creditHint: {
+    marginTop: -6,
+    marginBottom: 12,
+    padding: "8px 10px",
+    borderRadius: 10,
+    background: "#ecfdf3",
+    color: "#067647",
+    border: "1px solid #abefc6",
+    fontSize: 12,
+    fontWeight: 700,
   },
   totalCard: {
     border: "1px solid #e2e8f0",
@@ -273,15 +429,4 @@ const styles = {
     fontSize: 16,
     cursor: "not-allowed",
   },
-  creditHint: {
-  marginTop: -6,
-  marginBottom: 12,
-  padding: "8px 10px",
-  borderRadius: 10,
-  background: "#ecfdf3",
-  color: "#067647",
-  border: "1px solid #abefc6",
-  fontSize: 12,
-  fontWeight: 700,
-},
 };

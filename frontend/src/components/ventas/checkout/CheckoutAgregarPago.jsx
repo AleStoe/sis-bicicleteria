@@ -15,6 +15,8 @@ export default function CheckoutAgregarPago({
   agregarPago,
   sugerirMontoParaSaldar,
   previewSaldar,
+  previewMontoActual,
+  pendienteActual,
   errorLocal,
   simulando,
   planesTarjeta,
@@ -24,21 +26,27 @@ export default function CheckoutAgregarPago({
   const esTarjeta = medioPago === "tarjeta";
   const medioActivo = MEDIOS_PAGO.find((medio) => medio.value === medioPago);
 
-  const tramoPreview = previewSaldar?.tramos_pago?.at?.(-1);
-  const montoBaseSugerido = previewSaldar?.monto_base_sugerido_para_saldar;
-  const montoSugeridoCobrado = previewSaldar?.monto_sugerido_para_saldar;
+  const montoManual = Number(monto || 0);
+  const hayMontoManual = Number.isFinite(montoManual) && montoManual > 0;
+
+  const tramoMontoActual = previewMontoActual?.tramos_pago?.at?.(-1);
+  const tramoSaldar = previewSaldar?.tramos_pago?.at?.(-1);
+  const tramoPreview = tramoMontoActual || tramoSaldar;
+
+  const montoBaseSugerido =
+    Number(tramoPreview?.monto_base ?? previewSaldar?.monto_base_sugerido_para_saldar ?? montoManual ?? 0);
+  const montoSugeridoCobrado =
+    Number(tramoPreview?.monto_total_cobrado ?? previewSaldar?.monto_sugerido_para_saldar ?? montoManual ?? 0);
 
   const descuentoPreview = Number(tramoPreview?.descuento_aplicado || 0);
   const recargoPreview = Number(tramoPreview?.recargo_aplicado || 0);
+  const creditoAplicadoPreview = Number(previewMontoActual?.credito_aplicado ?? previewSaldar?.credito_aplicado ?? 0);
+  const saldoPendienteLuego = Number(previewMontoActual?.total_a_cobrar ?? pendienteActual ?? 0);
   const hayDescuento = descuentoPreview > 0;
   const hayRecargo = recargoPreview > 0;
-  const mostrarPreview = previewSaldar?.monto_sugerido_para_saldar != null;
-
-  const montoManual = Number(monto || 0);
-  const mostrarInstruccion = mostrarPreview || montoManual > 0;
-  const montoACobrarAhora = mostrarPreview
-    ? montoSugeridoCobrado
-    : montoManual;
+  const mostrarPreview = Boolean(tramoPreview) && hayMontoManual;
+  const mostrarInstruccion = hayMontoManual;
+  const montoACobrarAhora = mostrarPreview ? montoSugeridoCobrado : montoManual;
 
   return (
     <div style={styles.payBox}>
@@ -102,7 +110,10 @@ export default function CheckoutAgregarPago({
               Cubre {formatMoney(montoBaseSugerido)} de la venta.
               {hayDescuento && ` Descuento aplicado: ${formatMoney(descuentoPreview)}.`}
               {hayRecargo && ` Recargo aplicado: ${formatMoney(recargoPreview)}.`}
+              {Number.isFinite(saldoPendienteLuego) && ` Queda pendiente: ${formatMoney(saldoPendienteLuego)}.`}
             </small>
+          ) : simulando ? (
+            <small>Calculando simulación del pago...</small>
           ) : (
             <small>Pago parcial cargado manualmente.</small>
           )}
@@ -145,6 +156,18 @@ export default function CheckoutAgregarPago({
               <strong style={styles.warningText}>+ {formatMoney(recargoPreview)}</strong>
             </div>
           )}
+
+          {creditoAplicadoPreview > 0 && (
+            <div style={styles.previewRow}>
+              <span>Crédito aplicado</span>
+              <strong style={styles.successText}>- {formatMoney(creditoAplicadoPreview)}</strong>
+            </div>
+          )}
+
+          <div style={styles.previewRow}>
+            <span>Saldo pendiente luego</span>
+            <strong>{formatMoney(saldoPendienteLuego)}</strong>
+          </div>
 
           <div style={styles.previewTotalRow}>
             <span>Cliente paga</span>

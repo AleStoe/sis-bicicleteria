@@ -11,6 +11,7 @@ import { listarSerializadasDisponibles } from "../services/serializadasService";
 import CarritoVentaPanel from "../components/ventas/CarritoVentaPanel";
 import CatalogoPOSPanel from "../components/ventas/catalogo/CatalogoPOSPanel";
 import VentaCarritoSidebar from "../components/ventas/pos/VentaCarritoSidebar";
+import { ConfirmModal } from "../components/ui/ConfirmModal";
 import { validarVentaAntesDeCrear } from "../validators/ventasValidator";
 import { buildVentaPayload } from "../builders/ventasPayloadBuilder";
 import {
@@ -73,6 +74,62 @@ import {
 const DEFAULT_LIMIT = 80;
 const MOBILE_BREAKPOINT = 760;
 
+function getVentaDraftStorageKey({ sucursalId, usuarioId }) {
+  return `pos_venta_draft_sucursal_${sucursalId || "default"}_usuario_${usuarioId || "default"}`;
+}
+
+function leerVentaDraftGuardado({ sucursalId, usuarioId }) {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const raw = window.localStorage.getItem(
+      getVentaDraftStorageKey({ sucursalId, usuarioId })
+    );
+
+    if (!raw) return null;
+
+    const draft = JSON.parse(raw);
+
+    if (!draft || !Array.isArray(draft.items)) return null;
+
+    return draft;
+  } catch (err) {
+    console.warn("No se pudo recuperar el carrito POS guardado", err);
+    return null;
+  }
+}
+
+function guardarVentaDraft({ sucursalId, usuarioId, draft }) {
+  if (typeof window === "undefined") return;
+
+  const storageKey = getVentaDraftStorageKey({ sucursalId, usuarioId });
+
+  try {
+    if (!draft?.items?.length) {
+      window.localStorage.removeItem(storageKey);
+      return;
+    }
+
+    window.localStorage.setItem(
+      storageKey,
+      JSON.stringify({
+        ...draft,
+        updated_at: new Date().toISOString(),
+      })
+    );
+  } catch (err) {
+    console.warn("No se pudo guardar el carrito POS", err);
+  }
+}
+
+function borrarVentaDraftGuardado({ sucursalId, usuarioId }) {
+  if (typeof window === "undefined") return;
+
+  window.localStorage.removeItem(
+    getVentaDraftStorageKey({ sucursalId, usuarioId })
+  );
+}
+
 function formatMoneyPOS(value) {
   return Number(value || 0).toLocaleString("es-AR", {
     style: "currency",
@@ -123,6 +180,8 @@ export default function NuevaVentaPage() {
   const [catalogo, setCatalogo] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [clientes, setClientes] = useState([]);
+  const [clienteQuery, setClienteQuery] = useState("");
+  const [buscandoClientes, setBuscandoClientes] = useState(false);
 
   const [query, setQuery] = useState("");
   const [codigoRapido, setCodigoRapido] = useState("");
@@ -142,6 +201,9 @@ export default function NuevaVentaPage() {
   const [mensaje, setMensaje] = useState("");
   const [mensajePOS, setMensajePOS] = useState("");
   const [carritoMobileAbierto, setCarritoMobileAbierto] = useState(false);
+  const [carritoRestaurado, setCarritoRestaurado] = useState(false);
+  const [mostrarRecuperacionDraft, setMostrarRecuperacionDraft] = useState(false);
+  const [draftPendiente, setDraftPendiente] = useState(null);
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -155,12 +217,45 @@ export default function NuevaVentaPage() {
   }, [isMobile]);
 
   useEffect(() => {
+    if (!carritoRestaurado) return;
+
+    guardarVentaDraft({
+      sucursalId,
+      usuarioId,
+      draft: {
+        clienteId,
+        tipoPrecio,
+        items,
+        observaciones,
+        usarCredito,
+      },
+    });
+  }, [
+    carritoRestaurado,
+    sucursalId,
+    usuarioId,
+    clienteId,
+    tipoPrecio,
+    items,
+    observaciones,
+    usarCredito,
+  ]);
+
+  useEffect(() => {
     const handle = setTimeout(() => {
       cargarCatalogo();
     }, 250);
 
     return () => clearTimeout(handle);
   }, [query, categoriaId]);
+
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      buscarClientes(clienteQuery);
+    }, 250);
+
+    return () => clearTimeout(handle);
+  }, [clienteQuery]);
 
   useEffect(() => {
     function onKeyDown(e) {
@@ -206,18 +301,75 @@ export default function NuevaVentaPage() {
       setCatalogo(Array.isArray(catalogoData) ? catalogoData : catalogoData?.items || []);
 
       const consumidorFinal = (clientesData || []).find((c) => Number(c.id) === 1);
+      let clienteInicialId = "1";
+      let tipoPrecioInicial = consumidorFinal
+        ? tipoPrecioParaCliente(consumidorFinal)
+        : "minorista";
+
       if (consumidorFinal) {
         setClienteId("1");
-        setTipoPrecio(tipoPrecioParaCliente(consumidorFinal));
+        setTipoPrecio(tipoPrecioInicial);
+        setClienteQuery(formatearClienteParaBusqueda(consumidorFinal));
       } else if ((clientesData || []).length > 0) {
         const primerCliente = clientesData[0];
-        setClienteId(String(primerCliente.id));
-        setTipoPrecio(tipoPrecioParaCliente(primerCliente));
+        clienteInicialId = String(primerCliente.id);
+        tipoPrecioInicial = tipoPrecioParaCliente(primerCliente);
+        setClienteId(clienteInicialId);
+        setTipoPrecio(tipoPrecioInicial);
+        setClienteQuery(formatearClienteParaBusqueda(primerCliente));
       }
+
+      const draftGuardado = leerVentaDraftGuardado({ sucursalId, usuarioId });
+
+      if (draftGuardado?.items?.length) {
+        setDraftPendiente({
+          ...draftGuardado,
+          clienteInicialId,
+          tipoPrecioInicial,
+          clienteGuardadoExiste: (clientesData || []).some(
+            (cliente) => Number(cliente.id) === Number(draftGuardado.clienteId)
+          ),
+        });
+        setMostrarRecuperacionDraft(true);
+      }
+
+      setCarritoRestaurado(true);
     } catch (err) {
       setError(err.message || "No se pudo cargar la venta rápida");
     } finally {
+      setCarritoRestaurado(true);
       setLoading(false);
+    }
+  }
+
+  async function buscarClientes(texto = "") {
+    try {
+      setBuscandoClientes(true);
+
+      const data = await listarClientes({
+        q: texto.trim() || undefined,
+        solo_activos: true,
+      });
+
+      setClientes((actuales) => {
+        const base = Array.isArray(data) ? data : [];
+        const clienteSeleccionado = actuales.find(
+          (cliente) => Number(cliente.id) === Number(clienteId)
+        );
+
+        if (
+          clienteSeleccionado &&
+          !base.some((cliente) => Number(cliente.id) === Number(clienteSeleccionado.id))
+        ) {
+          return [clienteSeleccionado, ...base];
+        }
+
+        return base;
+      });
+    } catch (err) {
+      setError(err.message || "No se pudieron buscar clientes");
+    } finally {
+      setBuscandoClientes(false);
     }
   }
 
@@ -265,6 +417,10 @@ async function handleBuscarEnter(e) {
     }
 
     await agregarItem(producto);
+
+    if (isMobile) {
+      setCarritoMobileAbierto(true);
+    }
 
     setCodigoRapido("");
     mostrarMensajePOS(`${producto.producto_nombre} agregado`);
@@ -325,11 +481,26 @@ async function handleBuscarEnter(e) {
   function tipoPrecioParaCliente(cliente) {
     return cliente?.tipo_cliente === "mayorista" ? "mayorista" : "minorista";
   }
-  function handleCambiarCliente(nuevoClienteId) {
+  async function handleCambiarCliente(nuevoClienteId) {
     const cliente = clientes.find((c) => Number(c.id) === Number(nuevoClienteId));
 
     setClienteId(nuevoClienteId);
     setTipoPrecio(tipoPrecioParaCliente(cliente));
+
+    if (cliente) {
+      setClienteQuery(formatearClienteParaBusqueda(cliente));
+    }
+  }
+
+  function formatearClienteParaBusqueda(cliente) {
+    if (!cliente) return "";
+
+    const partes = [cliente.nombre];
+
+    if (cliente.dni) partes.push(`DNI ${cliente.dni}`);
+    if (cliente.telefono) partes.push(cliente.telefono);
+
+    return partes.filter(Boolean).join(" · ");
   }
 
 
@@ -425,6 +596,14 @@ async function handleBuscarEnter(e) {
     });
   }
 
+  async function handleAgregarItemCatalogo(producto) {
+    await agregarItem(producto);
+
+    if (isMobile) {
+      setCarritoMobileAbierto(true);
+    }
+  }
+
   function seleccionarSerializada(index, bicicletaIdRaw) {
     const bicicletaId = bicicletaIdRaw ? Number(bicicletaIdRaw) : "";
 
@@ -503,6 +682,40 @@ async function handleBuscarEnter(e) {
     setObservaciones("");
     setError("");
     setMensaje("");
+    borrarVentaDraftGuardado({ sucursalId, usuarioId });
+  }
+
+  function recuperarVentaPendiente() {
+    if (!draftPendiente) return;
+
+    setClienteId(
+      draftPendiente.clienteGuardadoExiste
+        ? String(draftPendiente.clienteId)
+        : String(draftPendiente.clienteInicialId || "1")
+    );
+    setTipoPrecio(draftPendiente.tipoPrecio || draftPendiente.tipoPrecioInicial || "minorista");
+    setItems(Array.isArray(draftPendiente.items) ? draftPendiente.items : []);
+    setObservaciones(draftPendiente.observaciones || "");
+    setUsarCredito(
+      typeof draftPendiente.usarCredito === "boolean"
+        ? draftPendiente.usarCredito
+        : true
+    );
+
+    setMostrarRecuperacionDraft(false);
+    setDraftPendiente(null);
+    setMensaje("Venta pendiente recuperada.");
+
+    if (isMobile) {
+      setCarritoMobileAbierto(true);
+    }
+  }
+
+  function descartarVentaPendiente() {
+    borrarVentaDraftGuardado({ sucursalId, usuarioId });
+    setMostrarRecuperacionDraft(false);
+    setDraftPendiente(null);
+    setMensaje("Venta pendiente descartada.");
   }
 
   function validarVentaAntesDeFinalizar() {
@@ -561,6 +774,7 @@ async function handleBuscarEnter(e) {
         });
       }
 
+      borrarVentaDraftGuardado({ sucursalId, usuarioId });
       navigate(`/ventas/${resultado.venta_id}`);
     } catch (err) {
       setError(err.message || "No se pudo finalizar la venta");
@@ -604,6 +818,8 @@ async function handleBuscarEnter(e) {
     <VentaCarritoSidebar
       clientes={clientes}
       clienteId={clienteId}
+      clienteQuery={clienteQuery}
+      buscandoClientes={buscandoClientes}
       tipoPrecio={tipoPrecio}
       items={items}
       total={total}
@@ -612,6 +828,7 @@ async function handleBuscarEnter(e) {
       serializadasPorVariante={serializadasPorVariante}
       cargandoSerializadas={cargandoSerializadas}
       onCambiarCliente={handleCambiarCliente}
+      onClienteQueryChange={setClienteQuery}
       onCambiarTipoPrecio={setTipoPrecio}
       onCargarSerializadas={cargarSerializadasDisponibles}
       onSeleccionarSerializada={seleccionarSerializada}
@@ -627,6 +844,17 @@ async function handleBuscarEnter(e) {
 
   return (
     <div style={{ ...pageStyle, ...(isMobile ? posMobileStyles.page : {}) }}>
+      <ConfirmModal
+        open={mostrarRecuperacionDraft}
+        title="Venta pendiente encontrada"
+        message="Se encontró una venta sin finalizar guardada en este equipo. ¿Querés recuperarla o descartarla?"
+        confirmText="Recuperar"
+        cancelText="Descartar"
+        variant="info"
+        onConfirm={recuperarVentaPendiente}
+        onCancel={descartarVentaPendiente}
+      />
+
       <header style={{ ...topBarStyle, ...(isMobile ? posMobileStyles.topBar : {}) }}>
         <div style={{ ...brandStyle, ...(isMobile ? posMobileStyles.brand : {}) }}>
           <span style={bikeStyle}>🚲</span>
@@ -677,7 +905,7 @@ async function handleBuscarEnter(e) {
           onBuscarEnter={handleBuscarEnter}
           onRecargarCatalogo={cargarCatalogo}
           onCategoriaChange={setCategoriaId}
-          onAgregarItem={agregarItem}
+          onAgregarItem={handleAgregarItemCatalogo}
           isMobile={isMobile}
         />
 
@@ -726,7 +954,7 @@ async function handleBuscarEnter(e) {
                     onClick={() => setCarritoMobileAbierto(false)}
                     style={posMobileStyles.closeButton}
                   >
-                    Cerrar
+                    Seguir comprando
                   </button>
                 </div>
 

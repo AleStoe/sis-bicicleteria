@@ -14,6 +14,18 @@ import {
 
 const MOBILE_BREAKPOINT = 760;
 
+function getVentaDraftStorageKey({ sucursalId, usuarioId }) {
+  return `pos_venta_draft_sucursal_${sucursalId || "default"}_usuario_${usuarioId || "default"}`;
+}
+
+function borrarVentaDraftGuardado({ sucursalId, usuarioId }) {
+  if (typeof window === "undefined") return;
+
+  window.localStorage.removeItem(
+    getVentaDraftStorageKey({ sucursalId, usuarioId })
+  );
+}
+
 function useIsMobile(breakpoint = MOBILE_BREAKPOINT) {
   const [isMobile, setIsMobile] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -112,6 +124,10 @@ export default function NuevaVentaCheckoutPage() {
         });
       }
 
+      borrarVentaDraftGuardado({
+        sucursalId: draft.idSucursal,
+        usuarioId: draft.idUsuario,
+      });
       navigate(`/ventas/${resultado.venta_id}`);
     } catch (err) {
       toast.error(err.message || "No se pudo finalizar la venta");
