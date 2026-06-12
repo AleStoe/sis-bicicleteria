@@ -14,6 +14,7 @@ from .repository import (
     activar_usuario,
     desactivar_usuario,
     update_usuario_password,
+    get_usuario_password_hash_by_id,
 )
 
 
@@ -234,6 +235,47 @@ def resetear_password_usuario_service(usuario_id: int, data):
 
             password_hash = hash_password(data.password)
 
+            update_usuario_password(conn, usuario_id, password_hash)
+
+        return {
+            "ok": True,
+            "usuario_id": usuario_id,
+        }
+    finally:
+        conn.close()
+
+def cambiar_password_propia_service(usuario_id: int, data):
+    conn = get_connection()
+
+    try:
+        with conn.transaction():
+            usuario = get_usuario_password_hash_by_id(conn, usuario_id)
+
+            if usuario is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No existe el usuario {usuario_id}",
+                )
+
+            if not usuario["activo"]:
+                raise HTTPException(
+                    status_code=400,
+                    detail="El usuario está inactivo",
+                )
+
+            if not verificar_password(data.password_actual, usuario["password_hash"]):
+                raise HTTPException(
+                    status_code=400,
+                    detail="La contraseña actual es incorrecta",
+                )
+
+            if data.password_actual == data.password_nueva:
+                raise HTTPException(
+                    status_code=400,
+                    detail="La nueva contraseña debe ser distinta a la actual",
+                )
+
+            password_hash = hash_password(data.password_nueva)
             update_usuario_password(conn, usuario_id, password_hash)
 
         return {

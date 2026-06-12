@@ -209,3 +209,18 @@ def update_usuario_password(conn, usuario_id: int, password_hash: str):
             """,
             (password_hash, usuario_id),
         )
+
+def get_usuario_password_hash_by_id(conn, usuario_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT
+                id,
+                password_hash,
+                activo
+            FROM usuarios
+            WHERE id = %s
+            """,
+            (usuario_id,),
+        )
+        return cur.fetchone()

@@ -33,99 +33,71 @@ import {
   navItemLabelStyle,
 } from "../../styles/layout/sidebarStyles";
 
+const ADMIN = ["administrador"];
+const OPERACION = ["administrador", "encargado", "operador"];
+const OPERACION_TALLER = ["administrador", "encargado", "operador", "mecanico"];
+const TALLER = ["administrador", "encargado", "mecanico"];
+const ADMIN_ENCARGADO = ["administrador", "encargado"];
+
 const groups = [
-  { title: "Inicio", links: [{ to: "/dashboard", label: "Dashboard", icon: LayoutDashboard }] },
+  {
+    title: "Inicio",
+    links: [
+      { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ADMIN_ENCARGADO },
+    ],
+  },
   {
     title: "Mostrador",
     links: [
-      { to: "/ventas/nueva", label: "Nueva Venta", icon: ShoppingCart },
-      { to: "/ventas", label: "Ventas", icon: Receipt },
-      { to: "/reservas", label: "Reservas", icon: ClipboardList },
-      { to: "/clientes", label: "Clientes", icon: Users },
+      { to: "/ventas/nueva", label: "Nueva Venta", icon: ShoppingCart, roles: OPERACION },
+      { to: "/ventas", label: "Ventas", icon: Receipt, roles: OPERACION },
+      { to: "/reservas", label: "Reservas", icon: ClipboardList, roles: OPERACION },
+      { to: "/clientes", label: "Clientes", icon: Users, roles: OPERACION },
     ],
   },
   {
     title: "Finanzas",
     links: [
-      { to: "/caja", label: "Caja", icon: DollarSign },
-      { to: "/pagos", label: "Pagos", icon: CreditCard },
-      { to: "/gastos", label: "Gastos", icon: Receipt },
-      { to: "/deudas", label: "Deudas", icon: FileSearch },
-      { to: "/creditos", label: "Créditos", icon: HandCoins },
-      { to: "/capital-retiros", label: "Capital y Retiros", icon: PiggyBank },
-      { to: "/rentabilidad", label: "Rentabilidad", icon: BarChart3 },
+      { to: "/caja", label: "Caja", icon: DollarSign, roles: OPERACION },
+      { to: "/pagos", label: "Pagos", icon: CreditCard, roles: OPERACION },
+      { to: "/gastos", label: "Gastos", icon: Receipt, roles: ADMIN_ENCARGADO },
+      { to: "/deudas", label: "Deudas", icon: FileSearch, roles: OPERACION },
+      { to: "/creditos", label: "Créditos", icon: HandCoins, roles: OPERACION },
+      { to: "/capital-retiros", label: "Capital y Retiros", icon: PiggyBank, roles: ADMIN },
+      { to: "/rentabilidad", label: "Rentabilidad", icon: BarChart3, roles: ADMIN },
     ],
   },
   {
     title: "Operación",
     links: [
-      { to: "/stock", label: "Stock", icon: Boxes },
-      { to: "/mercaderia/alta", label: "Alta mercadería", icon: PackagePlus },
-      { to: "/mercaderia/bicicletas/alta", label: "Alta bicicletas", icon: Bike },
-      { to: "/serializadas", label: "Serializadas", icon: ClipboardList },
-      { to: "/catalogo", label: "Catálogo", icon: Tags },
-      { to: "/precios", label: "Precios", icon: Calculator },
-      { to: "/proveedores", label: "Proveedores", icon: HandCoins },
+      { to: "/stock", label: "Stock", icon: Boxes, roles: OPERACION_TALLER },
+      { to: "/mercaderia/alta", label: "Alta mercadería", icon: PackagePlus, roles: ADMIN_ENCARGADO },
+      { to: "/mercaderia/bicicletas/alta", label: "Alta bicicletas", icon: Bike, roles: ADMIN_ENCARGADO },
+      { to: "/serializadas", label: "Serializadas", icon: ClipboardList, roles: OPERACION_TALLER },
+      { to: "/catalogo", label: "Catálogo", icon: Tags, roles: ADMIN_ENCARGADO },
+      { to: "/precios", label: "Precios", icon: Calculator, roles: ADMIN_ENCARGADO },
+      { to: "/proveedores", label: "Proveedores", icon: HandCoins, roles: ADMIN_ENCARGADO },
     ],
   },
   {
     title: "Taller y control",
     links: [
-      { to: "/taller", label: "Taller", icon: Wrench },
-      { to: "/servicios-taller", label: "Servicios Taller", icon: Wrench },
-      { to: "/auditoria", label: "Auditoría", icon: Gauge },
-      { to: "/usuarios", label: "Usuarios", icon: UserCog },
-      { to: "/configuracion-comercial", label: "Config. Comercial", icon: Settings2 },
+      { to: "/taller", label: "Taller", icon: Wrench, roles: TALLER },
+      { to: "/servicios-taller", label: "Servicios Taller", icon: Wrench, roles: ADMIN_ENCARGADO },
+      { to: "/auditoria", label: "Auditoría", icon: Gauge, roles: ADMIN },
+      { to: "/usuarios", label: "Usuarios", icon: UserCog, roles: ADMIN },
+      { to: "/configuracion-comercial", label: "Config. Comercial", icon: Settings2, roles: ADMIN },
     ],
   },
 ];
 
 export default function Sidebar({ onNavigate }) {
-  const { esAdministrador, esEncargado, esOperador, esMecanico } = useSession();
+  const { rolActual } = useSession();
 
   const gruposVisibles = groups
     .map((group) => ({
       ...group,
-      links: group.links.filter((link) => {
-        if (esAdministrador) return true;
-
-        if (esEncargado) {
-          return ![
-            "/auditoria",
-            "/rentabilidad",
-            "/capital-retiros",
-            "/configuracion-comercial",
-            "/usuarios",
-          ].includes(link.to);
-        }
-
-        if (esOperador) {
-          return [
-            "/dashboard",
-            "/ventas/nueva",
-            "/ventas",
-            "/reservas",
-            "/clientes",
-            "/pagos",
-            "/deudas",
-            "/creditos",
-            "/stock",
-            "/catalogo",
-          ].includes(link.to);
-        }
-
-        if (esMecanico) {
-          return [
-            "/dashboard",
-            "/taller",
-            "/servicios-taller",
-            "/stock",
-            "/serializadas",
-          ].includes(link.to);
-        }
-
-        return false;
-      }),
+      links: group.links.filter((link) => link.roles.includes(rolActual)),
     }))
     .filter((group) => group.links.length > 0);
 

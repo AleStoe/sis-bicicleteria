@@ -46,3 +46,10 @@ export function resetearPasswordUsuario(usuarioId, data) {
     body: JSON.stringify(data),
   });
 }
+
+export function cambiarPasswordPropia(usuarioId, data) {
+  return apiRequest(`/usuarios/${usuarioId}/password-propia`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}

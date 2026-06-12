@@ -22,3 +22,7 @@ class UsuarioUpdateInput(BaseModel):
 
 class UsuarioPasswordResetInput(BaseModel):
     password: str = Field(min_length=6, max_length=72)
+
+class UsuarioPasswordCambioPropioInput(BaseModel):
+    password_actual: str = Field(min_length=1, max_length=72)
+    password_nueva: str = Field(min_length=6, max_length=72)
