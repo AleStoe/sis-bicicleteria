@@ -71,7 +71,7 @@ def test_preview_recalculo_por_proveedor_no_modifica_precio(
         json={
             "nombre": "Minorista proveedor +120",
             "tipo_cliente": "minorista",
-            "margen_porcentaje": "1.2000",
+            "margen_porcentaje": "120",
             "redondeo_base": "100.00",
         },
     )
@@ -124,7 +124,7 @@ def test_aplica_recalculo_por_proveedor_y_registra_movimiento(
         json={
             "nombre": "Minorista proveedor aplicar",
             "tipo_cliente": "minorista",
-            "margen_porcentaje": "1.2000",
+            "margen_porcentaje": "120",
             "redondeo_base": "100.00",
         },
     )
@@ -181,7 +181,7 @@ def test_no_permite_aplicar_recalculo_sin_usuario(
         json={
             "nombre": "Minorista requiere usuario",
             "tipo_cliente": "minorista",
-            "margen_porcentaje": "1.2000",
+            "margen_porcentaje": "120",
             "redondeo_base": "100.00",
         },
     )
@@ -224,7 +224,7 @@ def test_no_toca_variantes_con_precio_libre(
         json={
             "nombre": "Minorista precio libre ignorado",
             "tipo_cliente": "minorista",
-            "margen_porcentaje": "1.2000",
+            "margen_porcentaje": "120",
             "redondeo_base": "100.00",
         },
     )

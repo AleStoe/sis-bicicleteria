@@ -37,7 +37,7 @@ def test_crea_regla_precio_global(client, seed_venta_basica):
         json={
             "nombre": "Repuestos minorista global",
             "tipo_cliente": "minorista",
-            "margen_porcentaje": "1.2000",
+            "margen_porcentaje": "120",
             "redondeo_base": "100.00",
         },
     )
@@ -47,7 +47,7 @@ def test_crea_regla_precio_global(client, seed_venta_basica):
     data = response.json()
     assert data["nombre"] == "Repuestos minorista global"
     assert data["tipo_cliente"] == "minorista"
-    assert _dec(data["margen_porcentaje"]) == Decimal("1.2000")
+    assert _dec(data["margen_porcentaje"]) == Decimal("120")
     assert _dec(data["redondeo_base"]) == Decimal("100.00")
     assert data["activa"] is True
 
@@ -58,7 +58,7 @@ def test_lista_reglas_precio(client, seed_venta_basica):
         json={
             "nombre": "Mayorista global",
             "tipo_cliente": "mayorista",
-            "margen_porcentaje": "0.5500",
+            "margen_porcentaje": "55",
             "redondeo_base": "100.00",
         },
     )
@@ -88,7 +88,7 @@ def test_sugiere_precio_con_regla_global_minorista(
         json={
             "nombre": "Minorista global +120",
             "tipo_cliente": "minorista",
-            "margen_porcentaje": "1.2000",
+            "margen_porcentaje": "120",
             "redondeo_base": "100.00",
         },
     )
@@ -129,7 +129,7 @@ def test_sugerencia_no_modifica_precio_actual(
         json={
             "nombre": "Global no aplica directo",
             "tipo_cliente": "minorista",
-            "margen_porcentaje": "1.2000",
+            "margen_porcentaje": "120",
             "redondeo_base": "100.00",
         },
     )
@@ -158,7 +158,7 @@ def test_desactiva_regla_precio(client, seed_venta_basica):
         json={
             "nombre": "Regla para desactivar",
             "tipo_cliente": "minorista",
-            "margen_porcentaje": "1.0000",
+            "margen_porcentaje": "100",
             "redondeo_base": "100.00",
         },
     )
@@ -207,7 +207,7 @@ def test_prioriza_regla_mas_especifica_por_categoria(
         json={
             "nombre": "Global minorista",
             "tipo_cliente": "minorista",
-            "margen_porcentaje": "0.5000",
+            "margen_porcentaje": "50",
             "redondeo_base": "100.00",
         },
     )
@@ -219,7 +219,7 @@ def test_prioriza_regla_mas_especifica_por_categoria(
             "nombre": "Categoria minorista",
             "id_categoria": categoria_id,
             "tipo_cliente": "minorista",
-            "margen_porcentaje": "1.2000",
+            "margen_porcentaje": "120",
             "redondeo_base": "100.00",
         },
     )
@@ -234,7 +234,7 @@ def test_prioriza_regla_mas_especifica_por_categoria(
 
     data = response.json()
     assert data["regla_nombre"] == "Categoria minorista"
-    assert _dec(data["margen_porcentaje"]) == Decimal("1.2000")
+    assert _dec(data["margen_porcentaje"]) == Decimal("120")
 
 
 def test_no_permite_crear_regla_con_categoria_inexistente(
@@ -247,7 +247,7 @@ def test_no_permite_crear_regla_con_categoria_inexistente(
             "nombre": "Categoria inexistente",
             "id_categoria": 999999,
             "tipo_cliente": "minorista",
-            "margen_porcentaje": "1.2000",
+            "margen_porcentaje": "120",
             "redondeo_base": "100.00",
         },
     )

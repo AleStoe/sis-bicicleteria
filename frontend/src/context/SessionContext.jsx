@@ -1,7 +1,15 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { login as loginAuth } from "../services/authService";
 
+const LABELS_ROL = {
+  administrador: "Administrador",
+  encargado: "Encargado",
+  operador: "Operador",
+  mecanico: "Taller",
+};
+
 const SESSION_STORAGE_KEY = "erp_session_usuario";
+
 const SUCURSAL_DEFAULT = {
   id: 1,
   nombre: "Sucursal principal",
@@ -55,11 +63,16 @@ export function SessionProvider({ children }) {
     setUsuarioActual(null);
   }
 
-  // Compatibilidad temporal: algunos componentes viejos podrían seguir importando esto.
   function seleccionarUsuario(usuario) {
     const normalizado = normalizarUsuarioSesion(usuario);
     localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(normalizado));
     setUsuarioActual(normalizado);
+  }
+
+  function puedeVerRuta(rolesPermitidos = []) {
+    if (!usuarioActual) return false;
+    if (!rolesPermitidos.length) return true;
+    return rolesPermitidos.includes(usuarioActual.rol);
   }
 
   const value = useMemo(
@@ -69,17 +82,24 @@ export function SessionProvider({ children }) {
       sucursalActual: SUCURSAL_DEFAULT,
       cargandoSesion,
       errorSesion,
+
       iniciarSesion,
       seleccionarUsuario,
       cerrarSesionOperativa,
       recargarUsuariosSesion: inicializarSesion,
+
       usuarioId: usuarioActual?.id ?? null,
       sucursalId: usuarioActual?.id_sucursal ?? SUCURSAL_DEFAULT.id,
+
       rolActual: usuarioActual?.rol ?? null,
+      rolLabel: LABELS_ROL[usuarioActual?.rol] ?? usuarioActual?.rol ?? "",
+
       esAdministrador: usuarioActual?.rol === "administrador",
       esEncargado: usuarioActual?.rol === "encargado",
       esOperador: usuarioActual?.rol === "operador",
       esMecanico: usuarioActual?.rol === "mecanico",
+
+      puedeVerRuta,
     }),
     [usuarioActual, cargandoSesion, errorSesion],
   );

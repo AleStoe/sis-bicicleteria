@@ -9,3 +9,7 @@ export function login(data) {
     }),
   });
 }
+
+export function obtenerEstadoServidor() {
+  return apiRequest("/auth/status");
+}

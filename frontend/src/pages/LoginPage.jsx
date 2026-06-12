@@ -92,8 +92,9 @@ export default function LoginPage() {
             </div>
 
             <div style={styles.server}>
-              <span>Servidor</span>
-              <strong>{window.location.hostname || "local"}</strong>
+              <span>Servidor conectado</span>
+              <strong>API online</strong>
+              <span>Local Principal</span>
             </div>
 
             <label style={styles.label}>Usuario</label>

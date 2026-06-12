@@ -16,7 +16,7 @@ def test_lista_precio_desfasado_minorista(
         json={
             "nombre": "Minorista global +120",
             "tipo_cliente": "minorista",
-            "margen_porcentaje": "1.2000",
+            "margen_porcentaje": "120",
             "redondeo_base": "100.00",
         },
     )
@@ -51,7 +51,7 @@ def test_no_lista_si_precio_ya_coincide_con_sugerido(
         json={
             "nombre": "Minorista global exacta",
             "tipo_cliente": "minorista",
-            "margen_porcentaje": "1.2000",
+            "margen_porcentaje": "120",
             "redondeo_base": "100.00",
         },
     )
@@ -88,7 +88,7 @@ def test_lista_precio_desfasado_mayorista(
         json={
             "nombre": "Mayorista global +55",
             "tipo_cliente": "mayorista",
-            "margen_porcentaje": "0.5500",
+            "margen_porcentaje": "55",
             "redondeo_base": "100.00",
         },
     )
@@ -134,7 +134,7 @@ def test_desfasados_filtra_por_categoria(
             "nombre": "Categoria minorista +120",
             "id_categoria": categoria_id,
             "tipo_cliente": "minorista",
-            "margen_porcentaje": "1.2000",
+            "margen_porcentaje": "120",
             "redondeo_base": "100.00",
         },
     )
