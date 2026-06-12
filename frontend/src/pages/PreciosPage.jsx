@@ -17,6 +17,7 @@ import {
   actualizarPrecioVariante,
   crearReglaPrecio,
   desactivarReglaPrecio,
+  listarFamiliasPrecio,
   listarPreciosDesfasados,
   listarReglasPrecio,
   obtenerHistorialPrecioVariante,
@@ -24,7 +25,6 @@ import {
   recalcularPreciosProveedor,
   sugerirPrecioVariante,
 } from "../services/preciosService";
-import { formatMoney, formatPercent, formatDate } from "../utils/formatters";
 import { useSession } from "../context/SessionContext";
 
 export default function PreciosPage() {
@@ -32,7 +32,9 @@ export default function PreciosPage() {
 
   const [tab, setTab] = useState("manual");
   const { usuarioId, sucursalId } = useSession();
+
   const [proveedores, setProveedores] = useState([]);
+  const [familias, setFamilias] = useState([]);
   const [reglas, setReglas] = useState([]);
 
   const [query, setQuery] = useState("");
@@ -60,8 +62,14 @@ export default function PreciosPage() {
   const [reglaForm, setReglaForm] = useState({
     nombre: "",
     tipo_cliente: "minorista",
-    margen_porcentaje: "1.20",
-    redondeo_base: "50",
+    id_categoria: "",
+    id_marca: "",
+    id_familia_precio: "",
+    id_proveedor: "",
+    margen_porcentaje: "130",
+    descuento_base_porcentaje: "10",
+    margen_minimo_porcentaje: "100",
+    redondeo_base: "500",
   });
 
   const [loading, setLoading] = useState(false);
@@ -85,6 +93,7 @@ export default function PreciosPage() {
       });
     });
   }
+
   useEffect(() => {
     cargarInicial();
     setTimeout(() => buscarRef.current?.focus(), 100);
@@ -94,13 +103,15 @@ export default function PreciosPage() {
     try {
       setError("");
 
-      const [provs, reglasData] = await Promise.all([
+      const [provs, reglasData, familiasData] = await Promise.all([
         listarProveedores({ solo_activos: true }),
         listarReglasPrecio({ solo_activas: false }),
+        listarFamiliasPrecio(),
       ]);
 
       setProveedores(provs || []);
       setReglas(reglasData || []);
+      setFamilias(familiasData || []);
     } catch (err) {
       setError(err.message || "No se pudieron cargar datos iniciales");
     }
@@ -204,7 +215,9 @@ export default function PreciosPage() {
       setMensaje("Precio actualizado correctamente.");
 
       const actualizado = await obtenerPrecioVariante(varianteSeleccionada.id);
-      const historialData = await obtenerHistorialPrecioVariante(varianteSeleccionada.id);
+      const historialData = await obtenerHistorialPrecioVariante(
+        varianteSeleccionada.id
+      );
 
       setVarianteSeleccionada(actualizado);
       setHistorial(historialData?.movimientos || []);
@@ -374,7 +387,10 @@ export default function PreciosPage() {
       await crearReglaPrecio(buildReglaPrecioPayload(reglaForm));
 
       setMensaje("Regla creada correctamente.");
-      setReglaForm((p) => ({ ...p, nombre: "" }));
+      setReglaForm((p) => ({
+        ...p,
+        nombre: "",
+      }));
 
       const reglasData = await listarReglasPrecio({ solo_activas: false });
       setReglas(reglasData || []);
@@ -522,6 +538,8 @@ export default function PreciosPage() {
           reglaForm={reglaForm}
           setReglaForm={setReglaForm}
           reglas={reglas}
+          familias={familias}
+          proveedores={proveedores}
           crearRegla={crearRegla}
           desactivarRegla={desactivarRegla}
           cargarInicial={cargarInicial}
@@ -529,6 +547,7 @@ export default function PreciosPage() {
           styles={styles}
         />
       )}
+
       <ConfirmModal
         open={Boolean(confirmConfig)}
         title={confirmConfig?.title}
@@ -601,7 +620,7 @@ const styles = {
   },
   rulesGrid: {
     display: "grid",
-    gridTemplateColumns: "380px 1fr",
+    gridTemplateColumns: "420px 1fr",
     gap: "16px",
     alignItems: "start",
   },
@@ -774,7 +793,7 @@ const styles = {
   table: {
     width: "100%",
     borderCollapse: "collapse",
-    minWidth: "980px",
+    minWidth: "1180px",
   },
   th: {
     textAlign: "left",

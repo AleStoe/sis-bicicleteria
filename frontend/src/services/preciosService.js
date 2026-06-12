@@ -63,3 +63,7 @@ export function recalcularPreciosProveedor(data) {
     body: JSON.stringify(data),
   });
 }
+
+export function listarFamiliasPrecio() {
+  return apiRequest("/precios/familias");
+}

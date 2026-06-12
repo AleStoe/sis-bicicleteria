@@ -21,6 +21,8 @@ from .repository import (
     get_variantes_contexto_precio,
     get_variantes_contexto_precio_by_proveedor,
     get_proveedor_by_id,
+    get_familia_precio_by_id,
+    get_familias_precio,
 )
 
 
@@ -183,6 +185,46 @@ def _validar_categoria(conn, id_categoria: int | None):
 
     return categoria
 
+def _calcular_precio_desde_regla(costo_base: Decimal, regla: dict):
+    margen_pct = _dec(regla["margen_porcentaje"])
+    descuento_pct = _dec(regla.get("descuento_base_porcentaje") or 0)
+    margen_minimo_pct = _dec(regla.get("margen_minimo_porcentaje") or 0)
+    redondeo_base = _dec(regla["redondeo_base"])
+
+    precio_objetivo = costo_base * (
+        Decimal("1") + (margen_pct / Decimal("100"))
+    )
+
+    if descuento_pct > 0:
+        precio_lista_sin_redondear = precio_objetivo / (
+            Decimal("1") - (descuento_pct / Decimal("100"))
+        )
+    else:
+        precio_lista_sin_redondear = precio_objetivo
+
+    precio_lista = _redondear_hacia_arriba(
+        precio_lista_sin_redondear,
+        redondeo_base,
+    )
+
+    precio_final_estimado = precio_lista * (
+        Decimal("1") - (descuento_pct / Decimal("100"))
+    )
+
+    precio_minimo = costo_base * (
+        Decimal("1") + (margen_minimo_pct / Decimal("100"))
+    )
+
+    return {
+        "precio_objetivo": precio_objetivo,
+        "precio_lista": precio_lista,
+        "precio_final_estimado": precio_final_estimado,
+        "precio_minimo": precio_minimo,
+        "margen_porcentaje": margen_pct,
+        "descuento_base_porcentaje": descuento_pct,
+        "margen_minimo_porcentaje": margen_minimo_pct,
+        "redondeo_base": redondeo_base,
+    }
 
 def _validar_marca(conn, id_marca: int | None):
     if id_marca is None:
@@ -212,6 +254,8 @@ def crear_regla_precio(data):
         with conn.transaction():
             _validar_categoria(conn, data.id_categoria)
             _validar_marca(conn, data.id_marca)
+            _validar_familia_precio(conn, data.id_familia_precio)
+            _validar_proveedor(conn, data.id_proveedor)
 
             regla_id = insert_regla_precio(
                 conn,
@@ -219,18 +263,22 @@ def crear_regla_precio(data):
                     "nombre": data.nombre,
                     "id_categoria": data.id_categoria,
                     "id_marca": data.id_marca,
+                    "id_familia_precio": data.id_familia_precio,
+                    "id_proveedor": data.id_proveedor,
                     "tipo_cliente": data.tipo_cliente,
                     "margen_porcentaje": data.margen_porcentaje,
                     "redondeo_base": data.redondeo_base,
+                    "descuento_base_porcentaje": data.descuento_base_porcentaje,
+                    "margen_minimo_porcentaje": data.margen_minimo_porcentaje,
                 },
             )
 
             regla = get_regla_precio_by_id(conn, regla_id)
+
             return regla
 
     finally:
         conn.close()
-
 
 def listar_reglas_precio(solo_activas: bool = True):
     conn = get_connection()
@@ -292,6 +340,8 @@ def sugerir_precio_variante(id_variante: int, data):
             {
                 "id_categoria": variante["id_categoria"],
                 "id_marca": variante["id_marca"],
+                "id_familia_precio": variante["id_familia_precio"],
+                "id_proveedor": variante["proveedor_preferido_id"],
                 "tipo_cliente": data.tipo_cliente,
             },
         )
@@ -306,14 +356,7 @@ def sugerir_precio_variante(id_variante: int, data):
             )
 
         costo_base = _dec(variante["costo_promedio_vigente"])
-        margen = _dec(regla["margen_porcentaje"])
-        redondeo_base = _dec(regla["redondeo_base"])
-
-        precio_sin_redondear = costo_base * (Decimal("1") + margen)
-        precio_sugerido = _redondear_hacia_arriba(
-            precio_sin_redondear,
-            redondeo_base,
-        )
+        calculo = _calcular_precio_desde_regla(costo_base, regla)
 
         precio_actual = (
             _dec(variante["precio_minorista"])
@@ -326,11 +369,17 @@ def sugerir_precio_variante(id_variante: int, data):
             "tipo_cliente": data.tipo_cliente,
             "costo_base": costo_base,
             "precio_actual": precio_actual,
-            "precio_sugerido": precio_sugerido,
-            "margen_porcentaje": margen,
-            "redondeo_base": redondeo_base,
+            "precio_sugerido": calculo["precio_lista"],
+            "margen_porcentaje": calculo["margen_porcentaje"],
+            "redondeo_base": calculo["redondeo_base"],
             "regla_id": regla["id"],
             "regla_nombre": regla["nombre"],
+            "precio_objetivo": calculo["precio_objetivo"],
+            "precio_lista": calculo["precio_lista"],
+            "precio_final_estimado": calculo["precio_final_estimado"],
+            "precio_minimo": calculo["precio_minimo"],
+            "descuento_base_porcentaje": calculo["descuento_base_porcentaje"],
+            "margen_minimo_porcentaje": calculo["margen_minimo_porcentaje"],
         }
 
     finally:
@@ -363,6 +412,8 @@ def listar_precios_desfasados(
                 {
                     "id_categoria": variante["id_categoria"],
                     "id_marca": variante["id_marca"],
+                    "id_familia_precio": variante["id_familia_precio"],
+                    "id_proveedor": variante["proveedor_preferido_id"],
                     "tipo_cliente": tipo_cliente,
                 },
             )
@@ -371,14 +422,10 @@ def listar_precios_desfasados(
                 continue
 
             costo_base = _dec(variante["costo_promedio_vigente"])
-            margen_esperado = _dec(regla["margen_porcentaje"])
-            redondeo_base = _dec(regla["redondeo_base"])
+            calculo = _calcular_precio_desde_regla(costo_base, regla)
 
-            precio_sin_redondear = costo_base * (Decimal("1") + margen_esperado)
-            precio_sugerido = _redondear_hacia_arriba(
-                precio_sin_redondear,
-                redondeo_base,
-            )
+            precio_sugerido = calculo["precio_lista"]
+            margen_esperado = calculo["margen_porcentaje"]
 
             precio_actual = (
                 _dec(variante["precio_minorista"])
@@ -389,10 +436,11 @@ def listar_precios_desfasados(
             if precio_actual == precio_sugerido:
                 continue
 
-            if costo_base > 0:
-                margen_real = (precio_actual / costo_base) - Decimal("1")
-            else:
-                margen_real = Decimal("0")
+            margen_real = (
+                ((precio_actual / costo_base) - Decimal("1")) * Decimal("100")
+                if costo_base > 0
+                else Decimal("0")
+            )
 
             diferencia = precio_sugerido - precio_actual
 
@@ -463,6 +511,8 @@ def recalcular_precios_por_proveedor(data):
                     {
                         "id_categoria": variante["id_categoria"],
                         "id_marca": variante["id_marca"],
+                        "id_familia_precio": variante["id_familia_precio"],
+                        "id_proveedor": variante["proveedor_preferido_id"],
                         "tipo_cliente": data.tipo_cliente,
                     },
                 )
@@ -471,17 +521,10 @@ def recalcular_precios_por_proveedor(data):
                     continue
 
                 costo_base = _dec(variante["costo_promedio_vigente"])
-                margen_esperado = _dec(regla["margen_porcentaje"])
-                redondeo_base = _dec(regla["redondeo_base"])
+                calculo = _calcular_precio_desde_regla(costo_base, regla)
 
-                precio_sin_redondear = costo_base * (
-                    Decimal("1") + margen_esperado
-                )
-
-                precio_sugerido = _redondear_hacia_arriba(
-                    precio_sin_redondear,
-                    redondeo_base,
-                )
+                precio_sugerido = calculo["precio_lista"]
+                margen_esperado = calculo["margen_porcentaje"]
 
                 precio_minorista_actual = _dec(variante["precio_minorista"])
                 precio_mayorista_actual = _dec(variante["precio_mayorista"])
@@ -495,10 +538,11 @@ def recalcular_precios_por_proveedor(data):
                 if precio_actual == precio_sugerido:
                     continue
 
-                if costo_base > 0:
-                    margen_real = (precio_actual / costo_base) - Decimal("1")
-                else:
-                    margen_real = Decimal("0")
+                margen_real = (
+                    ((precio_actual / costo_base) - Decimal("1")) * Decimal("100")
+                    if costo_base > 0
+                    else Decimal("0")
+                )
 
                 diferencia = precio_sugerido - precio_actual
                 movimiento_id = None
@@ -575,5 +619,62 @@ def recalcular_precios_por_proveedor(data):
                 "items": items,
             }
 
+    finally:
+        conn.close()
+
+def _validar_familia_precio(conn, id_familia_precio: int | None):
+    if id_familia_precio is None:
+        return None
+
+    familia = get_familia_precio_by_id(
+        conn,
+        id_familia_precio,
+    )
+
+    if familia is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"No existe la familia de precio "
+                f"{id_familia_precio}"
+            ),
+        )
+
+    if not familia["activa"]:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"La familia de precio "
+                f"{id_familia_precio} está inactiva"
+            ),
+        )
+
+    return familia
+
+def _validar_proveedor(conn, id_proveedor: int | None):
+    if id_proveedor is None:
+        return None
+
+    proveedor = get_proveedor_by_id(conn, id_proveedor)
+
+    if proveedor is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No existe el proveedor {id_proveedor}",
+        )
+
+    if not proveedor["activo"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"El proveedor {id_proveedor} está inactivo",
+        )
+
+    return proveedor
+
+def listar_familias_precio():
+    conn = get_connection()
+
+    try:
+        return get_familias_precio(conn)
     finally:
         conn.close()

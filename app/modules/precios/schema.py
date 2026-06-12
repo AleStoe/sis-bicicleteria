@@ -85,7 +85,10 @@ class ReglaPrecioCreateInput(BaseModel):
     tipo_cliente: TipoClientePrecio
     margen_porcentaje: Decimal = Field(ge=0)
     redondeo_base: Decimal = Field(default=Decimal("100"), gt=0)
-
+    descuento_base_porcentaje: Decimal = Field(default=Decimal("0"), ge=0, lt=100)
+    margen_minimo_porcentaje: Decimal = Field(default=Decimal("0"), ge=0)
+    id_familia_precio: Optional[int] = Field(default=None, gt=0)
+    id_proveedor: Optional[int] = Field(default=None, gt=0)
 
 class ReglaPrecioOutput(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -96,12 +99,19 @@ class ReglaPrecioOutput(BaseModel):
     categoria_nombre: Optional[str] = None
     id_marca: Optional[int] = None
     marca_nombre: Optional[str] = None
+    descuento_base_porcentaje: Decimal
+    margen_minimo_porcentaje: Decimal
     tipo_cliente: str
     margen_porcentaje: Decimal
     redondeo_base: Decimal
     activa: bool
     created_at: datetime
     updated_at: datetime
+    id_familia_precio: Optional[int] = None
+    familia_precio_nombre: Optional[str] = None
+
+    id_proveedor: Optional[int] = None
+    proveedor_nombre: Optional[str] = None
 
 
 class ReglaPrecioEstadoInput(BaseModel):
@@ -122,6 +132,12 @@ class PrecioSugeridoOutput(BaseModel):
     redondeo_base: Decimal
     regla_id: Optional[int] = None
     regla_nombre: Optional[str] = None
+    precio_objetivo: Decimal
+    precio_lista: Decimal
+    precio_final_estimado: Decimal
+    precio_minimo: Decimal
+    descuento_base_porcentaje: Decimal
+    margen_minimo_porcentaje: Decimal
 
 class PrecioDesfasadoOutput(BaseModel):
     id_variante: int
@@ -175,3 +191,9 @@ class RecalculoProveedorOutput(BaseModel):
     total_detectados: int
     total_aplicados: int
     items: List[RecalculoProveedorItemOutput]
+
+class FamiliaPrecioOut(BaseModel):
+    id: int
+    nombre: str
+    descripcion: Optional[str] = None
+    activa: bool

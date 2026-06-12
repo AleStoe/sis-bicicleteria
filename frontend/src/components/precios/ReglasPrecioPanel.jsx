@@ -1,9 +1,33 @@
 import { formatMoney, formatPercent } from "../../utils/formatters";
 
+function labelScope(regla) {
+  const partes = [];
+
+  if (regla.familia_precio_nombre) {
+    partes.push(`Familia: ${regla.familia_precio_nombre}`);
+  }
+
+  if (regla.proveedor_nombre) {
+    partes.push(`Proveedor: ${regla.proveedor_nombre}`);
+  }
+
+  if (regla.categoria_nombre) {
+    partes.push(`Categoría: ${regla.categoria_nombre}`);
+  }
+
+  if (regla.marca_nombre) {
+    partes.push(`Marca: ${regla.marca_nombre}`);
+  }
+
+  return partes.length ? partes.join(" · ") : "Global";
+}
+
 export default function ReglasPrecioPanel({
   reglaForm,
   setReglaForm,
   reglas,
+  familias = [],
+  proveedores = [],
   crearRegla,
   desactivarRegla,
   cargarInicial,
@@ -13,7 +37,7 @@ export default function ReglasPrecioPanel({
   return (
     <div style={styles.rulesGrid}>
       <section style={styles.card}>
-        <h2 style={styles.cardTitle}>Crear regla global</h2>
+        <h2 style={styles.cardTitle}>Crear regla de precio</h2>
 
         <form onSubmit={crearRegla} style={styles.form}>
           <label style={styles.label}>
@@ -27,7 +51,7 @@ export default function ReglasPrecioPanel({
                   nombre: e.target.value,
                 }))
               }
-              placeholder="Ej: Minorista general 120%"
+              placeholder="Ej: Transmisión Topmega 130%"
             />
           </label>
 
@@ -49,11 +73,54 @@ export default function ReglasPrecioPanel({
           </label>
 
           <label style={styles.label}>
-            Margen porcentaje
+            Familia de precio
+            <select
+              style={styles.input}
+              value={reglaForm.id_familia_precio}
+              onChange={(e) =>
+                setReglaForm((p) => ({
+                  ...p,
+                  id_familia_precio: e.target.value,
+                }))
+              }
+            >
+              <option value="">Todas</option>
+              {familias.map((familia) => (
+                <option key={familia.id} value={familia.id}>
+                  {familia.nombre}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label style={styles.label}>
+            Proveedor
+            <select
+              style={styles.input}
+              value={reglaForm.id_proveedor}
+              onChange={(e) =>
+                setReglaForm((p) => ({
+                  ...p,
+                  id_proveedor: e.target.value,
+                }))
+              }
+            >
+              <option value="">Todos</option>
+              {proveedores.map((proveedor) => (
+                <option key={proveedor.id} value={proveedor.id}>
+                  {proveedor.nombre}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label style={styles.label}>
+            Margen objetivo %
             <input
               style={styles.input}
               type="number"
               step="0.01"
+              min="0"
               value={reglaForm.margen_porcentaje}
               onChange={(e) =>
                 setReglaForm((p) => ({
@@ -61,6 +128,44 @@ export default function ReglasPrecioPanel({
                   margen_porcentaje: e.target.value,
                 }))
               }
+              placeholder="Ej: 130"
+            />
+          </label>
+
+          <label style={styles.label}>
+            Descuento base %
+            <input
+              style={styles.input}
+              type="number"
+              step="0.01"
+              min="0"
+              max="99.99"
+              value={reglaForm.descuento_base_porcentaje}
+              onChange={(e) =>
+                setReglaForm((p) => ({
+                  ...p,
+                  descuento_base_porcentaje: e.target.value,
+                }))
+              }
+              placeholder="Ej: 10"
+            />
+          </label>
+
+          <label style={styles.label}>
+            Margen mínimo %
+            <input
+              style={styles.input}
+              type="number"
+              step="0.01"
+              min="0"
+              value={reglaForm.margen_minimo_porcentaje}
+              onChange={(e) =>
+                setReglaForm((p) => ({
+                  ...p,
+                  margen_minimo_porcentaje: e.target.value,
+                }))
+              }
+              placeholder="Ej: 100"
             />
           </label>
 
@@ -69,6 +174,7 @@ export default function ReglasPrecioPanel({
             <input
               style={styles.input}
               type="number"
+              min="1"
               value={reglaForm.redondeo_base}
               onChange={(e) =>
                 setReglaForm((p) => ({
@@ -76,6 +182,7 @@ export default function ReglasPrecioPanel({
                   redondeo_base: e.target.value,
                 }))
               }
+              placeholder="Ej: 500"
             />
           </label>
 
@@ -89,8 +196,8 @@ export default function ReglasPrecioPanel({
         </form>
 
         <div style={styles.note}>
-          Esta alta crea reglas globales. Las reglas por categoría/marca
-          conviene hacerlas después con selector dedicado.
+          Si elegís familia + proveedor, esa regla pisa a la regla general de
+          familia. Si no elegís nada, queda como regla global.
         </div>
       </section>
 
@@ -112,8 +219,11 @@ export default function ReglasPrecioPanel({
             <thead>
               <tr>
                 <th style={styles.th}>Nombre</th>
+                <th style={styles.th}>Alcance</th>
                 <th style={styles.th}>Tipo</th>
-                <th style={styles.th}>Margen</th>
+                <th style={styles.th}>Margen objetivo</th>
+                <th style={styles.th}>Desc. base</th>
+                <th style={styles.th}>Margen mínimo</th>
                 <th style={styles.th}>Redondeo</th>
                 <th style={styles.th}>Estado</th>
                 <th style={styles.th}>Acción</th>
@@ -124,11 +234,17 @@ export default function ReglasPrecioPanel({
               {reglas.map((regla) => (
                 <tr key={regla.id}>
                   <td style={styles.tdStrong}>{regla.nombre}</td>
+                  <td style={styles.td}>{labelScope(regla)}</td>
                   <td style={styles.td}>{regla.tipo_cliente}</td>
                   <td style={styles.td}>
                     {formatPercent(regla.margen_porcentaje)}
                   </td>
-
+                  <td style={styles.td}>
+                    {formatPercent(regla.descuento_base_porcentaje || 0)}
+                  </td>
+                  <td style={styles.td}>
+                    {formatPercent(regla.margen_minimo_porcentaje || 0)}
+                  </td>
                   <td style={styles.td}>
                     {formatMoney(regla.redondeo_base)}
                   </td>
@@ -173,7 +289,7 @@ export default function ReglasPrecioPanel({
 
               {reglas.length === 0 && (
                 <tr>
-                  <td style={styles.empty} colSpan={6}>
+                  <td style={styles.empty} colSpan={9}>
                     No hay reglas cargadas.
                   </td>
                 </tr>

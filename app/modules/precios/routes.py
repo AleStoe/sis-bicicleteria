@@ -13,6 +13,7 @@ from .schema import (
     PreciosDesfasadosResponse,
     RecalculoProveedorInput,
     RecalculoProveedorOutput,
+    FamiliaPrecioOut,
 )
 from .service import (
     obtener_precio_variante,
@@ -24,6 +25,7 @@ from .service import (
     sugerir_precio_variante,
     listar_precios_desfasados,
     recalcular_precios_por_proveedor,
+    listar_familias_precio,
 )
 
 router = APIRouter()
@@ -99,3 +101,7 @@ def sugerir_precio_variante_route(
 )
 def recalcular_precios_por_proveedor_route(data: RecalculoProveedorInput):
     return recalcular_precios_por_proveedor(data)
+
+@router.get("/familias", response_model=List[FamiliaPrecioOut])
+def familias_precio_route():
+    return listar_familias_precio()

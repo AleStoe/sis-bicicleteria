@@ -154,7 +154,6 @@ def get_marca_by_id(conn, marca_id: int):
         )
         return cur.fetchone()
 
-
 def insert_regla_precio(conn, data: dict):
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
@@ -166,9 +165,17 @@ def insert_regla_precio(conn, data: dict):
                 tipo_cliente,
                 margen_porcentaje,
                 redondeo_base,
+                descuento_base_porcentaje,
+                margen_minimo_porcentaje,
+                id_familia_precio,
+                id_proveedor,
                 activa
             )
-            VALUES (%s, %s, %s, %s, %s, %s, TRUE)
+            VALUES (
+                %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s,
+                TRUE
+            )
             RETURNING id
             """,
             (
@@ -178,10 +185,14 @@ def insert_regla_precio(conn, data: dict):
                 data["tipo_cliente"],
                 data["margen_porcentaje"],
                 data["redondeo_base"],
+                data.get("descuento_base_porcentaje", 0),
+                data.get("margen_minimo_porcentaje", 0),
+                data.get("id_familia_precio"),
+                data.get("id_proveedor"),
             ),
         )
-        return cur.fetchone()["id"]
 
+        return cur.fetchone()["id"]
 
 def get_reglas_precio(conn, solo_activas: bool = True):
     with conn.cursor(row_factory=dict_row) as cur:
@@ -198,24 +209,49 @@ def get_reglas_precio(conn, solo_activas: bool = True):
             SELECT
                 rp.id,
                 rp.nombre,
+
                 rp.id_categoria,
                 c.nombre AS categoria_nombre,
+
                 rp.id_marca,
                 m.nombre AS marca_nombre,
+
+                rp.id_familia_precio,
+                fp.nombre AS familia_precio_nombre,
+
+                rp.id_proveedor,
+                pr.nombre AS proveedor_nombre,
+
                 rp.tipo_cliente,
                 rp.margen_porcentaje,
                 rp.redondeo_base,
+                rp.descuento_base_porcentaje,
+                rp.margen_minimo_porcentaje,
                 rp.activa,
                 rp.created_at,
                 rp.updated_at
+
             FROM reglas_precio rp
-            LEFT JOIN categorias c ON c.id = rp.id_categoria
-            LEFT JOIN marcas m ON m.id = rp.id_marca
+
+            LEFT JOIN categorias c
+                ON c.id = rp.id_categoria
+
+            LEFT JOIN marcas m
+                ON m.id = rp.id_marca
+
+            LEFT JOIN familias_precio fp
+                ON fp.id = rp.id_familia_precio
+
+            LEFT JOIN proveedores pr
+                ON pr.id = rp.id_proveedor
+
             {where_sql}
+
             ORDER BY rp.activa DESC, rp.id DESC
             """,
             params,
         )
+
         return cur.fetchall()
 
 
@@ -226,25 +262,48 @@ def get_regla_precio_by_id(conn, regla_id: int):
             SELECT
                 rp.id,
                 rp.nombre,
+
                 rp.id_categoria,
                 c.nombre AS categoria_nombre,
+
                 rp.id_marca,
                 m.nombre AS marca_nombre,
+
+                rp.id_familia_precio,
+                fp.nombre AS familia_precio_nombre,
+
+                rp.id_proveedor,
+                pr.nombre AS proveedor_nombre,
+
                 rp.tipo_cliente,
                 rp.margen_porcentaje,
                 rp.redondeo_base,
+                rp.descuento_base_porcentaje,
+                rp.margen_minimo_porcentaje,
                 rp.activa,
                 rp.created_at,
                 rp.updated_at
+
             FROM reglas_precio rp
-            LEFT JOIN categorias c ON c.id = rp.id_categoria
-            LEFT JOIN marcas m ON m.id = rp.id_marca
+
+            LEFT JOIN categorias c
+                ON c.id = rp.id_categoria
+
+            LEFT JOIN marcas m
+                ON m.id = rp.id_marca
+
+            LEFT JOIN familias_precio fp
+                ON fp.id = rp.id_familia_precio
+
+            LEFT JOIN proveedores pr
+                ON pr.id = rp.id_proveedor
+
             WHERE rp.id = %s
             """,
             (regla_id,),
         )
-        return cur.fetchone()
 
+        return cur.fetchone()
 
 def update_regla_precio_estado(conn, regla_id: int, activa: bool):
     with conn.cursor() as cur:
@@ -271,11 +330,17 @@ def get_variante_contexto_precio(conn, id_variante: int):
                 v.precio_mayorista,
                 v.costo_promedio_vigente,
                 v.activo,
+
                 p.nombre AS producto_nombre,
                 p.id_categoria,
-                p.id_marca
+                p.id_marca,
+                p.id_familia_precio,
+
+                v.proveedor_preferido_id
+
             FROM variantes v
-            INNER JOIN productos p ON p.id = v.id_producto
+            INNER JOIN productos p
+                ON p.id = v.id_producto
             WHERE v.id = %s
             """,
             (id_variante,),
@@ -286,10 +351,13 @@ def get_variante_contexto_precio(conn, id_variante: int):
 def buscar_regla_precio_aplicable(conn, data: dict):
     """
     Prioridad:
-    1. categoría + marca
-    2. marca
-    3. categoría
-    4. global
+
+    6. proveedor + familia
+    5. familia
+    4. categoria + marca
+    3. marca
+    2. categoria
+    1. global
     """
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
@@ -299,31 +367,90 @@ def buscar_regla_precio_aplicable(conn, data: dict):
                 nombre,
                 id_categoria,
                 id_marca,
+                id_familia_precio,
+                id_proveedor,
                 tipo_cliente,
                 margen_porcentaje,
                 redondeo_base,
+                descuento_base_porcentaje,
+                margen_minimo_porcentaje,
                 activa,
+
                 CASE
-                    WHEN id_categoria = %(id_categoria)s AND id_marca = %(id_marca)s THEN 4
-                    WHEN id_categoria IS NULL AND id_marca = %(id_marca)s THEN 3
-                    WHEN id_categoria = %(id_categoria)s AND id_marca IS NULL THEN 2
-                    WHEN id_categoria IS NULL AND id_marca IS NULL THEN 1
+                    WHEN id_proveedor = %(id_proveedor)s
+                    AND id_familia_precio = %(id_familia_precio)s
+                    THEN 6
+
+                    WHEN id_familia_precio = %(id_familia_precio)s
+                    AND id_proveedor IS NULL
+                    THEN 5
+
+                    WHEN id_categoria = %(id_categoria)s
+                    AND id_marca = %(id_marca)s
+                    THEN 4
+
+                    WHEN id_categoria IS NULL
+                    AND id_marca = %(id_marca)s
+                    THEN 3
+
+                    WHEN id_categoria = %(id_categoria)s
+                    AND id_marca IS NULL
+                    THEN 2
+
+                    WHEN id_categoria IS NULL
+                    AND id_marca IS NULL
+                    AND id_familia_precio IS NULL
+                    AND id_proveedor IS NULL
+                    THEN 1
+
                     ELSE 0
                 END AS prioridad
+
             FROM reglas_precio
+
             WHERE activa = TRUE
               AND tipo_cliente = %(tipo_cliente)s
+
               AND (
-                    (id_categoria = %(id_categoria)s AND id_marca = %(id_marca)s)
-                 OR (id_categoria IS NULL AND id_marca = %(id_marca)s)
-                 OR (id_categoria = %(id_categoria)s AND id_marca IS NULL)
-                 OR (id_categoria IS NULL AND id_marca IS NULL)
+                    (
+                        id_proveedor = %(id_proveedor)s
+                        AND id_familia_precio = %(id_familia_precio)s
+                    )
+
+                 OR (
+                        id_familia_precio = %(id_familia_precio)s
+                        AND id_proveedor IS NULL
+                    )
+
+                 OR (
+                        id_categoria = %(id_categoria)s
+                        AND id_marca = %(id_marca)s
+                    )
+
+                 OR (
+                        id_categoria IS NULL
+                        AND id_marca = %(id_marca)s
+                    )
+
+                 OR (
+                        id_categoria = %(id_categoria)s
+                        AND id_marca IS NULL
+                    )
+
+                 OR (
+                        id_categoria IS NULL
+                        AND id_marca IS NULL
+                        AND id_familia_precio IS NULL
+                        AND id_proveedor IS NULL
+                    )
               )
+
             ORDER BY prioridad DESC, id DESC
             LIMIT 1
             """,
             data,
         )
+
         return cur.fetchone()
     
 def get_variantes_contexto_precio(conn, filtros: dict):
@@ -356,15 +483,22 @@ def get_variantes_contexto_precio(conn, filtros: dict):
                 v.precio_mayorista,
                 v.costo_promedio_vigente,
                 v.proveedor_preferido_id,
+
                 p.id_categoria,
-                p.id_marca
+                p.id_marca,
+                p.id_familia_precio
+
             FROM variantes v
-            INNER JOIN productos p ON p.id = v.id_producto
+            INNER JOIN productos p
+                ON p.id = v.id_producto
+
             WHERE {where_sql}
+
             ORDER BY p.nombre, v.nombre_variante
             """,
             params,
         )
+
         return cur.fetchall()
     
 def get_variantes_contexto_precio_by_proveedor(conn, id_proveedor: int):
@@ -372,28 +506,35 @@ def get_variantes_contexto_precio_by_proveedor(conn, id_proveedor: int):
         cur.execute(
             """
             SELECT
-                v.id,
-                v.id_producto,
-                p.nombre AS producto_nombre,
-                v.nombre_variante,
-                v.precio_minorista,
-                v.precio_mayorista,
-                v.costo_promedio_vigente,
-                v.permite_precio_libre,
-                v.proveedor_preferido_id,
-                v.activo,
-                p.id_categoria,
-                p.id_marca,
-                p.activo AS producto_activo
+            v.id,
+            v.id_producto,
+            p.nombre AS producto_nombre,
+            v.nombre_variante,
+            v.precio_minorista,
+            v.precio_mayorista,
+            v.costo_promedio_vigente,
+            v.permite_precio_libre,
+            v.proveedor_preferido_id,
+            v.activo,
+
+            p.id_categoria,
+            p.id_marca,
+            p.id_familia_precio,
+            p.activo AS producto_activo
+
             FROM variantes v
-            INNER JOIN productos p ON p.id = v.id_producto
+            INNER JOIN productos p
+                ON p.id = v.id_producto
+
             WHERE v.proveedor_preferido_id = %s
               AND v.activo = TRUE
               AND p.activo = TRUE
+
             ORDER BY p.nombre, v.nombre_variante
             """,
             (id_proveedor,),
         )
+
         return cur.fetchall()
 
 
@@ -408,3 +549,32 @@ def get_proveedor_by_id(conn, id_proveedor: int):
             (id_proveedor,),
         )
         return cur.fetchone()    
+    
+def get_familia_precio_by_id(conn, familia_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT id, nombre, activa
+            FROM familias_precio
+            WHERE id = %s
+            """,
+            (familia_id,),
+        )
+        return cur.fetchone()
+    
+
+def get_familias_precio(conn):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT
+                id,
+                nombre,
+                descripcion,
+                activa
+            FROM familias_precio
+            WHERE activa = TRUE
+            ORDER BY nombre
+            """
+        )
+        return cur.fetchall()
