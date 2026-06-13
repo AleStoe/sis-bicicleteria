@@ -35,3 +35,17 @@ export function registrarAjusteCaja(cajaId, data) {
     body: JSON.stringify(data),
   });
 }
+
+export function listarHistorialCajas(params = {}) {
+  const query = new URLSearchParams();
+
+  if (params.id_sucursal) query.set("id_sucursal", params.id_sucursal);
+  if (params.fecha_desde) query.set("fecha_desde", params.fecha_desde);
+  if (params.fecha_hasta) query.set("fecha_hasta", params.fecha_hasta);
+  if (params.estado) query.set("estado", params.estado);
+  if (params.limit) query.set("limit", params.limit);
+  if (params.offset) query.set("offset", params.offset);
+
+  const qs = query.toString();
+  return apiRequest(`/cajas/historial${qs ? `?${qs}` : ""}`);
+}

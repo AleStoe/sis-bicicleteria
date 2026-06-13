@@ -6,6 +6,7 @@ import {
   obtenerCajaDetalle,
   registrarEgresoCaja,
   registrarAjusteCaja,
+  listarHistorialCajas,
 } from "../services/cajaService";
 import { formatCurrency } from "../utils/formatters";
 import { PageHeader, Button, useBreakpoint } from "../components/ui";
@@ -20,12 +21,12 @@ import CajaMovimientosTable from "../components/caja/CajaMovimientosTable";
 import { useSession } from "../context/SessionContext";
 import { ConfirmModal } from "../components/ui/ConfirmModal";
 
-
 export default function CajaPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
   const [detalle, setDetalle] = useState(null);
+  const [historial, setHistorial] = useState([]);
   const [montoApertura, setMontoApertura] = useState("");
   const [montoReal, setMontoReal] = useState("");
   const [egreso, setEgreso] = useState({ monto: "", nota: "" });
@@ -59,11 +60,22 @@ export default function CajaPage() {
     cargarCaja();
   }, [sucursalId]);
 
+  async function cargarHistorial() {
+    const data = await listarHistorialCajas({
+      id_sucursal: sucursalId,
+      limit: 30,
+    });
+
+    setHistorial(Array.isArray(data) ? data : []);
+  }
+
   async function cargarCaja() {
     try {
       setLoading(true);
       setError("");
       setMensaje("");
+
+      await cargarHistorial();
 
       const cajaAbierta = await obtenerCajaAbierta(sucursalId);
       const detalleCaja = await obtenerCajaDetalle(cajaAbierta.caja.id);
@@ -202,6 +214,7 @@ export default function CajaPage() {
     }
 
     const direccionTexto = ajuste.direccion === "positivo" ? "POSITIVO" : "NEGATIVO";
+
     const confirmado = await pedirConfirmacion({
       title: "Registrar ajuste de caja",
       message: `Vas a registrar un AJUSTE ${direccionTexto} de ${formatCurrency(monto)}.\n\nMotivo: ${nota}\n\nLos ajustes deben usarse solo para corregir diferencias reales de caja. ¿Confirmás?`,
@@ -274,8 +287,26 @@ export default function CajaPage() {
       setMensaje(`Caja cerrada. Diferencia: ${formatCurrency(resp.diferencia)}`);
       setDetalle(null);
       setMontoReal("");
+
+      await cargarCaja();
     } catch (err) {
       setError(err.message || "No se pudo cerrar la caja");
+    } finally {
+      setProcesando(false);
+    }
+  }
+
+  async function verDetalleCaja(cajaId) {
+    try {
+      setProcesando(true);
+      setError("");
+      setMensaje("");
+
+      const detalleCaja = await obtenerCajaDetalle(cajaId);
+      setDetalle(detalleCaja);
+      setMontoReal(String(detalleCaja.efectivo_teorico ?? ""));
+    } catch (err) {
+      setError(err.message || "No se pudo cargar el detalle de la caja");
     } finally {
       setProcesando(false);
     }
@@ -316,7 +347,7 @@ export default function CajaPage() {
     <div style={isMobile ? styles.pageMobile : undefined}>
       <PageHeader
         title="Caja"
-        subtitle="Control de apertura, movimientos y cierre de caja"
+        subtitle="Control de apertura, movimientos, cierre e historial"
         actions={
           <Button variant="outline" onClick={cargarCaja} disabled={procesando}>
             Refrescar
@@ -341,33 +372,35 @@ export default function CajaPage() {
 
           <CajaTotalesSubmedio totales={totales} formatCurrency={formatCurrency} />
 
-          <div style={{ ...styles.operacionesGrid, ...(isMobile ? styles.operacionesGridMobile : {}) }}>
-            <CajaEgresoCard
-              egreso={egreso}
-              setEgreso={setEgreso}
-              onSubmit={handleRegistrarEgreso}
-              puedeRegistrarEgreso={puedeRegistrarEgreso}
-              procesando={procesando}
-            />
+          {detalle.caja?.estado === "abierta" ? (
+            <div style={{ ...styles.operacionesGrid, ...(isMobile ? styles.operacionesGridMobile : {}) }}>
+              <CajaEgresoCard
+                egreso={egreso}
+                setEgreso={setEgreso}
+                onSubmit={handleRegistrarEgreso}
+                puedeRegistrarEgreso={puedeRegistrarEgreso}
+                procesando={procesando}
+              />
 
-            <CajaAjusteCard
-              ajuste={ajuste}
-              setAjuste={setAjuste}
-              onSubmit={handleRegistrarAjuste}
-              puedeRegistrarAjuste={puedeRegistrarAjuste}
-              procesando={procesando}
-            />
+              <CajaAjusteCard
+                ajuste={ajuste}
+                setAjuste={setAjuste}
+                onSubmit={handleRegistrarAjuste}
+                puedeRegistrarAjuste={puedeRegistrarAjuste}
+                procesando={procesando}
+              />
 
-            <CajaCierreCard
-              montoReal={montoReal}
-              setMontoReal={setMontoReal}
-              efectivoTeorico={detalle.efectivo_teorico}
-              onSubmit={handleCerrarCaja}
-              puedeCerrarCaja={puedeCerrarCaja}
-              procesando={procesando}
-              formatCurrency={formatCurrency}
-            />
-          </div>
+              <CajaCierreCard
+                montoReal={montoReal}
+                setMontoReal={setMontoReal}
+                efectivoTeorico={detalle.efectivo_teorico}
+                onSubmit={handleCerrarCaja}
+                puedeCerrarCaja={puedeCerrarCaja}
+                procesando={procesando}
+                formatCurrency={formatCurrency}
+              />
+            </div>
+          ) : null}
 
           <CajaMovimientosTable
             movimientos={detalle.movimientos ?? []}
@@ -375,6 +408,100 @@ export default function CajaPage() {
           />
         </>
       )}
+
+      <section style={styles.historialCard}>
+        <div style={styles.historialHeader}>
+          <div>
+            <h2 style={styles.historialTitle}>Historial de cajas</h2>
+            <p style={styles.historialSubtitle}>
+              Últimas cajas abiertas y cerradas del local.
+            </p>
+          </div>
+        </div>
+
+        <div style={styles.tableWrap}>
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={styles.th}>Fecha</th>
+                <th style={styles.th}>Estado</th>
+                <th style={styles.th}>Apertura</th>
+                <th style={styles.th}>Teórico</th>
+                <th style={styles.th}>Real</th>
+                <th style={styles.th}>Diferencia</th>
+                <th style={styles.th}>Abrió</th>
+                <th style={styles.th}>Cerró</th>
+                <th style={styles.th}></th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {historial.length === 0 ? (
+                <tr>
+                  <td style={styles.emptyCell} colSpan={9}>
+                    No hay cajas históricas para mostrar.
+                  </td>
+                </tr>
+              ) : (
+                historial.map((caja) => (
+                  <tr key={caja.id}>
+                    <td style={styles.td}>{caja.fecha}</td>
+                    <td style={styles.td}>
+                      <span
+                        style={
+                          caja.estado === "abierta"
+                            ? styles.estadoAbierta
+                            : styles.estadoCerrada
+                        }
+                      >
+                        {caja.estado === "abierta" ? "Abierta" : "Cerrada"}
+                      </span>
+                    </td>
+                    <td style={styles.td}>{formatCurrency(caja.monto_apertura)}</td>
+                    <td style={styles.td}>
+                      {caja.monto_cierre_teorico !== null
+                        ? formatCurrency(caja.monto_cierre_teorico)
+                        : "-"}
+                    </td>
+                    <td style={styles.td}>
+                      {caja.monto_cierre_real !== null
+                        ? formatCurrency(caja.monto_cierre_real)
+                        : "-"}
+                    </td>
+                    <td style={styles.td}>
+                      {caja.diferencia !== null
+                        ? formatCurrency(caja.diferencia)
+                        : "-"}
+                    </td>
+                    <td style={styles.td}>
+                      {formatearUsuario(
+                        caja.usuario_apertura_nombre,
+                        caja.usuario_apertura_username
+                      )}
+                    </td>
+                    <td style={styles.td}>
+                      {formatearUsuario(
+                        caja.usuario_cierre_nombre,
+                        caja.usuario_cierre_username
+                      )}
+                    </td>
+                    <td style={styles.td}>
+                      <button
+                        type="button"
+                        onClick={() => verDetalleCaja(caja.id)}
+                        style={styles.linkButton}
+                        disabled={procesando}
+                      >
+                        Ver detalle
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       <ConfirmModal
         open={Boolean(confirmConfig)}
@@ -388,6 +515,12 @@ export default function CajaPage() {
       />
     </div>
   );
+}
+
+function formatearUsuario(nombre, username) {
+  if (!nombre && !username) return "-";
+  if (nombre && username) return `${nombre} (@${username})`;
+  return nombre || `@${username}`;
 }
 
 const styles = {
@@ -404,5 +537,86 @@ const styles = {
   operacionesGridMobile: {
     gridTemplateColumns: "1fr",
     gap: "12px",
+  },
+  historialCard: {
+    marginTop: 20,
+    background: "#fff",
+    border: "1px solid #e2e8f0",
+    borderRadius: 16,
+    padding: 20,
+    boxShadow: "0 10px 24px rgba(15, 23, 42, 0.06)",
+  },
+  historialHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 12,
+    marginBottom: 14,
+  },
+  historialTitle: {
+    margin: 0,
+    fontSize: 20,
+    color: "#0f172a",
+  },
+  historialSubtitle: {
+    margin: "4px 0 0",
+    color: "#64748b",
+    fontWeight: 700,
+  },
+  tableWrap: {
+    overflowX: "auto",
+  },
+  table: {
+    width: "100%",
+    borderCollapse: "collapse",
+    minWidth: 920,
+  },
+  th: {
+    textAlign: "left",
+    padding: "10px 8px",
+    borderBottom: "1px solid #e2e8f0",
+    color: "#64748b",
+    fontSize: 13,
+    fontWeight: 900,
+  },
+  td: {
+    padding: "11px 8px",
+    borderBottom: "1px solid #f1f5f9",
+    color: "#0f172a",
+    fontWeight: 700,
+    verticalAlign: "middle",
+  },
+  emptyCell: {
+    padding: 18,
+    textAlign: "center",
+    color: "#64748b",
+    fontWeight: 800,
+  },
+  estadoAbierta: {
+    display: "inline-flex",
+    borderRadius: 999,
+    padding: "5px 9px",
+    background: "#ecfdf5",
+    color: "#047857",
+    fontWeight: 1000,
+    fontSize: 12,
+  },
+  estadoCerrada: {
+    display: "inline-flex",
+    borderRadius: 999,
+    padding: "5px 9px",
+    background: "#f1f5f9",
+    color: "#475569",
+    fontWeight: 1000,
+    fontSize: 12,
+  },
+  linkButton: {
+    border: "1px solid #fed7aa",
+    background: "#fff7ed",
+    color: "#c2410c",
+    borderRadius: 10,
+    padding: "8px 10px",
+    fontWeight: 1000,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
   },
 };

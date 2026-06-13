@@ -19,6 +19,7 @@ from .repository import (
     get_totales_por_submedio,
     insert_caja,
     insert_caja_movimiento,
+    get_cajas_historial,
 )
 from app.shared.business_rules import (
     LIMITE_AJUSTE_CAJA,
@@ -327,5 +328,47 @@ def registrar_ajuste(caja_id: int, data: CajaAjusteInput):
             "movimiento_id": movimiento_id,
             "caja_id": caja_id,
         }
+    finally:
+        conn.close()
+
+def listar_historial_cajas(
+    *,
+    id_sucursal: int | None = None,
+    fecha_desde=None,
+    fecha_hasta=None,
+    estado: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+):
+    if estado is not None and estado not in {CAJA_ESTADO_ABIERTA, CAJA_ESTADO_CERRADA}:
+        raise HTTPException(
+            status_code=400,
+            detail="estado inválido. Valores permitidos: abierta, cerrada",
+        )
+
+    if limit < 1 or limit > 500:
+        raise HTTPException(
+            status_code=400,
+            detail="limit debe estar entre 1 y 500",
+        )
+
+    if offset < 0:
+        raise HTTPException(
+            status_code=400,
+            detail="offset no puede ser negativo",
+        )
+
+    conn = get_connection()
+
+    try:
+        return get_cajas_historial(
+            conn,
+            id_sucursal=id_sucursal,
+            fecha_desde=fecha_desde,
+            fecha_hasta=fecha_hasta,
+            estado=estado,
+            limit=limit,
+            offset=offset,
+        )
     finally:
         conn.close()

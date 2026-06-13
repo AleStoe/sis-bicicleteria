@@ -102,3 +102,24 @@ class CajaEgresoOutput(BaseModel):
     ok: bool
     movimiento_id: int
     caja_id: int
+
+class CajaHistorialOutput(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    fecha: object
+    id_sucursal: int
+    sucursal_nombre: str | None = None
+    estado: str
+    monto_apertura: Decimal
+    monto_cierre_teorico: Decimal | None = None
+    monto_cierre_real: Decimal | None = None
+    diferencia: Decimal | None = None
+
+    id_usuario_apertura: int
+    usuario_apertura_nombre: str | None = None
+    usuario_apertura_username: str | None = None
+
+    id_usuario_cierre: int | None = None
+    usuario_cierre_nombre: str | None = None
+    usuario_cierre_username: str | None = None

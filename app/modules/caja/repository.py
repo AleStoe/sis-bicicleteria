@@ -300,3 +300,68 @@ def get_efectivo_teorico(conn, caja_id: int):
         )
         row = cur.fetchone()
         return row["efectivo_teorico"] if row else Decimal("0")
+
+def get_cajas_historial(
+    conn,
+    *,
+    id_sucursal: int | None = None,
+    fecha_desde=None,
+    fecha_hasta=None,
+    estado: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+):
+    where = []
+    params = []
+
+    if id_sucursal is not None:
+        where.append("c.id_sucursal = %s")
+        params.append(id_sucursal)
+
+    if fecha_desde is not None:
+        where.append("c.fecha >= %s")
+        params.append(fecha_desde)
+
+    if fecha_hasta is not None:
+        where.append("c.fecha <= %s")
+        params.append(fecha_hasta)
+
+    if estado is not None:
+        where.append("c.estado = %s")
+        params.append(estado)
+
+    where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            f"""
+            SELECT
+                c.id,
+                c.fecha,
+                c.id_sucursal,
+                s.nombre AS sucursal_nombre,
+                c.estado,
+                c.monto_apertura,
+                c.monto_cierre_teorico,
+                c.monto_cierre_real,
+                c.diferencia,
+                c.id_usuario_apertura,
+                ua.nombre AS usuario_apertura_nombre,
+                ua.username AS usuario_apertura_username,
+                c.id_usuario_cierre,
+                uc.nombre AS usuario_cierre_nombre,
+                uc.username AS usuario_cierre_username
+            FROM cajas c
+            LEFT JOIN sucursales s
+                ON s.id = c.id_sucursal
+            LEFT JOIN usuarios ua
+                ON ua.id = c.id_usuario_apertura
+            LEFT JOIN usuarios uc
+                ON uc.id = c.id_usuario_cierre
+            {where_sql}
+            ORDER BY c.fecha DESC, c.id DESC
+            LIMIT %s OFFSET %s
+            """,
+            (*params, limit, offset),
+        )
+        return cur.fetchall()
