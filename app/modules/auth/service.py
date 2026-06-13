@@ -1,6 +1,7 @@
 from fastapi import HTTPException
 import bcrypt
-
+from app.modules.auditoria import service as auditoria_service
+from app.shared.constants import AUDITORIA_ACCION_LOGIN_EXITOSO
 from app.db.connection import get_connection
 from app.modules.usuarios.repository import get_usuario_login
 
@@ -41,6 +42,21 @@ def login_service(data):
                 status_code=401,
                 detail="Usuario o contraseña inválidos",
             )
+        evento_id = auditoria_service.registrar_evento(
+            conn,
+            id_usuario=usuario["id"],
+            id_sucursal=None,
+            entidad="usuario",
+            entidad_id=usuario["id"],
+            accion=AUDITORIA_ACCION_LOGIN_EXITOSO,
+            detalle=f"Inicio de sesión de {usuario['username']}",
+            metadata={
+                "username": usuario["username"],
+                "rol": usuario["rol"],
+            },
+        )
+
+        conn.commit()
 
         return {
             "id": usuario["id"],

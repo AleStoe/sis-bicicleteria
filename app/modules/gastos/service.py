@@ -4,6 +4,7 @@ from datetime import date
 from fastapi import HTTPException
 
 from app.db.connection import get_connection
+from app.modules.auditoria import service as auditoria_service
 from app.modules.caja.repository import (
     get_caja_abierta_hoy_by_sucursal_for_update,
     insert_caja_movimiento,
@@ -43,6 +44,11 @@ TIPO_MOV_CORRECCION = "correccion"
 TIPO_MOV_ANULACION = "anulacion"
 
 SUBMEDIOS_VALIDOS = {"efectivo", "transferencia", "mercadopago", "tarjeta"}
+
+AUDITORIA_ENTIDAD_GASTO = "gasto"
+AUDITORIA_ACCION_GASTO_CREADO = "gasto_creado"
+AUDITORIA_ACCION_GASTO_ANULADO = "gasto_anulado"
+AUDITORIA_ACCION_GASTO_CORREGIDO = "gasto_corregido"
 
 
 class GastoFiltros:
@@ -131,8 +137,10 @@ def _validar_categoria(conn, id_categoria_gasto: int | None):
 
 def _validar_categoria_existe(conn, categoria_id: int):
     categoria = get_categoria_by_id(conn, categoria_id)
+
     if categoria is None:
         raise HTTPException(status_code=404, detail=f"No existe la categoría {categoria_id}")
+
     return categoria
 
 
@@ -153,6 +161,7 @@ def _validar_medio_pago(medio_pago: str | None):
 def _validar_estado_gasto(estado: str | None):
     if estado is None:
         return
+
     if estado not in ESTADOS_GASTO_VALIDOS:
         raise HTTPException(status_code=400, detail="estado inválido. Valores: activo, anulado")
 
@@ -165,6 +174,7 @@ def _validar_rango_fechas(fecha_desde: date | None, fecha_hasta: date | None):
 def _validar_paginacion(limit: int, offset: int):
     if limit < 1 or limit > 500:
         raise HTTPException(status_code=400, detail="limit debe estar entre 1 y 500")
+
     if offset < 0:
         raise HTTPException(status_code=400, detail="offset no puede ser negativo")
 
@@ -219,8 +229,10 @@ def editar_categoria(categoria_id: int, data):
             _validar_categoria_existe(conn, categoria_id)
             nombre = _normalizar_texto(data.nombre)
             categoria = update_categoria(conn, categoria_id, nombre, data.activa)
+
             if categoria is None:
                 raise HTTPException(status_code=404, detail=f"No existe la categoría {categoria_id}")
+
             return categoria
     finally:
         conn.close()
@@ -233,6 +245,7 @@ def cambiar_estado_categoria(categoria_id: int, data):
         with conn.transaction():
             _validar_categoria_existe(conn, categoria_id)
             categoria = update_categoria_estado(conn, categoria_id, data.activa)
+
             return {
                 "ok": True,
                 "categoria_id": categoria["id"],
@@ -302,6 +315,34 @@ def crear_gasto(data):
                 )
 
                 vincular_gasto_a_caja(conn, gasto_id, caja_movimiento_id)
+
+            auditoria_service.registrar_evento(
+                conn,
+                id_usuario=data.id_usuario,
+                id_sucursal=data.id_sucursal,
+                entidad=AUDITORIA_ENTIDAD_GASTO,
+                entidad_id=gasto_id,
+                accion=AUDITORIA_ACCION_GASTO_CREADO,
+                detalle=(
+                    f"Gasto creado. descripcion={descripcion}, "
+                    f"monto={data.monto}, impacta_caja={data.impacta_caja}"
+                ),
+                metadata={
+                    "tipo": "gasto_creado",
+                    "gasto_id": gasto_id,
+                    "descripcion": descripcion,
+                    "monto": str(data.monto),
+                    "medio_pago": data.medio_pago,
+                    "impacta_caja": data.impacta_caja,
+                    "caja_movimiento_id": caja_movimiento_id,
+                    "movimiento_id": movimiento_id,
+                    "categoria_id": data.id_categoria_gasto,
+                    "periodo_mes": str(data.periodo_mes) if data.periodo_mes else None,
+                    "es_recurrente": data.es_recurrente,
+                },
+                origen_tipo=ORIGEN_GASTO_OPERATIVO,
+                origen_id=gasto_id,
+            )
 
         return {
             "ok": True,
@@ -415,6 +456,31 @@ def anular_gasto(gasto_id: int, data):
                 },
             )
 
+            auditoria_service.registrar_evento(
+                conn,
+                id_usuario=data.id_usuario,
+                id_sucursal=gasto["id_sucursal"],
+                entidad=AUDITORIA_ENTIDAD_GASTO,
+                entidad_id=gasto_id,
+                accion=AUDITORIA_ACCION_GASTO_ANULADO,
+                detalle=(
+                    f"Gasto anulado. gasto_id={gasto_id}, "
+                    f"monto={gasto['monto']}, motivo={data.motivo}"
+                ),
+                metadata={
+                    "tipo": "gasto_anulado",
+                    "gasto_id": gasto_id,
+                    "monto": str(gasto["monto"]),
+                    "descripcion": gasto["descripcion"],
+                    "motivo": data.motivo,
+                    "impacta_caja": gasto["impacta_caja"],
+                    "caja_movimiento_id": caja_movimiento_id,
+                    "movimiento_id": movimiento_id,
+                },
+                origen_tipo=ORIGEN_GASTO_ANULACION,
+                origen_id=gasto_id,
+            )
+
         return {
             "ok": True,
             "gasto_id": gasto_id,
@@ -522,6 +588,42 @@ def corregir_gasto(gasto_id: int, data):
                     "origen_id": gasto_id,
                     "id_usuario": data.id_usuario,
                 },
+            )
+
+            auditoria_service.registrar_evento(
+                conn,
+                id_usuario=data.id_usuario,
+                id_sucursal=gasto["id_sucursal"],
+                entidad=AUDITORIA_ENTIDAD_GASTO,
+                entidad_id=gasto_id,
+                accion=AUDITORIA_ACCION_GASTO_CORREGIDO,
+                detalle=(
+                    f"Gasto corregido. gasto_id={gasto_id}, "
+                    f"monto_anterior={monto_anterior}, "
+                    f"monto_nuevo={monto_nuevo}, "
+                    f"diferencia={diferencia}, motivo={data.motivo}"
+                ),
+                metadata={
+                    "tipo": "gasto_corregido",
+                    "gasto_id": gasto_id,
+                    "descripcion_anterior": gasto["descripcion"],
+                    "descripcion_nueva": descripcion,
+                    "monto_anterior": str(monto_anterior),
+                    "monto_nuevo": str(monto_nuevo),
+                    "diferencia": str(diferencia),
+                    "categoria_anterior": gasto["id_categoria_gasto"],
+                    "categoria_nueva": data.id_categoria_gasto,
+                    "medio_pago_anterior": gasto["medio_pago"],
+                    "medio_pago_nuevo": data.medio_pago,
+                    "periodo_mes_anterior": str(gasto["periodo_mes"]) if gasto["periodo_mes"] else None,
+                    "periodo_mes_nuevo": str(data.periodo_mes) if data.periodo_mes else None,
+                    "motivo": data.motivo,
+                    "impacta_caja": gasto["impacta_caja"],
+                    "caja_movimiento_id": caja_movimiento_id,
+                    "movimiento_id": movimiento_id,
+                },
+                origen_tipo=ORIGEN_GASTO_CORRECCION,
+                origen_id=gasto_id,
             )
 
         return {
