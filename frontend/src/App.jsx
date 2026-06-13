@@ -42,6 +42,7 @@ import GastosPage from "./pages/GastosPage";
 import UsuariosPage from "./pages/UsuariosPage";
 import LoginPage from "./pages/LoginPage";
 import { useSession } from "./context/SessionContext";
+import AgendaTallerPage from "./pages/AgendaTallerPage";
 
 const ADMIN = ["administrador"];
 const OPERACION = ["administrador", "encargado", "operador"];
@@ -385,11 +386,20 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/agenda-taller"
+            element={
+              <ProtectedRoute rolesPermitidos={OPERACION_TALLER}>
+                <AgendaTallerPage />
+              </ProtectedRoute>
+            }
+          />
 
           <Route path="*" element={<Navigate to="/ventas/nueva" replace />} />
         </Routes>
       </AppLayout>
     </BrowserRouter>
+    
   );
 }
 

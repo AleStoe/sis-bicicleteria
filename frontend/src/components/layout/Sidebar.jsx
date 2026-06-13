@@ -21,6 +21,7 @@ import {
   BarChart3,
   LayoutDashboard,
   UserCog,
+  CalendarDays,
 } from "lucide-react";
 import { sidebarContainerStyle } from "../../styles/layout/appLayoutStyles";
 import {
@@ -87,6 +88,7 @@ const groups = [
       { to: "/auditoria", label: "Auditoría", icon: Gauge, roles: ADMIN },
       { to: "/usuarios", label: "Usuarios", icon: UserCog, roles: ADMIN },
       { to: "/configuracion-comercial", label: "Config. Comercial", icon: Settings2, roles: ADMIN },
+      { to: "/agenda-taller", label: "Agenda Taller", icon: CalendarDays, roles: OPERACION_TALLER },
     ],
   },
 ];
