@@ -53,6 +53,22 @@ class OrdenTallerMensajeRetiroOutput(BaseModel):
     whatsapp_url: str | None = None
 
 
+class OrdenTallerDashboardOutput(BaseModel):
+    pendientes: int = 0
+    ingresadas: int = 0
+    presupuestadas: int = 0
+    esperando_aprobacion: int = 0
+    esperando_repuestos: int = 0
+    en_reparacion: int = 0
+    terminadas: int = 0
+    facturadas: int = 0
+    listas_para_retirar: int = 0
+    atrasadas: int = 0
+    para_manana: int = 0
+    urgentes: int = 0
+    total_importe_pendiente: Decimal = Decimal("0")
+
+
 class OrdenTallerItemCreate(BaseModel):
     tipo_item: Literal["repuesto", "servicio"] = "repuesto"
     id_variante: int | None = Field(default=None, gt=0)

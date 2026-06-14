@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { listarOrdenesTaller } from "../services/tallerService";
+import { listarOrdenesTaller, obtenerDashboardTaller } from "../services/tallerService";
 import { formatDate, formatMoney, formatNumber } from "../utils/formatters";
 import { useBreakpoint } from "../components/ui";
 
@@ -18,7 +18,6 @@ const ESTADOS_FINALES = new Set(["retirada", "cancelada"]);
 
 const ESTADOS = [
   { value: "activas", label: "Activas" },
-  { value: "atrasadas", label: "Atrasadas" },
   { value: "ingresada", label: "Ingresadas" },
   { value: "presupuestada", label: "Presupuestadas" },
   { value: "esperando_aprobacion", label: "Esperando aprobación" },
@@ -36,13 +35,14 @@ export default function TallerListPage() {
   const [ordenes, setOrdenes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [dashboard, setDashboard] = useState(null);
   const [estadoFiltro, setEstadoFiltro] = useState("activas");
   const [busqueda, setBusqueda] = useState("");
   const isMobile = useBreakpoint();
 
   useEffect(() => {
-    cargarOrdenes();
-  }, []);
+    cargarOrdenes(estadoFiltro);
+  }, [estadoFiltro]);
 
   useEffect(() => {
     function handleKeyDown(e) {
@@ -56,12 +56,18 @@ export default function TallerListPage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  async function cargarOrdenes() {
+  async function cargarOrdenes(filtroActual = estadoFiltro) {
     try {
       setLoading(true);
       setError("");
-      const data = await listarOrdenesTaller();
-      setOrdenes(data || []);
+
+      const [ordenesData, dashboardData] = await Promise.all([
+        listarOrdenesTaller(paramsDesdeFiltro(filtroActual)),
+        obtenerDashboardTaller(),
+      ]);
+
+      setOrdenes(ordenesData || []);
+      setDashboard(dashboardData || null);
     } catch (err) {
       setError(err.message || "No se pudieron cargar las órdenes de taller");
     } finally {
@@ -77,8 +83,7 @@ export default function TallerListPage() {
       const esFinal = ESTADOS_FINALES.has(estado);
 
       if (estadoFiltro === "activas" && esFinal) return false;
-      if (estadoFiltro === "atrasadas" && Number(orden.dias_demorados || 0) <= 0) return false;
-      if (!["todas", "activas", "atrasadas"].includes(estadoFiltro) && estado !== estadoFiltro) return false;
+      if (estadoFiltro !== "todas" && estadoFiltro !== "activas" && estado !== estadoFiltro) return false;
 
       if (!q) return true;
 
@@ -103,22 +108,20 @@ export default function TallerListPage() {
   }, [ordenes, estadoFiltro, busqueda]);
 
   const resumen = useMemo(() => {
-    return ordenes.reduce(
-      (acc, orden) => {
-        acc.total += 1;
-        if (ESTADOS_ACTIVOS.has(orden.estado)) acc.activas += 1;
-        if (orden.estado === "ingresada") acc.ingresadas += 1;
-        if (orden.estado === "en_reparacion") acc.enReparacion += 1;
-        if (orden.estado === "lista_para_retirar") acc.listas += 1;
-        if (orden.estado === "esperando_repuestos") acc.esperandoRepuestos += 1;
-        if (Number(orden.dias_demorados || 0) > 0 && !ESTADOS_FINALES.has(orden.estado)) acc.atrasadas += 1;
-        if (orden.prioridad === "urgente" && !ESTADOS_FINALES.has(orden.estado)) acc.urgentes += 1;
-        acc.totalImporte += Number(orden.total_final || 0);
-        return acc;
-      },
-      { total: 0, activas: 0, ingresadas: 0, enReparacion: 0, listas: 0, esperandoRepuestos: 0, atrasadas: 0, urgentes: 0, totalImporte: 0 }
-    );
-  }, [ordenes]);
+    const data = dashboard || {};
+
+    return {
+      activas: Number(data.pendientes || 0),
+      ingresadas: Number(data.ingresadas || 0),
+      enReparacion: Number(data.en_reparacion || 0),
+      listas: Number(data.listas_para_retirar || 0),
+      esperandoRepuestos: Number(data.esperando_repuestos || 0),
+      atrasadas: Number(data.atrasadas || 0),
+      paraManana: Number(data.para_manana || 0),
+      urgentes: Number(data.urgentes || 0),
+      totalImporte: Number(data.total_importe_pendiente || 0),
+    };
+  }, [dashboard]);
 
   if (loading) return <div style={styles.state}>Cargando taller...</div>;
 
@@ -132,7 +135,7 @@ export default function TallerListPage() {
         </div>
 
         <div style={{ ...styles.heroActions, ...(isMobile ? styles.heroActionsMobile : {}) }}>
-          <button type="button" onClick={cargarOrdenes} style={{ ...styles.secondaryHeroButton, ...(isMobile ? styles.heroButtonMobile : {}) }}>↻ Refrescar</button>
+          <button type="button" onClick={() => cargarOrdenes(estadoFiltro)} style={{ ...styles.secondaryHeroButton, ...(isMobile ? styles.heroButtonMobile : {}) }}>↻ Refrescar</button>
           <Link to="/taller/nueva" style={{ ...styles.primaryHeroButton, ...(isMobile ? styles.heroButtonMobile : {}) }}>＋ Nueva orden</Link>
         </div>
       </header>
@@ -140,13 +143,11 @@ export default function TallerListPage() {
       {error && <div style={styles.error}>Error: {error}</div>}
 
       <section style={{ ...styles.metricsGrid, ...(isMobile ? styles.metricsGridMobile : {}) }}>
-        <Metric label="Activas" value={resumen.activas} tone="dark" />
+        <Metric label="Pendientes" value={resumen.activas} tone="dark" />
         <Metric label="Ingresadas" value={resumen.ingresadas} tone="info" />
         <Metric label="En reparación" value={resumen.enReparacion} tone="orange" />
         <Metric label="Listas retiro" value={resumen.listas} tone="ok" />
         <Metric label="Esperando repuestos" value={resumen.esperandoRepuestos} tone="warning" />
-        <Metric label="Atrasadas" value={resumen.atrasadas} tone={resumen.atrasadas > 0 ? "warning" : "ok"} />
-        <Metric label="Urgentes" value={resumen.urgentes} tone={resumen.urgentes > 0 ? "warning" : "muted"} />
         <Metric label="Total taller" value={formatMoney(resumen.totalImporte)} tone="muted" />
       </section>
 
@@ -222,17 +223,14 @@ function OrdenCard({ orden }) {
       </div>
 
       <div style={{ ...styles.orderMetaGrid, ...(isMobile ? styles.orderMetaGridMobile : {}) }}>
-        <Info label="Ingreso" value={formatDate(orden.fecha_ingreso)} />
-        <Info label="Prometida" value={orden.fecha_prometida ? formatDate(orden.fecha_prometida) : "Sin fecha"} />
+        <Info label="Fecha" value={formatDate(orden.fecha_ingreso)} />
         <Info label="Cliente" value={nombreClienteOrden(orden)} />
         <Info label="Bicicleta" value={descripcionBicicletaOrden(orden)} />
         <Info label="Presupuesto" value={resumenTotalOrden(orden)} />
       </div>
 
       <div style={{ ...styles.orderFooter, ...(isMobile ? styles.orderFooterMobile : {}) }}>
-        <span style={Number(orden.dias_demorados || 0) > 0 ? styles.smallDanger : styles.smallMuted}>
-          {Number(orden.dias_demorados || 0) > 0 ? `Atrasada ${orden.dias_demorados} día(s)` : `Saldo: ${formatMoney(orden.saldo_pendiente)}`}
-        </span>
+        <span style={styles.smallMuted}>Saldo: {formatMoney(orden.saldo_pendiente)}</span>
         <Link to={`/taller/${orden.id}`} style={{ ...styles.detailButton, ...(isMobile ? styles.detailButtonMobile : {}) }}>Ver orden</Link>
       </div>
     </article>
@@ -288,6 +286,26 @@ function resumenTotalOrden(orden) {
   return formatMoney(total);
 }
 
+function paramsDesdeFiltro(filtro) {
+  if (filtro === "activas") {
+    return { solo_pendientes: true };
+  }
+
+  if (filtro === "para_manana") {
+    return { vista: "para_manana", solo_pendientes: false };
+  }
+
+  if (filtro === "atrasadas") {
+    return { vista: "atrasadas", solo_pendientes: false };
+  }
+
+  if (filtro === "todas") {
+    return { solo_pendientes: false };
+  }
+
+  return { estado: filtro, solo_pendientes: false };
+}
+
 function labelEstadoFiltro(value) {
   return ESTADOS.find((estado) => estado.value === value)?.label || value;
 }
@@ -336,7 +354,6 @@ const styles = {
   orderMetaGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 },
   orderFooter: { display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", borderTop: "1px solid #f1f5f9", paddingTop: 10 },
   smallMuted: { color: "#64748b", fontWeight: 800 },
-  smallDanger: { color: "#b42318", fontWeight: 1000 },
   detailButton: { textDecoration: "none", border: "none", background: "#0f172a", color: "white", borderRadius: 12, padding: "10px 12px", fontWeight: 1000 },
   sidePanel: { position: "sticky", top: 16 },
   sideCard: { background: "#0f172a", color: "white", borderRadius: 22, padding: 18, boxShadow: "0 18px 40px rgba(15,23,42,.22)" },

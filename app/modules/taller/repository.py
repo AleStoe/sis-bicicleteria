@@ -136,10 +136,8 @@ def insert_orden_taller(conn, data: dict):
         )
         return cur.fetchone()
 
-def get_ordenes_taller(conn):
-    with conn.cursor(row_factory=dict_row) as cur:
-        cur.execute(
-            """
+def _ordenes_taller_select_sql():
+    return """
             SELECT
                 ot.id,
                 ot.fecha_ingreso,
@@ -199,8 +197,93 @@ def get_ordenes_taller(conn):
             JOIN bicicletas_clientes bc ON bc.id = ot.id_bicicleta_cliente
             ORDER BY ot.fecha_ingreso DESC, ot.id DESC
             """
+
+
+def get_ordenes_taller(
+    conn,
+    vista: str | None = None,
+    estado: str | None = None,
+    solo_pendientes: bool = True,
+):
+    sql = _ordenes_taller_select_sql()
+    where = []
+    params = []
+
+    if solo_pendientes:
+        where.append("ot.estado NOT IN ('retirada', 'cancelada')")
+
+    if estado:
+        where.append("ot.estado = %s")
+        params.append(estado)
+
+    if vista == "para_manana":
+        where.append("ot.fecha_prometida::date = CURRENT_DATE + 1")
+        where.append("ot.estado NOT IN ('retirada', 'cancelada')")
+
+    if vista == "atrasadas":
+        where.append("ot.fecha_prometida IS NOT NULL")
+        where.append("ot.fecha_prometida::date < CURRENT_DATE")
+        where.append("ot.estado NOT IN ('retirada', 'cancelada')")
+
+    if where:
+        sql = sql.replace(
+            "ORDER BY ot.fecha_ingreso DESC, ot.id DESC",
+            "WHERE " + " AND ".join(where) + "\n            ORDER BY ot.fecha_ingreso DESC, ot.id DESC",
         )
+
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(sql, params)
         return cur.fetchall()
+
+
+def get_dashboard_taller(conn):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT
+                COUNT(*) FILTER (WHERE estado NOT IN ('retirada', 'cancelada')) AS pendientes,
+                COUNT(*) FILTER (WHERE estado = 'ingresada') AS ingresadas,
+                COUNT(*) FILTER (WHERE estado = 'presupuestada') AS presupuestadas,
+                COUNT(*) FILTER (WHERE estado = 'esperando_aprobacion') AS esperando_aprobacion,
+                COUNT(*) FILTER (WHERE estado = 'esperando_repuestos') AS esperando_repuestos,
+                COUNT(*) FILTER (WHERE estado = 'en_reparacion') AS en_reparacion,
+                COUNT(*) FILTER (WHERE estado = 'terminada') AS terminadas,
+                COUNT(*) FILTER (WHERE estado = 'facturada') AS facturadas,
+                COUNT(*) FILTER (WHERE estado = 'lista_para_retirar') AS listas_para_retirar,
+                COUNT(*) FILTER (
+                    WHERE fecha_prometida IS NOT NULL
+                      AND fecha_prometida::date < CURRENT_DATE
+                      AND estado NOT IN ('retirada', 'cancelada')
+                ) AS atrasadas,
+                COUNT(*) FILTER (
+                    WHERE fecha_prometida::date = CURRENT_DATE + 1
+                      AND estado NOT IN ('retirada', 'cancelada')
+                ) AS para_manana,
+                COUNT(*) FILTER (
+                    WHERE prioridad = 'urgente'
+                      AND estado NOT IN ('retirada', 'cancelada')
+                ) AS urgentes,
+                COALESCE(SUM(total_final) FILTER (WHERE estado NOT IN ('retirada', 'cancelada')), 0) AS total_importe_pendiente
+            FROM ordenes_taller
+            """
+        )
+        row = cur.fetchone() or {}
+
+    return {
+        "pendientes": row.get("pendientes") or 0,
+        "ingresadas": row.get("ingresadas") or 0,
+        "presupuestadas": row.get("presupuestadas") or 0,
+        "esperando_aprobacion": row.get("esperando_aprobacion") or 0,
+        "esperando_repuestos": row.get("esperando_repuestos") or 0,
+        "en_reparacion": row.get("en_reparacion") or 0,
+        "terminadas": row.get("terminadas") or 0,
+        "facturadas": row.get("facturadas") or 0,
+        "listas_para_retirar": row.get("listas_para_retirar") or 0,
+        "atrasadas": row.get("atrasadas") or 0,
+        "para_manana": row.get("para_manana") or 0,
+        "urgentes": row.get("urgentes") or 0,
+        "total_importe_pendiente": row.get("total_importe_pendiente") or 0,
+    }
 
 def get_orden_taller_by_id(conn, orden_id: int):
     with conn.cursor(row_factory=dict_row) as cur:

@@ -15,6 +15,7 @@ from .schemas import (
     OrdenTallerOperativoUpdate,
     OrdenTallerAvisoRetiroInput,
     OrdenTallerMensajeRetiroOutput,
+    OrdenTallerDashboardOutput,
 )
 from .service import (
     crear_orden_taller,
@@ -30,6 +31,7 @@ from .service import (
     actualizar_datos_operativos_orden_taller,
     generar_mensaje_lista_retiro_orden_taller,
     registrar_aviso_retiro_orden_taller,
+    obtener_dashboard_taller,
 )
 
 router = APIRouter(prefix="/ordenes_taller", tags=["Taller"])
@@ -41,8 +43,21 @@ def crear_orden(payload: OrdenTallerCreate):
 
 
 @router.get("/", response_model=list[OrdenTallerResponse])
-def listar_ordenes():
-    return listar_ordenes_taller()
+def listar_ordenes(
+    vista: str | None = None,
+    estado: str | None = None,
+    solo_pendientes: bool = True,
+):
+    return listar_ordenes_taller(
+        vista=vista,
+        estado=estado,
+        solo_pendientes=solo_pendientes,
+    )
+
+
+@router.get("/dashboard/resumen", response_model=OrdenTallerDashboardOutput)
+def dashboard_resumen():
+    return obtener_dashboard_taller()
 
 
 @router.get("/{orden_id}", response_model=OrdenTallerDetalleResponse)

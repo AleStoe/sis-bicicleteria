@@ -58,6 +58,7 @@ from .repository import (
     get_variante_by_id,
     insert_orden_taller,
     get_ordenes_taller,
+    get_dashboard_taller,
     get_orden_taller_by_id,
     get_orden_taller_by_id_for_update,
     update_orden_taller_estado,
@@ -146,10 +147,27 @@ def crear_orden_taller(data):
     finally:
         conn.close()
 
-def listar_ordenes_taller():
+def listar_ordenes_taller(
+    vista: str | None = None,
+    estado: str | None = None,
+    solo_pendientes: bool = True,
+):
     conn = get_connection()
     try:
-        return get_ordenes_taller(conn)
+        return get_ordenes_taller(
+            conn,
+            vista=vista,
+            estado=estado,
+            solo_pendientes=solo_pendientes,
+        )
+    finally:
+        conn.close()
+
+
+def obtener_dashboard_taller():
+    conn = get_connection()
+    try:
+        return get_dashboard_taller(conn)
     finally:
         conn.close()
 

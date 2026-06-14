@@ -1,7 +1,20 @@
 import { apiRequest } from "./api";
 
-export function listarOrdenesTaller() {
-  return apiRequest("/ordenes_taller/");
+export function listarOrdenesTaller(params = {}) {
+  const query = new URLSearchParams();
+
+  if (params.vista) query.set("vista", params.vista);
+  if (params.estado) query.set("estado", params.estado);
+  if (params.solo_pendientes !== undefined) {
+    query.set("solo_pendientes", String(params.solo_pendientes));
+  }
+
+  const qs = query.toString();
+  return apiRequest(`/ordenes_taller/${qs ? `?${qs}` : ""}`);
+}
+
+export function obtenerDashboardTaller() {
+  return apiRequest("/ordenes_taller/dashboard/resumen");
 }
 
 export function obtenerOrdenTaller(ordenId) {
@@ -23,12 +36,6 @@ export function cambiarEstadoOrdenTaller(ordenId, data) {
 }
 
 export function agregarItemOrdenTaller(ordenId, data) {
-  console.log("SERVICE agregarItemOrdenTaller", {
-    ordenId,
-    data,
-    url: `/ordenes_taller/${ordenId}/items`,
-  });
-
   return apiRequest(`/ordenes_taller/${ordenId}/items`, {
     method: "POST",
     body: JSON.stringify(data),
