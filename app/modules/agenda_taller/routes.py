@@ -6,6 +6,8 @@ from .schema import (
     AgendaTallerCreateInput,
     AgendaTallerUpdateInput,
     AgendaTallerEstadoInput,
+    AgendaTallerConvertirOrdenInput,
+    AgendaTallerConvertirOrdenOutput,
 )
 
 from .service import (
@@ -14,6 +16,8 @@ from .service import (
     obtener_turno,
     editar_turno,
     cambiar_estado,
+    convertir_turno_a_orden,
+    registrar_recordatorio_enviado,
 )
 
 router = APIRouter()
@@ -28,11 +32,15 @@ def crear_turno_route(data: AgendaTallerCreateInput):
 def listar_turnos_route(
     fecha_desde: date | None = None,
     fecha_hasta: date | None = None,
+    estado: str | None = None,
+    id_sucursal: int | None = None,
 ):
     return listar_turnos(
-        fecha_desde=fecha_desde,
-        fecha_hasta=fecha_hasta,
-    )
+    fecha_desde=fecha_desde,
+    fecha_hasta=fecha_hasta,
+    estado=estado,
+    id_sucursal=id_sucursal,
+)
 
 
 @router.get("/{turno_id}")
@@ -60,3 +68,27 @@ def cambiar_estado_route(
         turno_id,
         data,
     )
+
+@router.post(
+    "/{turno_id}/convertir-orden",
+    response_model=AgendaTallerConvertirOrdenOutput,
+)
+def convertir_turno_orden_route(
+    turno_id: int,
+    data: AgendaTallerConvertirOrdenInput,
+):
+    return convertir_turno_a_orden(turno_id, data)
+
+@router.post(
+    "/{turno_id}/convertir-orden",
+    response_model=AgendaTallerConvertirOrdenOutput,
+)
+def convertir_turno_orden_route(
+    turno_id: int,
+    data: AgendaTallerConvertirOrdenInput,
+):
+    return convertir_turno_a_orden(turno_id, data)
+
+@router.patch("/{turno_id}/recordatorio-enviado")
+def marcar_recordatorio_enviado_route(turno_id: int):
+    return registrar_recordatorio_enviado(turno_id)
