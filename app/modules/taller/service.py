@@ -1,6 +1,5 @@
 from decimal import Decimal
-from app.modules.stock.repository import registrar_movimiento_stock
-from app.shared.constants import TIPO_MOVIMIENTO_USO_TALLER
+from urllib.parse import quote_plus
 from fastapi import HTTPException
 from pydantic import ValidationError
 
@@ -28,7 +27,6 @@ TRANSICIONES_VALIDAS_TALLER = {
     "retirada": set(),
     "cancelada": set(),
 }
-
 
 def _validar_transicion_estado_taller(estado_actual: str, nuevo_estado: str) -> None:
     estados_permitidos = TRANSICIONES_VALIDAS_TALLER.get(estado_actual, set())
@@ -75,6 +73,9 @@ from .repository import (
     update_orden_taller_item_cancelado,
     update_orden_taller_venta_generada,
     get_venta_generada_por_orden_taller,
+    update_orden_taller_operativo,
+    marcar_aviso_retiro_enviado,
+    get_nombre_cliente_item_taller,
 )
 
 from app.modules.servicios_taller.repository import get_servicio_taller_by_id
@@ -94,7 +95,6 @@ def _build_descripcion_snapshot(variante: dict) -> str:
         return producto_descripcion
 
     return f"Variante #{variante['id']}"
-
 
 def crear_orden_taller(data):
     conn = get_connection()
@@ -128,6 +128,8 @@ def crear_orden_taller(data):
                     "id_bicicleta_cliente": data.id_bicicleta_cliente,
                     "estado": ORDEN_TALLER_ESTADO_INGRESADA,
                     "problema_reportado": data.problema_reportado.strip(),
+                    "fecha_prometida": data.fecha_prometida,
+                    "prioridad": data.prioridad,
                     "id_usuario": data.id_usuario,
                 },
             )
@@ -144,14 +146,12 @@ def crear_orden_taller(data):
     finally:
         conn.close()
 
-
 def listar_ordenes_taller():
     conn = get_connection()
     try:
         return get_ordenes_taller(conn)
     finally:
         conn.close()
-
 
 def obtener_orden_taller(orden_id: int):
     conn = get_connection()
@@ -173,7 +173,6 @@ def obtener_orden_taller(orden_id: int):
         }
     finally:
         conn.close()
-
 
 def cambiar_estado_orden_taller(orden_id: int, data):
     conn = get_connection()
@@ -246,7 +245,6 @@ def cambiar_estado_orden_taller(orden_id: int, data):
             return orden_actualizada
     finally:
         conn.close()
-
 
 def agregar_item_orden_taller(orden_id: int, data):
     conn = get_connection()
@@ -755,5 +753,323 @@ def generar_venta_desde_orden_taller(orden_id: int, data):
             "venta_id": venta_id,
             "estado_orden": "facturada",
         }
+    finally:
+        conn.close()
+
+def _capitalizar_texto_cliente(texto: str | None) -> str | None:
+    if not texto:
+        return None
+
+    palabras_mayusculas = {
+        "R29",
+        "R28",
+        "R27.5",
+        "R26",
+        "R24",
+        "R20",
+        "MTB",
+        "BMX",
+    }
+
+    partes = []
+
+    for palabra in str(texto).strip().split():
+        palabra_limpia = palabra.strip()
+
+        if not palabra_limpia:
+            continue
+
+        upper = palabra_limpia.upper()
+
+        if upper in palabras_mayusculas:
+            partes.append(upper)
+        elif palabra_limpia.isupper() and len(palabra_limpia) <= 4:
+            partes.append(palabra_limpia)
+        else:
+            partes.append(
+                palabra_limpia[:1].upper() + palabra_limpia[1:].lower()
+            )
+
+    return " ".join(partes) or None
+
+def _format_bicicleta_mensaje(orden: dict) -> str:
+    marca = _capitalizar_texto_cliente(orden.get("bicicleta_marca"))
+    modelo = _capitalizar_texto_cliente(orden.get("bicicleta_modelo"))
+    rodado = _capitalizar_texto_cliente(
+        f"R{orden.get('bicicleta_rodado')}"
+        if orden.get("bicicleta_rodado")
+        else None
+    )
+    color = _capitalizar_texto_cliente(orden.get("bicicleta_color"))
+
+    partes = [
+        marca,
+        modelo,
+        rodado,
+        color,
+    ]
+
+    texto = " ".join(parte for parte in partes if parte)
+
+    if texto:
+        return texto
+
+    descripcion = _capitalizar_texto_cliente(
+        orden.get("bicicleta_descripcion")
+    )
+
+    return descripcion or f"Bicicleta #{orden.get('id_bicicleta_cliente')}"
+
+def _normalizar_telefono_whatsapp(telefono: str | None) -> str | None:
+    if not telefono:
+        return None
+
+    digitos = "".join(ch for ch in str(telefono) if ch.isdigit())
+    if not digitos:
+        return None
+
+    if digitos.startswith("549"):
+        return digitos
+    if digitos.startswith("54"):
+        return "549" + digitos[2:]
+    if digitos.startswith("0"):
+        digitos = digitos[1:]
+    if digitos.startswith("15"):
+        digitos = digitos[2:]
+
+    return "549" + digitos
+
+def _limpiar_descripcion_item_mensaje(descripcion: str | None) -> str:
+    texto = (descripcion or "").strip()
+
+    if not texto:
+        return "Trabajo realizado"
+
+    partes = [
+        parte.strip()
+        for parte in texto.split(" - ")
+        if parte and parte.strip()
+    ]
+
+    if len(partes) >= 2 and partes[0].lower() == partes[1].lower():
+        return partes[0]
+
+    if len(partes) >= 2 and partes[1].lower() in partes[0].lower():
+        return partes[0]
+
+    if len(partes) >= 2 and partes[0].lower() in partes[1].lower():
+        return partes[1]
+
+    return texto
+
+def _format_money_mensaje(value) -> str:
+    try:
+        monto = int(round(float(value or 0)))
+    except (TypeError, ValueError):
+        monto = 0
+
+    return f"${monto:,.0f}".replace(",", ".")
+
+def _build_mensaje_lista_retiro(orden, conn, items):
+    cliente = (orden.get("cliente_nombre") or "cliente").strip()
+    bicicleta = _format_bicicleta_mensaje(orden)
+
+    items_ejecutados = [
+        item for item in items
+        if item.get("etapa") == "ejecutado"
+        and item.get("aprobado") is True
+    ]
+
+    lineas = [
+        "🚲 *¡Tu bicicleta está lista para retirar!*",
+        "",
+        f"Hola {cliente} 👋",
+        "",
+        "Tenemos buenas noticias:",
+        "",
+        f"🔹 {bicicleta}",
+        "",
+        "ya se encuentra lista para retirar.",
+        "",
+        "🛠️ *Trabajos realizados:*",
+        "",
+    ]
+
+    if items_ejecutados:
+        for item in items_ejecutados:
+            descripcion = get_nombre_cliente_item_taller(
+                conn,
+                item.get("id_variante"),
+                item.get("id_servicio_taller"),
+            )
+
+            if not descripcion:
+                descripcion = _limpiar_descripcion_item_mensaje(
+                    item.get("descripcion_snapshot")
+                )
+
+            subtotal = _format_money_mensaje(item.get("subtotal"))
+            lineas.append(f"• {descripcion}: {subtotal}")
+    else:
+        lineas.append("• Service/reparación realizada")
+
+    lineas.extend([
+        "",
+        "━━━━━━━━━━━━━━━━━━━━",
+        "",
+        f"💰 *Total:* {_format_money_mensaje(orden.get('total_final'))}",
+    ])
+
+    saldo = orden.get("saldo_pendiente")
+
+    try:
+        saldo_num = float(saldo or 0)
+    except (TypeError, ValueError):
+        saldo_num = 0
+
+    if saldo_num > 0:
+        lineas.append(f"⚠️ *Saldo pendiente:* {_format_money_mensaje(saldo)}")
+    else:
+        lineas.append("✅ *Trabajo abonado*")
+
+    lineas.extend([
+        "",
+        "📍 *Emprendimiento Agus*",
+        "",
+        "🕒 *Horarios de retiro:*",
+        "",
+        "Lunes a viernes",
+        "09:00 a 12:00",
+        "16:30 a 20:00",
+        "",
+        "Sábados",
+        "09:00 a 12:00",
+        "17:00 a 19:00",
+        "",
+        "🙌 Gracias por confiar en nosotros.",
+        "¡Te esperamos! 🚴",
+    ])
+
+    return "\n".join(lineas)
+
+def actualizar_datos_operativos_orden_taller(orden_id: int, data):
+    conn = get_connection()
+    try:
+        with conn.transaction():
+            try:
+                validar_usuario_activo(conn, data.id_usuario)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+
+            orden = get_orden_taller_by_id_for_update(conn, orden_id)
+            if orden is None:
+                raise HTTPException(status_code=404, detail=f"No existe la orden de taller {orden_id}")
+
+            if orden["estado"] in {"retirada", "cancelada"}:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"No se pueden cambiar datos operativos de una orden {orden['estado']}",
+                )
+
+            update_orden_taller_operativo(
+                conn,
+                orden_id=orden_id,
+                fecha_prometida=data.fecha_prometida,
+                prioridad=data.prioridad,
+            )
+
+            insert_orden_taller_evento(
+                conn,
+                id_orden_taller=orden_id,
+                tipo_evento="datos_operativos_actualizados",
+                detalle=(
+                    f"Fecha prometida: {data.fecha_prometida or 'sin fecha'}. "
+                    f"Prioridad: {data.prioridad}."
+                ),
+                id_usuario=data.id_usuario,
+            )
+
+            return get_orden_taller_by_id(conn, orden_id)
+    finally:
+        conn.close()
+
+def generar_mensaje_lista_retiro_orden_taller(orden_id: int):
+    conn = get_connection()
+    try:
+        orden = get_orden_taller_by_id(conn, orden_id)
+
+        if orden is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No existe la orden de taller {orden_id}",
+            )
+
+        if orden["estado"] != "lista_para_retirar":
+            raise HTTPException(
+                status_code=400,
+                detail="El mensaje de retiro solo se genera cuando la orden está lista para retirar",
+            )
+
+        items = get_items_orden_taller(conn, orden_id)
+
+        mensaje = _build_mensaje_lista_retiro(
+            orden,
+            conn,
+            items,
+        )
+
+        telefono = _normalizar_telefono_whatsapp(
+            orden.get("cliente_telefono")
+        )
+
+        whatsapp_url = None
+
+        if telefono:
+            whatsapp_url = (
+                f"https://api.whatsapp.com/send?phone={telefono}&text={quote_plus(mensaje)}"
+            )
+
+        return {
+            "orden_id": orden_id,
+            "cliente_nombre": orden.get("cliente_nombre"),
+            "cliente_telefono": orden.get("cliente_telefono"),
+            "bicicleta_descripcion": _format_bicicleta_mensaje(orden),
+            "mensaje": mensaje,
+            "whatsapp_url": whatsapp_url,
+        }
+
+    finally:
+        conn.close()
+
+def registrar_aviso_retiro_orden_taller(orden_id: int, data):
+    conn = get_connection()
+    try:
+        with conn.transaction():
+            try:
+                validar_usuario_activo(conn, data.id_usuario)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+
+            orden = get_orden_taller_by_id_for_update(conn, orden_id)
+            if orden is None:
+                raise HTTPException(status_code=404, detail=f"No existe la orden de taller {orden_id}")
+
+            if orden["estado"] != "lista_para_retirar":
+                raise HTTPException(
+                    status_code=400,
+                    detail="Solo se puede avisar retiro cuando la orden está lista para retirar",
+                )
+
+            marcar_aviso_retiro_enviado(conn, orden_id)
+
+            insert_orden_taller_evento(
+                conn,
+                id_orden_taller=orden_id,
+                tipo_evento="cliente_avisado_retiro",
+                detalle="Se envió aviso de bicicleta lista para retirar por WhatsApp",
+                id_usuario=data.id_usuario,
+            )
+
+            return get_orden_taller_by_id(conn, orden_id)
     finally:
         conn.close()

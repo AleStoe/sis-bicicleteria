@@ -2,10 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   listarTurnosAgenda,
+  listarTurnosAgendaParaManana,
+  listarTurnosAgendaAtrasados,
   crearTurnoAgenda,
+  editarTurnoAgenda,
   cambiarEstadoTurnoAgenda,
   convertirTurnoAOrden,
   marcarRecordatorioEnviado,
+  marcarClienteAvisado,
 } from "../services/agendaTallerService";
 import {
   listarClientes,
@@ -21,16 +25,33 @@ const ESTADOS = [
   "convertido_orden",
 ];
 
+const VISTAS = {
+  GENERAL: "general",
+  PARA_MANANA: "para_manana",
+  ATRASADAS: "atrasadas",
+};
+
 const FORM_INICIAL = {
   id_cliente: null,
   id_bicicleta_cliente: null,
   cliente_nombre: "",
   cliente_telefono: "",
   fecha: "",
+  fecha_prometida_entrega: "",
   franja: "mañana",
   hora_inicio: "09:00",
+  hora_fin: "",
   tipo_servicio: "",
   descripcion: "",
+  notas: "",
+};
+
+const FILTROS_INICIALES = {
+  fecha_desde: "",
+  fecha_hasta: "",
+  estado: "",
+  solo_pendientes: true,
+  mostrar_convertidos: false,
 };
 
 export default function AgendaTallerPage() {
@@ -43,66 +64,80 @@ export default function AgendaTallerPage() {
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
 
+  const [vista, setVista] = useState(VISTAS.GENERAL);
+  const [filtros, setFiltros] = useState(FILTROS_INICIALES);
+
   const [form, setForm] = useState(FORM_INICIAL);
+  const [modoEdicion, setModoEdicion] = useState(false);
+  const [turnoEditandoId, setTurnoEditandoId] = useState(null);
+
   const [busquedaCliente, setBusquedaCliente] = useState("");
   const [clientesEncontrados, setClientesEncontrados] = useState([]);
   const [bicicletasCliente, setBicicletasCliente] = useState([]);
 
-const [filtros, setFiltros] = useState({
-  fecha_desde: "",
-  fecha_hasta: "",
-  estado: "",
-});
-
   useEffect(() => {
     cargarTurnos();
-  }, [sucursalId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sucursalId, vista]);
 
   useEffect(() => {
-  const texto = busquedaCliente.trim();
+    const texto = busquedaCliente.trim();
 
-  if (texto.length < 2 || form.id_cliente) {
-    setClientesEncontrados([]);
-    return;
-  }
-
-  const timeout = setTimeout(async () => {
-    try {
-      const data = await listarClientes({
-        q: texto,
-        solo_activos: true,
-      });
-
-      setClientesEncontrados(Array.isArray(data) ? data : []);
-    } catch {
+    if (texto.length < 2 || form.id_cliente) {
       setClientesEncontrados([]);
+      return;
     }
-  }, 300);
 
-  return () => clearTimeout(timeout);
-}, [busquedaCliente, form.id_cliente]);
+    const timeout = setTimeout(async () => {
+      try {
+        const data = await listarClientes({
+          q: texto,
+          solo_activos: true,
+        });
 
-  async function cargarTurnos() {
+        setClientesEncontrados(Array.isArray(data) ? data : []);
+      } catch {
+        setClientesEncontrados([]);
+      }
+    }, 300);
+
+    return () => clearTimeout(timeout);
+  }, [busquedaCliente, form.id_cliente]);
+
+  async function cargarTurnos(overrides = {}) {
     try {
       setLoading(true);
       setError("");
 
-      const data = await listarTurnosAgenda({
+      const baseParams = {
         id_sucursal: sucursalId,
-        fecha_desde: filtros.fecha_desde,
-        fecha_hasta: filtros.fecha_hasta,
-        estado: filtros.estado,
-      });
+        ...overrides,
+      };
 
-      setTurnos(data ?? []);
+      let data;
+
+      if (vista === VISTAS.PARA_MANANA) {
+        data = await listarTurnosAgendaParaManana(baseParams);
+      } else if (vista === VISTAS.ATRASADAS) {
+        data = await listarTurnosAgendaAtrasados(baseParams);
+      } else {
+        data = await listarTurnosAgenda({
+          ...baseParams,
+          fecha_desde: filtros.fecha_desde,
+          fecha_hasta: filtros.fecha_hasta,
+          estado: filtros.estado,
+          solo_pendientes: filtros.solo_pendientes,
+          mostrar_convertidos: filtros.mostrar_convertidos,
+        });
+      }
+
+      setTurnos(Array.isArray(data) ? data : []);
     } catch (err) {
       setError(err.message || "No se pudo cargar la agenda");
     } finally {
       setLoading(false);
     }
   }
-
-  
 
   async function seleccionarCliente(cliente) {
     try {
@@ -146,53 +181,112 @@ const [filtros, setFiltros] = useState({
     }));
   }
 
+  function resetFormulario() {
+    setForm(FORM_INICIAL);
+    setModoEdicion(false);
+    setTurnoEditandoId(null);
+    setBusquedaCliente("");
+    setClientesEncontrados([]);
+    setBicicletasCliente([]);
+  }
+
+  async function iniciarEdicion(turno) {
+    try {
+      setProcesando(true);
+      setError("");
+      setMensaje("");
+
+      setModoEdicion(true);
+      setTurnoEditandoId(turno.id);
+      setBusquedaCliente(turno.cliente_nombre || "");
+
+      setForm({
+        id_cliente: turno.id_cliente || null,
+        id_bicicleta_cliente: turno.id_bicicleta_cliente || null,
+        cliente_nombre: turno.cliente_nombre || "",
+        cliente_telefono: turno.cliente_telefono || "",
+        fecha: turno.fecha || "",
+        fecha_prometida_entrega: turno.fecha_prometida_entrega || "",
+        franja: turno.franja || "mañana",
+        hora_inicio: normalizarHora(turno.hora_inicio) || "09:00",
+        hora_fin: normalizarHora(turno.hora_fin) || "",
+        tipo_servicio: turno.tipo_servicio || "",
+        descripcion: turno.descripcion || "",
+        notas: turno.notas || "",
+      });
+
+      if (turno.id_cliente) {
+        const bicis = await listarBicicletasCliente(turno.id_cliente);
+        setBicicletasCliente(Array.isArray(bicis) ? bicis : []);
+      } else {
+        setBicicletasCliente([]);
+      }
+
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (err) {
+      setError(err.message || "No se pudo preparar la edición del turno");
+    } finally {
+      setProcesando(false);
+    }
+  }
+
+  function validarFormulario() {
+    if (!form.id_cliente) return "Seleccioná un cliente existente.";
+    if (!form.id_bicicleta_cliente) return "Seleccioná una bicicleta del cliente.";
+    if (!form.fecha) return "La fecha del turno es obligatoria.";
+    if (!form.hora_inicio) return "La hora de inicio es obligatoria.";
+    if (!form.tipo_servicio.trim()) return "El tipo de servicio es obligatorio.";
+    return "";
+  }
+
+  function buildPayload() {
+    return {
+      ...form,
+      id_cliente: Number(form.id_cliente),
+      id_bicicleta_cliente: Number(form.id_bicicleta_cliente),
+      cliente_nombre: form.cliente_nombre.trim(),
+      cliente_telefono: form.cliente_telefono?.trim() || null,
+      hora_fin: form.hora_fin || null,
+      fecha_prometida_entrega: form.fecha_prometida_entrega || null,
+      tipo_servicio: form.tipo_servicio.trim(),
+      descripcion: form.descripcion.trim() || null,
+      notas: form.notas.trim() || null,
+    };
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setError("");
     setMensaje("");
 
-    if (!form.id_cliente) {
-      setError("Seleccioná un cliente existente.");
-      return;
-    }
-
-    if (!form.id_bicicleta_cliente) {
-      setError("Seleccioná una bicicleta del cliente.");
-      return;
-    }
-
-    if (!form.fecha) {
-      setError("La fecha es obligatoria.");
-      return;
-    }
-
-    if (!form.tipo_servicio.trim()) {
-      setError("El tipo de servicio es obligatorio.");
+    const validacion = validarFormulario();
+    if (validacion) {
+      setError(validacion);
       return;
     }
 
     try {
       setProcesando(true);
 
-      await crearTurnoAgenda({
-        ...form,
-        cliente_nombre: form.cliente_nombre.trim(),
-        cliente_telefono: form.cliente_telefono?.trim() || null,
-        tipo_servicio: form.tipo_servicio.trim(),
-        descripcion: form.descripcion.trim() || null,
-        id_sucursal: sucursalId,
-        id_usuario_creador: usuarioId,
-      });
+      if (modoEdicion && turnoEditandoId) {
+        await editarTurnoAgenda(turnoEditandoId, {
+          ...buildPayload(),
+          id_usuario: usuarioId,
+        });
+        setMensaje("Turno actualizado correctamente");
+      } else {
+        await crearTurnoAgenda({
+          ...buildPayload(),
+          id_sucursal: sucursalId,
+          id_usuario_creador: usuarioId,
+        });
+        setMensaje("Turno creado correctamente");
+      }
 
-      setForm(FORM_INICIAL);
-      setBusquedaCliente("");
-      setClientesEncontrados([]);
-      setBicicletasCliente([]);
-      setMensaje("Turno creado correctamente");
-
+      resetFormulario();
       await cargarTurnos();
     } catch (err) {
-      setError(err.message || "No se pudo crear el turno");
+      setError(err.message || "No se pudo guardar el turno");
     } finally {
       setProcesando(false);
     }
@@ -204,7 +298,10 @@ const [filtros, setFiltros] = useState({
       setError("");
       setMensaje("");
 
-      await cambiarEstadoTurnoAgenda(turnoId, { estado });
+      await cambiarEstadoTurnoAgenda(turnoId, {
+        estado,
+        id_usuario: usuarioId,
+      });
 
       setMensaje("Estado actualizado");
       await cargarTurnos();
@@ -238,83 +335,43 @@ const [filtros, setFiltros] = useState({
       setProcesando(false);
     }
   }
+
   async function copiarConfirmacionTurno(turno) {
-    const momento =
-      turno.franja === "mañana"
-        ? "por la mañana"
-        : "por la tarde";
+    const mensajeTurno = buildMensajeConfirmacion(turno);
+    await copiarTexto(mensajeTurno);
+    setMensaje("Confirmación copiada al portapapeles.");
+  }
 
-    const mensajeTurno = `Hola ${turno.cliente_nombre} 👋
-
-    Tu turno quedó agendado para el ${formatFecha(turno.fecha)} ${momento} en Emprendimiento Agus.
-
-    Trabajo solicitado:
-    ${turno.tipo_servicio}
-
-    ¡Muchas gracias! 🚲`;
+  async function copiarRecordatorioTurno(turno) {
+    const mensajeTurno = buildMensajeRecordatorio(turno);
 
     try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(mensajeTurno);
-      } else {
-        const textarea = document.createElement("textarea");
-        textarea.value = mensajeTurno;
-
-        document.body.appendChild(textarea);
-        textarea.select();
-
-        document.execCommand("copy");
-
-        document.body.removeChild(textarea);
-      }
-
-      setMensaje("Mensaje copiado al portapapeles.");
+      await copiarTexto(mensajeTurno);
+      await marcarRecordatorioEnviado(turno.id);
+      setMensaje("Recordatorio copiado y marcado como enviado.");
+      await cargarTurnos();
     } catch (err) {
       console.error(err);
-
       alert(mensajeTurno);
     }
   }
 
-async function copiarRecordatorioTurno(turno) {
-  const momento =
-    turno.franja === "mañana"
-      ? "por la mañana"
-      : "por la tarde";
+  async function avisarCliente(turno) {
+    const mensajeTurno = buildMensajeClienteAvisado(turno);
 
-  const mensajeTurno = `Hola ${turno.cliente_nombre} 👋
-
-Te recordamos que el ${formatFecha(turno.fecha)} ${momento} te esperamos en Emprendimiento Agus para recibir tu bicicleta.
-
-Trabajo solicitado:
-${turno.tipo_servicio}
-
-Si necesitás reprogramar, avisanos con anticipación.
-
-¡Muchas gracias! 🚲`;
-
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(mensajeTurno);
-    } else {
-      const textarea = document.createElement("textarea");
-      textarea.value = mensajeTurno;
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand("copy");
-      document.body.removeChild(textarea);
+    try {
+      await copiarTexto(mensajeTurno);
+      await marcarClienteAvisado(turno.id, {
+        id_usuario: usuarioId,
+        observacion: "Aviso copiado desde agenda",
+      });
+      setMensaje("Aviso copiado. El turno quedó marcado como cliente avisado.");
+      await cargarTurnos();
+    } catch (err) {
+      console.error(err);
+      alert(mensajeTurno);
     }
-
-    await marcarRecordatorioEnviado(turno.id);
-    setMensaje(
-                "Recordatorio copiado. El cliente quedó marcado como avisado."
-              );
-    await cargarTurnos();
-  } catch (err) {
-    console.error(err);
-    alert(mensajeTurno);
   }
-}
 
   const turnosPorDia = useMemo(() => {
     return turnos.reduce((acc, turno) => {
@@ -325,21 +382,100 @@ Si necesitás reprogramar, avisanos con anticipación.
     }, {});
   }, [turnos]);
 
+  const resumen = useMemo(() => {
+    return turnos.reduce(
+      (acc, turno) => {
+        acc.total += 1;
+        if (turno.estado === "pendiente") acc.pendientes += 1;
+        if (turno.estado === "confirmado") acc.confirmados += 1;
+        if (turno.estado === "en_taller") acc.enTaller += 1;
+        if (turno.estado === "convertido_orden") acc.convertidos += 1;
+        if (turno.recordatorio_enviado) acc.recordados += 1;
+        if (turno.cliente_avisado) acc.avisados += 1;
+        return acc;
+      },
+      {
+        total: 0,
+        pendientes: 0,
+        confirmados: 0,
+        enTaller: 0,
+        convertidos: 0,
+        recordados: 0,
+        avisados: 0,
+      },
+    );
+  }, [turnos]);
+
   return (
     <div style={styles.page}>
-      <div>
-        <h1 style={styles.title}>Agenda Taller</h1>
-        <p style={styles.subtitle}>
-          Turnos, ingresos previstos y organización diaria del taller.
-        </p>
+      <div style={styles.pageHeader}>
+        <div>
+          <h1 style={styles.title}>Agenda Taller</h1>
+          <p style={styles.subtitle}>
+            Turnos, ingresos previstos, promesas de entrega y avisos al cliente.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={cargarTurnos}
+          style={styles.secondaryButton}
+          disabled={loading}
+        >
+          Refrescar
+        </button>
       </div>
 
       {error ? <div style={styles.alertError}>{error}</div> : null}
       {mensaje ? <div style={styles.alertSuccess}>{mensaje}</div> : null}
 
+      <div style={styles.statsGrid}>
+        <Stat label="Turnos" value={resumen.total} />
+        <Stat label="Pendientes" value={resumen.pendientes} />
+        <Stat label="Confirmados" value={resumen.confirmados} />
+        <Stat label="En taller" value={resumen.enTaller} />
+        <Stat label="Avisados" value={resumen.avisados} />
+      </div>
+
+      <div style={styles.viewTabs}>
+        <button
+          type="button"
+          onClick={() => setVista(VISTAS.GENERAL)}
+          style={vista === VISTAS.GENERAL ? styles.tabActive : styles.tab}
+        >
+          General
+        </button>
+        <button
+          type="button"
+          onClick={() => setVista(VISTAS.PARA_MANANA)}
+          style={vista === VISTAS.PARA_MANANA ? styles.tabActive : styles.tab}
+        >
+          Para mañana
+        </button>
+        <button
+          type="button"
+          onClick={() => setVista(VISTAS.ATRASADAS)}
+          style={vista === VISTAS.ATRASADAS ? styles.tabActive : styles.tab}
+        >
+          Atrasadas
+        </button>
+      </div>
+
       <div style={styles.grid}>
         <section style={styles.card}>
-          <h2 style={styles.cardTitle}>Nuevo turno</h2>
+          <div style={styles.headerRow}>
+            <h2 style={styles.cardTitle}>{modoEdicion ? "Editar turno" : "Nuevo turno"}</h2>
+            {modoEdicion ? (
+              <button
+                type="button"
+                onClick={resetFormulario}
+                style={styles.secondaryButtonSmall}
+                disabled={procesando}
+              >
+                Cancelar edición
+              </button>
+            ) : null}
+          </div>
 
           <form onSubmit={handleSubmit}>
             <label style={styles.label}>Buscar cliente</label>
@@ -415,13 +551,30 @@ Si necesitás reprogramar, avisanos con anticipación.
             ) : null}
 
             <div style={styles.twoCols}>
-              <input
-                type="date"
-                value={form.fecha}
-                onChange={(e) => setForm({ ...form, fecha: e.target.value })}
-                style={styles.input}
-              />
+              <div>
+                <label style={styles.label}>Fecha turno</label>
+                <input
+                  type="date"
+                  value={form.fecha}
+                  onChange={(e) => setForm({ ...form, fecha: e.target.value })}
+                  style={styles.input}
+                />
+              </div>
 
+              <div>
+                <label style={styles.label}>Prometida entrega</label>
+                <input
+                  type="date"
+                  value={form.fecha_prometida_entrega}
+                  onChange={(e) =>
+                    setForm({ ...form, fecha_prometida_entrega: e.target.value })
+                  }
+                  style={styles.input}
+                />
+              </div>
+            </div>
+
+            <div style={styles.twoCols}>
               <select
                 value={form.franja}
                 onChange={(e) => {
@@ -435,17 +588,26 @@ Si necesitás reprogramar, avisanos con anticipación.
                 }}
                 style={styles.input}
               >
-                <option value="mañana">Mañana (09:00 a 12:00)</option>
-                <option value="tarde">Tarde (16:30 a 19:00)</option>
+                <option value="mañana">Mañana</option>
+                <option value="tarde">Tarde</option>
               </select>
-            </div>
 
-            <input
-              type="time"
-              value={form.hora_inicio}
-              onChange={(e) => setForm({ ...form, hora_inicio: e.target.value })}
-              style={styles.input}
-            />
+              <div style={styles.twoColsCompact}>
+                <input
+                  type="time"
+                  value={form.hora_inicio}
+                  onChange={(e) => setForm({ ...form, hora_inicio: e.target.value })}
+                  style={styles.input}
+                />
+                <input
+                  type="time"
+                  value={form.hora_fin}
+                  onChange={(e) => setForm({ ...form, hora_fin: e.target.value })}
+                  style={styles.input}
+                  title="Hora fin opcional"
+                />
+              </div>
+            </div>
 
             <input
               placeholder="Tipo de servicio"
@@ -461,8 +623,15 @@ Si necesitás reprogramar, avisanos con anticipación.
               style={styles.textarea}
             />
 
+            <textarea
+              placeholder="Notas internas"
+              value={form.notas}
+              onChange={(e) => setForm({ ...form, notas: e.target.value })}
+              style={styles.textareaSmall}
+            />
+
             <button type="submit" style={styles.primaryButton} disabled={procesando}>
-              Crear turno
+              {modoEdicion ? "Guardar cambios" : "Crear turno"}
             </button>
           </form>
         </section>
@@ -470,58 +639,73 @@ Si necesitás reprogramar, avisanos con anticipación.
         <section style={styles.card}>
           <div style={styles.headerRow}>
             <div>
-              <h2 style={styles.cardTitle}>Turnos</h2>
+              <h2 style={styles.cardTitle}>{labelVista(vista)}</h2>
               <p style={styles.muted}>{turnos.length} turno(s) encontrados</p>
             </div>
-
-            <button
-              type="button"
-              onClick={cargarTurnos}
-              style={styles.secondaryButton}
-              disabled={loading}
-            >
-              Refrescar
-            </button>
           </div>
 
-          <div style={styles.filters}>
-            <input
-              type="date"
-              value={filtros.fecha_desde}
-              onChange={(e) =>
-                setFiltros({ ...filtros, fecha_desde: e.target.value })
-              }
-              style={styles.input}
-            />
+          {vista === VISTAS.GENERAL ? (
+            <div style={styles.filters}>
+              <input
+                type="date"
+                value={filtros.fecha_desde}
+                onChange={(e) =>
+                  setFiltros({ ...filtros, fecha_desde: e.target.value })
+                }
+                style={styles.input}
+              />
 
-            <input
-              type="date"
-              value={filtros.fecha_hasta}
-              onChange={(e) =>
-                setFiltros({ ...filtros, fecha_hasta: e.target.value })
-              }
-              style={styles.input}
-            />
+              <input
+                type="date"
+                value={filtros.fecha_hasta}
+                onChange={(e) =>
+                  setFiltros({ ...filtros, fecha_hasta: e.target.value })
+                }
+                style={styles.input}
+              />
 
-            <select
-              value={filtros.estado}
-              onChange={(e) =>
-                setFiltros({ ...filtros, estado: e.target.value })
-              }
-              style={styles.input}
-            >
-              <option value="">Todos</option>
-              {ESTADOS.map((estado) => (
-                <option key={estado} value={estado}>
-                  {estado}
-                </option>
-              ))}
-            </select>
+              <select
+                value={filtros.estado}
+                onChange={(e) =>
+                  setFiltros({ ...filtros, estado: e.target.value })
+                }
+                style={styles.input}
+              >
+                <option value="">Todos los estados</option>
+                {ESTADOS.map((estado) => (
+                  <option key={estado} value={estado}>
+                    {labelEstado(estado)}
+                  </option>
+                ))}
+              </select>
 
-            <button type="button" onClick={cargarTurnos} style={styles.primaryButton}>
-              Filtrar
-            </button>
-          </div>
+              <label style={styles.checkLabel}>
+                <input
+                  type="checkbox"
+                  checked={filtros.solo_pendientes}
+                  onChange={(e) =>
+                    setFiltros({ ...filtros, solo_pendientes: e.target.checked })
+                  }
+                />
+                Sólo pendientes
+              </label>
+
+              <label style={styles.checkLabel}>
+                <input
+                  type="checkbox"
+                  checked={filtros.mostrar_convertidos}
+                  onChange={(e) =>
+                    setFiltros({ ...filtros, mostrar_convertidos: e.target.checked })
+                  }
+                />
+                Mostrar convertidos
+              </label>
+
+              <button type="button" onClick={cargarTurnos} style={styles.primaryButton}>
+                Filtrar
+              </button>
+            </div>
+          ) : null}
 
           {loading ? (
             <div style={styles.empty}>Cargando...</div>
@@ -538,7 +722,7 @@ Si necesitás reprogramar, avisanos con anticipación.
                       <div>
                         <strong>
                           {labelFranja(turno.franja)}
-                          {turno.hora_inicio ? ` · ${turno.hora_inicio.slice(0, 5)}` : ""} · {turno.cliente_nombre}
+                          {turno.hora_inicio ? ` · ${normalizarHora(turno.hora_inicio)}` : ""} · {turno.cliente_nombre}
                         </strong>
                         <div style={styles.muted}>
                           {turno.cliente_telefono || "Sin teléfono"}
@@ -546,7 +730,7 @@ Si necesitás reprogramar, avisanos con anticipación.
                       </div>
 
                       <span style={{ ...styles.estado, ...getEstadoStyle(turno.estado) }}>
-                        {turno.estado}
+                        {labelEstado(turno.estado)}
                       </span>
                     </div>
 
@@ -556,17 +740,37 @@ Si necesitás reprogramar, avisanos con anticipación.
                       <div style={styles.descripcion}>{turno.descripcion}</div>
                     ) : null}
 
-                   {turno.bicicleta_descripcion ? (
-                      <div style={styles.metaLine}>
-                        🚲 {turno.bicicleta_descripcion}
-                      </div>
-                    ) : null}
+                    <div style={styles.metaBlock}>
+                      {turno.bicicleta_descripcion ? (
+                        <div style={styles.metaLine}>🚲 {turno.bicicleta_descripcion}</div>
+                      ) : null}
 
-                    {turno.recordatorio_enviado ? (
-                      <div style={styles.recordadoOk}>📲 Cliente avisado</div>
-                    ) : (
-                      <div style={styles.recordadoPendiente}>⏳ Falta avisar</div>
-                    )}
+                      {turno.fecha_prometida_entrega ? (
+                        <div style={styles.metaLine}>
+                          📅 Prometida entrega: {formatFecha(turno.fecha_prometida_entrega)}
+                        </div>
+                      ) : (
+                        <div style={styles.metaLineWarning}>📅 Sin fecha prometida</div>
+                      )}
+
+                      {turno.id_orden_taller ? (
+                        <div style={styles.metaLine}>🧾 Orden #{turno.id_orden_taller}</div>
+                      ) : null}
+                    </div>
+
+                    <div style={styles.badgesRow}>
+                      {turno.recordatorio_enviado ? (
+                        <span style={styles.badgeOk}>📲 Recordatorio enviado</span>
+                      ) : (
+                        <span style={styles.badgeWarn}>⏳ Sin recordatorio</span>
+                      )}
+
+                      {turno.cliente_avisado ? (
+                        <span style={styles.badgeOk}>✅ Cliente avisado</span>
+                      ) : (
+                        <span style={styles.badgeWarn}>⚠️ Cliente sin avisar</span>
+                      )}
+                    </div>
 
                     <div style={styles.actions}>
                       {turno.id_orden_taller ? (
@@ -588,6 +792,24 @@ Si necesitás reprogramar, avisanos con anticipación.
                               Confirmar
                             </button>
                           ) : null}
+
+                          {turno.estado === "confirmado" ? (
+                            <button
+                              type="button"
+                              onClick={() => cambiarEstado(turno.id, "en_taller")}
+                              disabled={procesando}
+                            >
+                              Marcar en taller
+                            </button>
+                          ) : null}
+
+                          <button
+                            type="button"
+                            onClick={() => iniciarEdicion(turno)}
+                            disabled={procesando || turno.estado === "convertido_orden"}
+                          >
+                            Editar / reprogramar
+                          </button>
 
                           {turno.estado !== "cancelado" ? (
                             <button
@@ -614,6 +836,15 @@ Si necesitás reprogramar, avisanos con anticipación.
                           >
                             Copiar recordatorio
                           </button>
+
+                          <button
+                            type="button"
+                            onClick={() => avisarCliente(turno)}
+                            disabled={procesando || !turno.cliente_telefono || turno.cliente_avisado}
+                          >
+                            Avisar cliente
+                          </button>
+
                           <button
                             type="button"
                             onClick={() => crearOrdenDesdeTurno(turno)}
@@ -635,10 +866,82 @@ Si necesitás reprogramar, avisanos con anticipación.
   );
 }
 
+function Stat({ label, value }) {
+  return (
+    <div style={styles.statCard}>
+      <div style={styles.statValue}>{value}</div>
+      <div style={styles.statLabel}>{label}</div>
+    </div>
+  );
+}
+
+async function copiarTexto(texto) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(texto);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = texto;
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  document.body.removeChild(textarea);
+}
+
+function buildMensajeConfirmacion(turno) {
+  const momento = turno.franja === "mañana" ? "por la mañana" : "por la tarde";
+
+  return `Hola ${turno.cliente_nombre} 👋
+
+Tu turno quedó agendado para el ${formatFecha(turno.fecha)} ${momento} en Emprendimiento Agus.
+
+Trabajo solicitado:
+${turno.tipo_servicio}
+
+${turno.fecha_prometida_entrega ? `Fecha estimada/prometida de entrega: ${formatFecha(turno.fecha_prometida_entrega)}\n\n` : ""}¡Muchas gracias! 🚲`;
+}
+
+function buildMensajeRecordatorio(turno) {
+  const momento = turno.franja === "mañana" ? "por la mañana" : "por la tarde";
+
+  return `Hola ${turno.cliente_nombre} 👋
+
+Te recordamos que el ${formatFecha(turno.fecha)} ${momento} te esperamos en Emprendimiento Agus para recibir tu bicicleta.
+
+Trabajo solicitado:
+${turno.tipo_servicio}
+
+Si necesitás reprogramar, avisanos con anticipación.
+
+¡Muchas gracias! 🚲`;
+}
+
+function buildMensajeClienteAvisado(turno) {
+  return `Hola ${turno.cliente_nombre} 👋
+
+Te avisamos desde Emprendimiento Agus por tu turno de taller del ${formatFecha(turno.fecha)}.
+
+Trabajo solicitado:
+${turno.tipo_servicio}
+
+${turno.fecha_prometida_entrega ? `Fecha estimada/prometida de entrega: ${formatFecha(turno.fecha_prometida_entrega)}\n\n` : ""}Cualquier cambio te avisamos por este medio. 🚲`;
+}
+
 function formatFecha(fecha) {
   if (!fecha || fecha === "Sin fecha") return fecha || "-";
-
   return new Date(`${fecha}T00:00:00`).toLocaleDateString("es-AR");
+}
+
+function normalizarHora(hora) {
+  if (!hora) return "";
+  return String(hora).slice(0, 5);
+}
+
+function labelVista(vista) {
+  if (vista === VISTAS.PARA_MANANA) return "Turnos para mañana";
+  if (vista === VISTAS.ATRASADAS) return "Turnos atrasados";
+  return "Turnos";
 }
 
 function labelFranja(franja) {
@@ -647,37 +950,42 @@ function labelFranja(franja) {
   return "Sin franja";
 }
 
+function labelEstado(estado) {
+  const labels = {
+    pendiente: "Pendiente",
+    confirmado: "Confirmado",
+    en_taller: "En taller",
+    cancelado: "Cancelado",
+    convertido_orden: "Convertido a orden",
+  };
+
+  return labels[estado] || estado;
+}
+
 function getEstadoStyle(estado) {
   if (estado === "pendiente") {
-    return {
-      background: "#fef3c7",
-      color: "#92400e",
-    };
+    return { background: "#fef3c7", color: "#92400e" };
   }
 
   if (estado === "confirmado") {
-    return {
-      background: "#dcfce7",
-      color: "#166534",
-    };
+    return { background: "#dcfce7", color: "#166534" };
+  }
+
+  if (estado === "en_taller") {
+    return { background: "#e0f2fe", color: "#075985" };
   }
 
   if (estado === "convertido_orden") {
-    return {
-      background: "#dbeafe",
-      color: "#1d4ed8",
-    };
+    return { background: "#dbeafe", color: "#1d4ed8" };
   }
 
   if (estado === "cancelado") {
-    return {
-      background: "#fee2e2",
-      color: "#991b1b",
-    };
+    return { background: "#fee2e2", color: "#991b1b" };
   }
 
   return {};
 }
+
 function formatBicicleta(bici) {
   const texto = [
     bici.marca,
@@ -694,9 +1002,47 @@ function formatBicicleta(bici) {
 
 const styles = {
   page: { display: "grid", gap: 20 },
+  pageHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
   title: { margin: 0, color: "#0f172a" },
   subtitle: { margin: "4px 0 0", color: "#64748b", fontWeight: 700 },
   grid: { display: "grid", gridTemplateColumns: "420px 1fr", gap: 20 },
+  statsGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+    gap: 12,
+  },
+  statCard: {
+    background: "#fff",
+    border: "1px solid #e2e8f0",
+    borderRadius: 14,
+    padding: 14,
+  },
+  statValue: { fontSize: 24, fontWeight: 950, color: "#0f172a" },
+  statLabel: { marginTop: 2, color: "#64748b", fontWeight: 800, fontSize: 13 },
+  viewTabs: { display: "flex", gap: 8, flexWrap: "wrap" },
+  tab: {
+    padding: "10px 14px",
+    cursor: "pointer",
+    border: "1px solid #cbd5e1",
+    borderRadius: 999,
+    background: "white",
+    color: "#334155",
+    fontWeight: 900,
+  },
+  tabActive: {
+    padding: "10px 14px",
+    cursor: "pointer",
+    border: "1px solid #ea580c",
+    borderRadius: 999,
+    background: "#ea580c",
+    color: "white",
+    fontWeight: 950,
+  },
   card: {
     background: "#fff",
     border: "1px solid #e2e8f0",
@@ -716,22 +1062,43 @@ const styles = {
     padding: 10,
     border: "1px solid #cbd5e1",
     borderRadius: 10,
+    boxSizing: "border-box",
   },
   textarea: {
     width: "100%",
-    minHeight: 100,
+    minHeight: 90,
     marginBottom: 10,
     padding: 10,
     border: "1px solid #cbd5e1",
     borderRadius: 10,
+    boxSizing: "border-box",
+  },
+  textareaSmall: {
+    width: "100%",
+    minHeight: 66,
+    marginBottom: 10,
+    padding: 10,
+    border: "1px solid #cbd5e1",
+    borderRadius: 10,
+    boxSizing: "border-box",
   },
   twoCols: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 },
-  searchRow: { display: "grid", gridTemplateColumns: "1fr auto", gap: 10 },
+  twoColsCompact: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 },
   filters: {
     display: "grid",
-    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
     gap: 10,
     marginTop: 14,
+    alignItems: "center",
+  },
+  checkLabel: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 10,
+    color: "#334155",
+    fontWeight: 900,
+    fontSize: 13,
   },
   primaryButton: {
     padding: "10px 14px",
@@ -750,17 +1117,22 @@ const styles = {
     background: "white",
     fontWeight: 900,
   },
+  secondaryButtonSmall: {
+    padding: "8px 10px",
+    cursor: "pointer",
+    border: "1px solid #cbd5e1",
+    borderRadius: 10,
+    background: "white",
+    fontWeight: 900,
+    fontSize: 12,
+  },
   headerRow: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
   },
-  resultsBox: {
-    display: "grid",
-    gap: 8,
-    marginBottom: 12,
-  },
+  resultsBox: { display: "grid", gap: 8, marginBottom: 12 },
   resultButton: {
     display: "grid",
     gap: 2,
@@ -804,17 +1176,35 @@ const styles = {
     padding: "5px 9px",
     fontWeight: 900,
     fontSize: 12,
+    height: "fit-content",
+    whiteSpace: "nowrap",
   },
   service: { marginTop: 10, fontWeight: 900, color: "#0f172a" },
   descripcion: { marginTop: 6, color: "#475569" },
-  metaLine: {
-    marginTop: 8,
-    color: "#64748b",
-    fontWeight: 800,
-    fontSize: 13,
-  },
+  metaBlock: { display: "grid", gap: 4, marginTop: 8 },
+  metaLine: { color: "#64748b", fontWeight: 800, fontSize: 13 },
+  metaLineWarning: { color: "#9a3412", fontWeight: 900, fontSize: 13 },
   muted: { color: "#64748b", fontWeight: 700, fontSize: 13 },
   actions: { display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" },
+  badgesRow: { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 },
+  badgeOk: {
+    color: "#166534",
+    background: "#dcfce7",
+    borderRadius: 999,
+    padding: "5px 9px",
+    fontWeight: 900,
+    fontSize: 12,
+    width: "fit-content",
+  },
+  badgeWarn: {
+    color: "#92400e",
+    background: "#fef3c7",
+    borderRadius: 999,
+    padding: "5px 9px",
+    fontWeight: 900,
+    fontSize: 12,
+    width: "fit-content",
+  },
   alertError: {
     padding: 12,
     borderRadius: 12,
@@ -829,25 +1219,5 @@ const styles = {
     color: "#047857",
     fontWeight: 800,
   },
-  recordadoOk: {
-  marginTop: 8,
-  color: "#166534",
-  background: "#dcfce7",
-  borderRadius: 999,
-  padding: "5px 9px",
-  fontWeight: 900,
-  fontSize: 12,
-  width: "fit-content",
-},
-recordadoPendiente: {
-  marginTop: 8,
-  color: "#92400e",
-  background: "#fef3c7",
-  borderRadius: 999,
-  padding: "5px 9px",
-  fontWeight: 900,
-  fontSize: 12,
-  width: "fit-content",
-},
   empty: { padding: 18, color: "#64748b", fontWeight: 800 },
 };

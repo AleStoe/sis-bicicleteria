@@ -12,7 +12,9 @@ from .schemas import (
     OrdenTallerItemCancelarInput,
     OrdenTallerGenerarVentaInput,
     OrdenTallerGenerarVentaOutput,
-    
+    OrdenTallerOperativoUpdate,
+    OrdenTallerAvisoRetiroInput,
+    OrdenTallerMensajeRetiroOutput,
 )
 from .service import (
     crear_orden_taller,
@@ -25,6 +27,9 @@ from .service import (
     revertir_ejecucion_item_orden_taller,
     cancelar_item_orden_taller,
     generar_venta_desde_orden_taller,
+    actualizar_datos_operativos_orden_taller,
+    generar_mensaje_lista_retiro_orden_taller,
+    registrar_aviso_retiro_orden_taller,
 )
 
 router = APIRouter(prefix="/ordenes_taller", tags=["Taller"])
@@ -48,6 +53,24 @@ def obtener_orden(orden_id: int):
 @router.post("/{orden_id}/estado", response_model=OrdenTallerResponse)
 def cambiar_estado(orden_id: int, payload: OrdenTallerEstadoUpdate):
     return cambiar_estado_orden_taller(orden_id, payload)
+
+
+@router.patch("/{orden_id}/operativo", response_model=OrdenTallerResponse)
+def actualizar_operativo(orden_id: int, payload: OrdenTallerOperativoUpdate):
+    return actualizar_datos_operativos_orden_taller(orden_id, payload)
+
+
+@router.get(
+    "/{orden_id}/mensaje-lista-retiro",
+    response_model=OrdenTallerMensajeRetiroOutput,
+)
+def mensaje_lista_retiro(orden_id: int):
+    return generar_mensaje_lista_retiro_orden_taller(orden_id)
+
+
+@router.patch("/{orden_id}/aviso-retiro", response_model=OrdenTallerResponse)
+def marcar_aviso_retiro(orden_id: int, payload: OrdenTallerAvisoRetiroInput):
+    return registrar_aviso_retiro_orden_taller(orden_id, payload)
 
 
 @router.post("/{orden_id}/items", response_model=OrdenTallerItemResponse, status_code=201)

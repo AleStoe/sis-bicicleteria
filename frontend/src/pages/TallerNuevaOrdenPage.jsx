@@ -12,6 +12,8 @@ export default function TallerNuevaOrdenPage() {
   const [clienteId, setClienteId] = useState("");
   const [bicicletaId, setBicicletaId] = useState("");
   const [problema, setProblema] = useState("");
+  const [fechaPrometida, setFechaPrometida] = useState("");
+  const [prioridad, setPrioridad] = useState("normal");
   const [loading, setLoading] = useState(true);
   const [cargandoBicis, setCargandoBicis] = useState(false);
   const [guardando, setGuardando] = useState(false);
@@ -130,6 +132,8 @@ export default function TallerNuevaOrdenPage() {
         id_cliente: Number(clienteId),
         id_bicicleta_cliente: Number(bicicletaId),
         problema_reportado: problema.trim(),
+        fecha_prometida: fechaPrometida ? new Date(fechaPrometida).toISOString() : null,
+        prioridad,
         id_usuario: usuarioId,
       });
 
@@ -213,6 +217,25 @@ export default function TallerNuevaOrdenPage() {
               {mostrarNuevaBici ? "Ocultar carga de bicicleta" : "＋ Cargar bicicleta del cliente"}
             </button>
 
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 220px", gap: 12 }}>
+              <label style={styles.field}>
+                <span style={styles.label}>Fecha prometida</span>
+                <input
+                  type="datetime-local"
+                  value={fechaPrometida}
+                  onChange={(e) => setFechaPrometida(e.target.value)}
+                  style={styles.input}
+                />
+              </label>
+              <label style={styles.field}>
+                <span style={styles.label}>Prioridad</span>
+                <select value={prioridad} onChange={(e) => setPrioridad(e.target.value)} style={styles.input}>
+                  <option value="normal">Normal</option>
+                  <option value="urgente">Urgente</option>
+                </select>
+              </label>
+            </div>
+
             <label style={styles.field}>
               <span style={styles.label}>Problema reportado *</span>
               <textarea
@@ -237,6 +260,8 @@ export default function TallerNuevaOrdenPage() {
             <Info label="Teléfono" value={clienteSeleccionado?.telefono || "-"} />
             <Info label="Bicicleta" value={bicicletaSeleccionada ? describirBicicleta(bicicletaSeleccionada) : "-"} />
             <Info label="Bicis cargadas" value={bicicletas.length} />
+            <Info label="Fecha prometida" value={fechaPrometida || "Sin fecha"} />
+            <Info label="Prioridad" value={prioridad === "urgente" ? "Urgente" : "Normal"} />
             <div style={styles.note}>Si no registrás cliente y bicicleta real, después perdés historial, deuda, garantía y seguimiento.</div>
           </section>
         </aside>

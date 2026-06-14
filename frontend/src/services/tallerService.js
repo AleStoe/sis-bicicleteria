@@ -81,3 +81,21 @@ export function getPresupuestoTallerUrl(ordenId) {
   const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
   return `${baseUrl}/documentos/taller/${ordenId}/presupuesto`;
 }
+
+export function actualizarOperativoOrdenTaller(ordenId, data) {
+  return apiRequest(`/ordenes_taller/${ordenId}/operativo`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export function generarMensajeListaRetiroOrdenTaller(ordenId) {
+  return apiRequest(`/ordenes_taller/${ordenId}/mensaje-lista-retiro`);
+}
+
+export function marcarAvisoRetiroOrdenTaller(ordenId, data) {
+  return apiRequest(`/ordenes_taller/${ordenId}/aviso-retiro`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}

@@ -1,14 +1,27 @@
 import { apiRequest } from "./api";
 
-export function listarTurnosAgenda(params = {}) {
+function buildQuery(params = {}) {
   const query = new URLSearchParams();
 
-  if (params.fecha_desde) query.set("fecha_desde", params.fecha_desde);
-  if (params.fecha_hasta) query.set("fecha_hasta", params.fecha_hasta);
-  if (params.id_sucursal) query.set("id_sucursal", params.id_sucursal);
-  if (params.estado) query.set("estado", params.estado);
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === "") return;
+    query.set(key, String(value));
+  });
+
   const qs = query.toString();
-  return apiRequest(`/agenda-taller/${qs ? `?${qs}` : ""}`);
+  return qs ? `?${qs}` : "";
+}
+
+export function listarTurnosAgenda(params = {}) {
+  return apiRequest(`/agenda-taller/${buildQuery(params)}`);
+}
+
+export function listarTurnosAgendaParaManana(params = {}) {
+  return apiRequest(`/agenda-taller/para-manana${buildQuery(params)}`);
+}
+
+export function listarTurnosAgendaAtrasados(params = {}) {
+  return apiRequest(`/agenda-taller/atrasadas${buildQuery(params)}`);
 }
 
 export function crearTurnoAgenda(data) {
@@ -20,6 +33,10 @@ export function crearTurnoAgenda(data) {
 
 export function obtenerTurnoAgenda(turnoId) {
   return apiRequest(`/agenda-taller/${turnoId}`);
+}
+
+export function obtenerHistorialTurnoAgenda(turnoId) {
+  return apiRequest(`/agenda-taller/${turnoId}/historial`);
 }
 
 export function editarTurnoAgenda(turnoId, data) {
@@ -46,5 +63,12 @@ export function convertirTurnoAOrden(turnoId, data) {
 export function marcarRecordatorioEnviado(turnoId) {
   return apiRequest(`/agenda-taller/${turnoId}/recordatorio-enviado`, {
     method: "PATCH",
+  });
+}
+
+export function marcarClienteAvisado(turnoId, data = {}) {
+  return apiRequest(`/agenda-taller/${turnoId}/cliente-avisado`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
   });
 }

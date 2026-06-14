@@ -13,6 +13,9 @@ import {
   cancelarItemOrdenTaller,
   generarVentaDesdeOrdenTaller,
   getPresupuestoTallerUrl,
+  actualizarOperativoOrdenTaller,
+  generarMensajeListaRetiroOrdenTaller,
+  marcarAvisoRetiroOrdenTaller,
 } from "../services/tallerService";
 import { formatDate, formatMoney } from "../utils/formatters";
 import { EstadoBadge } from "./TallerListPage";
@@ -58,6 +61,14 @@ function useIsMobile(breakpoint = 760) {
   return isMobile;
 }
 
+function toDateTimeLocalValue(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 export default function TallerDetallePage() {
   const { ordenId } = useParams();
   const navigate = useNavigate();
@@ -80,6 +91,10 @@ export default function TallerDetallePage() {
     id_servicio_taller: "",
     cantidad: "1",
     precio_unitario: "",
+  });
+  const [operativoForm, setOperativoForm] = useState({
+    fecha_prometida: "",
+    prioridad: "normal",
   });
   function formatUsuario(item) {
     if (item.usuario_nombre) {
@@ -121,6 +136,10 @@ export default function TallerDetallePage() {
       ]);
       setOrden(ordenData);
       setNuevoEstado(ordenData.estado);
+      setOperativoForm({
+        fecha_prometida: toDateTimeLocalValue(ordenData.fecha_prometida),
+        prioridad: ordenData.prioridad || "normal",
+      });
       setVariantes(variantesData || []);
       setServiciosTaller(serviciosData || []);
     } catch (err) {
@@ -134,6 +153,10 @@ export default function TallerDetallePage() {
     const data = await obtenerOrdenTaller(ordenId);
     setOrden(data);
     setNuevoEstado(data.estado);
+    setOperativoForm({
+      fecha_prometida: toDateTimeLocalValue(data.fecha_prometida),
+      prioridad: data.prioridad || "normal",
+    });
   }
 
   const items = orden?.items || [];
@@ -533,6 +556,55 @@ export default function TallerDetallePage() {
     window.open(getPresupuestoTallerUrl(orden.id), "_blank", "noopener,noreferrer");
   }
 
+  async function guardarOperativo(e) {
+    e.preventDefault();
+
+    try {
+      setGuardando(true);
+      setError("");
+      setMensaje("");
+      await actualizarOperativoOrdenTaller(ordenId, {
+        fecha_prometida: operativoForm.fecha_prometida
+          ? new Date(operativoForm.fecha_prometida).toISOString()
+          : null,
+        prioridad: operativoForm.prioridad || "normal",
+        id_usuario: usuarioId,
+      });
+      await refrescarOrden();
+      setMensaje("Datos operativos actualizados");
+    } catch (err) {
+      setError(err?.detail || err?.message || "No se pudieron actualizar los datos operativos");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  async function enviarWhatsappRetiro() {
+    try {
+      setGuardando(true);
+      setError("");
+      setMensaje("");
+      const data = await generarMensajeListaRetiroOrdenTaller(ordenId);
+
+      if (data.whatsapp_url) {
+        window.open(data.whatsapp_url, "_blank", "noopener,noreferrer");
+      } else if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(data.mensaje);
+        setMensaje("El cliente no tiene teléfono válido. Copié el mensaje al portapapeles.");
+      } else {
+        setMensaje("El cliente no tiene teléfono válido. Copiá el mensaje manualmente desde backend.");
+      }
+
+      await marcarAvisoRetiroOrdenTaller(ordenId, { id_usuario: usuarioId });
+      await refrescarOrden();
+      setMensaje(data.whatsapp_url ? "WhatsApp abierto y aviso marcado" : "Aviso marcado; revisá el mensaje copiado");
+    } catch (err) {
+      setError(err?.detail || err?.message || "No se pudo generar el WhatsApp de retiro");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
   if (loading) return <div style={styles.state}>Cargando orden...</div>;
   if (!orden) return <div style={styles.state}>No se encontró la orden.</div>;
 
@@ -561,6 +633,9 @@ export default function TallerDetallePage() {
         <Metric label="Total" value={formatMoney(orden.total_final)} tone="orange" />
         <Metric label="Saldo pendiente" value={formatMoney(orden.saldo_pendiente)} tone={Number(orden.saldo_pendiente || 0) > 0 ? "warning" : "ok"} />
         <Metric label="Venta" value={orden.id_venta_generada ? `#${orden.id_venta_generada}` : "No generada"} tone={orden.id_venta_generada ? "ok" : "warning"} />
+        <Metric label="Prometida" value={orden.fecha_prometida ? formatDate(orden.fecha_prometida) : "Sin fecha"} tone={orden.dias_demorados > 0 ? "warning" : "muted"} />
+        <Metric label="Demora" value={orden.dias_demorados > 0 ? `${orden.dias_demorados} día(s)` : "Sin demora"} tone={orden.dias_demorados > 0 ? "warning" : "ok"} />
+        <Metric label="Prioridad" value={orden.prioridad === "urgente" ? "Urgente" : "Normal"} tone={orden.prioridad === "urgente" ? "warning" : "muted"} />
         <Metric label="Items" value={resumen.items} tone="muted" />
         <Metric label="Ejecutados" value={resumen.ejecutados} tone="ok" />
         <Metric label="Pendientes" value={resumen.presupuestados + resumen.aprobados} tone="info" />
@@ -806,6 +881,64 @@ export default function TallerDetallePage() {
             onListaParaRetirar={() => cambiarEstadoDirecto("lista_para_retirar", "Orden lista para retirar")}
             onRetirada={() => cambiarEstadoDirecto("retirada", "Orden marcada como retirada")}
           />
+
+          <section style={styles.card}>
+            <h2 style={styles.sideTitle}>Operativo</h2>
+            <form onSubmit={guardarOperativo} style={styles.statusForm}>
+              <label style={styles.field}>
+                <span style={styles.label}>Fecha prometida</span>
+                <input
+                  type="datetime-local"
+                  value={operativoForm.fecha_prometida}
+                  onChange={(e) => setOperativoForm((prev) => ({ ...prev, fecha_prometida: e.target.value }))}
+                  disabled={orden.estado === "retirada" || orden.estado === "cancelada"}
+                  style={styles.input}
+                />
+              </label>
+              <label style={styles.field}>
+                <span style={styles.label}>Prioridad</span>
+                <select
+                  value={operativoForm.prioridad}
+                  onChange={(e) => setOperativoForm((prev) => ({ ...prev, prioridad: e.target.value }))}
+                  disabled={orden.estado === "retirada" || orden.estado === "cancelada"}
+                  style={styles.input}
+                >
+                  <option value="normal">Normal</option>
+                  <option value="urgente">Urgente</option>
+                </select>
+              </label>
+              <button
+                type="submit"
+                disabled={guardando || orden.estado === "retirada" || orden.estado === "cancelada"}
+                style={styles.primaryButton}
+              >
+                Guardar operativo
+              </button>
+            </form>
+            <div style={styles.note}>La fecha prometida alimenta atrasadas y prioridad del tablero.</div>
+          </section>
+
+          <section style={styles.card}>
+            <h2 style={styles.sideTitle}>Retiro / WhatsApp</h2>
+            <div style={styles.billingBox}>
+              <Info label="Avisado" value={orden.cliente_avisado_retiro ? `Sí${orden.fecha_aviso_retiro ? ` · ${formatDate(orden.fecha_aviso_retiro)}` : ""}` : "No"} />
+              {orden.estado === "lista_para_retirar" ? (
+                <>
+                  <p style={styles.muted}>Envía un resumen real de trabajos ejecutados, total, bicicleta y horarios del local.</p>
+                  <button
+                    type="button"
+                    onClick={enviarWhatsappRetiro}
+                    disabled={guardando}
+                    style={styles.primaryButton}
+                  >
+                    WhatsApp bici lista
+                  </button>
+                </>
+              ) : (
+                <p style={styles.muted}>El botón se habilita recién cuando la orden está lista para retirar.</p>
+              )}
+            </div>
+          </section>
 
           <section style={styles.card}>
             <h2 style={styles.sideTitle}>Presupuesto</h2>

@@ -24,12 +24,33 @@ class OrdenTallerCreate(BaseModel):
     id_cliente: int = Field(gt=0)
     id_bicicleta_cliente: int = Field(gt=0)
     problema_reportado: str = Field(min_length=1)
+    fecha_prometida: datetime | None = None
+    prioridad: Literal["normal", "urgente"] = "normal"
     id_usuario: int = Field(gt=0)
 
 
 class OrdenTallerEstadoUpdate(BaseModel):
     nuevo_estado: ESTADOS_TALLER_BASE
     id_usuario: int = Field(gt=0)
+
+
+class OrdenTallerOperativoUpdate(BaseModel):
+    fecha_prometida: datetime | None = None
+    prioridad: Literal["normal", "urgente"] = "normal"
+    id_usuario: int = Field(gt=0)
+
+
+class OrdenTallerAvisoRetiroInput(BaseModel):
+    id_usuario: int = Field(gt=0)
+
+
+class OrdenTallerMensajeRetiroOutput(BaseModel):
+    orden_id: int
+    cliente_nombre: str | None = None
+    cliente_telefono: str | None = None
+    bicicleta_descripcion: str | None = None
+    mensaje: str
+    whatsapp_url: str | None = None
 
 
 class OrdenTallerItemCreate(BaseModel):
@@ -76,6 +97,13 @@ class OrdenTallerResponse(BaseModel):
     problema_reportado: str
     observaciones: str | None = None
     fecha_prometida: datetime | None = None
+    fecha_terminada: datetime | None = None
+    fecha_retirada: datetime | None = None
+    cliente_avisado_retiro: bool = False
+    fecha_aviso_retiro: datetime | None = None
+    prioridad: str = "normal"
+    dias_en_taller: int | None = None
+    dias_demorados: int | None = None
     total_final: Decimal
     saldo_pendiente: Decimal
     id_venta_generada: int | None = None

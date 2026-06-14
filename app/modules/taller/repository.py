@@ -1,6 +1,5 @@
 from psycopg.rows import dict_row
 
-
 def validar_sucursal_activa(conn, id_sucursal: int) -> None:
     with conn.cursor() as cur:
         cur.execute(
@@ -16,7 +15,6 @@ def validar_sucursal_activa(conn, id_sucursal: int) -> None:
 
     if not row:
         raise ValueError("La sucursal no existe o está inactiva")
-
 
 def validar_usuario_activo(conn, id_usuario: int) -> None:
     with conn.cursor() as cur:
@@ -34,7 +32,6 @@ def validar_usuario_activo(conn, id_usuario: int) -> None:
     if not row:
         raise ValueError("El usuario no existe o está inactivo")
 
-
 def validar_cliente_existente(conn, id_cliente: int) -> None:
     with conn.cursor() as cur:
         cur.execute(
@@ -49,7 +46,6 @@ def validar_cliente_existente(conn, id_cliente: int) -> None:
 
     if not row:
         raise ValueError("El cliente no existe")
-
 
 def get_bicicleta_cliente(conn, id_bicicleta_cliente: int):
     with conn.cursor(row_factory=dict_row) as cur:
@@ -71,7 +67,6 @@ def get_bicicleta_cliente(conn, id_bicicleta_cliente: int):
         )
         return cur.fetchone()
 
-
 def get_variante_by_id(conn, id_variante: int):
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
@@ -91,7 +86,6 @@ def get_variante_by_id(conn, id_variante: int):
         )
         return cur.fetchone()
 
-
 def insert_orden_taller(conn, data: dict):
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
@@ -102,9 +96,11 @@ def insert_orden_taller(conn, data: dict):
                 id_bicicleta_cliente,
                 estado,
                 problema_reportado,
+                fecha_prometida,
+                prioridad,
                 id_usuario
             )
-            VALUES (%s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING
                 id,
                 fecha_ingreso,
@@ -115,6 +111,11 @@ def insert_orden_taller(conn, data: dict):
                 problema_reportado,
                 observaciones,
                 fecha_prometida,
+                fecha_terminada,
+                fecha_retirada,
+                cliente_avisado_retiro,
+                fecha_aviso_retiro,
+                prioridad,
                 total_final,
                 saldo_pendiente,
                 id_venta_generada,
@@ -128,11 +129,12 @@ def insert_orden_taller(conn, data: dict):
                 data["id_bicicleta_cliente"],
                 data["estado"],
                 data["problema_reportado"],
+                data.get("fecha_prometida"),
+                data.get("prioridad", "normal"),
                 data["id_usuario"],
             ),
         )
         return cur.fetchone()
-
 
 def get_ordenes_taller(conn):
     with conn.cursor(row_factory=dict_row) as cur:
@@ -169,6 +171,23 @@ def get_ordenes_taller(conn):
                 ot.problema_reportado,
                 ot.observaciones,
                 ot.fecha_prometida,
+                ot.fecha_terminada,
+                ot.fecha_retirada,
+                ot.cliente_avisado_retiro,
+                ot.fecha_aviso_retiro,
+                ot.prioridad,
+                CASE
+                    WHEN ot.estado IN ('retirada', 'cancelada') THEN NULL
+                    ELSE GREATEST((CURRENT_DATE - ot.fecha_ingreso::date), 0)
+                END AS dias_en_taller,
+                CASE
+                    WHEN ot.fecha_prometida IS NULL THEN 0
+                    WHEN ot.estado IN ('retirada', 'cancelada') AND ot.fecha_retirada IS NOT NULL
+                        THEN GREATEST((ot.fecha_retirada::date - ot.fecha_prometida::date), 0)
+                    WHEN ot.estado NOT IN ('retirada', 'cancelada')
+                        THEN GREATEST((CURRENT_DATE - ot.fecha_prometida::date), 0)
+                    ELSE 0
+                END AS dias_demorados,
                 ot.total_final,
                 ot.saldo_pendiente,
                 ot.id_venta_generada,
@@ -182,7 +201,6 @@ def get_ordenes_taller(conn):
             """
         )
         return cur.fetchall()
-
 
 def get_orden_taller_by_id(conn, orden_id: int):
     with conn.cursor(row_factory=dict_row) as cur:
@@ -219,6 +237,23 @@ def get_orden_taller_by_id(conn, orden_id: int):
                 ot.problema_reportado,
                 ot.observaciones,
                 ot.fecha_prometida,
+                ot.fecha_terminada,
+                ot.fecha_retirada,
+                ot.cliente_avisado_retiro,
+                ot.fecha_aviso_retiro,
+                ot.prioridad,
+                CASE
+                    WHEN ot.estado IN ('retirada', 'cancelada') THEN NULL
+                    ELSE GREATEST((CURRENT_DATE - ot.fecha_ingreso::date), 0)
+                END AS dias_en_taller,
+                CASE
+                    WHEN ot.fecha_prometida IS NULL THEN 0
+                    WHEN ot.estado IN ('retirada', 'cancelada') AND ot.fecha_retirada IS NOT NULL
+                        THEN GREATEST((ot.fecha_retirada::date - ot.fecha_prometida::date), 0)
+                    WHEN ot.estado NOT IN ('retirada', 'cancelada')
+                        THEN GREATEST((CURRENT_DATE - ot.fecha_prometida::date), 0)
+                    ELSE 0
+                END AS dias_demorados,
                 ot.total_final,
                 ot.saldo_pendiente,
                 ot.id_venta_generada,
@@ -233,7 +268,6 @@ def get_orden_taller_by_id(conn, orden_id: int):
             (orden_id,),
         )
         return cur.fetchone()
-
 
 def get_orden_taller_by_id_for_update(conn, orden_id: int):
     with conn.cursor(row_factory=dict_row) as cur:
@@ -270,6 +304,23 @@ def get_orden_taller_by_id_for_update(conn, orden_id: int):
                 ot.problema_reportado,
                 ot.observaciones,
                 ot.fecha_prometida,
+                ot.fecha_terminada,
+                ot.fecha_retirada,
+                ot.cliente_avisado_retiro,
+                ot.fecha_aviso_retiro,
+                ot.prioridad,
+                CASE
+                    WHEN ot.estado IN ('retirada', 'cancelada') THEN NULL
+                    ELSE GREATEST((CURRENT_DATE - ot.fecha_ingreso::date), 0)
+                END AS dias_en_taller,
+                CASE
+                    WHEN ot.fecha_prometida IS NULL THEN 0
+                    WHEN ot.estado IN ('retirada', 'cancelada') AND ot.fecha_retirada IS NOT NULL
+                        THEN GREATEST((ot.fecha_retirada::date - ot.fecha_prometida::date), 0)
+                    WHEN ot.estado NOT IN ('retirada', 'cancelada')
+                        THEN GREATEST((CURRENT_DATE - ot.fecha_prometida::date), 0)
+                    ELSE 0
+                END AS dias_demorados,
                 ot.total_final,
                 ot.saldo_pendiente,
                 ot.id_venta_generada,
@@ -286,19 +337,55 @@ def get_orden_taller_by_id_for_update(conn, orden_id: int):
         )
         return cur.fetchone()
 
-
 def update_orden_taller_estado(conn, orden_id: int, nuevo_estado: str) -> None:
     with conn.cursor() as cur:
         cur.execute(
             """
             UPDATE ordenes_taller
             SET estado = %s,
+                fecha_terminada = CASE
+                    WHEN %s = 'terminada' AND fecha_terminada IS NULL THEN NOW()
+                    ELSE fecha_terminada
+                END,
+                fecha_retirada = CASE
+                    WHEN %s = 'retirada' AND fecha_retirada IS NULL THEN NOW()
+                    ELSE fecha_retirada
+                END,
                 updated_at = NOW()
             WHERE id = %s
             """,
-            (nuevo_estado, orden_id),
+            (nuevo_estado, nuevo_estado, nuevo_estado, orden_id),
         )
 
+def update_orden_taller_operativo(conn, orden_id: int, fecha_prometida, prioridad: str):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            UPDATE ordenes_taller
+            SET fecha_prometida = %s,
+                prioridad = %s,
+                updated_at = NOW()
+            WHERE id = %s
+            RETURNING id
+            """,
+            (fecha_prometida, prioridad, orden_id),
+        )
+        return cur.fetchone()
+
+def marcar_aviso_retiro_enviado(conn, orden_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            UPDATE ordenes_taller
+            SET cliente_avisado_retiro = TRUE,
+                fecha_aviso_retiro = NOW(),
+                updated_at = NOW()
+            WHERE id = %s
+            RETURNING id
+            """,
+            (orden_id,),
+        )
+        return cur.fetchone()
 
 def insert_orden_taller_item(conn, data: dict):
     with conn.cursor(row_factory=dict_row) as cur:
@@ -344,7 +431,6 @@ def insert_orden_taller_item(conn, data: dict):
         )
         return cur.fetchone()
 
-
 def get_items_orden_taller(conn, orden_id: int):
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
@@ -372,7 +458,6 @@ def get_items_orden_taller(conn, orden_id: int):
         )
         return cur.fetchall()
 
-
 def recalcular_total_orden_taller(conn, orden_id: int) -> None:
     with conn.cursor() as cur:
         cur.execute(
@@ -392,7 +477,6 @@ def recalcular_total_orden_taller(conn, orden_id: int) -> None:
             """,
             (orden_id, orden_id),
         )
-
 
 def insert_orden_taller_evento(
     conn,
@@ -423,7 +507,6 @@ def insert_orden_taller_evento(
             (id_orden_taller, tipo_evento, detalle, id_usuario),
         )
         return cur.fetchone()
-
 
 def get_eventos_orden_taller(conn, orden_id: int):
     with conn.cursor(row_factory=dict_row) as cur:
@@ -480,7 +563,6 @@ def get_item_orden_taller_by_id_for_update(conn, item_id: int):
             (item_id,),
         )
         return cur.fetchone()
-
 
 def update_orden_taller_item_aprobacion(conn, item_id: int, aprobado: bool):
     with conn.cursor(row_factory=dict_row) as cur:
@@ -613,7 +695,6 @@ def update_orden_taller_venta_generada(conn, orden_id: int, venta_id: int) -> No
             (venta_id, orden_id),
         )
 
-
 def get_venta_generada_por_orden_taller(conn, orden_id: int):
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
@@ -625,3 +706,37 @@ def get_venta_generada_por_orden_taller(conn, orden_id: int):
             (orden_id,),
         )
         return cur.fetchone()
+
+def get_nombre_cliente_item_taller(
+    conn,
+    id_variante: int | None,
+    id_servicio_taller: int | None,
+):
+    with conn.cursor(row_factory=dict_row) as cur:
+        if id_servicio_taller:
+            cur.execute(
+                """
+                SELECT nombre
+                FROM servicios_taller
+                WHERE id = %s
+                """,
+                (id_servicio_taller,),
+            )
+            row = cur.fetchone()
+            return row["nombre"] if row else None
+
+        if id_variante:
+            cur.execute(
+                """
+                SELECT p.nombre
+                FROM variantes v
+                JOIN productos p
+                    ON p.id = v.id_producto
+                WHERE v.id = %s
+                """,
+                (id_variante,),
+            )
+            row = cur.fetchone()
+            return row["nombre"] if row else None
+
+    return None
