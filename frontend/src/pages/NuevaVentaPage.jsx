@@ -765,7 +765,6 @@ async function handleBuscarEnter(e) {
       setGuardando(true);
       setError("");
       setMensaje("");
-      console.log("PAYLOAD FINAL VENTA", payload);
       const resultado = await crearVenta(payload);
 
       if (entregar_ahora) {

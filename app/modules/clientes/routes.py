@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Query
 
-from .schema import ClienteCreateInput, ClienteUpdateInput, BicicletaClienteCreateInput
+from .schema import ClienteCreateInput, ClienteUpdateInput, BicicletaClienteCreateInput, AutorizarServiceVencidoInput, CrearOrdenServicePostventaInput 
 from .service import (
     listar_clientes_service,
     obtener_cliente_service,
@@ -11,6 +11,8 @@ from .service import (
     listar_bicicletas_cliente_service,
     crear_bicicleta_cliente_service,
     obtener_historial_bicicleta_cliente_service,
+    autorizar_service_vencido_bicicleta_cliente_service,
+    crear_orden_service_postventa_bicicleta_cliente_service,
     )
 
 router = APIRouter()
@@ -61,4 +63,28 @@ def historial_bicicleta_cliente(cliente_id: int, bicicleta_id: int):
     return obtener_historial_bicicleta_cliente_service(
         cliente_id=cliente_id,
         bicicleta_id=bicicleta_id,
+    )
+
+@router.patch("/{cliente_id}/bicicletas/{bicicleta_id}/autorizar-service-vencido")
+def autorizar_service_vencido_bicicleta(
+    cliente_id: int,
+    bicicleta_id: int,
+    data: AutorizarServiceVencidoInput,
+):
+    return autorizar_service_vencido_bicicleta_cliente_service(
+        cliente_id=cliente_id,
+        bicicleta_id=bicicleta_id,
+        data=data,
+    )
+
+@router.post("/{cliente_id}/bicicletas/{bicicleta_id}/crear-service-postventa")
+def crear_service_postventa_bicicleta(
+    cliente_id: int,
+    bicicleta_id: int,
+    data: CrearOrdenServicePostventaInput,
+):
+    return crear_orden_service_postventa_bicicleta_cliente_service(
+        cliente_id=cliente_id,
+        bicicleta_id=bicicleta_id,
+        data=data,
     )

@@ -1,6 +1,6 @@
 from typing import Optional, Literal
 from pydantic import BaseModel, Field
-
+from datetime import datetime
 TipoCliente = Literal["consumidor_final", "minorista", "mayorista"]
 
 CondicionIva = Literal[
@@ -42,3 +42,13 @@ class BicicletaClienteCreateInput(BaseModel):
     numero_cuadro: str | None = Field(default=None, max_length=100)
     notas: str | None = None
 
+
+class AutorizarServiceVencidoInput(BaseModel):
+    id_usuario: int = Field(gt=0)
+    motivo: str = Field(min_length=3, max_length=500)
+
+class CrearOrdenServicePostventaInput(BaseModel):
+    id_sucursal: int = Field(gt=0)
+    id_usuario: int = Field(gt=0)
+    fecha_prometida: datetime | None = None
+    prioridad: Literal["normal", "urgente"] = "normal"

@@ -1,10 +1,13 @@
 import { API_BASE_URL } from "../config/appConfig";
+import { clearStoredSession, getStoredAuthToken } from "./sessionStore";
 
 export async function apiRequest(path, options = {}) {
   const isFormData = options.body instanceof FormData;
+  const token = getStoredAuthToken();
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(isFormData
         ? {}
         : {
@@ -22,6 +25,11 @@ export async function apiRequest(path, options = {}) {
     : null;
 
   if (!response.ok) {
+    if (response.status === 401 && path !== "/auth/login") {
+      clearStoredSession();
+      window.dispatchEvent(new Event("session-expired"));
+    }
+
     const detail = data?.detail;
 
     if (Array.isArray(detail)) {

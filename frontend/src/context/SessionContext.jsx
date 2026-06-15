@@ -1,5 +1,10 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { login as loginAuth } from "../services/authService";
+import {
+  clearStoredSession,
+  getStoredSession,
+  saveStoredSession,
+} from "../services/sessionStore";
 
 const LABELS_ROL = {
   administrador: "Administrador",
@@ -7,8 +12,6 @@ const LABELS_ROL = {
   operador: "Operador",
   mecanico: "Taller",
 };
-
-const SESSION_STORAGE_KEY = "erp_session_usuario";
 
 const SUCURSAL_DEFAULT = {
   id: 1,
@@ -26,19 +29,30 @@ export function SessionProvider({ children }) {
     inicializarSesion();
   }, []);
 
+  useEffect(() => {
+    function handleSessionExpired() {
+      setUsuarioActual(null);
+    }
+
+    window.addEventListener("session-expired", handleSessionExpired);
+    return () => window.removeEventListener("session-expired", handleSessionExpired);
+  }, []);
+
   function inicializarSesion() {
     try {
       setCargandoSesion(true);
       setErrorSesion("");
 
-      const guardado = localStorage.getItem(SESSION_STORAGE_KEY);
-      const usuarioGuardado = guardado ? JSON.parse(guardado) : null;
+      const usuarioGuardado = getStoredSession();
 
-      if (usuarioGuardado?.id) {
+      if (usuarioGuardado?.id && usuarioGuardado?.token) {
         setUsuarioActual(normalizarUsuarioSesion(usuarioGuardado));
+      } else if (usuarioGuardado?.id) {
+        clearStoredSession();
+        setUsuarioActual(null);
       }
     } catch (err) {
-      localStorage.removeItem(SESSION_STORAGE_KEY);
+      clearStoredSession();
       setUsuarioActual(null);
       setErrorSesion(err.message || "No se pudo inicializar la sesión");
     } finally {
@@ -52,20 +66,26 @@ export function SessionProvider({ children }) {
     const usuario = await loginAuth({ username, password });
     const normalizado = normalizarUsuarioSesion(usuario);
 
-    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(normalizado));
+    saveStoredSession(normalizado);
     setUsuarioActual(normalizado);
 
     return normalizado;
   }
 
   function cerrarSesionOperativa() {
-    localStorage.removeItem(SESSION_STORAGE_KEY);
+    clearStoredSession();
     setUsuarioActual(null);
   }
 
   function seleccionarUsuario(usuario) {
+    if (!usuario?.token) {
+      clearStoredSession();
+      setUsuarioActual(null);
+      return;
+    }
+
     const normalizado = normalizarUsuarioSesion(usuario);
-    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(normalizado));
+    saveStoredSession(normalizado);
     setUsuarioActual(normalizado);
   }
 
@@ -124,6 +144,9 @@ function normalizarUsuarioSesion(usuario) {
     username: usuario.username,
     email: usuario.email ?? null,
     rol: usuario.rol,
+    token: usuario.token ?? null,
+    token_type: usuario.token_type ?? "bearer",
+    expires_in: usuario.expires_in ?? null,
     activo: usuario.activo ?? true,
     id_sucursal: usuario.id_sucursal ?? SUCURSAL_DEFAULT.id,
   };

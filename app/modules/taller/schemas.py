@@ -124,6 +124,8 @@ class OrdenTallerResponse(BaseModel):
     saldo_pendiente: Decimal
     id_venta_generada: int | None = None
     id_usuario: int
+    es_service_postventa: bool = False
+    tipo_postventa: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -184,3 +186,9 @@ class OrdenTallerGenerarVentaOutput(BaseModel):
     orden_id: int
     venta_id: int
     estado_orden: str
+
+class OrdenTallerPostventaCreate(BaseModel):
+    id_sucursal: int = Field(gt=0)
+    id_usuario: int = Field(gt=0)
+    fecha_prometida: datetime | None = None
+    prioridad: Literal["normal", "urgente"] = "normal"

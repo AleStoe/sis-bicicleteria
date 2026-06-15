@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import router as api_router
+from app.core.auth import auth_middleware
 from app.db.connection import get_connection
 from app.modules.auditoria.routes import router as auditoria_router
 
@@ -12,6 +13,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 UPLOADS_DIR = BASE_DIR / "uploads"
 
 app = FastAPI(title="Sistema Bicicleteria Agus")
+
+app.middleware("http")(auth_middleware)
 
 app.add_middleware(
     CORSMiddleware,

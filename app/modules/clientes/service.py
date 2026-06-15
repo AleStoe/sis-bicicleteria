@@ -1,6 +1,15 @@
 from fastapi import HTTPException
 
 from app.db.connection import get_connection
+from datetime import date
+from app.modules.taller.repository import (
+    validar_sucursal_activa,
+    validar_usuario_activo,
+    insert_orden_taller,
+    insert_orden_taller_evento,
+    get_orden_taller_by_id,
+    get_orden_postventa_abierta_por_bicicleta,
+)
 from .repository import (
     get_clientes,
     get_cliente_by_id,
@@ -15,6 +24,7 @@ from .repository import (
     get_bicicleta_cliente_detalle,
     get_historial_taller_bicicleta_cliente,
     get_venta_origen_bicicleta_cliente,
+    autorizar_service_vencido_bicicleta_cliente,
 )
 
 
@@ -302,5 +312,169 @@ def obtener_historial_bicicleta_cliente_service(cliente_id: int, bicicleta_id: i
             "venta_origen": venta_origen,
             "historial_taller": historial_taller,
         }
+    finally:
+        conn.close()
+    
+def autorizar_service_vencido_bicicleta_cliente_service(
+    cliente_id: int,
+    bicicleta_id: int,
+    data,
+):
+    conn = get_connection()
+
+    try:
+        with conn.transaction():
+            _obtener_cliente_o_404(conn, cliente_id)
+
+            bicicleta = get_bicicleta_cliente_detalle(
+                conn,
+                cliente_id=cliente_id,
+                bicicleta_id=bicicleta_id,
+            )
+
+            if bicicleta is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No existe la bicicleta {bicicleta_id} para el cliente {cliente_id}",
+                )
+
+            if bicicleta.get("plan_postventa") != "service_30_dias":
+                raise HTTPException(
+                    status_code=400,
+                    detail="La bicicleta no tiene plan de service 30 días",
+                )
+
+            if bicicleta.get("service_gratis_usado"):
+                raise HTTPException(
+                    status_code=400,
+                    detail="El service bonificado ya fue usado",
+                )
+
+            motivo = _limpiar_texto(data.motivo)
+
+            if not motivo:
+                raise HTTPException(
+                    status_code=400,
+                    detail="El motivo es obligatorio",
+                )
+
+            resultado = autorizar_service_vencido_bicicleta_cliente(
+                conn,
+                cliente_id=cliente_id,
+                bicicleta_id=bicicleta_id,
+                id_usuario=data.id_usuario,
+                motivo=motivo,
+            )
+
+            if resultado is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail="No se pudo autorizar el service vencido",
+                )
+
+            return {
+                "ok": True,
+                "cliente_id": cliente_id,
+                "bicicleta_id": bicicleta_id,
+                "autorizacion": resultado,
+            }
+    finally:
+        conn.close()
+
+def crear_orden_service_postventa_bicicleta_cliente_service(
+    cliente_id: int,
+    bicicleta_id: int,
+    data,
+):
+    conn = get_connection()
+
+    try:
+        with conn.transaction():
+            _obtener_cliente_o_404(conn, cliente_id)
+
+            try:
+                validar_sucursal_activa(conn, data.id_sucursal)
+                validar_usuario_activo(conn, data.id_usuario)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+
+            bicicleta = get_bicicleta_cliente_detalle(
+                conn,
+                cliente_id=cliente_id,
+                bicicleta_id=bicicleta_id,
+            )
+
+            if bicicleta is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No existe la bicicleta {bicicleta_id} para el cliente {cliente_id}",
+                )
+
+            if bicicleta.get("plan_postventa") != "service_30_dias":
+                raise HTTPException(
+                    status_code=400,
+                    detail="La bicicleta no tiene plan de service 30 días",
+                )
+
+            if bicicleta.get("service_gratis_usado"):
+                raise HTTPException(
+                    status_code=400,
+                    detail="El service bonificado ya fue usado",
+                )
+
+            fecha_limite = bicicleta.get("fecha_limite_service_gratis")
+            autorizado_fuera_plazo = bool(
+                bicicleta.get("service_gratis_autorizado_fuera_plazo")
+            )
+            orden_postventa_abierta = get_orden_postventa_abierta_por_bicicleta(
+                conn,
+                bicicleta_id=bicicleta_id,
+            )
+
+            if orden_postventa_abierta is not None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Ya existe una orden de service postventa pendiente "
+                        f"para esta bicicleta: #{orden_postventa_abierta['id']}"
+                    ),
+                )
+            if fecha_limite and fecha_limite < date.today() and not autorizado_fuera_plazo:
+                raise HTTPException(
+                    status_code=400,
+                    detail="El service bonificado está vencido. Primero autorizá la excepción fuera de plazo.",
+                )
+
+            orden = insert_orden_taller(
+                conn,
+                {
+                    "id_sucursal": data.id_sucursal,
+                    "id_cliente": cliente_id,
+                    "id_bicicleta_cliente": bicicleta_id,
+                    "estado": "ingresada",
+                    "problema_reportado": "Service bonificado 30 días",
+                    "fecha_prometida": data.fecha_prometida,
+                    "prioridad": data.prioridad,
+                    "es_service_postventa": True,
+                    "tipo_postventa": "service_30_dias",
+                    "id_usuario": data.id_usuario,
+                },
+            )
+
+            insert_orden_taller_evento(
+                conn,
+                id_orden_taller=orden["id"],
+                tipo_evento="creada",
+                detalle="Orden de service postventa 30 días creada desde ficha de bicicleta",
+                id_usuario=data.id_usuario,
+            )
+
+            return {
+                "ok": True,
+                "cliente_id": cliente_id,
+                "bicicleta_id": bicicleta_id,
+                "orden_id": orden["id"],
+                "orden": get_orden_taller_by_id(conn, orden["id"]),
+            }
     finally:
         conn.close()

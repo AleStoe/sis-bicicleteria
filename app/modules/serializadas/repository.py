@@ -92,7 +92,13 @@ def insert_bicicleta_cliente(conn, data: dict):
                 rodado,
                 color,
                 numero_cuadro,
-                notas
+                notas,
+                fecha_compra,
+                condicion_entrega,
+                plan_postventa,
+                fecha_limite_service_gratis,
+                service_gratis_usado,
+                id_orden_service_gratis
             )
             VALUES (
                 %(id_cliente)s,
@@ -103,7 +109,13 @@ def insert_bicicleta_cliente(conn, data: dict):
                 %(rodado)s,
                 %(color)s,
                 %(numero_cuadro)s,
-                %(notas)s
+                %(notas)s,
+                %(fecha_compra)s,
+                %(condicion_entrega)s,
+                %(plan_postventa)s,
+                %(fecha_limite_service_gratis)s,
+                %(service_gratis_usado)s,
+                %(id_orden_service_gratis)s
             )
             RETURNING id
             """,
@@ -117,6 +129,12 @@ def insert_bicicleta_cliente(conn, data: dict):
                 "color": data.get("color"),
                 "numero_cuadro": data.get("numero_cuadro"),
                 "notas": data.get("notas"),
+                "fecha_compra": data.get("fecha_compra"),
+                "condicion_entrega": data.get("condicion_entrega"),
+                "plan_postventa": data.get("plan_postventa"),
+                "fecha_limite_service_gratis": data.get("fecha_limite_service_gratis"),
+                "service_gratis_usado": data.get("service_gratis_usado", False),
+                "id_orden_service_gratis": data.get("id_orden_service_gratis"),
             },
         )
 

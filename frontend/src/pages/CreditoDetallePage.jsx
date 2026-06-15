@@ -4,8 +4,8 @@ import { obtenerCredito, reintegrarCredito } from "../services/creditosService";
 import { EstadoCreditoBadge } from "./CreditosListPage";
 import { formatMoney } from "../utils/formatters";
 import { getCreditoContexto, getMovimientoCreditoLabel, getOrigenFinancieroLabel, getPoliticaCreditoGeneral } from "../utils/financials";
+import { useSession } from "../context/SessionContext";
 
-const ID_USUARIO = 1;
 const ID_SUCURSAL = 1;
 
 const MEDIOS = [
@@ -17,6 +17,7 @@ const MEDIOS = [
 
 export default function CreditoDetallePage() {
   const { creditoId } = useParams();
+  const { usuarioId } = useSession();
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -82,7 +83,7 @@ export default function CreditoDetallePage() {
         medio_pago: form.medio_pago,
         motivo: form.motivo.trim(),
         id_sucursal: ID_SUCURSAL,
-        id_usuario: ID_USUARIO,
+        id_usuario: usuarioId,
       });
 
       setForm({ monto: "", medio_pago: "efectivo", motivo: "" });

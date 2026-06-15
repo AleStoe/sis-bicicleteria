@@ -616,7 +616,25 @@ function BicicletasGrid({ cliente, bicicletas }) {
             <Info label="Rodado" value={bici.rodado || "-"} />
             <Info label="Color" value={bici.color || "-"} />
           </div>
+          <div style={styles.bikeSpecs}>
+            <Info label="Entrega" value={renderEntrega(bici.condicion_entrega)} />
+            <Info label="Postventa" value={renderPostventa(bici.plan_postventa)} />
+          </div>
 
+          <div style={styles.bikeSpecs}>
+            <Info
+              label="Estado service"
+              value={calcularEstadoPostventa(bici)}
+            />
+            <Info
+              label="Vence"
+              value={
+                bici.fecha_limite_service_gratis
+                  ? formatDate(bici.fecha_limite_service_gratis)
+                  : "-"
+              }
+            />
+          </div>
           {bici.notas && <div style={styles.bikeNotes}>{bici.notas}</div>}
 
           <Link to={`/clientes/${cliente.id}/bicicletas/${bici.id}`} style={styles.linkAction}>
@@ -692,6 +710,52 @@ function renderCondicionIva(condicion) {
     exento: "Exento",
   };
   return map[condicion] || condicion || "-";
+}
+function renderEntrega(valor) {
+  const map = {
+    armada: "Armada",
+    en_caja: "En caja",
+  };
+
+  return map[valor] || "-";
+}
+
+function renderPostventa(valor) {
+  const map = {
+    garantia_fabrica: "Garantía fábrica",
+    service_30_dias: "Service 30 días",
+    sin_service: "Sin service",
+  };
+
+  return map[valor] || "-";
+}
+
+function calcularEstadoPostventa(bici) {
+  if (bici.plan_postventa !== "service_30_dias") {
+    return "No aplica";
+  }
+
+  if (bici.service_gratis_usado) {
+    return "Usado";
+  }
+
+  if (bici.service_gratis_autorizado_fuera_plazo) {
+    return "Autorizado";
+  }
+
+  if (bici.fecha_limite_service_gratis) {
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+
+    const limite = new Date(bici.fecha_limite_service_gratis);
+    limite.setHours(0, 0, 0, 0);
+
+    if (limite < hoy) {
+      return "Vencido";
+    }
+  }
+
+  return "Disponible";
 }
 
 const styles = {

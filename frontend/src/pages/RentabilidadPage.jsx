@@ -6,8 +6,8 @@ import {
   getRentabilidadMensual,
 } from "../services/rentabilidadService";
 import { formatMoney, formatPercent } from "../utils/formatters";
+import { useSession } from "../context/SessionContext";
 
-const USUARIO_ID = 1;
 const SUCURSAL_ID = 1;
 
 function mesActual() {
@@ -56,6 +56,7 @@ const secondaryButton = {
 };
 
 export default function RentabilidadPage() {
+  const { usuarioId } = useSession();
   const [periodoMes, setPeriodoMes] = useState(mesActual());
   const [idRegla, setIdRegla] = useState("");
   const [rentabilidad, setRentabilidad] = useState(null);
@@ -129,7 +130,7 @@ export default function RentabilidadPage() {
         periodo_mes: periodoMes,
         id_sucursal: SUCURSAL_ID,
         id_regla_distribucion: rentabilidad.regla_distribucion.id,
-        id_usuario: USUARIO_ID,
+        id_usuario: usuarioId,
         observaciones: "Cierre mensual desde Rentabilidad",
       });
       setOk("Mes cerrado correctamente");

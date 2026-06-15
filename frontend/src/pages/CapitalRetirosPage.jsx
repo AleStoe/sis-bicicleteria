@@ -13,8 +13,8 @@ import {
   getResumenCapital,
 } from "../services/capitalRetirosService";
 import { formatMoney } from "../utils/formatters";
+import { useSession } from "../context/SessionContext";
 
-const USUARIO_ID = 1;
 const SUCURSAL_ID = 1;
 
 const tiposMovimiento = [
@@ -80,6 +80,7 @@ const secondaryButton = {
 };
 
 export default function CapitalRetirosPage() {
+  const { usuarioId } = useSession();
   const navigate = useNavigate();
   const [participantes, setParticipantes] = useState([]);
   const [movimientos, setMovimientos] = useState([]);
@@ -191,7 +192,7 @@ export default function CapitalRetirosPage() {
         medio_pago: movForm.medio_pago || null,
         impacta_caja: Boolean(movForm.impacta_caja),
         fecha: movForm.fecha || null,
-        id_usuario: USUARIO_ID,
+        id_usuario: usuarioId,
       });
 
       setMovForm({
@@ -260,7 +261,7 @@ export default function CapitalRetirosPage() {
     setError("");
     setOk("");
     try {
-      await anularMovimientoCapital(mov.id, { motivo, id_usuario: USUARIO_ID });
+      await anularMovimientoCapital(mov.id, { motivo, id_usuario: usuarioId });
       setOk("Movimiento anulado correctamente");
       setDetalle(null);
       await cargarTodo();

@@ -8,8 +8,8 @@ import {
   simularReglasComerciales,
 } from "../services/reglasComercialesService";
 import { formatMoney } from "../utils/formatters";
+import { useSession } from "../context/SessionContext";
 
-const ID_USUARIO = 1;
 const ID_SUCURSAL = 1;
 
 const MEDIOS = ["efectivo", "transferencia", "mercadopago", "tarjeta"];
@@ -22,6 +22,7 @@ const SIMULACION_INICIAL = {
 
 export default function NuevaReservaPage() {
   const navigate = useNavigate();
+  const { usuarioId } = useSession();
 
   const [clientes, setClientes] = useState([]);
   const [catalogo, setCatalogo] = useState([]);
@@ -327,7 +328,7 @@ export default function NuevaReservaPage() {
     const payload = {
       id_cliente: Number(clienteId),
       id_sucursal: ID_SUCURSAL,
-      id_usuario: ID_USUARIO,
+      id_usuario: usuarioId,
       fecha_vencimiento: fechaVencimiento || null,
       nota: nota.trim() || null,
       items: items.map((item) => ({

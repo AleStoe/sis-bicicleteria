@@ -1,6 +1,8 @@
 from fastapi import HTTPException
 import bcrypt
 from app.modules.auditoria import service as auditoria_service
+from app.core.auth import crear_token_usuario
+from app.core.config import settings
 from app.shared.constants import AUDITORIA_ACCION_LOGIN_EXITOSO
 from app.db.connection import get_connection
 from app.modules.usuarios.repository import get_usuario_login
@@ -63,6 +65,9 @@ def login_service(data):
             "nombre": usuario["nombre"],
             "username": usuario["username"],
             "rol": usuario["rol"],
+            "token": crear_token_usuario(usuario),
+            "token_type": "bearer",
+            "expires_in": settings.auth_token_minutes * 60,
         }
     finally:
         conn.close()

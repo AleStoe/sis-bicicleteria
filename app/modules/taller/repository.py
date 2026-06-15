@@ -98,9 +98,11 @@ def insert_orden_taller(conn, data: dict):
                 problema_reportado,
                 fecha_prometida,
                 prioridad,
+                es_service_postventa,
+                tipo_postventa,
                 id_usuario
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING
                 id,
                 fecha_ingreso,
@@ -116,6 +118,8 @@ def insert_orden_taller(conn, data: dict):
                 cliente_avisado_retiro,
                 fecha_aviso_retiro,
                 prioridad,
+                es_service_postventa,
+                tipo_postventa,
                 total_final,
                 saldo_pendiente,
                 id_venta_generada,
@@ -131,6 +135,8 @@ def insert_orden_taller(conn, data: dict):
                 data["problema_reportado"],
                 data.get("fecha_prometida"),
                 data.get("prioridad", "normal"),
+                data.get("es_service_postventa", False),
+                data.get("tipo_postventa"),
                 data["id_usuario"],
             ),
         )
@@ -174,6 +180,8 @@ def _ordenes_taller_select_sql():
                 ot.cliente_avisado_retiro,
                 ot.fecha_aviso_retiro,
                 ot.prioridad,
+                ot.es_service_postventa,
+                ot.tipo_postventa,
                 CASE
                     WHEN ot.estado IN ('retirada', 'cancelada') THEN NULL
                     ELSE GREATEST((CURRENT_DATE - ot.fecha_ingreso::date), 0)
@@ -197,7 +205,6 @@ def _ordenes_taller_select_sql():
             JOIN bicicletas_clientes bc ON bc.id = ot.id_bicicleta_cliente
             ORDER BY ot.fecha_ingreso DESC, ot.id DESC
             """
-
 
 def get_ordenes_taller(
     conn,
@@ -325,6 +332,8 @@ def get_orden_taller_by_id(conn, orden_id: int):
                 ot.cliente_avisado_retiro,
                 ot.fecha_aviso_retiro,
                 ot.prioridad,
+                ot.es_service_postventa,
+                ot.tipo_postventa,
                 CASE
                     WHEN ot.estado IN ('retirada', 'cancelada') THEN NULL
                     ELSE GREATEST((CURRENT_DATE - ot.fecha_ingreso::date), 0)
@@ -392,6 +401,8 @@ def get_orden_taller_by_id_for_update(conn, orden_id: int):
                 ot.cliente_avisado_retiro,
                 ot.fecha_aviso_retiro,
                 ot.prioridad,
+                ot.es_service_postventa,
+                ot.tipo_postventa,
                 CASE
                     WHEN ot.estado IN ('retirada', 'cancelada') THEN NULL
                     ELSE GREATEST((CURRENT_DATE - ot.fecha_ingreso::date), 0)
@@ -419,7 +430,7 @@ def get_orden_taller_by_id_for_update(conn, orden_id: int):
             (orden_id,),
         )
         return cur.fetchone()
-
+    
 def update_orden_taller_estado(conn, orden_id: int, nuevo_estado: str) -> None:
     with conn.cursor() as cur:
         cur.execute(
@@ -823,3 +834,27 @@ def get_nombre_cliente_item_taller(
             return row["nombre"] if row else None
 
     return None
+
+
+def get_orden_postventa_abierta_por_bicicleta(
+    conn,
+    bicicleta_id: int,
+):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT
+                id,
+                estado,
+                fecha_ingreso
+            FROM ordenes_taller
+            WHERE id_bicicleta_cliente = %s
+              AND es_service_postventa = TRUE
+              AND tipo_postventa = 'service_30_dias'
+              AND estado NOT IN ('retirada', 'cancelada')
+            ORDER BY fecha_ingreso DESC, id DESC
+            LIMIT 1
+            """,
+            (bicicleta_id,),
+        )
+        return cur.fetchone()

@@ -196,20 +196,29 @@ export default function TallerDetallePage() {
     );
   }, [items]);
 
+  const esOrdenPostventa = orden?.es_service_postventa === true;
+
   const puedeTerminarTrabajo =
     orden?.estado === "en_reparacion" &&
-    resumen.activos > 0 &&
-    resumen.pendientesAprobacion === 0 &&
-    resumen.pendientesEjecucion === 0;
+    (
+      esOrdenPostventa ||
+      (
+        resumen.activos > 0 &&
+        resumen.pendientesAprobacion === 0 &&
+        resumen.pendientesEjecucion === 0
+      )
+    );
 
   const puedeGenerarVenta =
     orden?.estado === "terminada" &&
     !orden?.id_venta_generada &&
+    !esOrdenPostventa &&
     resumen.facturables > 0;
 
   const puedeMarcarListaParaRetirar =
-    orden?.estado === "facturada" &&
-    Boolean(orden?.id_venta_generada);
+    esOrdenPostventa
+      ? orden?.estado === "terminada"
+      : orden?.estado === "facturada" && Boolean(orden?.id_venta_generada);
 
   const puedeMarcarRetirada = orden?.estado === "lista_para_retirar";
 
@@ -275,7 +284,11 @@ export default function TallerDetallePage() {
     if (!orden) return [];
 
     return (TRANSICIONES_UI[orden.estado] || []).filter((estado) => {
-      if (estado === "lista_para_retirar" && !orden.id_venta_generada) {
+      if (
+        estado === "lista_para_retirar" &&
+        !orden.id_venta_generada &&
+        orden.es_service_postventa !== true
+      ) {
         return false;
       }
 
@@ -617,6 +630,11 @@ export default function TallerDetallePage() {
           <p style={styles.subtitle}>
             Ingresada: {formatDate(orden.fecha_ingreso)} · {nombreClienteOrden(orden)} · {descripcionBicicletaOrden(orden)}
           </p>
+          {orden.es_service_postventa && (
+            <p style={styles.subtitle}>
+              Service bonificado de postventa · {orden.tipo_postventa === "service_30_dias" ? "30 días" : orden.tipo_postventa}
+            </p>
+          )}
         </div>
 
         <div style={{ ...styles.heroActions, ...(isMobile ? styles.heroActionsMobile : {}) }}>
@@ -630,6 +648,11 @@ export default function TallerDetallePage() {
 
       <section style={{ ...styles.metricsGrid, ...(isMobile ? styles.metricsGridMobile : {}) }}>
         <Metric label="Estado" value={<EstadoBadge estado={orden.estado} />} tone="dark" />
+        <Metric
+          label="Tipo"
+          value={orden.es_service_postventa ? "Postventa 30 días" : "Taller"}
+          tone={orden.es_service_postventa ? "info" : "muted"}
+        />
         <Metric label="Total" value={formatMoney(orden.total_final)} tone="orange" />
         <Metric label="Saldo pendiente" value={formatMoney(orden.saldo_pendiente)} tone={Number(orden.saldo_pendiente || 0) > 0 ? "warning" : "ok"} />
         <Metric label="Venta" value={orden.id_venta_generada ? `#${orden.id_venta_generada}` : "No generada"} tone={orden.id_venta_generada ? "ok" : "warning"} />

@@ -491,7 +491,6 @@ async function handleDevolverSerializada(item) {
   }
 
   const { venta, items = [], situacion_financiera } = data;
-  console.log("VENTA DETALLE venta", venta);
   const totalFinal = Number(venta.total_final || 0);
   const subtotalBase = Number(venta.subtotal_base || 0);
   const factorDevolucion = subtotalBase > 0 ? totalFinal / subtotalBase : 1;

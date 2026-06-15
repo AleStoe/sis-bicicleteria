@@ -12,6 +12,7 @@ os.environ["DB_PORT"] = "5432"
 os.environ["DB_NAME"] = "bicicleteria_test"
 os.environ["DB_USER"] = "postgres"
 os.environ["DB_PASSWORD"] = "1460"
+os.environ["APP_AUTH_DISABLED"] = "true"
 
 from app.main import app  # noqa: E402
 

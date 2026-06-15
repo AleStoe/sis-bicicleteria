@@ -2,7 +2,7 @@ from decimal import Decimal
 from urllib.parse import quote_plus
 from fastapi import HTTPException
 from pydantic import ValidationError
-
+from app.modules.clientes.repository import marcar_service_gratis_utilizado
 from app.db.connection import get_connection
 from app.shared.constants import (
     ORDEN_TALLER_ESTADO_INGRESADA,
@@ -218,7 +218,14 @@ def cambiar_estado_orden_taller(orden_id: int, data):
                 estado_actual=orden["estado"],
                 nuevo_estado=data.nuevo_estado,
             )
-            if orden["estado"] == "en_reparacion" and data.nuevo_estado == "terminada":
+
+            es_service_postventa = orden.get("es_service_postventa") is True
+
+            if (
+                orden["estado"] == "en_reparacion"
+                and data.nuevo_estado == "terminada"
+                and not es_service_postventa
+            ):
                 items = get_items_orden_taller(conn, orden_id)
 
                 items_activos = [
@@ -243,13 +250,37 @@ def cambiar_estado_orden_taller(orden_id: int, data):
                         detail="No se puede marcar como terminada: hay items aprobados o pendientes sin ejecutar",
                     )
 
-            if orden["estado"] == "terminada" and data.nuevo_estado == "lista_para_retirar":
+            if (
+                orden["estado"] == "terminada"
+                and data.nuevo_estado == "lista_para_retirar"
+                and not es_service_postventa
+            ):
                 if not orden.get("id_venta_generada"):
                     raise HTTPException(
                         status_code=400,
                         detail="Primero generá la venta antes de marcar la orden como lista para retirar",
                     )
+
             update_orden_taller_estado(conn, orden_id, data.nuevo_estado)
+
+            if (
+                data.nuevo_estado == "retirada"
+                and es_service_postventa
+                and orden.get("tipo_postventa") == "service_30_dias"
+            ):
+                marcar_service_gratis_utilizado(
+                    conn,
+                    bicicleta_id=orden["id_bicicleta_cliente"],
+                    orden_id=orden_id,
+                )
+
+                insert_orden_taller_evento(
+                    conn,
+                    id_orden_taller=orden_id,
+                    tipo_evento="service_postventa_utilizado",
+                    detalle="Service bonificado 30 días marcado como utilizado",
+                    id_usuario=data.id_usuario,
+                )
 
             insert_orden_taller_evento(
                 conn,

@@ -64,3 +64,29 @@ export function obtenerHistorialBicicletaCliente(
     `/clientes/${clienteId}/bicicletas/${bicicletaId}/historial`
   );
 }
+
+export function autorizarServiceVencido(clienteId, bicicletaId, data) {
+  return apiRequest(
+    `/clientes/${clienteId}/bicicletas/${bicicletaId}/autorizar-service-vencido`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export function crearServicePostventa(clienteId, bicicletaId, data) {
+  return apiRequest(
+    `/clientes/${clienteId}/bicicletas/${bicicletaId}/crear-service-postventa`,
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export const autorizarServiceVencidoBicicleta =
+  autorizarServiceVencido;
+
+export const crearServicePostventaBicicleta =
+  crearServicePostventa;

@@ -14,14 +14,15 @@ import AltaMercaderiaProveedorSelect from "../components/mercaderia/alta/AltaMer
 import AltaMercaderiaIngresoFields from "../components/mercaderia/alta/AltaMercaderiaIngresoFields";
 import AltaMercaderiaImagenUpload from "../components/mercaderia/alta/AltaMercaderiaImagenUpload";
 import { formatMoney, formatNumber } from "../utils/formatters";
+import { useSession } from "../context/SessionContext";
 
-const ID_USUARIO = 1;
 const ID_SUCURSAL_DEFAULT = 1;
 
 const MARGEN_MINORISTA = 1.2;
 const MARGEN_MAYORISTA = 0.55;
 
 export default function AltaMercaderiaPage() {
+  const { usuarioId } = useSession();
   const buscarRef = useRef(null);
   const costoRef = useRef(null);
 
@@ -356,7 +357,7 @@ export default function AltaMercaderiaPage() {
       gastos_adicionales: Number(form.gastos_adicionales || 0),
       origen_ingreso: "manual",
       observacion: form.observacion.trim() || null,
-      id_usuario: ID_USUARIO,
+      id_usuario: usuarioId,
     };
 
     await crearIngresoStock(payload);

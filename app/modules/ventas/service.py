@@ -1,5 +1,6 @@
 from decimal import Decimal
 from psycopg.rows import dict_row
+from datetime import date, timedelta
 from app.modules.pagos import service as pagos_service
 from app.shared.money import to_decimal
 from fastapi import HTTPException
@@ -1192,6 +1193,8 @@ def entregar_venta(venta_id: int, data):
                     detail=f"La venta {venta_id} no tiene items para entregar",
                 )
 
+            fecha_compra = date.today()
+
             for item in items:
                 if item.get("id_bicicleta_serializada") is not None:
                     bicicleta = _validar_y_bloquear_bicicleta_serializada_para_entrega(
@@ -1199,11 +1202,13 @@ def entregar_venta(venta_id: int, data):
                         item=item,
                         venta_id=venta_id,
                     )
+
                     update_bicicleta_serializada_estado(
                         conn,
                         bicicleta["id"],
                         "entregada",
                     )
+
                     stock_service.registrar_movimiento_serializada_sin_stock(
                         conn,
                         {
@@ -1217,6 +1222,20 @@ def entregar_venta(venta_id: int, data):
                             "nota": f"Entrega de bicicleta serializada en venta #{venta_id}",
                         },
                     )
+
+                    condicion_entrega = data.condicion_entrega_bicicleta
+
+                    plan_postventa = _resolver_postventa_bicicleta(
+                        condicion_entrega,
+                        data.plan_postventa_bicicleta,
+                    )
+
+                    fecha_limite_service_gratis = (
+                        fecha_compra + timedelta(days=30)
+                        if plan_postventa == "service_30_dias"
+                        else None
+                    )
+
                     insert_bicicleta_cliente(
                         conn,
                         {
@@ -1229,6 +1248,12 @@ def entregar_venta(venta_id: int, data):
                             "color": None,
                             "numero_cuadro": bicicleta["numero_cuadro"],
                             "notas": f"Generada desde venta #{venta_id}",
+                            "fecha_compra": fecha_compra,
+                            "condicion_entrega": condicion_entrega,
+                            "plan_postventa": plan_postventa,
+                            "fecha_limite_service_gratis": fecha_limite_service_gratis,
+                            "service_gratis_usado": False,
+                            "id_orden_service_gratis": None,
                         },
                     )
 
@@ -1237,6 +1262,7 @@ def entregar_venta(venta_id: int, data):
             for item in items_stock:
                 if item.get("id_bicicleta_serializada") is not None:
                     continue
+
                 if item.get("id_orden_taller_item") is not None:
                     continue
 
@@ -1255,6 +1281,7 @@ def entregar_venta(venta_id: int, data):
                 )
 
             update_venta_estado(conn, venta_id, VENTA_ESTADO_ENTREGADA)
+
             if entrega_con_deuda:
                 deudas_service.crear_deuda_desde_venta_entregada(
                     conn,
@@ -1264,6 +1291,7 @@ def entregar_venta(venta_id: int, data):
                     id_usuario=data.id_usuario,
                     observacion=f"Deuda creada automáticamente al entregar venta #{venta_id}",
                 )
+
             accion_auditoria = (
                 AUDITORIA_ACCION_VENTA_ENTREGA_CON_DEUDA
                 if entrega_con_deuda
@@ -2220,3 +2248,29 @@ def _calcular_credito_neto_por_devolucion(
         return Decimal("0")
 
     return redondear_monto(credito_neto)
+
+def _resolver_postventa_bicicleta(condicion_entrega: str, plan_postventa: str | None) -> str:
+    if condicion_entrega == "en_caja":
+        if plan_postventa == "service_30_dias":
+            raise HTTPException(
+                status_code=400,
+                detail="Una bicicleta entregada en caja no puede tener service 30 días",
+            )
+        return "garantia_fabrica"
+
+    if condicion_entrega == "armada":
+        if plan_postventa in {None, ""}:
+            return "service_30_dias"
+
+        if plan_postventa not in {"service_30_dias", "sin_service"}:
+            raise HTTPException(
+                status_code=400,
+                detail="Plan postventa inválido para bicicleta armada",
+            )
+
+        return plan_postventa
+
+    raise HTTPException(
+        status_code=400,
+        detail="Condición de entrega inválida",
+    )

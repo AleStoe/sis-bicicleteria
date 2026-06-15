@@ -110,6 +110,12 @@ class VentaCreateInput(BaseModel):
 
 class VentaEntregaInput(BaseModel):
     id_usuario: int = Field(gt=0)
+    condicion_entrega_bicicleta: Literal["en_caja", "armada"] = "armada"
+    plan_postventa_bicicleta: Literal[
+        "garantia_fabrica",
+        "service_30_dias",
+        "sin_service",
+    ] | None = None
 
 
 class VentaAnulacionInput(BaseModel):

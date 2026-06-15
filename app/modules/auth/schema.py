@@ -11,3 +11,6 @@ class LoginOutput(BaseModel):
     nombre: str
     username: str
     rol: str | None = None
+    token: str
+    token_type: str = "bearer"
+    expires_in: int

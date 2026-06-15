@@ -114,8 +114,6 @@ export default function NuevaVentaCheckoutPage() {
 
     try {
       setGuardando(true);
-      console.log("PAYLOAD FINAL VENTA CHECKOUT PAGE", payload);
-      console.log("PAYLOAD CHECKOUT RECIBIDO", payloadCheckout);
       const resultado = await crearVenta(payload);
 
       if (entregar_ahora) {

@@ -231,7 +231,17 @@ def get_bicicletas_cliente(conn, cliente_id: int):
                 rodado,
                 color,
                 numero_cuadro,
-                notas
+                notas,
+                fecha_compra,
+                condicion_entrega,
+                plan_postventa,
+                fecha_limite_service_gratis,
+                service_gratis_usado,
+                id_orden_service_gratis,
+                service_gratis_autorizado_fuera_plazo,
+                motivo_service_gratis_fuera_plazo,
+                id_usuario_autoriza_service_gratis,
+                fecha_autoriza_service_gratis
             FROM bicicletas_clientes
             WHERE id_cliente = %s
             ORDER BY id DESC
@@ -298,8 +308,18 @@ def get_bicicleta_cliente_detalle(conn, cliente_id: int, bicicleta_id: int):
                 color,
                 numero_cuadro,
                 notas,
+                fecha_compra,
+                condicion_entrega,
+                plan_postventa,
+                fecha_limite_service_gratis,
+                service_gratis_usado,
+                id_orden_service_gratis,
                 created_at,
-                updated_at
+                updated_at,
+                service_gratis_autorizado_fuera_plazo,
+                motivo_service_gratis_fuera_plazo,
+                id_usuario_autoriza_service_gratis,
+                fecha_autoriza_service_gratis
             FROM bicicletas_clientes
             WHERE id = %s
               AND id_cliente = %s
@@ -350,3 +370,60 @@ def get_venta_origen_bicicleta_cliente(conn, venta_id: int | None):
             (venta_id,),
         )
         return cur.fetchone()
+
+def autorizar_service_vencido_bicicleta_cliente(
+    conn,
+    cliente_id: int,
+    bicicleta_id: int,
+    id_usuario: int,
+    motivo: str,
+):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE bicicletas_clientes
+            SET
+                service_gratis_autorizado_fuera_plazo = true,
+                motivo_service_gratis_fuera_plazo = %s,
+                id_usuario_autoriza_service_gratis = %s,
+                fecha_autoriza_service_gratis = now(),
+                updated_at = now()
+            WHERE id = %s
+              AND id_cliente = %s
+            RETURNING
+                id,
+                id_cliente,
+                service_gratis_autorizado_fuera_plazo,
+                motivo_service_gratis_fuera_plazo,
+                id_usuario_autoriza_service_gratis,
+                fecha_autoriza_service_gratis
+            """,
+            (
+                motivo,
+                id_usuario,
+                bicicleta_id,
+                cliente_id,
+            ),
+        )
+        return cur.fetchone()
+    
+def marcar_service_gratis_utilizado(
+    conn,
+    bicicleta_id: int,
+    orden_id: int,
+):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE bicicletas_clientes
+            SET
+                service_gratis_usado = true,
+                id_orden_service_gratis = %s,
+                updated_at = now()
+            WHERE id = %s
+            """,
+            (
+                orden_id,
+                bicicleta_id,
+            ),
+        )

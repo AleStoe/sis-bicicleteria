@@ -1526,3 +1526,45 @@ def test_generar_venta_desde_taller_con_servicio_taller(
     orden_actualizada = client.get(f"/ordenes_taller/{orden['id']}").json()
     assert orden_actualizada["estado"] == "facturada"
     assert orden_actualizada["id_venta_generada"] == venta_id
+
+def test_service_postventa_no_permite_duplicar_orden_abierta(
+    client,
+    db_conn,
+    seed_taller_basico,
+):
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE bicicletas_clientes
+            SET
+                plan_postventa = 'service_30_dias',
+                fecha_limite_service_gratis = CURRENT_DATE + INTERVAL '30 days',
+                service_gratis_usado = false,
+                id_orden_service_gratis = NULL,
+                service_gratis_autorizado_fuera_plazo = false
+            WHERE id = %s
+            """,
+            (seed_taller_basico["bicicleta_cliente_id"],),
+        )
+    db_conn.commit()
+
+    response_1 = client.post(
+        f"/clientes/{seed_taller_basico['cliente_id']}/bicicletas/{seed_taller_basico['bicicleta_cliente_id']}/crear-service-postventa",
+        json={
+            "id_sucursal": seed_taller_basico["sucursal_id"],
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+
+    assert response_1.status_code == 200, response_1.text
+
+    response_2 = client.post(
+        f"/clientes/{seed_taller_basico['cliente_id']}/bicicletas/{seed_taller_basico['bicicleta_cliente_id']}/crear-service-postventa",
+        json={
+            "id_sucursal": seed_taller_basico["sucursal_id"],
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+
+    assert response_2.status_code == 400
+    assert "Ya existe una orden de service postventa pendiente" in response_2.json()["detail"]
