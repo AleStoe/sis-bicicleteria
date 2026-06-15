@@ -78,6 +78,15 @@ export const styles = {
     display: "grid",
     gap: 10,
   },
+  postventaNotice: {
+    background: "#ecfdf5",
+    border: "1px solid #bbf7d0",
+    color: "#047857",
+    borderRadius: 14,
+    padding: 12,
+    fontWeight: 850,
+    lineHeight: 1.4,
+  },
   linkButton: {
     display: "block",
     textAlign: "center",

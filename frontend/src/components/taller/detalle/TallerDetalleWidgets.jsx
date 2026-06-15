@@ -44,6 +44,24 @@ export function OperadorPanel({
   });
   const [collapsed, setCollapsed] = useState(compact);
   const isCollapsed = compact && collapsed;
+  const esPostventa = orden?.es_service_postventa === true;
+  const pasos = esPostventa
+    ? [
+        ["1", "Ingreso"],
+        ["2", "Registro"],
+        ["3", "Revision"],
+        ["4", "Terminada"],
+        ["5", "Aviso"],
+        ["6", "Retiro"],
+      ]
+    : [
+        ["1", "Ingreso"],
+        ["2", "Presupuesto"],
+        ["3", "Reparacion"],
+        ["4", "Facturar"],
+        ["5", "Cobrar"],
+        ["6", "Retiro"],
+      ];
 
   return (
     <section style={{ ...styles.card, ...styles.operatorCard, ...(compact ? styles.operatorCardCompact : {}) }}>
@@ -71,14 +89,7 @@ export function OperadorPanel({
           <p style={styles.operatorText}>{paso.descripcion}</p>
 
           <div style={styles.operatorProgress}>
-        {[
-          ["1", "Ingreso"],
-          ["2", "Presupuesto"],
-          ["3", "Reparación"],
-          ["4", "Facturar"],
-          ["5", "Cobrar"],
-          ["6", "Retiro"],
-        ].map(([numero, label]) => (
+        {pasos.map(([numero, label]) => (
           <div
             key={numero}
             style={
@@ -94,38 +105,59 @@ export function OperadorPanel({
       </div>
 
       <div style={styles.checkList}>
-        <CheckLine
-          ok={resumen.activos > 0}
-          label={
-            resumen.activos > 0
-              ? `${resumen.activos} item/s activos cargados`
-              : "Cargá al menos un item activo"
-          }
-        />
-        <CheckLine
-          ok={resumen.pendientesAprobacion === 0 && resumen.activos > 0}
-          label={
-            resumen.pendientesAprobacion === 0 && resumen.activos > 0
-              ? "Todo aprobado"
-              : `${resumen.pendientesAprobacion} item/s sin aprobar`
-          }
-        />
-        <CheckLine
-          ok={resumen.pendientesEjecucion === 0 && resumen.activos > 0}
-          label={
-            resumen.pendientesEjecucion === 0 && resumen.activos > 0
-              ? "Todo ejecutado"
-              : `${resumen.pendientesEjecucion} item/s aprobados sin ejecutar`
-          }
-        />
-        <CheckLine
-          ok={Boolean(orden.id_venta_generada)}
-          label={
-            orden.id_venta_generada
-              ? `Venta #${orden.id_venta_generada} generada`
-              : "Venta pendiente de generar"
-          }
-        />
+        {esPostventa ? (
+          <>
+            <CheckLine ok label="Service bonificado: sin presupuesto" />
+            <CheckLine ok label="Sin venta ni saldo pendiente" />
+            <CheckLine
+              ok={orden.estado !== "ingresada"}
+              label={orden.estado !== "ingresada" ? "Ingreso registrado" : "Registrar ingreso"}
+            />
+            <CheckLine
+              ok={["terminada", "lista_para_retirar", "retirada"].includes(orden.estado)}
+              label={
+                ["terminada", "lista_para_retirar", "retirada"].includes(orden.estado)
+                  ? "Revision finalizada"
+                  : "Finalizar revision"
+              }
+            />
+          </>
+        ) : (
+          <>
+            <CheckLine
+              ok={resumen.activos > 0}
+              label={
+                resumen.activos > 0
+                  ? `${resumen.activos} item/s activos cargados`
+                  : "Cargá al menos un item activo"
+              }
+            />
+            <CheckLine
+              ok={resumen.pendientesAprobacion === 0 && resumen.activos > 0}
+              label={
+                resumen.pendientesAprobacion === 0 && resumen.activos > 0
+                  ? "Todo aprobado"
+                  : `${resumen.pendientesAprobacion} item/s sin aprobar`
+              }
+            />
+            <CheckLine
+              ok={resumen.pendientesEjecucion === 0 && resumen.activos > 0}
+              label={
+                resumen.pendientesEjecucion === 0 && resumen.activos > 0
+                  ? "Todo ejecutado"
+                  : `${resumen.pendientesEjecucion} item/s aprobados sin ejecutar`
+              }
+            />
+            <CheckLine
+              ok={Boolean(orden.id_venta_generada)}
+              label={
+                orden.id_venta_generada
+                  ? `Venta #${orden.id_venta_generada} generada`
+                  : "Venta pendiente de generar"
+              }
+            />
+          </>
+        )}
       </div>
 
           {accion.mensaje && (

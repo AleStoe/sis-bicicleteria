@@ -1568,3 +1568,95 @@ def test_service_postventa_no_permite_duplicar_orden_abierta(
 
     assert response_2.status_code == 400
     assert "Ya existe una orden de service postventa pendiente" in response_2.json()["detail"]
+
+
+def test_service_postventa_flujo_completo_marca_usado_y_genera_whatsapp(
+    client,
+    db_conn,
+    seed_taller_basico,
+):
+    cliente_id = seed_taller_basico["cliente_id"]
+    bicicleta_id = seed_taller_basico["bicicleta_cliente_id"]
+    usuario_id = seed_taller_basico["usuario_id"]
+    sucursal_id = seed_taller_basico["sucursal_id"]
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE bicicletas_clientes
+            SET
+                plan_postventa = 'service_30_dias',
+                fecha_limite_service_gratis = CURRENT_DATE + INTERVAL '30 days',
+                service_gratis_usado = false,
+                id_orden_service_gratis = NULL,
+                service_gratis_autorizado_fuera_plazo = false
+            WHERE id = %s
+            """,
+            (bicicleta_id,),
+        )
+    db_conn.commit()
+
+    crear = client.post(
+        f"/clientes/{cliente_id}/bicicletas/{bicicleta_id}/crear-service-postventa",
+        json={
+            "id_sucursal": sucursal_id,
+            "id_usuario": usuario_id,
+        },
+    )
+
+    assert crear.status_code == 200, crear.text
+    orden_id = crear.json()["orden_id"]
+    assert crear.json()["orden"]["estado"] == "ingresada"
+    assert crear.json()["orden"]["es_service_postventa"] is True
+
+    duplicado = client.post(
+        f"/clientes/{cliente_id}/bicicletas/{bicicleta_id}/crear-service-postventa",
+        json={
+            "id_sucursal": sucursal_id,
+            "id_usuario": usuario_id,
+        },
+    )
+
+    assert duplicado.status_code == 400
+    assert f"#{orden_id}" in duplicado.json()["detail"]
+
+    for estado in [
+        "presupuestada",
+        "en_reparacion",
+        "terminada",
+        "lista_para_retirar",
+    ]:
+        response = client.post(
+            f"/ordenes_taller/{orden_id}/estado",
+            json={
+                "nuevo_estado": estado,
+                "id_usuario": usuario_id,
+            },
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["estado"] == estado
+
+    whatsapp = client.get(f"/ordenes_taller/{orden_id}/mensaje-lista-retiro")
+    assert whatsapp.status_code == 200, whatsapp.text
+    whatsapp_data = whatsapp.json()
+    assert whatsapp_data["orden_id"] == orden_id
+    assert "lista para retirar" in whatsapp_data["mensaje"].lower()
+    assert "service" in whatsapp_data["mensaje"].lower()
+    assert whatsapp_data["whatsapp_url"].startswith("https://api.whatsapp.com/send?phone=549")
+
+    retirada = client.post(
+        f"/ordenes_taller/{orden_id}/estado",
+        json={
+            "nuevo_estado": "retirada",
+            "id_usuario": usuario_id,
+        },
+    )
+
+    assert retirada.status_code == 200, retirada.text
+    assert retirada.json()["estado"] == "retirada"
+
+    detalle_bici = client.get(f"/clientes/{cliente_id}/bicicletas").json()
+    bicicleta = next(item for item in detalle_bici if item["id"] == bicicleta_id)
+
+    assert bicicleta["service_gratis_usado"] is True
+    assert bicicleta["id_orden_service_gratis"] == orden_id

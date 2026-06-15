@@ -1,6 +1,21 @@
 from decimal import Decimal
 import uuid
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def ensure_categoria_catalogo(db_conn):
+    with db_conn.cursor() as cur:
+        cur.execute("SELECT id FROM categorias LIMIT 1")
+        if cur.fetchone() is None:
+            cur.execute(
+                "INSERT INTO categorias (nombre, activo) VALUES (%s, true)",
+                ("Categoria Test Catalogo",),
+            )
+    db_conn.commit()
+
+
 def _dec(value) -> Decimal:
     return Decimal(str(value))
 

@@ -211,12 +211,16 @@ export default function TallerListPage() {
 function OrdenCard({ orden }) {
   const esFinal = ESTADOS_FINALES.has(orden.estado);
   const isMobile = useBreakpoint();
+  const esPostventa = orden.es_service_postventa === true;
 
   return (
     <article style={{ ...(esFinal ? styles.orderCardMuted : styles.orderCard), ...(isMobile ? styles.orderCardMobile : {}) }}>
       <div style={{ ...styles.orderTop, ...(isMobile ? styles.orderTopMobile : {}) }}>
         <div>
-          <p style={styles.orderNumber}>Orden #{orden.id}</p>
+          <div style={styles.orderNumberRow}>
+            <p style={styles.orderNumber}>Orden #{orden.id}</p>
+            {esPostventa && <span style={styles.postventaBadge}>Postventa</span>}
+          </div>
           <h3 style={{ ...styles.orderProblem, ...(isMobile ? styles.orderProblemMobile : {}) }}>{orden.problema_reportado || "Sin problema reportado"}</h3>
         </div>
         <EstadoBadge estado={orden.estado} />
@@ -226,11 +230,13 @@ function OrdenCard({ orden }) {
         <Info label="Fecha" value={formatDate(orden.fecha_ingreso)} />
         <Info label="Cliente" value={nombreClienteOrden(orden)} />
         <Info label="Bicicleta" value={descripcionBicicletaOrden(orden)} />
-        <Info label="Presupuesto" value={resumenTotalOrden(orden)} />
+        <Info label={esPostventa ? "Cobro" : "Presupuesto"} value={resumenTotalOrden(orden)} />
       </div>
 
       <div style={{ ...styles.orderFooter, ...(isMobile ? styles.orderFooterMobile : {}) }}>
-        <span style={styles.smallMuted}>Saldo: {formatMoney(orden.saldo_pendiente)}</span>
+        <span style={styles.smallMuted}>
+          {esPostventa ? "Service bonificado" : `Saldo: ${formatMoney(orden.saldo_pendiente)}`}
+        </span>
         <Link to={`/taller/${orden.id}`} style={{ ...styles.detailButton, ...(isMobile ? styles.detailButtonMobile : {}) }}>Ver orden</Link>
       </div>
     </article>
@@ -281,6 +287,8 @@ function descripcionBicicletaOrden(orden) {
 }
 
 function resumenTotalOrden(orden) {
+  if (orden.es_service_postventa === true) return "No aplica";
+
   const total = Number(orden.total_final || 0);
   if (total <= 0) return "Sin presupuesto";
   return formatMoney(total);
@@ -349,7 +357,9 @@ const styles = {
   orderCard: { border: "1px solid #e2e8f0", borderRadius: 20, background: "white", padding: 14, display: "grid", gap: 12, boxShadow: "0 8px 18px rgba(15,23,42,.04)" },
   orderCardMuted: { border: "1px solid #e2e8f0", borderRadius: 20, background: "#f8fafc", padding: 14, display: "grid", gap: 12, opacity: 0.82 },
   orderTop: { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start" },
+  orderNumberRow: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" },
   orderNumber: { margin: 0, color: "#f97316", fontSize: 12, fontWeight: 1000, textTransform: "uppercase" },
+  postventaBadge: { background: "#ecfdf5", color: "#047857", border: "1px solid #bbf7d0", borderRadius: 999, padding: "4px 8px", fontSize: 11, fontWeight: 1000, textTransform: "uppercase" },
   orderProblem: { margin: "4px 0 0", fontSize: 18, lineHeight: 1.3 },
   orderMetaGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 },
   orderFooter: { display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", borderTop: "1px solid #f1f5f9", paddingTop: 10 },

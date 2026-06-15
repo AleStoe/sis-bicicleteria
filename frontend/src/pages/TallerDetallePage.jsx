@@ -653,9 +653,9 @@ export default function TallerDetallePage() {
           value={orden.es_service_postventa ? "Postventa 30 días" : "Taller"}
           tone={orden.es_service_postventa ? "info" : "muted"}
         />
-        <Metric label="Total" value={formatMoney(orden.total_final)} tone="orange" />
-        <Metric label="Saldo pendiente" value={formatMoney(orden.saldo_pendiente)} tone={Number(orden.saldo_pendiente || 0) > 0 ? "warning" : "ok"} />
-        <Metric label="Venta" value={orden.id_venta_generada ? `#${orden.id_venta_generada}` : "No generada"} tone={orden.id_venta_generada ? "ok" : "warning"} />
+        <Metric label="Total" value={esOrdenPostventa ? "No aplica" : formatMoney(orden.total_final)} tone={esOrdenPostventa ? "muted" : "orange"} />
+        <Metric label="Saldo pendiente" value={esOrdenPostventa ? "No aplica" : formatMoney(orden.saldo_pendiente)} tone={esOrdenPostventa || Number(orden.saldo_pendiente || 0) <= 0 ? "ok" : "warning"} />
+        <Metric label="Venta" value={esOrdenPostventa ? "No aplica" : orden.id_venta_generada ? `#${orden.id_venta_generada}` : "No generada"} tone={esOrdenPostventa || orden.id_venta_generada ? "ok" : "warning"} />
         <Metric label="Prometida" value={orden.fecha_prometida ? formatDate(orden.fecha_prometida) : "Sin fecha"} tone={orden.dias_demorados > 0 ? "warning" : "muted"} />
         <Metric label="Demora" value={orden.dias_demorados > 0 ? `${orden.dias_demorados} día(s)` : "Sin demora"} tone={orden.dias_demorados > 0 ? "warning" : "ok"} />
         <Metric label="Prioridad" value={orden.prioridad === "urgente" ? "Urgente" : "Normal"} tone={orden.prioridad === "urgente" ? "warning" : "muted"} />
@@ -676,6 +676,23 @@ export default function TallerDetallePage() {
             </div>
           </section>
 
+          {esOrdenPostventa ? (
+            <section style={styles.card}>
+              <div style={styles.sectionHeader}>
+                <div>
+                  <p style={styles.eyebrow}>Service postventa</p>
+                  <h2 style={styles.cardTitle}>Sin presupuesto ni facturacion</h2>
+                  <p style={styles.muted}>
+                    Esta OT cubre el primer control bonificado de la bicicleta. Avanzala por la guia del operador y avisale al cliente cuando quede lista para retirar.
+                  </p>
+                </div>
+              </div>
+
+              <div style={styles.postventaNotice}>
+                No hace falta cargar items, imprimir presupuesto ni generar venta. Si aparece un trabajo extra con costo, crealo como una orden de taller normal.
+              </div>
+            </section>
+          ) : (
           <section style={styles.card}>
             <div style={styles.sectionHeader}>
               <div>
@@ -856,17 +873,22 @@ export default function TallerDetallePage() {
               </div>
             </form>
           </section>
+          )}
 
           <section style={styles.cardNoPadding}>
             <div style={styles.tableHeader}>
               <div>
-                <p style={styles.eyebrow}>Trabajo</p>
-                <h2 style={styles.cardTitle}>Items de la orden</h2>
+                <p style={styles.eyebrow}>{esOrdenPostventa ? "Control realizado" : "Trabajo"}</p>
+                <h2 style={styles.cardTitle}>{esOrdenPostventa ? "Detalle postventa" : "Items de la orden"}</h2>
               </div>
             </div>
 
             {items.length === 0 ? (
-              <div style={styles.empty}>Todavía no hay items cargados.</div>
+              esOrdenPostventa ? (
+                <div style={styles.empty}>No aplica cargar items para este service bonificado.</div>
+              ) : (
+                <div style={styles.empty}>Todavía no hay items cargados.</div>
+              )
             ) : (
               <div style={styles.itemsList}>
                 {items.map((item) => (
@@ -947,7 +969,11 @@ export default function TallerDetallePage() {
               <Info label="Avisado" value={orden.cliente_avisado_retiro ? `Sí${orden.fecha_aviso_retiro ? ` · ${formatDate(orden.fecha_aviso_retiro)}` : ""}` : "No"} />
               {orden.estado === "lista_para_retirar" ? (
                 <>
-                  <p style={styles.muted}>Envía un resumen real de trabajos ejecutados, total, bicicleta y horarios del local.</p>
+                  <p style={styles.muted}>
+                    {esOrdenPostventa
+                      ? "Abre WhatsApp con un mensaje simple para avisar que la bici ya esta lista."
+                      : "Envía un resumen real de trabajos ejecutados, total, bicicleta y horarios del local."}
+                  </p>
                   <button
                     type="button"
                     onClick={enviarWhatsappRetiro}
@@ -966,22 +992,30 @@ export default function TallerDetallePage() {
           <section style={styles.card}>
             <h2 style={styles.sideTitle}>Presupuesto</h2>
             <div style={styles.billingBox}>
-              <p style={styles.muted}>Imprimí el presupuesto para aprobación del cliente. No genera venta ni cobra.</p>
-              <button
-                type="button"
-                onClick={imprimirPresupuesto}
-                disabled={items.filter((item) => item.etapa !== "cancelado").length === 0}
-                style={styles.secondaryButtonFull}
-              >
-                Imprimir presupuesto
-              </button>
+              {esOrdenPostventa ? (
+                <div style={styles.postventaNotice}>No aplica: este service esta bonificado y no requiere presupuesto.</div>
+              ) : (
+                <>
+                  <p style={styles.muted}>Imprimí el presupuesto para aprobación del cliente. No genera venta ni cobra.</p>
+                  <button
+                    type="button"
+                    onClick={imprimirPresupuesto}
+                    disabled={items.filter((item) => item.etapa !== "cancelado").length === 0}
+                    style={styles.secondaryButtonFull}
+                  >
+                    Imprimir presupuesto
+                  </button>
+                </>
+              )}
             </div>
           </section>
 
           <section style={styles.card}>
             <h2 style={styles.sideTitle}>Facturación</h2>
             <div style={styles.billingBox}>
-              {orden.id_venta_generada ? (
+              {esOrdenPostventa ? (
+                <div style={styles.postventaNotice}>No aplica: al retirarla se marca el service bonificado como usado, sin generar venta.</div>
+              ) : orden.id_venta_generada ? (
                 <>
                   <Info label="Venta generada" value={`#${orden.id_venta_generada}`} />
                   <Link to={`/ventas/${orden.id_venta_generada}/cobro`} style={styles.linkButton}>Cobrar venta</Link>

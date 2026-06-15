@@ -440,13 +440,17 @@ function PostventaActions({
   if (puedeCrear) {
     return (
       <div style={postventaActionBoxStyle}>
+        <div style={postventaActionTextStyle}>
+          <strong>Service bonificado disponible</strong>
+          <span>Crealo desde aca para que quede vinculado a esta bicicleta y despues se marque como usado automaticamente.</span>
+        </div>
         <button
           type="button"
           onClick={onCrearService}
           disabled={actionLoading}
-          style={primaryBtnStyle}
+          style={postventaPrimaryBtnStyle}
         >
-          {actionLoading ? "Creando..." : "Crear service bonificado"}
+          {actionLoading ? "Creando OT..." : "Crear OT service postventa"}
         </button>
       </div>
     );
@@ -734,6 +738,14 @@ const postventaActionBoxStyle = {
   fontWeight: 800,
 };
 
+const postventaActionTextStyle = {
+  display: "grid",
+  gap: "3px",
+  minWidth: "240px",
+  flex: "1 1 280px",
+  color: "#344054",
+};
+
 const primaryBtnStyle = {
   border: "1px solid #0b5bd3",
   background: "#0b5bd3",
@@ -742,6 +754,12 @@ const primaryBtnStyle = {
   padding: "10px 13px",
   fontWeight: 900,
   cursor: "pointer",
+};
+
+const postventaPrimaryBtnStyle = {
+  ...primaryBtnStyle,
+  padding: "12px 16px",
+  boxShadow: "0 10px 22px rgba(11,91,211,.18)",
 };
 
 const warningBtnStyle = {
