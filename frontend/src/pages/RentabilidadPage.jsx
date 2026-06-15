@@ -7,6 +7,7 @@ import {
 } from "../services/rentabilidadService";
 import { formatMoney, formatPercent } from "../utils/formatters";
 import { useSession } from "../context/SessionContext";
+import useMediaQuery from "../hooks/useMediaQuery";
 
 const SUCURSAL_ID = 1;
 
@@ -57,6 +58,8 @@ const secondaryButton = {
 
 export default function RentabilidadPage() {
   const { usuarioId } = useSession();
+  const isMobile = useMediaQuery("(max-width: 760px)");
+  const isNarrow = useMediaQuery("(max-width: 1000px)");
   const [periodoMes, setPeriodoMes] = useState(mesActual());
   const [idRegla, setIdRegla] = useState("");
   const [rentabilidad, setRentabilidad] = useState(null);
@@ -141,21 +144,21 @@ export default function RentabilidadPage() {
   }
 
   return (
-    <div style={{ padding: 24, display: "grid", gap: 18 }}>
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
-        <div>
-          <h1 style={{ margin: 0, color: "#101828" }}>Rentabilidad mensual</h1>
+    <div style={{ padding: isMobile ? 12 : 24, display: "grid", gap: isMobile ? 12 : 18, minWidth: 0 }}>
+      <header style={{ display: isMobile ? "grid" : "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, minWidth: 0 }}>
+        <div style={{ minWidth: 0 }}>
+          <h1 style={{ margin: 0, color: "#101828", fontSize: isMobile ? 26 : 32, lineHeight: 1.1 }}>Rentabilidad mensual</h1>
           <p style={{ margin: "6px 0 0", color: "#667085" }}>
             Margen real vendido menos gastos operativos, con distribución mensual congelable.
           </p>
         </div>
-        <button style={primaryButton} onClick={cerrarMes}>Cerrar mes</button>
+        <button style={{ ...primaryButton, width: isMobile ? "100%" : undefined }} onClick={cerrarMes}>Cerrar mes</button>
       </header>
 
       {error && <div style={{ ...card, padding: 14, borderColor: "#fecaca", color: "#b91c1c", background: "#fef2f2" }}>{error}</div>}
       {ok && <div style={{ ...card, padding: 14, borderColor: "#bbf7d0", color: "#166534", background: "#f0fdf4" }}>{ok}</div>}
 
-      <section style={{ ...card, padding: 16, display: "grid", gridTemplateColumns: "220px 1fr", gap: 12 }}>
+      <section style={{ ...card, padding: isMobile ? 12 : 16, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "220px 1fr", gap: 12, minWidth: 0 }}>
         <label style={{ display: "grid", gap: 6, fontWeight: 800, color: "#344054" }}>
           Mes
           <input style={input} type="date" value={periodoMes} onChange={(e) => setPeriodoMes(e.target.value)} />
@@ -169,14 +172,14 @@ export default function RentabilidadPage() {
         </label>
       </section>
 
-      <section style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
+      <section style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))", gap: isMobile ? 8 : 12, minWidth: 0 }}>
         <Metric title="Ventas netas" value={money(rentabilidad?.ventas_netas)} />
         <Metric title="CMV neto" value={money(rentabilidad?.cmv_neto)} />
         <Metric title="Margen bruto" value={money(rentabilidad?.margen_bruto)} strong />
         <Metric title="Gastos" value={money(rentabilidad?.gastos_operativos)} />
       </section>
 
-      <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.2fr) minmax(360px, .8fr)", gap: 18, alignItems: "start" }}>
+      <section style={{ display: "grid", gridTemplateColumns: isNarrow ? "1fr" : "minmax(0, 1.2fr) minmax(360px, .8fr)", gap: isMobile ? 12 : 18, alignItems: "start", minWidth: 0 }}>
         <div style={{ display: "grid", gap: 18 }}>
           <div style={{ ...card, padding: 16 }}>
             <h2 style={{ margin: "0 0 12px" }}>Resultado distribuible</h2>

@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { crearProveedor, listarProveedores } from "../services/proveedoresService";
+import useMediaQuery from "../hooks/useMediaQuery";
 
 export default function ProveedoresPage() {
+  const isMobile = useMediaQuery("(max-width: 760px)");
+  const isNarrow = useMediaQuery("(max-width: 1100px)");
   const [proveedores, setProveedores] = useState([]);
   const [busqueda, setBusqueda] = useState("");
   const [soloActivos, setSoloActivos] = useState(true);
@@ -97,10 +100,10 @@ export default function ProveedoresPage() {
   }
 
   return (
-    <div style={styles.page}>
-      <div style={styles.header}>
+    <div style={{ ...styles.page, ...(isMobile ? styles.pageMobile : {}) }}>
+      <div style={{ ...styles.header, ...(isMobile ? styles.headerMobile : {}) }}>
         <div>
-          <h1 style={styles.title}>Proveedores</h1>
+          <h1 style={{ ...styles.title, ...(isMobile ? styles.titleMobile : {}) }}>Proveedores</h1>
           <p style={styles.subtitle}>
             Alta y consulta rápida de proveedores para stock y precios.
           </p>
@@ -110,7 +113,7 @@ export default function ProveedoresPage() {
       {error && <div style={styles.error}>{error}</div>}
       {mensaje && <div style={styles.success}>{mensaje}</div>}
 
-      <div style={styles.grid}>
+      <div style={isNarrow ? styles.gridMobile : styles.grid}>
         <section style={styles.card}>
           <h2 style={styles.cardTitle}>Nuevo proveedor</h2>
 
@@ -163,7 +166,7 @@ export default function ProveedoresPage() {
         </section>
 
         <section style={styles.card}>
-          <div style={styles.toolbar}>
+          <div style={isMobile ? styles.toolbarMobile : styles.toolbar}>
             <div>
               <h2 style={styles.cardTitle}>Listado</h2>
               <p style={styles.counter}>
@@ -181,7 +184,7 @@ export default function ProveedoresPage() {
             </button>
           </div>
 
-          <div style={styles.filters}>
+          <div style={isMobile ? styles.filtersMobile : styles.filters}>
             <input
               style={styles.input}
               value={busqueda}
@@ -259,16 +262,28 @@ const styles = {
   page: {
     padding: "24px",
   },
+  pageMobile: {
+    padding: "12px",
+    overflowX: "hidden",
+  },
   header: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "flex-start",
     marginBottom: "18px",
   },
+  headerMobile: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: "10px",
+  },
   title: {
     margin: 0,
     fontSize: "28px",
     fontWeight: 700,
+  },
+  titleMobile: {
+    fontSize: "24px",
   },
   subtitle: {
     margin: "6px 0 0",
@@ -278,6 +293,12 @@ const styles = {
     display: "grid",
     gridTemplateColumns: "360px 1fr",
     gap: "18px",
+    alignItems: "start",
+  },
+  gridMobile: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: "14px",
     alignItems: "start",
   },
   card: {
@@ -345,6 +366,13 @@ const styles = {
     alignItems: "center",
     marginBottom: "14px",
   },
+  toolbarMobile: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: "10px",
+    alignItems: "stretch",
+    marginBottom: "14px",
+  },
   counter: {
     margin: "4px 0 0",
     color: "#777",
@@ -357,6 +385,13 @@ const styles = {
     alignItems: "center",
     marginBottom: "14px",
   },
+  filtersMobile: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: "10px",
+    alignItems: "stretch",
+    marginBottom: "14px",
+  },
   checkboxLabel: {
     display: "flex",
     alignItems: "center",
@@ -366,10 +401,13 @@ const styles = {
   },
   tableWrapper: {
     overflowX: "auto",
+    maxWidth: "100%",
+    WebkitOverflowScrolling: "touch",
   },
   table: {
     width: "100%",
     borderCollapse: "collapse",
+    minWidth: "720px",
   },
   th: {
     textAlign: "left",

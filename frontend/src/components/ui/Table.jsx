@@ -1,4 +1,5 @@
 import { colors, radius } from "../../theme";
+import useBreakpoint from "./responsive/useBreakpoint";
 
 export default function Table({
   columns = [],
@@ -6,18 +7,24 @@ export default function Table({
   emptyMessage = "Sin registros",
   renderRow,
 }) {
+  const isMobile = useBreakpoint(760);
+
   return (
     <div
       style={{
         overflowX: "auto",
+        WebkitOverflowScrolling: "touch",
         border: `1px solid ${colors.border}`,
-        borderRadius: radius.lg,
+        borderRadius: isMobile ? radius.md : radius.lg,
         background: colors.surface,
+        maxWidth: "100%",
+        minWidth: 0,
       }}
     >
       <table
         style={{
           width: "100%",
+          minWidth: isMobile ? 760 : undefined,
           borderCollapse: "collapse",
         }}
       >
@@ -32,8 +39,8 @@ export default function Table({
                 key={column.key}
                 style={{
                   textAlign: "left",
-                  padding: "14px 16px",
-                  fontSize: 13,
+                  padding: isMobile ? "11px 12px" : "14px 16px",
+                  fontSize: isMobile ? 12 : 13,
                   color: colors.textMuted,
                   borderBottom: `1px solid ${colors.border}`,
                   whiteSpace: "nowrap",

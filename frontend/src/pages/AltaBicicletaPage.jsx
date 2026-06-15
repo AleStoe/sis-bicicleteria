@@ -1,4 +1,5 @@
 import AltaBicicletaForm from "../components/mercaderia/bicicletas/AltaBicicletaForm";
+import useMediaQuery from "../hooks/useMediaQuery";
 
 const CHECKS = [
   "Nombre claro: marca + tipo + modelo + rodado.",
@@ -8,12 +9,15 @@ const CHECKS = [
 ];
 
 export default function AltaBicicletaPage() {
+  const isMobile = useMediaQuery("(max-width: 760px)");
+  const isNarrow = useMediaQuery("(max-width: 1100px)");
+
   return (
-    <div style={styles.page}>
+    <div style={{ ...styles.page, ...(isMobile ? styles.pageMobile : {}) }}>
       <header style={styles.header}>
         <div>
           <p style={styles.eyebrow}>Mercadería / Bicicletas</p>
-          <h1 style={styles.title}>Alta de bicicletas</h1>
+          <h1 style={{ ...styles.title, ...(isMobile ? styles.titleMobile : {}) }}>Alta de bicicletas</h1>
           <p style={styles.subtitle}>
             Cargá el modelo base, sus variantes comerciales y el stock inicial.
             La ficha técnica queda como dato opcional.
@@ -21,12 +25,12 @@ export default function AltaBicicletaPage() {
         </div>
       </header>
 
-      <section style={styles.contentGrid}>
+      <section style={isNarrow ? styles.contentGridMobile : styles.contentGrid}>
         <main style={styles.mainColumn}>
           <AltaBicicletaForm />
         </main>
 
-        <aside style={styles.sideColumn}>
+        <aside style={isNarrow ? styles.sideColumnMobile : styles.sideColumn}>
           <section style={styles.sideCard}>
             <h3 style={styles.sideTitle}>Orden recomendado</h3>
             <ol style={styles.steps}>
@@ -70,6 +74,10 @@ const styles = {
     background: "#f3f4f6",
     color: "#111827",
   },
+  pageMobile: {
+    padding: "12px",
+    overflowX: "hidden",
+  },
   header: {
     marginBottom: "18px",
   },
@@ -86,6 +94,9 @@ const styles = {
     fontSize: "30px",
     fontWeight: 900,
   },
+  titleMobile: {
+    fontSize: "24px",
+  },
   subtitle: {
     margin: "6px 0 0",
     maxWidth: "780px",
@@ -99,6 +110,12 @@ const styles = {
     gap: "18px",
     alignItems: "start",
   },
+  contentGridMobile: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: "14px",
+    alignItems: "start",
+  },
   mainColumn: {
     minWidth: 0,
   },
@@ -107,6 +124,11 @@ const styles = {
     gap: "14px",
     position: "sticky",
     top: "16px",
+  },
+  sideColumnMobile: {
+    display: "grid",
+    gap: "12px",
+    position: "static",
   },
   sideCard: {
     background: "#ffffff",

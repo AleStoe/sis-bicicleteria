@@ -41,9 +41,12 @@ export default function Button({
       disabled={disabled}
       style={{
         width: fullWidth ? "100%" : undefined,
+        minWidth: 0,
         borderRadius: radius.md,
         padding: "10px 14px",
         fontWeight: 700,
+        lineHeight: 1.2,
+        whiteSpace: "normal",
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.45 : 1,
         boxShadow: disabled ? "none" : shadows.sm,

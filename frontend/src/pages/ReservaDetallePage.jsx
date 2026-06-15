@@ -11,12 +11,15 @@ import { formatDate, formatMoney } from "../utils/formatters";
 import { EstadoReservaBadge } from "./ReservasListPage";
 import { ConfirmModal } from "../components/ui/ConfirmModal";
 import { PromptModal } from "../components/ui/PromptModal";
+import useMediaQuery from "../hooks/useMediaQuery";
 
 
 export default function ReservaDetallePage() {
   const { reservaId } = useParams();
   const navigate = useNavigate();
   const { usuarioId } = useSession();
+  const isMobile = useMediaQuery("(max-width: 760px)");
+  const isNarrow = useMediaQuery("(max-width: 1000px)");
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [procesando, setProcesando] = useState(false);
@@ -200,16 +203,16 @@ export default function ReservaDetallePage() {
   const totalesItems = items.reduce((acc, item) => acc + Number(item.subtotal_estimado || 0), 0);
 
   return (
-    <div style={pageStyle}>
-      <div style={headerStyle}>
-        <div>
-          <h1 style={{ margin: 0 }}>Reserva #{reserva.id}</h1>
+    <div style={{ ...pageStyle, ...(isMobile ? pageMobileStyle : {}) }}>
+      <div style={{ ...headerStyle, ...(isMobile ? headerMobileStyle : {}) }}>
+        <div style={{ minWidth: 0 }}>
+          <h1 style={{ margin: 0, fontSize: isMobile ? 26 : 32, lineHeight: 1.1 }}>Reserva #{reserva.id}</h1>
           <p style={mutedStyle}>
             {reserva.cliente_nombre} #{reserva.id_cliente} · {formatDate(reserva.fecha_reserva)}
           </p>
         </div>
 
-        <div style={actionsStyle}>
+        <div style={{ ...actionsStyle, ...(isMobile ? actionsMobileStyle : {}) }}>
           <button onClick={cargarReserva} style={secondaryBtnStyle}>Refrescar</button>
           <Link to="/reservas" style={linkBtnStyle}>Volver</Link>
         </div>
@@ -218,14 +221,14 @@ export default function ReservaDetallePage() {
       {mensaje && <div style={successStyle}>{mensaje}</div>}
       {error && <div style={alertStyle}>Error: {error}</div>}
 
-      <section style={summaryCardsStyle}>
+      <section style={{ ...summaryCardsStyle, ...(isMobile ? summaryCardsMobileStyle : {}) }}>
         <Metric label="Total estimado" value={formatMoney(totalesItems)} />
         <Metric label="Base señada" value={formatMoney(reserva.sena_total)} />
         <Metric label="Saldo base" value={formatMoney(reserva.saldo_estimado)} highlight />
         <Metric label="Cobrado real" value={formatMoney(resumenPagos.cobrado)} />
       </section>
 
-      <div style={gridStyle}>
+      <div style={isNarrow ? gridMobileStyle : gridStyle}>
         <section style={cardStyle}>
           <h2 style={cardTitleStyle}>Resumen</h2>
           <div style={infoGridStyle}>
@@ -277,7 +280,7 @@ export default function ReservaDetallePage() {
         {items.length === 0 ? (
           <div style={{ padding: "18px" }}>No hay items registrados.</div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
+          <div style={{ overflowX: "auto", maxWidth: "100%", WebkitOverflowScrolling: "touch" }}>
             <table style={tableStyle}>
               <thead style={{ background: "#f9fafb" }}>
                 <tr>
@@ -306,7 +309,7 @@ export default function ReservaDetallePage() {
         )}
       </section>
 
-      <div style={twoColStyle}>
+      <div style={isNarrow ? twoColMobileStyle : twoColStyle}>
         <section style={cardStyle}>
           <div style={sectionHeaderStyle}>
             <div>
@@ -467,16 +470,21 @@ function capitalizar(texto) {
 }
 
 const pageStyle = { padding: "24px", background: "#f6f7fb", minHeight: "100vh" };
+const pageMobileStyle = { padding: "12px", overflowX: "hidden" };
 const headerStyle = { display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "center", marginBottom: "16px", flexWrap: "wrap" };
+const headerMobileStyle = { display: "grid", gridTemplateColumns: "1fr", alignItems: "start" };
 const actionsStyle = { display: "flex", gap: "10px", flexWrap: "wrap" };
+const actionsMobileStyle = { display: "grid", gridTemplateColumns: "1fr 1fr", width: "100%" };
 const mutedStyle = { color: "#667085", margin: "4px 0 0", fontSize: "13px" };
 const cardStyle = { background: "white", borderRadius: "14px", boxShadow: "0 2px 10px rgba(0,0,0,.08)", padding: "16px", marginBottom: "16px" };
 const cardTitleStyle = { marginTop: 0, marginBottom: "14px", fontSize: "20px" };
 const summaryCardsStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: "16px", marginBottom: "16px" };
+const summaryCardsMobileStyle = { gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "8px" };
 const metricStyle = { background: "white", borderRadius: "14px", boxShadow: "0 2px 10px rgba(0,0,0,.08)", padding: "16px", display: "grid", gap: "6px" };
 const metricValueStyle = { fontSize: "22px" };
 const metricHighlightStyle = { fontSize: "22px", color: "#0b5bd3" };
 const gridStyle = { display: "grid", gridTemplateColumns: "minmax(360px,1.4fr) minmax(300px,.8fr)", gap: "16px", alignItems: "start" };
+const gridMobileStyle = { display: "grid", gridTemplateColumns: "1fr", gap: "12px", alignItems: "start" };
 const infoGridStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: "12px" };
 const linkBtnStyle = { textDecoration: "none", padding: "8px 12px", borderRadius: "10px", border: "1px solid #d0d5dd", color: "#111827", background: "white" };
 const primaryBtnStyle = { width: "100%", border: "none", background: "#0b5bd3", color: "white", borderRadius: "12px", padding: "12px", fontWeight: 900, cursor: "pointer" };
@@ -490,6 +498,7 @@ const tableStyle = { width: "100%", borderCollapse: "collapse", minWidth: "850px
 const thStyle = { textAlign: "left", padding: "12px 10px", borderBottom: "1px solid #e5e7eb", fontSize: "13px", color: "#475467" };
 const tdStyle = { padding: "10px", verticalAlign: "top" };
 const twoColStyle = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" };
+const twoColMobileStyle = { display: "grid", gridTemplateColumns: "1fr", gap: "12px" };
 const eventStyle = { background: "#f9fafb", border: "1px solid #eaecf0", borderRadius: "12px", padding: "12px", display: "grid", gap: "5px" };
 const sectionHeaderStyle = { display: "flex", justifyContent: "space-between", gap: "12px", flexWrap: "wrap", alignItems: "start" };
 const paymentCardStyle = { background: "#f9fafb", border: "1px solid #eaecf0", borderRadius: "14px", padding: "12px", display: "grid", gap: "10px" };

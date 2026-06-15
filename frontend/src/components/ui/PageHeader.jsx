@@ -1,26 +1,32 @@
 import { spacing, typography, colors } from "../../theme";
+import useBreakpoint from "./responsive/useBreakpoint";
 
 export default function PageHeader({
   title,
   subtitle,
   actions,
 }) {
+  const isMobile = useBreakpoint(760);
+
   return (
     <div
       style={{
-        display: "flex",
+        display: isMobile ? "grid" : "flex",
         justifyContent: "space-between",
         alignItems: "start",
-        gap: spacing.lg,
-        marginBottom: spacing.xl,
+        gap: isMobile ? spacing.md : spacing.lg,
+        marginBottom: isMobile ? spacing.md : spacing.xl,
+        minWidth: 0,
       }}
     >
-      <div>
+      <div style={{ minWidth: 0 }}>
         <h1
           style={{
             margin: 0,
-            fontSize: typography.title.fontSize,
+            fontSize: isMobile ? 25 : typography.title.fontSize,
             fontWeight: typography.title.fontWeight,
+            lineHeight: 1.1,
+            overflowWrap: "anywhere",
           }}
         >
           {title}
@@ -31,6 +37,8 @@ export default function PageHeader({
             style={{
               marginTop: 6,
               color: colors.textMuted,
+              lineHeight: 1.35,
+              overflowWrap: "anywhere",
             }}
           >
             {subtitle}
@@ -39,7 +47,14 @@ export default function PageHeader({
       </div>
 
       {actions && (
-        <div style={{ display: "flex", gap: spacing.sm }}>
+        <div
+          style={{
+            display: isMobile ? "grid" : "flex",
+            gridTemplateColumns: isMobile ? "1fr 1fr" : undefined,
+            gap: spacing.sm,
+            width: isMobile ? "100%" : undefined,
+          }}
+        >
           {actions}
         </div>
       )}

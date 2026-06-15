@@ -5,6 +5,7 @@ import { EstadoCreditoBadge } from "./CreditosListPage";
 import { formatMoney } from "../utils/formatters";
 import { getCreditoContexto, getMovimientoCreditoLabel, getOrigenFinancieroLabel, getPoliticaCreditoGeneral } from "../utils/financials";
 import { useSession } from "../context/SessionContext";
+import useMediaQuery from "../hooks/useMediaQuery";
 
 const ID_SUCURSAL = 1;
 
@@ -18,6 +19,8 @@ const MEDIOS = [
 export default function CreditoDetallePage() {
   const { creditoId } = useParams();
   const { usuarioId } = useSession();
+  const isMobile = useMediaQuery("(max-width: 760px)");
+  const isNarrow = useMediaQuery("(max-width: 1000px)");
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -107,16 +110,16 @@ export default function CreditoDetallePage() {
   const puedeReintegrar = saldo > 0 && ["abierto", "aplicado_parcial"].includes(credito.estado);
 
   return (
-    <div style={pageStyle}>
-      <div style={headerStyle}>
-        <div>
-          <h1 style={{ margin: 0 }}>Crédito #{credito.id}</h1>
+    <div style={{ ...pageStyle, ...(isMobile ? pageMobileStyle : {}) }}>
+      <div style={{ ...headerStyle, ...(isMobile ? headerMobileStyle : {}) }}>
+        <div style={{ minWidth: 0 }}>
+          <h1 style={{ margin: 0, fontSize: isMobile ? 26 : 32, lineHeight: 1.1 }}>Crédito #{credito.id}</h1>
           <p style={mutedStyle}>
             Cliente #{credito.id_cliente} · {getOrigenFinancieroLabel(credito.origen_tipo, credito.origen_id)}
           </p>
         </div>
 
-        <div style={actionsStyle}>
+        <div style={{ ...actionsStyle, ...(isMobile ? actionsMobileStyle : {}) }}>
           <button onClick={cargarCredito}>Refrescar</button>
           <Link to="/creditos" style={linkBtnStyle}>Volver</Link>
         </div>
@@ -139,7 +142,7 @@ export default function CreditoDetallePage() {
         </small>
       </section>
 
-      <div style={gridStyle}>
+      <div style={isNarrow ? gridMobileStyle : gridStyle}>
         <section style={cardStyle}>
           <h2 style={cardTitleStyle}>Resumen</h2>
           <div style={infoGridStyle}>
@@ -218,7 +221,7 @@ export default function CreditoDetallePage() {
         {movimientos.length === 0 ? (
           <div style={{ padding: "18px" }}>No hay movimientos registrados.</div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
+          <div style={{ overflowX: "auto", maxWidth: "100%", WebkitOverflowScrolling: "touch" }}>
             <table style={tableStyle}>
               <thead style={{ background: "#f9fafb" }}>
                 <tr>
@@ -262,10 +265,14 @@ function Info({ label, value, full = false }) {
 }
 
 const pageStyle = { padding: "24px", background: "#f6f7fb", minHeight: "100vh" };
+const pageMobileStyle = { padding: "12px", overflowX: "hidden" };
 const headerStyle = { display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "center", marginBottom: "16px", flexWrap: "wrap" };
+const headerMobileStyle = { display: "grid", gridTemplateColumns: "1fr", alignItems: "start" };
 const actionsStyle = { display: "flex", gap: "10px", flexWrap: "wrap" };
+const actionsMobileStyle = { display: "grid", gridTemplateColumns: "1fr 1fr", width: "100%" };
 const mutedStyle = { margin: "6px 0 0", color: "#667085" };
 const gridStyle = { display: "grid", gridTemplateColumns: "minmax(360px, 1.4fr) minmax(300px, 0.8fr)", gap: "16px", alignItems: "start" };
+const gridMobileStyle = { display: "grid", gridTemplateColumns: "1fr", gap: "12px", alignItems: "start" };
 const policyNoteStyle = {
   background: "#eef4ff",
   border: "1px solid #b2ccff",

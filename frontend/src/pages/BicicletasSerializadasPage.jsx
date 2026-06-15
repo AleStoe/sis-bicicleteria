@@ -6,6 +6,7 @@ import {
 import { listarCatalogoPOS } from "../services/catalogoService";
 import { getImageUrl } from "../utils/images";
 import { useSession } from "../context/SessionContext";
+import useMediaQuery from "../hooks/useMediaQuery";
 const ESTADOS = [
   { value: "disponible", label: "Disponibles", emoji: "✅" },
   { value: "reservada", label: "Reservadas", emoji: "🟡" },
@@ -92,6 +93,8 @@ function getOperacionDetalle(bici) {
 
 export default function BicicletasSerializadasPage() {
   const { usuarioId, sucursalId } = useSession();
+  const isMobile = useMediaQuery("(max-width: 760px)");
+  const isNarrow = useMediaQuery("(max-width: 1120px)");
   const [bicis, setBicis] = useState([]);
   const [estado, setEstado] = useState("disponible");
   const [query, setQuery] = useState("");
@@ -307,24 +310,24 @@ export default function BicicletasSerializadasPage() {
 
   if (loading) {
     return (
-      <div style={pageStyle}>
+      <div style={{ ...pageStyle, ...(isMobile ? pageMobileStyle : {}) }}>
         <section style={loadingCardStyle}>Cargando bicicletas serializadas...</section>
       </div>
     );
   }
 
   return (
-    <div style={pageStyle}>
-      <header style={headerStyle}>
+    <div style={{ ...pageStyle, ...(isMobile ? pageMobileStyle : {}) }}>
+      <header style={isMobile ? headerMobileStyle : headerStyle}>
         <div>
           <span style={kickerStyle}>Unidades únicas</span>
-          <h1 style={titleStyle}>Bicicletas serializadas</h1>
+          <h1 style={{ ...titleStyle, ...(isMobile ? titleMobileStyle : {}) }}>Bicicletas serializadas</h1>
           <p style={mutedStyle}>
             Control operativo por número de cuadro. Por defecto se muestran solo las disponibles para venta.
           </p>
         </div>
 
-        <div style={headerActionsStyle}>
+        <div style={isMobile ? headerActionsMobileStyle : headerActionsStyle}>
           <button type="button" onClick={() => setPanelAyudaAbierto((v) => !v)} style={refreshButtonStyle}>
             Guía
           </button>
@@ -342,7 +345,7 @@ export default function BicicletasSerializadasPage() {
       {mensaje && <div style={successStyle}>{mensaje}</div>}
       {error && <div style={alertStyle}>Error: {error}</div>}
 
-      <section style={metricGridStyle}>
+      <section style={isMobile ? metricGridMobileStyle : metricGridStyle}>
         <Metric label="Vista actual" value={resumen.total} tone="dark" />
         <Metric label="Disponibles" value={resumen.disponible} tone="ok" />
         <Metric label="Reservadas" value={resumen.reservada} tone="warning" />
@@ -360,7 +363,7 @@ export default function BicicletasSerializadasPage() {
         </section>
       )}
 
-      <div style={gridStyle}>
+      <div style={isNarrow ? gridMobileStyle : gridStyle}>
         <section style={listPanelStyle}>
           <div style={toolbarStyle}>
             <div style={searchBoxStyle}>
@@ -391,7 +394,7 @@ export default function BicicletasSerializadasPage() {
           {filtradas.length === 0 ? (
             <div style={emptyListStyle}>No hay bicicletas para mostrar.</div>
           ) : (
-            <div style={cardsGridStyle}>
+            <div style={isMobile ? cardsGridMobileStyle : cardsGridStyle}>
               {filtradas.map((bici) => (
                 <BiciCard
                   key={bici.id}
@@ -415,8 +418,8 @@ export default function BicicletasSerializadasPage() {
 
       {mostrarAlta && (
         <div style={modalOverlayStyle} onClick={() => setMostrarAlta(false)}>
-          <section style={modalCardStyle} onClick={(e) => e.stopPropagation()}>
-            <div style={modalHeaderStyle}>
+          <section style={{ ...modalCardStyle, ...(isMobile ? modalCardMobileStyle : {}) }} onClick={(e) => e.stopPropagation()}>
+            <div style={isMobile ? modalHeaderMobileStyle : modalHeaderStyle}>
               <div>
                 <span style={kickerStyle}>Nueva unidad única</span>
                 <h2 style={modalTitleStyle}>Armar bicicleta serializada</h2>
@@ -531,7 +534,7 @@ export default function BicicletasSerializadasPage() {
                 </span>
               </div>
 
-              <div style={modalActionsStyle}>
+              <div style={isMobile ? modalActionsMobileStyle : modalActionsStyle}>
                 <button type="button" onClick={() => setMostrarAlta(false)} style={secondaryButtonStyle}>
                   Cancelar
                 </button>
@@ -694,12 +697,16 @@ function EstadoBadge({ estado }) {
 }
 
 const pageStyle = { padding: 20, background: "#f1f5f9", minHeight: "100vh" };
+const pageMobileStyle = { padding: 12, overflowX: "hidden" };
 const headerStyle = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 16, flexWrap: "wrap" };
+const headerMobileStyle = { display: "grid", gridTemplateColumns: "1fr", gap: 12, marginBottom: 14 };
 const kickerStyle = { display: "block", color: "#f97316", fontWeight: 1000, letterSpacing: "0.08em", textTransform: "uppercase", fontSize: 12 };
 const titleStyle = { margin: "3px 0 0", color: "#0f172a", fontSize: 32 };
+const titleMobileStyle = { fontSize: 26 };
 const mutedStyle = { color: "#64748b", margin: "6px 0 0", fontWeight: 700 };
 
 const headerActionsStyle = { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" };
+const headerActionsMobileStyle = { display: "grid", gridTemplateColumns: "1fr", gap: 8, width: "100%" };
 const primaryHeaderButtonStyle = { border: "none", background: "#f97316", color: "white", borderRadius: 12, padding: "11px 14px", fontWeight: 1000, cursor: "pointer", boxShadow: "0 10px 18px rgba(249, 115, 22, 0.25)" };
 const refreshButtonStyle = { border: "1px solid #cbd5e1", background: "white", color: "#0f172a", borderRadius: 12, padding: "11px 14px", fontWeight: 900, cursor: "pointer" };
 const loadingCardStyle = { background: "white", border: "1px solid #e2e8f0", borderRadius: 18, padding: 24, color: "#334155", fontWeight: 900 };
@@ -708,6 +715,7 @@ const helpPanelStyle = { background: "#fff7ed", color: "#c2410c", border: "1px s
 const successStyle = { background: "#ecfdf5", color: "#047857", padding: 12, borderRadius: 12, border: "1px solid #86efac", marginBottom: 16, fontWeight: 800 };
 
 const metricGridStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))", gap: 12, marginBottom: 16 };
+const metricGridMobileStyle = { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, marginBottom: 14 };
 const metricStyle = { background: "white", borderRadius: 16, border: "1px solid #e2e8f0", padding: 14, display: "grid", gap: 5, boxShadow: "0 10px 22px rgba(15, 23, 42, 0.06)" };
 const metricToneStyles = {
   dark: { color: "#0f172a" },
@@ -718,6 +726,7 @@ const metricToneStyles = {
 };
 
 const gridStyle = { display: "grid", gridTemplateColumns: "minmax(0, 1fr) 390px", gap: 16, alignItems: "start" };
+const gridMobileStyle = { display: "grid", gridTemplateColumns: "1fr", gap: 12, alignItems: "start" };
 const listPanelStyle = { background: "white", border: "1px solid #e2e8f0", borderRadius: 20, overflow: "hidden", boxShadow: "0 16px 34px rgba(15, 23, 42, 0.08)" };
 const toolbarStyle = { display: "grid", gap: 12, padding: 16, borderBottom: "1px solid #e2e8f0", background: "#ffffff" };
 const searchBoxStyle = { display: "flex", alignItems: "center", gap: 10, border: "1px solid #cbd5e1", borderRadius: 14, padding: "0 12px", background: "#f8fafc" };
@@ -726,6 +735,7 @@ const filterPillsStyle = { display: "flex", gap: 8, overflowX: "auto", paddingBo
 const pillStyle = { border: "1px solid #cbd5e1", background: "white", color: "#0f172a", borderRadius: 999, padding: "9px 12px", fontWeight: 900, cursor: "pointer", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 };
 const pillActiveStyle = { ...pillStyle, background: "#f97316", borderColor: "#f97316", color: "white", boxShadow: "0 10px 18px rgba(249, 115, 22, 0.25)" };
 const cardsGridStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))", gap: 12, padding: 16 };
+const cardsGridMobileStyle = { display: "grid", gridTemplateColumns: "1fr", gap: 10, padding: 12 };
 const emptyListStyle = { padding: 22, color: "#64748b", fontWeight: 900 };
 
 const biciCardStyle = { width: "100%", textAlign: "left", border: "1px solid #e2e8f0", background: "#ffffff", borderRadius: 18, padding: 12, display: "grid", gridTemplateColumns: "96px minmax(0, 1fr)", gap: 12, cursor: "pointer", color: "#0f172a", boxShadow: "0 8px 18px rgba(15, 23, 42, 0.04)" };
@@ -757,7 +767,9 @@ const secondaryButtonStyle = { border: "1px solid #cbd5e1", background: "white",
 
 const modalOverlayStyle = { position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.62)", backdropFilter: "blur(3px)", zIndex: 50, display: "grid", placeItems: "start center", padding: "24px 20px", overflowY: "auto" };
 const modalCardStyle = { width: "min(760px, 96vw)", maxHeight: "calc(100vh - 48px)", overflowY: "auto", background: "white", borderRadius: 24, border: "1px solid #e2e8f0", boxShadow: "0 28px 80px rgba(15, 23, 42, 0.35)", padding: 20 };
+const modalCardMobileStyle = { width: "min(100%, 96vw)", padding: 14, borderRadius: 18 };
 const modalHeaderStyle = { position: "sticky", top: -20, zIndex: 2, background: "white", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, borderBottom: "1px solid #e2e8f0", paddingBottom: 14, marginBottom: 16, paddingTop: 2 };
+const modalHeaderMobileStyle = { position: "sticky", top: -14, zIndex: 2, background: "white", display: "grid", gridTemplateColumns: "1fr auto", gap: 10, borderBottom: "1px solid #e2e8f0", paddingBottom: 12, marginBottom: 14, paddingTop: 2 };
 const modalTitleStyle = { margin: "4px 0 0", color: "#0f172a", fontSize: 26 };
 const modalSubtitleStyle = { margin: "6px 0 0", color: "#64748b", fontWeight: 700 };
 const closeButtonStyle = { border: "1px solid #e2e8f0", background: "#f8fafc", color: "#0f172a", borderRadius: 12, width: 40, height: 40, fontWeight: 1000, cursor: "pointer" };
@@ -774,6 +786,7 @@ const variantInfoStyle = { minWidth: 0, display: "grid", gap: 3, fontSize: 12, c
 const selectedVariantStyle = { border: "1px solid #bbf7d0", background: "#ecfdf5", color: "#047857", borderRadius: 14, padding: 12, display: "grid", gap: 3, fontWeight: 900 };
 const dangerNoteStyle = { border: "1px solid #fed7aa", background: "#fff7ed", color: "#c2410c", borderRadius: 14, padding: 12, display: "grid", gap: 4, fontWeight: 800 };
 const modalActionsStyle = { display: "grid", gridTemplateColumns: "1fr 1.4fr", gap: 10, marginTop: 4 };
+const modalActionsMobileStyle = { display: "grid", gridTemplateColumns: "1fr", gap: 8, marginTop: 4 };
 
 const detalleWrapStyle = { display: "grid", gap: 14 };
 const detalleImageBoxStyle = { height: 190, borderRadius: 18, background: "#ffffff", display: "grid", placeItems: "center", overflow: "hidden", padding: 12, boxSizing: "border-box" };

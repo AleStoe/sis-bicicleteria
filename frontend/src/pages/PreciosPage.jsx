@@ -26,8 +26,11 @@ import {
   sugerirPrecioVariante,
 } from "../services/preciosService";
 import { useSession } from "../context/SessionContext";
+import useMediaQuery from "../hooks/useMediaQuery";
 
 export default function PreciosPage() {
+  const isMobile = useMediaQuery("(max-width: 760px)");
+  const isNarrow = useMediaQuery("(max-width: 1120px)");
   const buscarRef = useRef(null);
 
   const [tab, setTab] = useState("manual");
@@ -443,13 +446,29 @@ export default function PreciosPage() {
     varianteSeleccionada?.costo_promedio_vigente,
     varianteSeleccionada?.precio_mayorista
   );
+  const viewStyles = {
+    ...styles,
+    page: { ...styles.page, ...(isMobile ? styles.pageMobile : {}) },
+    header: { ...styles.header, ...(isMobile ? styles.headerMobile : {}) },
+    title: { ...styles.title, ...(isMobile ? styles.titleMobile : {}) },
+    tabs: isMobile ? styles.tabsMobile : styles.tabs,
+    tab: { ...styles.tab, ...(isMobile ? styles.fullWidth : {}) },
+    tabActive: { ...styles.tabActive, ...(isMobile ? styles.fullWidth : {}) },
+    manualGrid: isNarrow ? styles.gridMobile : styles.manualGrid,
+    rulesGrid: isNarrow ? styles.gridMobile : styles.rulesGrid,
+    searchRow: isMobile ? styles.searchRowMobile : styles.searchRow,
+    filters: isMobile ? styles.filtersMobile : styles.filters,
+    summaryGrid: isMobile ? styles.summaryGridMobile : styles.summaryGrid,
+    tableHeader: isMobile ? styles.tableHeaderMobile : styles.tableHeader,
+    tableWrapper: { ...styles.tableWrapper, ...(isMobile ? styles.tableWrapperMobile : {}) },
+  };
 
   return (
-    <div style={styles.page}>
-      <header style={styles.header}>
+    <div style={viewStyles.page}>
+      <header style={viewStyles.header}>
         <div>
-          <h1 style={styles.title}>Precios</h1>
-          <p style={styles.subtitle}>
+          <h1 style={viewStyles.title}>Precios</h1>
+          <p style={viewStyles.subtitle}>
             Edición puntual, sugerencias, historial, reglas y recalculo masivo.
           </p>
         </div>
@@ -458,24 +477,24 @@ export default function PreciosPage() {
       {error && <div style={styles.error}>Error: {error}</div>}
       {mensaje && <div style={styles.success}>{mensaje}</div>}
 
-      <div style={styles.tabs}>
+      <div style={viewStyles.tabs}>
         <button
           type="button"
-          style={tab === "manual" ? styles.tabActive : styles.tab}
+          style={tab === "manual" ? viewStyles.tabActive : viewStyles.tab}
           onClick={() => setTab("manual")}
         >
           Precio puntual
         </button>
         <button
           type="button"
-          style={tab === "masivo" ? styles.tabActive : styles.tab}
+          style={tab === "masivo" ? viewStyles.tabActive : viewStyles.tab}
           onClick={() => setTab("masivo")}
         >
           Desfasados / masivo
         </button>
         <button
           type="button"
-          style={tab === "reglas" ? styles.tabActive : styles.tab}
+          style={tab === "reglas" ? viewStyles.tabActive : viewStyles.tab}
           onClick={() => setTab("reglas")}
         >
           Reglas
@@ -504,7 +523,7 @@ export default function PreciosPage() {
           usarSugerencia={usarSugerencia}
           sugerencia={sugerencia}
           historial={historial}
-          styles={styles}
+          styles={viewStyles}
           InfoBox={InfoBox}
         />
       )}
@@ -528,7 +547,7 @@ export default function PreciosPage() {
           desfasados={desfasados}
           setPreview={setPreview}
           setDesfasados={setDesfasados}
-          styles={styles}
+          styles={viewStyles}
           InfoBox={InfoBox}
         />
       )}
@@ -544,7 +563,7 @@ export default function PreciosPage() {
           desactivarRegla={desactivarRegla}
           cargarInicial={cargarInicial}
           procesando={procesando}
-          styles={styles}
+          styles={viewStyles}
         />
       )}
 
@@ -577,13 +596,23 @@ const styles = {
     background: "#f6f7fb",
     minHeight: "100vh",
   },
+  pageMobile: {
+    padding: "12px",
+    overflowX: "hidden",
+  },
   header: {
     marginBottom: "18px",
+  },
+  headerMobile: {
+    marginBottom: "14px",
   },
   title: {
     margin: 0,
     fontSize: "28px",
     fontWeight: 800,
+  },
+  titleMobile: {
+    fontSize: "24px",
   },
   subtitle: {
     margin: "6px 0 0",
@@ -594,6 +623,12 @@ const styles = {
     gap: "8px",
     marginBottom: "16px",
     flexWrap: "wrap",
+  },
+  tabsMobile: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: "8px",
+    marginBottom: "14px",
   },
   tab: {
     border: "1px solid #d0d5dd",
@@ -624,6 +659,12 @@ const styles = {
     gap: "16px",
     alignItems: "start",
   },
+  gridMobile: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: "12px",
+    alignItems: "start",
+  },
   card: {
     background: "#fff",
     borderRadius: "14px",
@@ -650,10 +691,22 @@ const styles = {
     gap: "10px",
     alignItems: "end",
   },
+  searchRowMobile: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: "10px",
+    alignItems: "stretch",
+  },
   filters: {
     display: "grid",
     gridTemplateColumns: "2fr 1fr",
     gap: "12px",
+    marginBottom: "12px",
+  },
+  filtersMobile: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: "10px",
     marginBottom: "12px",
   },
   form: {
@@ -740,6 +793,12 @@ const styles = {
     gap: "12px",
     marginBottom: "18px",
   },
+  summaryGridMobile: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: "8px",
+    marginBottom: "14px",
+  },
   summaryCard: {
     background: "#fff",
     borderRadius: "14px",
@@ -783,6 +842,12 @@ const styles = {
     gap: "12px",
     marginBottom: "12px",
   },
+  tableHeaderMobile: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: "10px",
+    marginBottom: "12px",
+  },
   counter: {
     color: "#667085",
     fontSize: "13px",
@@ -790,10 +855,17 @@ const styles = {
   tableWrapper: {
     overflowX: "auto",
   },
+  tableWrapperMobile: {
+    maxWidth: "100%",
+    WebkitOverflowScrolling: "touch",
+  },
   table: {
     width: "100%",
     borderCollapse: "collapse",
     minWidth: "1180px",
+  },
+  fullWidth: {
+    width: "100%",
   },
   th: {
     textAlign: "left",

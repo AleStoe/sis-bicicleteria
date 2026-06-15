@@ -9,6 +9,7 @@ import {
 } from "../services/reglasComercialesService";
 import { formatMoney } from "../utils/formatters";
 import { useSession } from "../context/SessionContext";
+import useMediaQuery from "../hooks/useMediaQuery";
 
 const ID_SUCURSAL = 1;
 
@@ -23,6 +24,8 @@ const SIMULACION_INICIAL = {
 export default function NuevaReservaPage() {
   const navigate = useNavigate();
   const { usuarioId } = useSession();
+  const isMobile = useMediaQuery("(max-width: 760px)");
+  const isNarrow = useMediaQuery("(max-width: 1100px)");
 
   const [clientes, setClientes] = useState([]);
   const [catalogo, setCatalogo] = useState([]);
@@ -380,25 +383,25 @@ export default function NuevaReservaPage() {
   if (loading) return <p style={{ padding: "24px" }}>Cargando nueva reserva...</p>;
 
   return (
-    <div style={pageStyle}>
-      <div style={headerStyle}>
+    <div style={{ ...pageStyle, ...(isMobile ? pageMobileStyle : {}) }}>
+      <div style={isMobile ? headerMobileStyle : headerStyle}>
         <div>
-          <h1 style={{ margin: 0 }}>Nueva reserva</h1>
+          <h1 style={{ margin: 0, fontSize: isMobile ? 24 : undefined }}>Nueva reserva</h1>
           <p style={mutedStyle}>
             Reserva stock, registra seña opcional y controla saldo estimado.
           </p>
         </div>
 
-        <Link to="/reservas" style={linkBtnStyle}>
+        <Link to="/reservas" style={{ ...linkBtnStyle, ...(isMobile ? fullWidthStyle : {}) }}>
           Volver
         </Link>
       </div>
 
       {error && <div style={alertStyle}>Error: {error}</div>}
 
-      <form onSubmit={handleCrearReserva} style={layoutStyle}>
+      <form onSubmit={handleCrearReserva} style={isNarrow ? layoutMobileStyle : layoutStyle}>
         <section style={cardStyle}>
-          <div style={formGridStyle}>
+          <div style={isMobile ? formGridMobileStyle : formGridStyle}>
             <label style={fieldStyle}>
               <span style={labelStyle}>Cliente</span>
               <select
@@ -436,7 +439,7 @@ export default function NuevaReservaPage() {
           </label>
 
           <h2 style={cardTitleStyle}>Agregar productos</h2>
-          <div style={searchRowStyle}>
+          <div style={isMobile ? searchRowMobileStyle : searchRowStyle}>
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -455,7 +458,7 @@ export default function NuevaReservaPage() {
                 key={producto.id_variante}
                 onClick={() => agregarItem(producto)}
                 disabled={!puedeAgregar(producto)}
-                style={!puedeAgregar(producto) ? productBlockedStyle : productRowStyle}
+                style={!puedeAgregar(producto) ? (isMobile ? productBlockedMobileStyle : productBlockedStyle) : (isMobile ? productRowMobileStyle : productRowStyle)}
               >
                 <div>
                   <strong>{descripcionProducto(producto)}</strong>
@@ -482,7 +485,7 @@ export default function NuevaReservaPage() {
           ) : (
             <div style={{ display: "grid", gap: "10px" }}>
               {items.map((item) => (
-                <div key={item.id_variante} style={cartItemStyle}>
+                <div key={item.id_variante} style={isMobile ? cartItemMobileStyle : cartItemStyle}>
                   <div>
                     <strong>{item.descripcion}</strong>
                     <div style={mutedStyle}>{item.codigo}</div>
@@ -680,6 +683,7 @@ function SimulacionSenaBox({
 }
 
 const pageStyle = { padding: "24px", background: "#f6f7fb", minHeight: "100vh" };
+const pageMobileStyle = { padding: "12px", overflowX: "hidden" };
 const headerStyle = {
   display: "flex",
   justifyContent: "space-between",
@@ -687,6 +691,13 @@ const headerStyle = {
   alignItems: "center",
   marginBottom: "16px",
   flexWrap: "wrap",
+};
+const headerMobileStyle = {
+  display: "grid",
+  gridTemplateColumns: "1fr",
+  gap: "12px",
+  alignItems: "start",
+  marginBottom: "16px",
 };
 const mutedStyle = { color: "#667085", fontSize: "13px", margin: "4px 0 0" };
 const linkBtnStyle = {
@@ -697,6 +708,7 @@ const linkBtnStyle = {
   color: "#111827",
   background: "white",
 };
+const fullWidthStyle = { width: "100%", textAlign: "center", boxSizing: "border-box" };
 const alertStyle = {
   background: "#fff1f0",
   color: "#b42318",
@@ -711,6 +723,12 @@ const layoutStyle = {
   gap: "16px",
   alignItems: "start",
 };
+const layoutMobileStyle = {
+  display: "grid",
+  gridTemplateColumns: "1fr",
+  gap: "12px",
+  alignItems: "start",
+};
 const cardStyle = {
   background: "white",
   borderRadius: "14px",
@@ -719,6 +737,7 @@ const cardStyle = {
   marginBottom: "16px",
 };
 const formGridStyle = { display: "grid", gridTemplateColumns: "1fr 220px", gap: "12px" };
+const formGridMobileStyle = { display: "grid", gridTemplateColumns: "1fr", gap: "10px" };
 const fieldStyle = { display: "flex", flexDirection: "column", gap: "7px", marginBottom: "10px" };
 const labelStyle = { fontWeight: "bold", fontSize: "14px" };
 const inputStyle = {
@@ -732,6 +751,7 @@ const inputStyle = {
 const textareaStyle = { ...inputStyle, minHeight: "68px", resize: "vertical" };
 const cardTitleStyle = { marginTop: 0, marginBottom: "14px", fontSize: "20px" };
 const searchRowStyle = { display: "flex", gap: "8px", marginBottom: "10px" };
+const searchRowMobileStyle = { display: "grid", gridTemplateColumns: "1fr", gap: "8px", marginBottom: "10px" };
 const catalogListStyle = { display: "grid", gap: "8px", maxHeight: "430px", overflowY: "auto" };
 const productRowStyle = {
   display: "flex",
@@ -745,8 +765,20 @@ const productRowStyle = {
   textAlign: "left",
   cursor: "pointer",
 };
+const productRowMobileStyle = {
+  ...productRowStyle,
+  display: "grid",
+  gridTemplateColumns: "1fr",
+  alignItems: "stretch",
+};
 const productBlockedStyle = {
   ...productRowStyle,
+  opacity: 0.55,
+  cursor: "not-allowed",
+  background: "#f9fafb",
+};
+const productBlockedMobileStyle = {
+  ...productRowMobileStyle,
   opacity: 0.55,
   cursor: "not-allowed",
   background: "#f9fafb",
@@ -761,6 +793,14 @@ const emptyStyle = {
 const cartItemStyle = {
   display: "grid",
   gridTemplateColumns: "1fr 70px 100px 34px",
+  gap: "8px",
+  alignItems: "center",
+  borderBottom: "1px solid #f2f4f7",
+  paddingBottom: "8px",
+};
+const cartItemMobileStyle = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) 72px",
   gap: "8px",
   alignItems: "center",
   borderBottom: "1px solid #f2f4f7",

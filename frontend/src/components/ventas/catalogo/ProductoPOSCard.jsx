@@ -1,5 +1,6 @@
 import { buildImageUrl } from "../../../utils/images";
 import { formatMoney, formatNumber } from "../../../utils/formatters";
+import useMediaQuery from "../../../hooks/useMediaQuery";
 import {
   getCodigoItemCatalogo,
   getDescripcionItemCatalogo,
@@ -9,13 +10,17 @@ import {
 } from "../../../helpers/ventasItemsHelper";
 
 export default function ProductoPOSCard({ producto, tipoPrecio, onAgregarItem }) {
+  const isMobile = useMediaQuery("(max-width: 680px)");
   const bloqueado = !puedeAgregarItemCatalogo(producto, tipoPrecio);
 
   return (
     <div
-      style={bloqueado ? productRowBlockedStyle : productRowStyle}
+      style={{
+        ...(bloqueado ? productRowBlockedStyle : productRowStyle),
+        ...(isMobile ? productRowMobileStyle : {}),
+      }}
     >
-      <div style={imageBoxStyle}>
+      <div style={{ ...imageBoxStyle, ...(isMobile ? imageBoxMobileStyle : {}) }}>
         {producto.imagen_principal ? (
           <img
             src={buildImageUrl(producto.imagen_principal)}
@@ -49,7 +54,7 @@ export default function ProductoPOSCard({ producto, tipoPrecio, onAgregarItem })
         </div>
       </div>
 
-      <div style={productPriceStyle}>
+      <div style={{ ...productPriceStyle, ...(isMobile ? productPriceMobileStyle : {}) }}>
         <strong>{formatMoney(getPrecioItemCatalogo(producto, tipoPrecio))}</strong>
         <button
           type="button"
@@ -73,6 +78,14 @@ const productRowStyle = {
   borderRadius: "12px",
   padding: "10px",
   background: "white",
+  minWidth: 0,
+};
+
+const productRowMobileStyle = {
+  gridTemplateColumns: "56px minmax(0, 1fr)",
+  alignItems: "start",
+  gap: "10px",
+  padding: "9px",
 };
 
 const productRowBlockedStyle = {
@@ -89,6 +102,12 @@ const imageBoxStyle = {
   display: "grid",
   placeItems: "center",
   overflow: "hidden",
+};
+
+const imageBoxMobileStyle = {
+  width: 56,
+  height: 54,
+  borderRadius: 9,
 };
 
 const imageStyle = {
@@ -111,6 +130,15 @@ const productPriceStyle = {
   gap: "8px",
   justifyItems: "end",
   fontSize: "16px",
+};
+
+const productPriceMobileStyle = {
+  gridColumn: "1 / -1",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  justifyItems: "stretch",
+  width: "100%",
 };
 
 const addBtnStyle = {

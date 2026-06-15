@@ -7,6 +7,7 @@ import {
   listarUsuarios,
   resetearPasswordUsuario,
 } from "../services/usuariosService";
+import useMediaQuery from "../hooks/useMediaQuery";
 
 const FORM_INICIAL = {
   nombre: "",
@@ -25,6 +26,8 @@ const ROLES = [
 ];
 
 export default function UsuariosPage() {
+  const isMobile = useMediaQuery("(max-width: 760px)");
+  const isNarrow = useMediaQuery("(max-width: 1100px)");
   const [usuarios, setUsuarios] = useState([]);
   const [busqueda, setBusqueda] = useState("");
   const [soloActivos, setSoloActivos] = useState(false);
@@ -230,11 +233,11 @@ export default function UsuariosPage() {
   }
 
   return (
-    <div style={styles.page}>
-      <header style={styles.hero}>
+    <div style={{ ...styles.page, ...(isMobile ? styles.pageMobile : {}) }}>
+      <header style={{ ...styles.hero, ...(isMobile ? styles.heroMobile : {}) }}>
         <div>
           <p style={styles.kicker}>Configuración</p>
-          <h1 style={styles.title}>Usuarios</h1>
+          <h1 style={{ ...styles.title, ...(isMobile ? styles.titleMobile : {}) }}>Usuarios</h1>
           <p style={styles.subtitle}>
             Alta y administración de usuarios operativos del sistema.
           </p>
@@ -244,7 +247,7 @@ export default function UsuariosPage() {
           type="button"
           onClick={cargarUsuarios}
           disabled={cargando}
-          style={styles.secondaryHeroButton}
+          style={{ ...styles.secondaryHeroButton, ...(isMobile ? styles.fullWidth : {}) }}
         >
           {cargando ? "Cargando..." : "↻ Actualizar"}
         </button>
@@ -253,7 +256,7 @@ export default function UsuariosPage() {
       {mensaje && <div style={styles.success}>{mensaje}</div>}
       {error && <div style={styles.error}>Error: {error}</div>}
 
-      <main style={styles.layout}>
+      <main style={isNarrow ? styles.layoutMobile : styles.layout}>
         <section style={styles.card}>
           <div style={styles.sectionHeader}>
             <div>
@@ -356,7 +359,7 @@ export default function UsuariosPage() {
             </div>
           </div>
 
-          <form onSubmit={buscar} style={styles.filters}>
+          <form onSubmit={buscar} style={isMobile ? styles.filtersMobile : styles.filters}>
             <input
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
@@ -373,7 +376,7 @@ export default function UsuariosPage() {
               Solo activos
             </label>
 
-            <button type="submit" style={styles.smallPrimary}>
+            <button type="submit" style={{ ...styles.smallPrimary, ...(isMobile ? styles.fullWidth : {}) }}>
               Buscar
             </button>
           </form>
@@ -549,14 +552,18 @@ function badgeRolStyle(rol) {
 
 const styles = {
   page: { minHeight: "100vh", padding: 20, background: "#f1f5f9", color: "#0f172a" },
+  pageMobile: { padding: 12, overflowX: "hidden" },
   hero: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, padding: 22, borderRadius: 24, background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)", color: "white", boxShadow: "0 18px 40px rgba(15,23,42,.18)", marginBottom: 16 },
+  heroMobile: { display: "grid", gridTemplateColumns: "1fr", padding: 16, borderRadius: 18 },
   kicker: { margin: 0, color: "#fb923c", fontSize: 12, fontWeight: 1000, textTransform: "uppercase", letterSpacing: ".08em" },
   title: { margin: "3px 0 0", fontSize: 34, fontWeight: 1000, letterSpacing: "-.03em" },
+  titleMobile: { fontSize: 26 },
   subtitle: { margin: "8px 0 0", color: "#cbd5e1", fontWeight: 700 },
   secondaryHeroButton: { border: "1px solid rgba(255,255,255,.22)", background: "rgba(255,255,255,.08)", color: "white", borderRadius: 14, padding: "12px 16px", fontWeight: 1000, cursor: "pointer" },
   success: { background: "#ecfdf5", color: "#047857", border: "1px solid #86efac", borderRadius: 14, padding: 12, marginBottom: 14, fontWeight: 800 },
   error: { background: "#fff1f0", color: "#b42318", border: "1px solid #fecdca", borderRadius: 14, padding: 12, marginBottom: 14, fontWeight: 800 },
   layout: { display: "grid", gridTemplateColumns: "390px minmax(0, 1fr)", gap: 16, alignItems: "start" },
+  layoutMobile: { display: "grid", gridTemplateColumns: "1fr", gap: 14, alignItems: "start" },
   card: { background: "white", border: "1px solid #e2e8f0", borderRadius: 22, padding: 18, boxShadow: "0 14px 30px rgba(15,23,42,.06)" },
   cardNoPadding: { background: "white", border: "1px solid #e2e8f0", borderRadius: 22, overflow: "hidden", boxShadow: "0 14px 30px rgba(15,23,42,.06)" },
   sectionHeader: { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start", marginBottom: 14 },
@@ -574,7 +581,8 @@ const styles = {
   checkboxLabel: { display: "flex", alignItems: "center", gap: 8, fontWeight: 900, color: "#334155", whiteSpace: "nowrap" },
   tableHeader: { padding: 18, borderBottom: "1px solid #e2e8f0" },
   filters: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto auto", gap: 12, alignItems: "center", padding: 16, borderBottom: "1px solid #e2e8f0" },
-  tableWrapper: { overflowX: "auto" },
+  filtersMobile: { display: "grid", gridTemplateColumns: "1fr", gap: 10, alignItems: "stretch", padding: 12, borderBottom: "1px solid #e2e8f0" },
+  tableWrapper: { overflowX: "auto", maxWidth: "100%", WebkitOverflowScrolling: "touch" },
   table: { width: "100%", borderCollapse: "collapse", minWidth: 820 },
   th: { textAlign: "left", padding: "12px 14px", background: "#f8fafc", color: "#475569", fontSize: 12, textTransform: "uppercase", letterSpacing: ".06em" },
   td: { padding: "13px 14px", borderTop: "1px solid #e2e8f0", fontWeight: 800, color: "#334155" },
@@ -588,4 +596,5 @@ const styles = {
   modalOverlay: { position: "fixed", inset: 0, background: "rgba(15,23,42,.55)", display: "grid", placeItems: "center", padding: 20, zIndex: 100 },
   modalCard: { width: "min(420px, 100%)", background: "white", borderRadius: 22, padding: 18, boxShadow: "0 24px 70px rgba(15,23,42,.35)", display: "grid", gap: 12 },
   modalActions: { display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 8 },
+  fullWidth: { width: "100%" },
 };

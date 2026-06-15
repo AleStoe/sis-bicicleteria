@@ -7,8 +7,10 @@ import {
   listarCreditosCliente,
   listarCreditosDisponiblesCliente,
 } from "../services/creditosService";
+import useMediaQuery from "../hooks/useMediaQuery";
 
 export default function CreditosListPage() {
+  const isMobile = useMediaQuery("(max-width: 760px)");
   const [clientes, setClientes] = useState([]);
   const [clienteId, setClienteId] = useState("");
   const [soloDisponibles, setSoloDisponibles] = useState(true);
@@ -78,10 +80,10 @@ export default function CreditosListPage() {
   const politicaCredito = getPoliticaCreditoGeneral();
 
   return (
-    <div style={pageStyle}>
+    <div style={{ ...pageStyle, ...(isMobile ? pageMobileStyle : {}) }}>
       <div style={headerStyle}>
         <div>
-          <h1 style={{ margin: 0 }}>Créditos</h1>
+          <h1 style={{ margin: 0, fontSize: isMobile ? 24 : undefined }}>Créditos</h1>
           <p style={mutedStyle}>
             Saldos comerciales a favor del cliente. No reemplazan la reversión/cancelación de pagos electrónicos.
           </p>
@@ -91,7 +93,7 @@ export default function CreditosListPage() {
       {error && <div style={alertStyle}>Error: {error}</div>}
 
       <section style={cardStyle}>
-        <form onSubmit={handleSubmit} style={filtersStyle}>
+        <form onSubmit={handleSubmit} style={isMobile ? filtersMobileStyle : filtersStyle}>
           <label style={fieldStyle}>
             <span style={labelStyle}>Cliente</span>
             <select
@@ -118,13 +120,13 @@ export default function CreditosListPage() {
             Solo créditos disponibles
           </label>
 
-          <button type="submit" disabled={!clienteId || loadingCreditos}>
+          <button type="submit" disabled={!clienteId || loadingCreditos} style={isMobile ? fullWidthStyle : undefined}>
             {loadingCreditos ? "Buscando..." : "Buscar"}
           </button>
         </form>
       </section>
 
-      <section style={summaryGridStyle}>
+      <section style={isMobile ? summaryGridMobileStyle : summaryGridStyle}>
         <div style={metricStyle}>
           <span style={mutedStyle}>Créditos encontrados</span>
           <strong style={metricValueStyle}>{creditos.length}</strong>
@@ -153,7 +155,7 @@ export default function CreditosListPage() {
             No hay créditos para el cliente seleccionado.
           </div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
+          <div style={tableWrapperStyle}>
             <table style={tableStyle}>
               <thead style={{ background: "#f9fafb" }}>
                 <tr>
@@ -238,16 +240,19 @@ export function EstadoCreditoBadge({ estado }) {
 
 
 const pageStyle = { padding: "24px", background: "#f6f7fb", minHeight: "100vh" };
+const pageMobileStyle = { padding: "12px", overflowX: "hidden" };
 const headerStyle = { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", gap: "12px", flexWrap: "wrap" };
 const mutedStyle = { color: "#667085", margin: "6px 0 0" };
 const cardStyle = { background: "white", borderRadius: "14px", boxShadow: "0 2px 10px rgba(0,0,0,.08)", padding: "16px", marginBottom: "16px" };
 const filtersStyle = { display: "grid", gridTemplateColumns: "minmax(260px, 1fr) auto auto", gap: "14px", alignItems: "end" };
+const filtersMobileStyle = { display: "grid", gridTemplateColumns: "1fr", gap: "12px", alignItems: "stretch" };
 const fieldStyle = { display: "flex", flexDirection: "column", gap: "7px" };
 const labelStyle = { fontWeight: "bold", fontSize: "14px" };
 const inputStyle = { width: "100%", padding: "10px 12px", borderRadius: "10px", border: "1px solid #d0d5dd", fontSize: "15px" };
 const checkStyle = { display: "flex", alignItems: "center", gap: "8px", paddingBottom: "9px" };
 const alertStyle = { background: "#fff1f0", color: "#b42318", padding: "12px", borderRadius: "10px", border: "1px solid #f4c7c3", marginBottom: "16px" };
 const summaryGridStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px", marginBottom: "16px" };
+const summaryGridMobileStyle = { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "10px", marginBottom: "16px" };
 const metricStyle = { background: "white", borderRadius: "14px", boxShadow: "0 2px 10px rgba(0,0,0,.08)", padding: "16px", display: "grid", gap: "6px" };
 const metricValueStyle = { fontSize: "24px" };
 const policyStyle = {
@@ -261,7 +266,9 @@ const policyStyle = {
   fontSize: "14px",
 };
 const tableHeaderStyle = { padding: "16px 18px", borderBottom: "1px solid #eee" };
+const tableWrapperStyle = { overflowX: "auto", maxWidth: "100%", WebkitOverflowScrolling: "touch" };
 const tableStyle = { width: "100%", borderCollapse: "collapse", minWidth: "850px" };
 const thStyle = { textAlign: "left", padding: "12px 10px", borderBottom: "1px solid #e5e7eb" };
 const tdStyle = { padding: "10px", verticalAlign: "top" };
 const linkBtnStyle = { textDecoration: "none", padding: "8px 10px", borderRadius: "10px", border: "1px solid #d0d5dd", color: "#111827", background: "white", display: "inline-block" };
+const fullWidthStyle = { width: "100%" };

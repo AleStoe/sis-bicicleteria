@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { getDashboardResumen } from "../services/dashboardService";
 import { formatMoney, formatInteger, formatNumber } from "../utils/formatters";
+import useMediaQuery from "../hooks/useMediaQuery";
 
 function mesActual() {
   const d = new Date();
@@ -47,6 +48,8 @@ function dateShort(value) {
 }
 
 export default function DashboardPage() {
+  const isMobile = useMediaQuery("(max-width: 760px)");
+  const isNarrow = useMediaQuery("(max-width: 1000px)");
   const [periodoMes, setPeriodoMes] = useState(mesActual());
   const [diasSinMovimiento, setDiasSinMovimiento] = useState(90);
   const [umbralRepuestosCriticos, setUmbralRepuestosCriticos] = useState(2);
@@ -81,15 +84,15 @@ export default function DashboardPage() {
   const ventasChartData = data?.ventas_ultimos_meses || [];
 
   return (
-    <div style={{ padding: 24, display: "grid", gap: 18 }}>
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
-        <div>
-          <h1 style={{ margin: 0, color: "#101828" }}>Dashboard</h1>
+    <div style={{ padding: isMobile ? 12 : 24, display: "grid", gap: isMobile ? 12 : 18, minWidth: 0 }}>
+      <header style={{ display: isMobile ? "grid" : "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, minWidth: 0 }}>
+        <div style={{ minWidth: 0 }}>
+          <h1 style={{ margin: 0, color: "#101828", fontSize: isMobile ? 26 : 32, lineHeight: 1.1 }}>Dashboard</h1>
           <p style={{ margin: "6px 0 0", color: "#667085" }}>
             Tablero operativo: ventas, caja, clientes, repuestos, stock inmovilizado y taller.
           </p>
         </div>
-        <button style={secondaryButton} onClick={cargarDashboard} disabled={loading}>
+        <button style={{ ...secondaryButton, width: isMobile ? "100%" : undefined, justifyContent: "center" }} onClick={cargarDashboard} disabled={loading}>
           <RefreshCw size={16} />
           Refrescar
         </button>
@@ -97,7 +100,7 @@ export default function DashboardPage() {
 
       {error && <div style={{ ...card, padding: 14, borderColor: "#fecaca", color: "#b91c1c", background: "#fef2f2" }}>{error}</div>}
 
-      <section style={{ ...card, padding: 16, display: "grid", gridTemplateColumns: "220px 220px 240px", gap: 12 }}>
+      <section style={{ ...card, padding: isMobile ? 12 : 16, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(180px, 240px))", gap: 12, minWidth: 0 }}>
         <label style={{ display: "grid", gap: 6, fontWeight: 800, color: "#344054" }}>
           Mes
           <input style={input} type="date" value={periodoMes} onChange={(e) => setPeriodoMes(e.target.value)} />
@@ -118,7 +121,7 @@ export default function DashboardPage() {
         </label>
       </section>
 
-      <section style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
+      <section style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))", gap: isMobile ? 8 : 12, minWidth: 0 }}>
         <Metric title="Ventas mes" value={money(k.ventas_mes)} strong />
         <Metric title="Caja actual" value={money(k.caja_actual)} />
         <Metric title="Gastos mes" value={money(k.gastos_mes)} />
@@ -129,22 +132,22 @@ export default function DashboardPage() {
         <Metric title="Repuestos críticos" value={formatInteger(k.repuestos_criticos)} />
       </section>
 
-      <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.25fr) minmax(340px, .75fr)", gap: 18, alignItems: "start" }}>
+      <section style={{ display: "grid", gridTemplateColumns: isNarrow ? "1fr" : "minmax(0, 1.25fr) minmax(340px, .75fr)", gap: isMobile ? 12 : 18, alignItems: "start", minWidth: 0 }}>
         <VentasChartCard rows={ventasChartData} loading={loading} />
         <TopClientesCard rows={data?.top_clientes || []} loading={loading} />
       </section>
 
-      <section style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, alignItems: "start" }}>
+      <section style={{ display: "grid", gridTemplateColumns: isNarrow ? "1fr" : "1fr 1fr", gap: isMobile ? 12 : 18, alignItems: "start", minWidth: 0 }}>
         <TopProductosCard title="Top productos vendidos" rows={data?.top_productos_cantidad || []} loading={loading} />
         <RepuestosCriticosCard rows={data?.repuestos_criticos || []} loading={loading} />
       </section>
 
-      <section style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, alignItems: "start" }}>
+      <section style={{ display: "grid", gridTemplateColumns: isNarrow ? "1fr" : "1fr 1fr", gap: isMobile ? 12 : 18, alignItems: "start", minWidth: 0 }}>
         <CapitalInmovilizadoCard rows={data?.capital_inmovilizado || []} loading={loading} />
         <VentasPendientesEntregaCard rows={data?.ventas_pendientes_entrega || []} loading={loading} />
       </section>
 
-      <section style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, alignItems: "start" }}>
+      <section style={{ display: "grid", gridTemplateColumns: isNarrow ? "1fr" : "1fr 1fr", gap: isMobile ? 12 : 18, alignItems: "start", minWidth: 0 }}>
         <TallerPendienteCard rows={data?.taller_pendiente || []} loading={loading} />
         <ProductosSinMovimientoCard rows={data?.productos_sin_movimiento || []} loading={loading} />
       </section>

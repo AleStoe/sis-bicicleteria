@@ -5,6 +5,7 @@ import { formatMoney, formatDate } from "../utils/formatters";
 import { PromptModal } from "../components/ui/PromptModal";
 
 import { useSession } from "../context/SessionContext";
+import useMediaQuery from "../hooks/useMediaQuery";
 
 const ESTADOS = ["todos", "confirmado", "revertido", "devuelto_externo"];
 const ORIGENES = ["todos", "venta", "deuda_cliente"];
@@ -12,6 +13,8 @@ const MEDIOS = ["todos", "efectivo", "transferencia", "mercadopago", "tarjeta"];
 
 export default function PagosPage() {
   const { usuarioId } = useSession();
+  const isMobile = useMediaQuery("(max-width: 760px)");
+  const isNarrow = useMediaQuery("(max-width: 1120px)");
   const [pagos, setPagos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [guardando, setGuardando] = useState(false);
@@ -169,18 +172,18 @@ export default function PagosPage() {
   if (loading) return <div style={styles.state}>Cargando pagos...</div>;
 
   return (
-    <div style={styles.page}>
-      <header style={styles.hero}>
+    <div style={{ ...styles.page, ...(isMobile ? styles.pageMobile : {}) }}>
+      <header style={{ ...styles.hero, ...(isMobile ? styles.heroMobile : {}) }}>
         <div>
           <p style={styles.kicker}>Pagos</p>
-          <h1 style={styles.title}>Control de pagos</h1>
+          <h1 style={{ ...styles.title, ...(isMobile ? styles.titleMobile : {}) }}>Control de pagos</h1>
           <p style={styles.subtitle}>
             Revisión global de cobros, pagos de deuda, medios de pago y reversión.
           </p>
         </div>
 
-        <div style={styles.heroActions}>
-          <button type="button" onClick={cargarPagos} disabled={guardando} style={styles.secondaryHeroButton}>
+        <div style={isMobile ? styles.heroActionsMobile : styles.heroActions}>
+          <button type="button" onClick={cargarPagos} disabled={guardando} style={{ ...styles.secondaryHeroButton, ...(isMobile ? styles.fullWidth : {}) }}>
             ↻ Refrescar
           </button>
         </div>
@@ -189,7 +192,7 @@ export default function PagosPage() {
       {mensaje && <div style={styles.success}>{mensaje}</div>}
       {error && <div style={styles.error}>Error: {error}</div>}
 
-      <section style={styles.metricsGrid}>
+      <section style={isMobile ? styles.metricsGridMobile : styles.metricsGrid}>
         <Metric label="Cobrado real" value={formatMoney(resumen.cobradoReal)} tone="ok" />
         <Metric label="Base aplicada" value={formatMoney(resumen.baseAplicada)} tone="info" />
         <Metric label="Recargos" value={formatMoney(resumen.recargos)} tone="orange" />
@@ -198,10 +201,10 @@ export default function PagosPage() {
         <Metric label="Pagos deuda" value={resumen.pagosDeuda} tone="warning" />
       </section>
 
-      <main style={styles.layout}>
+      <main style={isNarrow ? styles.layoutMobile : styles.layout}>
         <section style={styles.mainColumn}>
           <section style={styles.card}>
-            <div style={styles.toolbarHeader}>
+            <div style={isMobile ? styles.toolbarHeaderMobile : styles.toolbarHeader}>
               <div>
                 <p style={styles.eyebrow}>Búsqueda y filtros</p>
                 <h2 style={styles.cardTitle}>Pagos registrados</h2>
@@ -209,7 +212,7 @@ export default function PagosPage() {
               <div style={styles.counterBadge}>{pagosFiltrados.length} de {pagos.length}</div>
             </div>
 
-            <div style={styles.filtersGrid}>
+            <div style={isMobile ? styles.filtersGridMobile : styles.filtersGrid}>
               <label style={styles.fieldWide}>
                 <span style={styles.label}>Buscar</span>
                 <input
@@ -247,7 +250,7 @@ export default function PagosPage() {
                 </select>
               </label>
 
-              <button type="button" onClick={limpiarFiltros} style={styles.secondaryButton}>
+              <button type="button" onClick={limpiarFiltros} style={{ ...styles.secondaryButton, ...(isMobile ? styles.fullWidth : {}) }}>
                 Limpiar
               </button>
             </div>
@@ -273,7 +276,7 @@ export default function PagosPage() {
           </section>
         </section>
 
-        <aside style={styles.sidePanel}>
+        <aside style={isNarrow ? styles.sidePanelMobile : styles.sidePanel}>
           <section style={styles.card}>
             <h2 style={styles.sideTitle}>Detalle del pago</h2>
             {detalle ? (
@@ -527,26 +530,34 @@ function normalizarTexto(valor) {
 
 const styles = {
   page: { minHeight: "100vh", padding: 20, background: "#f1f5f9", color: "#0f172a" },
+  pageMobile: { padding: 12, overflowX: "hidden" },
   hero: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, padding: 22, borderRadius: 24, background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)", color: "white", boxShadow: "0 18px 40px rgba(15,23,42,.18)", marginBottom: 16 },
+  heroMobile: { display: "grid", gridTemplateColumns: "1fr", padding: 16, borderRadius: 18 },
   kicker: { margin: 0, color: "#fb923c", fontSize: 12, fontWeight: 1000, textTransform: "uppercase", letterSpacing: ".08em" },
   title: { margin: "3px 0 0", fontSize: 34, fontWeight: 1000, letterSpacing: "-.03em" },
+  titleMobile: { fontSize: 26 },
   subtitle: { margin: "8px 0 0", color: "#cbd5e1", fontWeight: 700 },
   heroActions: { display: "flex", gap: 10, flexWrap: "wrap" },
+  heroActionsMobile: { display: "grid", gridTemplateColumns: "1fr", gap: 10 },
   secondaryHeroButton: { textDecoration: "none", border: "1px solid rgba(255,255,255,.22)", background: "rgba(255,255,255,.08)", color: "white", borderRadius: 14, padding: "12px 16px", fontWeight: 1000, cursor: "pointer" },
   success: { background: "#ecfdf5", color: "#047857", border: "1px solid #86efac", borderRadius: 14, padding: 12, marginBottom: 14, fontWeight: 800 },
   error: { background: "#fff1f0", color: "#b42318", border: "1px solid #fecdca", borderRadius: 14, padding: 12, marginBottom: 14, fontWeight: 800 },
   metricsGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))", gap: 12, marginBottom: 16 },
+  metricsGridMobile: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, marginBottom: 14 },
   metric: { background: "white", border: "1px solid #e2e8f0", borderRadius: 18, padding: 14, display: "grid", gap: 5, boxShadow: "0 10px 22px rgba(15,23,42,.06)" },
   metricTones: { ok: { color: "#047857", background: "#ecfdf5", borderColor: "#bbf7d0" }, info: { color: "#1d4ed8", background: "#eff6ff", borderColor: "#bfdbfe" }, warning: { color: "#b45309", background: "#fffbeb", borderColor: "#fde68a" }, danger: { color: "#b42318", background: "#fff1f0", borderColor: "#fecaca" }, muted: { color: "#475569", background: "#f8fafc" }, orange: { color: "#c2410c", background: "#fff7ed", borderColor: "#fed7aa" } },
   layout: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) 360px", gap: 16, alignItems: "start" },
+  layoutMobile: { display: "grid", gridTemplateColumns: "1fr", gap: 14, alignItems: "start" },
   mainColumn: { display: "grid", gap: 16 },
   card: { background: "white", border: "1px solid #e2e8f0", borderRadius: 22, padding: 18, boxShadow: "0 14px 30px rgba(15,23,42,.06)" },
   cardNoPadding: { background: "white", border: "1px solid #e2e8f0", borderRadius: 22, overflow: "hidden", boxShadow: "0 14px 30px rgba(15,23,42,.06)" },
   toolbarHeader: { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start", marginBottom: 14 },
+  toolbarHeaderMobile: { display: "grid", gridTemplateColumns: "1fr", gap: 10, alignItems: "start", marginBottom: 14 },
   eyebrow: { margin: 0, color: "#f97316", fontSize: 12, fontWeight: 1000, textTransform: "uppercase", letterSpacing: ".08em" },
   cardTitle: { margin: "3px 0 0", fontSize: 22, letterSpacing: "-.02em" },
   counterBadge: { background: "#f8fafc", border: "1px solid #e2e8f0", color: "#475569", borderRadius: 999, padding: "8px 10px", fontWeight: 900 },
   filtersGrid: { display: "grid", gridTemplateColumns: "minmax(240px, 1fr) 150px 150px 150px auto", gap: 12, alignItems: "end" },
+  filtersGridMobile: { display: "grid", gridTemplateColumns: "1fr", gap: 10, alignItems: "stretch" },
   field: { display: "grid", gap: 7, fontSize: 14, fontWeight: 900 },
   fieldWide: { display: "grid", gap: 7, fontSize: 14, fontWeight: 900 },
   label: { color: "#334155", fontSize: 13, fontWeight: 900 },
@@ -567,6 +578,7 @@ const styles = {
   smallDanger: { border: "1px solid #fecaca", background: "#fff1f0", color: "#b42318", borderRadius: 11, padding: "8px 10px", fontWeight: 900, cursor: "pointer" },
   smallMuted: { color: "#64748b", fontWeight: 800 },
   sidePanel: { display: "grid", gap: 16, position: "sticky", top: 16 },
+  sidePanelMobile: { display: "grid", gap: 14, position: "static" },
   sideTitle: { margin: "0 0 12px", fontSize: 20 },
   detailBox: { display: "grid", gap: 12 },
   detailHeader: { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start" },
@@ -582,4 +594,5 @@ const styles = {
   empty: { padding: 22, color: "#64748b", fontWeight: 900 },
   emptySmall: { color: "#64748b", fontWeight: 900, background: "#f8fafc", borderRadius: 14, padding: 12 },
   state: { padding: 24, fontWeight: 900 },
+  fullWidth: { width: "100%" },
 };

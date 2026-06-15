@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { listarReservas } from "../services/reservasService";
 import { formatDate, formatMoney } from "../utils/formatters";
+import useMediaQuery from "../hooks/useMediaQuery";
 
 const ESTADOS = ["", "activa", "vencida", "cancelada", "convertida_en_venta"];
 
 export default function ReservasListPage() {
+  const isMobile = useMediaQuery("(max-width: 760px)");
   const [reservas, setReservas] = useState([]);
   const [filtros, setFiltros] = useState({
     estado: "activa",
@@ -55,14 +57,14 @@ export default function ReservasListPage() {
   }, [reservas]);
 
   return (
-    <div style={pageStyle}>
-      <div style={headerStyle}>
+    <div style={{ ...pageStyle, ...(isMobile ? pageMobileStyle : {}) }}>
+      <div style={isMobile ? headerMobileStyle : headerStyle}>
         <div>
-          <h1 style={{ margin: 0 }}>Reservas</h1>
+          <h1 style={{ margin: 0, fontSize: isMobile ? 24 : undefined }}>Reservas</h1>
           <p style={mutedStyle}>Control de reservas, base señada, vencimientos y conversión a venta.</p>
         </div>
 
-        <Link to="/reservas/nueva" style={primaryLinkStyle}>
+        <Link to="/reservas/nueva" style={{ ...primaryLinkStyle, ...(isMobile ? fullWidthStyle : {}) }}>
           Nueva reserva
         </Link>
       </div>
@@ -70,7 +72,7 @@ export default function ReservasListPage() {
       {error && <div style={alertStyle}>Error: {error}</div>}
 
       <section style={cardStyle}>
-        <form onSubmit={cargarReservas} style={filtersStyle}>
+        <form onSubmit={cargarReservas} style={isMobile ? filtersMobileStyle : filtersStyle}>
           <label style={fieldStyle}>
             <span style={labelStyle}>Estado</span>
             <select
@@ -106,13 +108,13 @@ export default function ReservasListPage() {
             Solo vencidas
           </label>
 
-          <button type="submit" disabled={loading} style={secondaryBtnStyle}>
+          <button type="submit" disabled={loading} style={{ ...secondaryBtnStyle, ...(isMobile ? fullWidthStyle : {}) }}>
             {loading ? "Buscando..." : "Buscar"}
           </button>
         </form>
       </section>
 
-      <section style={summaryGridStyle}>
+      <section style={isMobile ? summaryGridMobileStyle : summaryGridStyle}>
         <Metric label="Reservas mostradas" value={metricas.cantidad} />
         <Metric label="Activas" value={metricas.activas} />
         <Metric label="Base señada" value={formatMoney(metricas.baseSenada)} />
@@ -133,7 +135,7 @@ export default function ReservasListPage() {
         ) : reservas.length === 0 ? (
           <div style={{ padding: "18px" }}>No hay reservas para mostrar.</div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
+          <div style={tableWrapperStyle}>
             <table style={tableStyle}>
               <thead style={{ background: "#f9fafb" }}>
                 <tr>
@@ -292,12 +294,15 @@ function calcularPorcentajeSenado(reserva) {
 }
 
 const pageStyle = { padding: "24px", background: "#f6f7fb", minHeight: "100vh" };
+const pageMobileStyle = { padding: "12px", overflowX: "hidden" };
 const headerStyle = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", marginBottom: "16px", flexWrap: "wrap" };
+const headerMobileStyle = { display: "grid", gridTemplateColumns: "1fr", gap: "12px", marginBottom: "16px" };
 const mutedStyle = { color: "#667085", margin: "6px 0 0", fontSize: "13px" };
 const mutedMetricStyle = { color: "#667085", margin: 0, fontSize: "13px" };
 const cardStyle = { background: "white", borderRadius: "14px", boxShadow: "0 2px 10px rgba(0,0,0,.08)", padding: "16px", marginBottom: "16px" };
-const primaryLinkStyle = { textDecoration: "none", background: "#0b5bd3", color: "white", padding: "10px 14px", borderRadius: "10px", fontWeight: "bold" };
+const primaryLinkStyle = { textDecoration: "none", background: "#0b5bd3", color: "white", padding: "10px 14px", borderRadius: "10px", fontWeight: "bold", textAlign: "center" };
 const filtersStyle = { display: "grid", gridTemplateColumns: "190px minmax(260px,1fr) auto auto", gap: "14px", alignItems: "end" };
+const filtersMobileStyle = { display: "grid", gridTemplateColumns: "1fr", gap: "12px", alignItems: "stretch" };
 const fieldStyle = { display: "flex", flexDirection: "column", gap: "7px" };
 const labelStyle = { fontWeight: "bold", fontSize: "14px" };
 const inputStyle = { width: "100%", padding: "10px 12px", borderRadius: "10px", border: "1px solid #d0d5dd", fontSize: "15px", boxSizing: "border-box" };
@@ -305,11 +310,14 @@ const checkStyle = { display: "flex", alignItems: "center", gap: "8px", paddingB
 const secondaryBtnStyle = { padding: "10px 14px", borderRadius: "10px", border: "1px solid #d0d5dd", background: "white", fontWeight: "bold", cursor: "pointer" };
 const alertStyle = { background: "#fff1f0", color: "#b42318", padding: "12px", borderRadius: "10px", border: "1px solid #f4c7c3", marginBottom: "16px" };
 const summaryGridStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: "16px", marginBottom: "16px" };
+const summaryGridMobileStyle = { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "10px", marginBottom: "16px" };
 const metricStyle = { background: "white", borderRadius: "14px", boxShadow: "0 2px 10px rgba(0,0,0,.08)", padding: "16px", display: "grid", gap: "6px" };
 const metricValueStyle = { fontSize: "22px" };
 const tableHeaderStyle = { padding: "16px 18px", borderBottom: "1px solid #eee", display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "center", flexWrap: "wrap" };
+const tableWrapperStyle = { overflowX: "auto", maxWidth: "100%", WebkitOverflowScrolling: "touch" };
 const tableStyle = { width: "100%", borderCollapse: "collapse", minWidth: "1120px" };
 const thStyle = { textAlign: "left", padding: "12px 10px", borderBottom: "1px solid #e5e7eb", fontSize: "13px", color: "#475467" };
 const tdStyle = { padding: "10px", verticalAlign: "top" };
 const linkBtnStyle = { textDecoration: "none", padding: "8px 10px", borderRadius: "10px", border: "1px solid #d0d5dd", color: "#111827", background: "white", display: "inline-block" };
 const warningPillStyle = { background: "#fffaeb", color: "#b54708", borderRadius: "999px", padding: "4px 8px", fontWeight: "bold", fontSize: "13px", width: "fit-content" };
+const fullWidthStyle = { width: "100%" };

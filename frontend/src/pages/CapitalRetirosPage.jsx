@@ -14,6 +14,7 @@ import {
 } from "../services/capitalRetirosService";
 import { formatMoney } from "../utils/formatters";
 import { useSession } from "../context/SessionContext";
+import useMediaQuery from "../hooks/useMediaQuery";
 
 const SUCURSAL_ID = 1;
 
@@ -81,6 +82,8 @@ const secondaryButton = {
 
 export default function CapitalRetirosPage() {
   const { usuarioId } = useSession();
+  const isMobile = useMediaQuery("(max-width: 760px)");
+  const isNarrow = useMediaQuery("(max-width: 1000px)");
   const navigate = useNavigate();
   const [participantes, setParticipantes] = useState([]);
   const [movimientos, setMovimientos] = useState([]);
@@ -271,10 +274,10 @@ export default function CapitalRetirosPage() {
   }
 
   return (
-    <div style={{ padding: 24, display: "grid", gap: 18 }}>
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
-        <div>
-          <h1 style={{ margin: 0, color: "#101828" }}>Capital y Retiros</h1>
+    <div style={{ padding: isMobile ? 12 : 24, display: "grid", gap: isMobile ? 12 : 18, minWidth: 0 }}>
+      <header style={{ display: "grid", gap: 6, minWidth: 0 }}>
+        <div style={{ minWidth: 0 }}>
+          <h1 style={{ margin: 0, color: "#101828", fontSize: isMobile ? 26 : 32, lineHeight: 1.1 }}>Capital y Retiros</h1>
           <p style={{ margin: "6px 0 0", color: "#667085" }}>
             Aportes, préstamos al negocio, devoluciones y retiros familiares sin contaminar Gastos.
           </p>
@@ -284,7 +287,7 @@ export default function CapitalRetirosPage() {
       {error && <div style={{ ...card, padding: 14, borderColor: "#fecaca", color: "#b91c1c", background: "#fef2f2" }}>{error}</div>}
       {ok && <div style={{ ...card, padding: 14, borderColor: "#bbf7d0", color: "#166534", background: "#f0fdf4" }}>{ok}</div>}
 
-      <section style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 12 }}>
+      <section style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(auto-fit, minmax(150px, 1fr))", gap: isMobile ? 8 : 12, minWidth: 0 }}>
         <Metric title="Aportes" value={money(resumen?.total_aportes)} />
         <Metric title="Préstamos" value={money(resumen?.total_prestamos)} />
         <Metric title="Saldo préstamos" value={money(resumen?.saldo_prestamos)} strong />
@@ -292,11 +295,11 @@ export default function CapitalRetirosPage() {
         <Metric title="Distribuciones" value={money(resumen?.total_distribuciones)} />
       </section>
 
-      <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.45fr) minmax(360px, .75fr)", gap: 18, alignItems: "start" }}>
-        <div style={{ display: "grid", gap: 18 }}>
-          <div style={{ ...card, padding: 16 }}>
+      <section style={{ display: "grid", gridTemplateColumns: isNarrow ? "1fr" : "minmax(0, 1.45fr) minmax(360px, .75fr)", gap: isMobile ? 12 : 18, alignItems: "start", minWidth: 0 }}>
+        <div style={{ display: "grid", gap: isMobile ? 12 : 18, minWidth: 0 }}>
+          <div style={{ ...card, padding: isMobile ? 12 : 16, minWidth: 0 }}>
             <h2 style={{ margin: "0 0 12px" }}>Nuevo movimiento</h2>
-            <form onSubmit={guardarMovimiento} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+            <form onSubmit={guardarMovimiento} style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 12, minWidth: 0 }}>
               <label style={label}>
                 Participante
                 <select style={input} value={movForm.id_participante} onChange={(e) => setMovForm((s) => ({ ...s, id_participante: e.target.value }))} required>
@@ -319,7 +322,7 @@ export default function CapitalRetirosPage() {
                 <input style={input} type="number" min="1" value={movForm.monto} onChange={(e) => setMovForm((s) => ({ ...s, monto: e.target.value }))} required />
               </label>
 
-              <label style={{ ...label, gridColumn: "span 2" }}>
+              <label style={{ ...label, gridColumn: isMobile ? "auto" : "span 2" }}>
                 Descripción
                 <input style={input} value={movForm.descripcion} onChange={(e) => setMovForm((s) => ({ ...s, descripcion: e.target.value }))} placeholder="Ej: Ángel presta plata para compra por volumen" required />
               </label>
@@ -350,9 +353,9 @@ export default function CapitalRetirosPage() {
             </form>
           </div>
 
-          <div style={{ ...card, padding: 16 }}>
+          <div style={{ ...card, padding: isMobile ? 12 : 16, minWidth: 0 }}>
             <h2 style={{ margin: "0 0 12px" }}>Movimientos</h2>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10, marginBottom: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(4, minmax(0, 1fr))", gap: 10, marginBottom: 12, minWidth: 0 }}>
               <select style={input} value={filtros.id_participante} onChange={(e) => setFiltros((s) => ({ ...s, id_participante: e.target.value }))}>
                 <option value="">Todos</option>
                 {participantes.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
@@ -369,8 +372,8 @@ export default function CapitalRetirosPage() {
               <input style={input} placeholder="Buscar" value={filtros.q} onChange={(e) => setFiltros((s) => ({ ...s, q: e.target.value }))} />
             </div>
 
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+            <div style={{ overflowX: "auto", maxWidth: "100%", WebkitOverflowScrolling: "touch" }}>
+              <table style={{ width: "100%", minWidth: 760, borderCollapse: "collapse", fontSize: 14 }}>
                 <thead>
                   <tr style={{ color: "#667085", textAlign: "left", borderBottom: "1px solid #eaecf0" }}>
                     <th style={{ padding: 10 }}>Fecha</th>
@@ -404,8 +407,8 @@ export default function CapitalRetirosPage() {
           </div>
         </div>
 
-        <aside style={{ display: "grid", gap: 18 }}>
-          <div style={{ ...card, padding: 16 }}>
+        <aside style={{ display: "grid", gap: isMobile ? 12 : 18, minWidth: 0 }}>
+          <div style={{ ...card, padding: isMobile ? 12 : 16, minWidth: 0 }}>
             <h2 style={{ margin: "0 0 12px" }}>Participantes</h2>
             <form onSubmit={guardarParticipante} style={{ display: "grid", gap: 10, marginBottom: 14 }}>
               <input style={input} placeholder="Nombre" value={participanteForm.nombre} onChange={(e) => setParticipanteForm((s) => ({ ...s, nombre: e.target.value }))} required />

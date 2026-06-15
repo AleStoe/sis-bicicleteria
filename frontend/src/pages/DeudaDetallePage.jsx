@@ -57,7 +57,7 @@ function normalizarMonto(value) {
   return numero;
 }
 
-function buildPagoPayload(pagoForm) {
+function buildPagoPayload(pagoForm, usuarioId) {
   const montoBase = normalizarMonto(pagoForm.monto_base);
 
   return {
@@ -151,7 +151,7 @@ export default function DeudaDetallePage() {
       setError("");
       setMensaje("");
 
-      const payload = buildPagoPayload(pagoForm);
+      const payload = buildPagoPayload(pagoForm, usuarioId);
       const preview = await simularPagoDeuda(deudaId, payload);
 
       setPreviewPago(preview);
@@ -183,7 +183,7 @@ export default function DeudaDetallePage() {
       setError("");
       setMensaje("");
 
-      const payload = buildPagoPayload(pagoForm);
+      const payload = buildPagoPayload(pagoForm, usuarioId);
 
       await registrarPagoDeuda(deudaId, payload);
 

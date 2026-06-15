@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { listarAuditoriaEventos, obtenerAuditoriaEvento } from "../services/auditoriaService";
 import { formatDate } from "../utils/formatters";
+import useMediaQuery from "../hooks/useMediaQuery";
 
 const LIMITS = [50, 100, 200, 500];
 const FILTROS_ENTIDAD = [
@@ -16,6 +17,8 @@ const FILTROS_ENTIDAD = [
 ];
 
 export default function AuditoriaPage() {
+  const isMobile = useMediaQuery("(max-width: 760px)");
+  const isNarrow = useMediaQuery("(max-width: 1120px)");
   const [eventos, setEventos] = useState([]);
   const [eventoSeleccionado, setEventoSeleccionado] = useState(null);
   const [limit, setLimit] = useState(100);
@@ -135,15 +138,15 @@ export default function AuditoriaPage() {
   const severidadActual = eventoActual ? obtenerSeveridad(eventoActual) : null;
 
   return (
-    <div style={styles.page}>
-      <header style={styles.hero}>
+    <div style={{ ...styles.page, ...(isMobile ? styles.pageMobile : {}) }}>
+      <header style={{ ...styles.hero, ...(isMobile ? styles.heroMobile : {}) }}>
         <div>
           <p style={styles.kicker}>Control operativo</p>
           <h1 style={styles.title}>Auditoría</h1>
           <p style={styles.subtitle}>Quién hizo qué, cuándo y sobre qué operación.</p>
         </div>
 
-        <div style={styles.heroActions}>
+        <div style={isMobile ? styles.heroActionsMobile : styles.heroActions}>
           <select value={limit} onChange={(e) => setLimit(Number(e.target.value))} style={styles.heroSelect}>
             {LIMITS.map((item) => (
               <option key={item} value={item}>Últimos {item}</option>
@@ -158,7 +161,7 @@ export default function AuditoriaPage() {
 
       {error && <div style={styles.error}>Error: {error}</div>}
 
-      <section style={styles.metricsGrid}>
+      <section style={isMobile ? styles.metricsGridMobile : styles.metricsGrid}>
         <Metric label="Eventos cargados" value={resumen.total} tone="dark" />
         <Metric label="Críticos" value={resumen.criticos} tone={resumen.criticos > 0 ? "danger" : "ok"} />
         <Metric label="Importantes" value={resumen.importantes} tone="warning" />
@@ -167,7 +170,7 @@ export default function AuditoriaPage() {
         <Metric label="Ajustes" value={resumen.ajustes} tone={resumen.ajustes > 0 ? "warning" : "muted"} />
       </section>
 
-      <section style={styles.filterBar}>
+      <section style={isMobile ? styles.filterBarMobile : styles.filterBar}>
         <div style={styles.quickFilters}>
           {FILTROS_ENTIDAD.map((filtro) => (
             <button
@@ -189,7 +192,7 @@ export default function AuditoriaPage() {
         />
       </section>
 
-      <main style={styles.layout}>
+      <main style={isNarrow ? styles.layoutMobile : styles.layout}>
         <section style={styles.timelineCard}>
           <div style={styles.timelineHeader}>
             <div>
@@ -438,23 +441,29 @@ function normalizarTexto(valor) {
 
 const styles = {
   page: { minHeight: "100vh", padding: 20, background: "#f1f5f9", color: "#0f172a" },
+  pageMobile: { padding: 12, overflowX: "hidden" },
   hero: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, padding: 22, borderRadius: 24, background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)", color: "white", boxShadow: "0 18px 40px rgba(15,23,42,.18)", marginBottom: 16 },
+  heroMobile: { display: "grid", gridTemplateColumns: "1fr", padding: 16, borderRadius: 18 },
   kicker: { margin: 0, color: "#fb923c", fontSize: 12, fontWeight: 1000, textTransform: "uppercase", letterSpacing: ".08em" },
   title: { margin: "3px 0 0", fontSize: 34, fontWeight: 1000, letterSpacing: "-.03em" },
   subtitle: { margin: "8px 0 0", color: "#cbd5e1", fontWeight: 700 },
   heroActions: { display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" },
+  heroActionsMobile: { display: "grid", gridTemplateColumns: "1fr", gap: 10, alignItems: "stretch" },
   heroSelect: { border: "1px solid rgba(255,255,255,.22)", background: "rgba(255,255,255,.08)", color: "white", borderRadius: 14, padding: "12px 16px", fontWeight: 1000, cursor: "pointer" },
   secondaryHeroButton: { border: "1px solid rgba(255,255,255,.22)", background: "rgba(255,255,255,.08)", color: "white", borderRadius: 14, padding: "12px 16px", fontWeight: 1000, cursor: "pointer" },
   error: { background: "#fff1f0", color: "#b42318", border: "1px solid #fecdca", borderRadius: 14, padding: 12, marginBottom: 14, fontWeight: 800 },
   metricsGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(145px, 1fr))", gap: 12, marginBottom: 16 },
+  metricsGridMobile: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, marginBottom: 14 },
   metric: { background: "white", border: "1px solid #e2e8f0", borderRadius: 18, padding: 14, display: "grid", gap: 5, boxShadow: "0 10px 22px rgba(15,23,42,.06)" },
   metricTones: { dark: { color: "#0f172a" }, ok: { color: "#047857", background: "#ecfdf5", borderColor: "#bbf7d0" }, warning: { color: "#b45309", background: "#fffbeb", borderColor: "#fde68a" }, danger: { color: "#b42318", background: "#fff1f0", borderColor: "#fecaca" }, muted: { color: "#475569", background: "#f8fafc" } },
   filterBar: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) 360px", gap: 12, marginBottom: 16, alignItems: "center" },
+  filterBarMobile: { display: "grid", gridTemplateColumns: "1fr", gap: 10, marginBottom: 14, alignItems: "stretch" },
   quickFilters: { display: "flex", gap: 8, flexWrap: "wrap" },
   filterButton: { border: "1px solid #cbd5e1", background: "white", color: "#334155", borderRadius: 999, padding: "9px 12px", fontWeight: 900, cursor: "pointer" },
   filterButtonActive: { border: "1px solid #f97316", background: "#fff7ed", color: "#c2410c", borderRadius: 999, padding: "9px 12px", fontWeight: 1000, cursor: "pointer" },
   searchInput: { width: "100%", border: "1px solid #cbd5e1", borderRadius: 14, padding: "12px 13px", fontWeight: 700, color: "#0f172a", boxSizing: "border-box", background: "white" },
   layout: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) 390px", gap: 16, alignItems: "start" },
+  layoutMobile: { display: "grid", gridTemplateColumns: "1fr", gap: 14, alignItems: "start" },
   timelineCard: { background: "white", border: "1px solid #e2e8f0", borderRadius: 22, overflow: "hidden", boxShadow: "0 14px 30px rgba(15,23,42,.06)" },
   timelineHeader: { padding: 18, borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" },
   eyebrow: { margin: 0, color: "#f97316", fontSize: 12, fontWeight: 1000, textTransform: "uppercase", letterSpacing: ".08em" },

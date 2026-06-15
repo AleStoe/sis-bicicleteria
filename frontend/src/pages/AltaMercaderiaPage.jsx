@@ -15,6 +15,7 @@ import AltaMercaderiaIngresoFields from "../components/mercaderia/alta/AltaMerca
 import AltaMercaderiaImagenUpload from "../components/mercaderia/alta/AltaMercaderiaImagenUpload";
 import { formatMoney, formatNumber } from "../utils/formatters";
 import { useSession } from "../context/SessionContext";
+import useMediaQuery from "../hooks/useMediaQuery";
 
 const ID_SUCURSAL_DEFAULT = 1;
 
@@ -23,6 +24,8 @@ const MARGEN_MAYORISTA = 0.55;
 
 export default function AltaMercaderiaPage() {
   const { usuarioId } = useSession();
+  const isMobile = useMediaQuery("(max-width: 760px)");
+  const isNarrow = useMediaQuery("(max-width: 1100px)");
   const buscarRef = useRef(null);
   const costoRef = useRef(null);
 
@@ -409,11 +412,11 @@ export default function AltaMercaderiaPage() {
   }
 
   return (
-    <div style={styles.page}>
+    <div style={{ ...styles.page, ...(isMobile ? styles.pageMobile : {}) }}>
       <header style={styles.header}>
         <div>
           <p style={styles.eyebrow}>Stock / Ingreso manual</p>
-          <h1 style={styles.title}>Alta de mercadería</h1>
+          <h1 style={{ ...styles.title, ...(isMobile ? styles.titleMobile : {}) }}>Alta de mercadería</h1>
           <p style={styles.subtitle}>
             Primero escaneá o buscá. Si existe, registrás ingreso. Si no existe,
             lo creás rápido.
@@ -432,7 +435,7 @@ export default function AltaMercaderiaPage() {
           </p>
         </div>
 
-        <div style={styles.searchRow}>
+        <div style={isMobile ? styles.searchRowMobile : styles.searchRow}>
           <input
             ref={buscarRef}
             style={styles.searchInput}
@@ -465,7 +468,7 @@ export default function AltaMercaderiaPage() {
         </div>
       </section>
 
-      <section style={styles.contentGrid}>
+      <section style={isNarrow ? styles.contentGridMobile : styles.contentGrid}>
         <main style={styles.mainColumn}>
           {resultados.length > 0 && (
             <section style={styles.card}>
@@ -484,7 +487,7 @@ export default function AltaMercaderiaPage() {
                   <button
                     key={item.id_variante}
                     type="button"
-                    style={styles.resultItem}
+                    style={isMobile ? styles.resultItemMobile : styles.resultItem}
                     onClick={() => seleccionarExistente(item)}
                   >
                     <div>
@@ -526,7 +529,7 @@ export default function AltaMercaderiaPage() {
               <form onSubmit={registrarIngresoExistente} style={styles.form}>
                 {seleccionado.proveedor_preferido_id &&
                 !mostrarCambioProveedor ? (
-                  <div style={styles.providerDetected}>
+                  <div style={isMobile ? styles.providerDetectedMobile : styles.providerDetected}>
                     <div>
                       <strong>Proveedor detectado</strong>
                       <div>{seleccionado.proveedor_preferido_nombre}</div>
@@ -596,7 +599,7 @@ export default function AltaMercaderiaPage() {
                 <section style={styles.formSection}>
                   <h3 style={styles.formSectionTitle}>Datos básicos</h3>
 
-                  <div style={styles.twoCols}>
+                  <div style={isMobile ? styles.oneCol : styles.twoCols}>
                     <label style={styles.label}>
                       Categoría *
                       <select
@@ -632,7 +635,7 @@ export default function AltaMercaderiaPage() {
                     </label>
                   </div>
 
-                  <div style={styles.inlineCreate}>
+                  <div style={isMobile ? styles.inlineCreateMobile : styles.inlineCreate}>
                     <input
                       style={styles.input}
                       value={marcaNueva}
@@ -661,7 +664,7 @@ export default function AltaMercaderiaPage() {
                     />
                   </label>
 
-                  <div style={styles.twoCols}>
+                  <div style={isMobile ? styles.oneCol : styles.twoCols}>
                     <label style={styles.label}>
                       Código proveedor *
                       <input
@@ -735,7 +738,7 @@ export default function AltaMercaderiaPage() {
                 <section style={styles.formSection}>
                   <h3 style={styles.formSectionTitle}>Precios</h3>
 
-                  <div style={styles.suggestionBox}>
+                  <div style={isMobile ? styles.suggestionBoxMobile : styles.suggestionBox}>
                     <div>
                       <span>Minorista sugerido</span>
                       <strong>{formatMoney(sugeridoMinorista)}</strong>
@@ -746,7 +749,7 @@ export default function AltaMercaderiaPage() {
                     </div>
                   </div>
 
-                  <div style={styles.twoCols}>
+                  <div style={isMobile ? styles.oneCol : styles.twoCols}>
                     <label style={styles.label}>
                       Precio minorista
                       <input
@@ -794,7 +797,7 @@ export default function AltaMercaderiaPage() {
           )}
         </main>
 
-        <aside style={styles.sideColumn}>
+        <aside style={isNarrow ? styles.sideColumnMobile : styles.sideColumn}>
           <section style={styles.sideCard}>
             <h3 style={styles.sideTitle}>Guía rápida</h3>
 
@@ -852,6 +855,10 @@ const styles = {
     background: "#f3f4f6",
     color: "#111827",
   },
+  pageMobile: {
+    padding: "12px",
+    overflowX: "hidden",
+  },
 
   header: {
     marginBottom: "18px",
@@ -870,6 +877,9 @@ const styles = {
     margin: "2px 0 0",
     fontSize: "30px",
     fontWeight: 900,
+  },
+  titleMobile: {
+    fontSize: "24px",
   },
 
   subtitle: {
@@ -905,6 +915,12 @@ const styles = {
     gap: "12px",
     alignItems: "center",
   },
+  searchRowMobile: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: "10px",
+    alignItems: "stretch",
+  },
 
   searchInput: {
     width: "100%",
@@ -923,6 +939,12 @@ const styles = {
     gap: "18px",
     alignItems: "start",
   },
+  contentGridMobile: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: "14px",
+    alignItems: "start",
+  },
 
   mainColumn: {
     display: "grid",
@@ -934,6 +956,11 @@ const styles = {
     gap: "14px",
     position: "sticky",
     top: "16px",
+  },
+  sideColumnMobile: {
+    display: "grid",
+    gap: "12px",
+    position: "static",
   },
 
   card: {
@@ -1020,12 +1047,23 @@ const styles = {
     gridTemplateColumns: "1fr 1fr",
     gap: "12px",
   },
+  oneCol: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: "10px",
+  },
 
   inlineCreate: {
     display: "grid",
     gridTemplateColumns: "1fr auto",
     gap: "10px",
     alignItems: "center",
+  },
+  inlineCreateMobile: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: "10px",
+    alignItems: "stretch",
   },
 
   check: {
@@ -1067,6 +1105,19 @@ const styles = {
     justifyContent: "space-between",
     alignItems: "center",
     gap: "14px",
+    width: "100%",
+    textAlign: "left",
+    border: "1px solid #e5e7eb",
+    background: "#ffffff",
+    borderRadius: "14px",
+    padding: "14px",
+    cursor: "pointer",
+  },
+  resultItemMobile: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    alignItems: "stretch",
+    gap: "10px",
     width: "100%",
     textAlign: "left",
     border: "1px solid #e5e7eb",
@@ -1126,11 +1177,29 @@ const styles = {
     background: "#ecfdf5",
     border: "1px solid #bbf7d0",
   },
+  providerDetectedMobile: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: "10px",
+    padding: "14px",
+    borderRadius: "14px",
+    background: "#ecfdf5",
+    border: "1px solid #bbf7d0",
+  },
 
   suggestionBox: {
     display: "grid",
     gridTemplateColumns: "1fr 1fr",
     gap: "12px",
+    background: "#eff6ff",
+    border: "1px solid #bfdbfe",
+    borderRadius: "14px",
+    padding: "14px",
+  },
+  suggestionBoxMobile: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: "10px",
     background: "#eff6ff",
     border: "1px solid #bfdbfe",
     borderRadius: "14px",

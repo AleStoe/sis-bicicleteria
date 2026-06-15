@@ -14,6 +14,7 @@ export default function Input({
         gap: 6,
         fontWeight: 600,
         color: colors.text,
+        minWidth: 0,
         ...style,
       }}
     >
@@ -22,6 +23,7 @@ export default function Input({
       <input
         style={{
           width: "100%",
+          minWidth: 0,
           boxSizing: "border-box",
           border: `1px solid ${error ? colors.danger : colors.border}`,
           borderRadius: radius.md,
