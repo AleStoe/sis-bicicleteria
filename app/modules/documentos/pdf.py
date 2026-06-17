@@ -40,6 +40,42 @@ def _fecha(value) -> str:
         return raw[:16]
 
 
+def _decimal(value) -> Decimal:
+    return Decimal(str(value or 0))
+
+
+def _detalle_pago_financiero(pago: dict) -> str:
+    medio = _text(pago.get("medio_pago")).lower()
+    base = pago.get("monto_base_aplicado")
+    descuento = _decimal(pago.get("monto_descuento_aplicado"))
+    recargo = _decimal(pago.get("monto_recargo_aplicado"))
+    cobrado = pago.get("monto_total_cobrado")
+
+    parts = []
+
+    if base is not None:
+        parts.append(f"Base aplicada: {_money(base)}")
+
+    if descuento > 0:
+        parts.append(f"Descuento: - {_money(descuento)}")
+
+    if recargo > 0:
+        parts.append(f"Recargo: + {_money(recargo)}")
+
+    if medio == "tarjeta":
+        cuotas = pago.get("cuotas") or 1
+        parts.append(f"{cuotas} cuota(s)")
+
+        recargo_financiero = _decimal(pago.get("monto_recargo_financiero"))
+        if recargo_financiero > 0:
+            parts.append(f"Recargo tarjeta: + {_money(recargo_financiero)}")
+
+    if cobrado is not None:
+        parts.append(f"Cobrado real: {_money(cobrado)}")
+
+    return " - ".join(parts) if parts else "Cobrado real"
+
+
 def _resolver_imagen_local(url: str | None) -> Path | None:
     if not url:
         return None
@@ -309,14 +345,7 @@ def generar_comprobante_x_pdf(data: dict) -> bytes:
             y -= 5 * mm
             c.setFont("Helvetica", 8)
 
-            if pago.get("medio_pago") == "tarjeta":
-                detalle = (
-                    f"Base: {_money(pago.get('monto_base'))} · "
-                    f"Recargo: {_money(pago.get('monto_recargo_financiero'))} · "
-                    f"{pago.get('cuotas') or 1} cuota(s)"
-                )
-            else:
-                detalle = "Cobrado real"
+            detalle = _detalle_pago_financiero(pago)
 
             c.drawString(margin_x + 4 * mm, y, detalle[:105])
 

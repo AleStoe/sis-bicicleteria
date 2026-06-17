@@ -19,22 +19,22 @@ export default function VentaResumenCards({
         gap: isMobile ? "8px" : "12px",
       }}
     >
-      <MetricCard label="Total final" value={formatMoney(totalFinal)} />
+      <MetricCard label="Total venta" value={formatMoney(totalFinal)} />
 
       <MetricCard
-        label="Cobrado bruto"
+        label="Cobrado real"
         value={formatMoney(totalPagadoReal)}
         tone="success"
       />
 
       <MetricCard
-        label="Cobertura no cobrada"
+        label="Cubierto sin caja"
         value={formatMoney(cubiertoNoPago)}
         tone={cubiertoNoPago > 0 ? "warning" : "default"}
       />
 
       <MetricCard
-        label="Saldo pendiente"
+        label="Falta cobrar"
         value={formatMoney(saldoPendiente)}
         tone={saldoPendiente > 0 ? "danger" : "success"}
       />

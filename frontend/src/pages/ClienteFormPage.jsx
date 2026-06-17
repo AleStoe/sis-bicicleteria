@@ -5,6 +5,7 @@ import {
   obtenerCliente,
   actualizarCliente,
 } from "../services/clientesService";
+import { normalizeTextUpper } from "../utils/textNormalization";
 
 const FORM_INICIAL = {
   nombre: "",
@@ -61,7 +62,10 @@ export default function ClienteFormPage() {
 
   function handleChange(e) {
     const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
+    setForm((prev) => ({
+      ...prev,
+      [name]: UPPER_FIELDS.has(name) ? normalizeTextUpper(value) : value,
+    }));
   }
 
   function limpiarOpcional(value) {
@@ -365,3 +369,5 @@ const alertStyle = {
   border: "1px solid #f4c7c3",
   marginBottom: "14px",
 };
+
+const UPPER_FIELDS = new Set(["nombre", "razon_social"]);

@@ -23,19 +23,27 @@ import {
 } from "../services/clientesService";
 import { listarDeudas } from "../services/deudasService";
 import { listarCreditosCliente } from "../services/creditosService";
+import { listarReservas } from "../services/reservasService";
+import { listarPagos } from "../services/pagosService";
 
 const TAB_RESUMEN = "resumen";
+const TAB_HISTORIAL = "historial";
 const TAB_VENTAS = "ventas";
 const TAB_DEUDAS = "deudas";
 const TAB_CREDITOS = "creditos";
+const TAB_RESERVAS = "reservas";
+const TAB_PAGOS = "pagos";
 const TAB_BICICLETAS = "bicicletas";
 const TAB_DATOS = "datos";
 
 const TABS = [
   { id: TAB_RESUMEN, label: "Resumen" },
+  { id: TAB_HISTORIAL, label: "Historial" },
   { id: TAB_VENTAS, label: "Ventas" },
   { id: TAB_DEUDAS, label: "Deudas" },
   { id: TAB_CREDITOS, label: "Créditos" },
+  { id: TAB_RESERVAS, label: "Reservas" },
+  { id: TAB_PAGOS, label: "Pagos" },
   { id: TAB_BICICLETAS, label: "Bicicletas" },
   { id: TAB_DATOS, label: "Datos" },
 ];
@@ -75,6 +83,8 @@ export default function ClienteDetallePage() {
   const [bicicletas, setBicicletas] = useState([]);
   const [deudas, setDeudas] = useState([]);
   const [creditos, setCreditos] = useState([]);
+  const [reservas, setReservas] = useState([]);
+  const [pagos, setPagos] = useState([]);
   const [tabActiva, setTabActiva] = useState(TAB_RESUMEN);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -107,11 +117,13 @@ export default function ClienteDetallePage() {
       setLoading(true);
       setError("");
 
-      const [detalle, bicis, creditosData, deudasData] = await Promise.all([
+      const [detalle, bicis, creditosData, deudasData, reservasData, pagosData] = await Promise.all([
         obtenerCliente(clienteId),
         listarBicicletasCliente(clienteId),
         listarCreditosCliente(clienteId),
         listarDeudas({ q: String(clienteId), estado: "" }),
+        listarReservas({ id_cliente: clienteId }),
+        listarPagos({ id_cliente: clienteId }),
       ]);
 
       const deudasDelCliente = Array.isArray(deudasData)
@@ -122,6 +134,8 @@ export default function ClienteDetallePage() {
       setBicicletas(Array.isArray(bicis) ? bicis : []);
       setCreditos(Array.isArray(creditosData) ? creditosData : []);
       setDeudas(deudasDelCliente);
+      setReservas(Array.isArray(reservasData) ? reservasData : []);
+      setPagos(Array.isArray(pagosData) ? pagosData : []);
     } catch (err) {
       setError(err.message || "No se pudo cargar el cliente");
     } finally {
@@ -172,6 +186,10 @@ export default function ClienteDetallePage() {
   const cliente = data?.cliente;
   const resumen = data?.resumen_ventas || {};
   const ventas = data?.ventas_recientes || [];
+  const historialCliente = useMemo(
+    () => buildHistorialCliente({ ventas, deudas, creditos, reservas, pagos, bicicletas }),
+    [ventas, deudas, creditos, reservas, pagos, bicicletas]
+  );
 
   const resumenFinanciero = useMemo(() => {
     const deudasAbiertas = deudas.filter((deuda) => deuda.estado === "abierta");
@@ -215,6 +233,12 @@ export default function ClienteDetallePage() {
 
   const tieneDeuda = Number(resumenFinanciero.saldoDeuda || 0) > 0;
   const tieneCredito = Number(resumenFinanciero.saldoCredito || 0) > 0;
+  const ultimaInteraccion = historialCliente[0] || null;
+  const accionRecomendada = getAccionRecomendadaCliente({
+    tieneDeuda,
+    deudasAbiertas: resumenFinanciero.deudasAbiertas,
+    bicicletas,
+  });
 
   return (
     <ResponsivePage>
@@ -266,6 +290,8 @@ export default function ClienteDetallePage() {
         <MetricCard label="Balance" value={formatMoney(resumenFinanciero.balance)} tone={resumenFinanciero.balance >= 0 ? "success" : "danger"} emphasize />
         <MetricCard label="Ventas" value={resumen?.cantidad_ventas ?? 0} emphasize />
         <MetricCard label="Bicicletas" value={bicicletas.length} tone="primary" emphasize />
+        <MetricCard label="Reservas" value={reservas.length} emphasize />
+        <MetricCard label="Pagos" value={pagos.length} tone="success" emphasize />
       </ResponsiveMetricsGrid>
 
       <Card bodyStyle={{ padding: isMobile ? 14 : 18 }}>
@@ -289,6 +315,31 @@ export default function ClienteDetallePage() {
               Ver ventas
             </Button>
           </ResponsiveActions>
+        </div>
+      </Card>
+
+      <Card bodyStyle={{ padding: isMobile ? 14 : 18 }}>
+        <div style={isMobile ? styles.relationFocusMobile : styles.relationFocus}>
+          <div>
+            <p style={styles.kicker}>Centro de relacion</p>
+            <h2 style={styles.accountTitle}>
+              {ultimaInteraccion ? ultimaInteraccion.titulo : "Sin interacciones recientes"}
+            </h2>
+            <p style={styles.accountText}>
+              {ultimaInteraccion
+                ? `${ultimaInteraccion.tipo} - ${formatDate(ultimaInteraccion.fecha)} - ${ultimaInteraccion.detalle}`
+                : "Todavia no hay movimientos para este cliente."}
+            </p>
+          </div>
+
+          <div style={styles.recommendedActionBox}>
+            <span style={styles.recommendedLabel}>Accion recomendada</span>
+            <strong>{accionRecomendada.title}</strong>
+            <p>{accionRecomendada.description}</p>
+            <ActionLink to={accionRecomendada.to} variant={accionRecomendada.variant}>
+              {accionRecomendada.label}
+            </ActionLink>
+          </div>
         </div>
       </Card>
 
@@ -320,6 +371,12 @@ export default function ClienteDetallePage() {
         </TwoColumnGrid>
       )}
 
+      {tabActiva === TAB_HISTORIAL && (
+        <Card title="Historial del cliente" subtitle="Ventas, bicicletas, reservas, pagos, deudas y creditos recientes en una sola linea.">
+          <HistorialCliente items={historialCliente} />
+        </Card>
+      )}
+
       {tabActiva === TAB_VENTAS && (
         <Card title="Ventas recientes" subtitle="Últimos movimientos comerciales asociados al cliente.">
           <VentasTable ventas={ventas} navigate={navigate} />
@@ -335,6 +392,18 @@ export default function ClienteDetallePage() {
       {tabActiva === TAB_CREDITOS && (
         <Card title="Créditos del cliente" subtitle="Saldos comerciales a favor y créditos ya aplicados.">
           <CreditosTable creditos={creditos} />
+        </Card>
+      )}
+
+      {tabActiva === TAB_RESERVAS && (
+        <Card title="Reservas del cliente" subtitle="Reservas activas, vencidas, canceladas o convertidas en venta.">
+          <ReservasList reservas={reservas} />
+        </Card>
+      )}
+
+      {tabActiva === TAB_PAGOS && (
+        <Card title="Pagos recientes" subtitle="Cobros asociados al cliente, con descuentos y recargos aplicados.">
+          <PagosList pagos={pagos} />
         </Card>
       )}
 
@@ -402,6 +471,187 @@ function getEstadoCuenta(tieneDeuda, tieneCredito) {
   if (tieneDeuda) return "Tiene deuda pendiente";
   if (tieneCredito) return "Tiene crédito a favor";
   return "Cuenta sin pendientes";
+}
+
+function getAccionRecomendadaCliente({ tieneDeuda, deudasAbiertas, bicicletas }) {
+  const primeraDeuda = deudasAbiertas?.[0];
+
+  if (tieneDeuda && primeraDeuda) {
+    return {
+      title: "Cobrar deuda",
+      description: "Tiene saldo pendiente. Conviene revisar la deuda antes de vender o entregar.",
+      label: "Cobrar deuda",
+      to: `/deudas/${primeraDeuda.id}`,
+      variant: "primary",
+    };
+  }
+
+  if ((bicicletas || []).length > 0) {
+    return {
+      title: "Crear OT",
+      description: "Tiene bicicleta registrada. Podes iniciar taller sin perder trazabilidad.",
+      label: "Crear OT",
+      to: "/taller/nueva",
+      variant: "secondary",
+    };
+  }
+
+  return {
+    title: "Nueva venta",
+    description: "Cuenta sin deuda abierta. Podes iniciar una venta normal.",
+    label: "Nueva venta",
+    to: "/ventas/nueva",
+    variant: "primary",
+  };
+}
+
+function buildHistorialCliente({ ventas, deudas, creditos, reservas, pagos, bicicletas }) {
+  const items = [
+    ...ventas.map((venta) => ({
+      tipo: "Venta",
+      fecha: venta.fecha,
+      titulo: `Venta #${venta.id}`,
+      detalle: `${formatMoney(venta.total)} - saldo ${formatMoney(venta.saldo_pendiente)}`,
+      estado: venta.estado,
+      to: `/ventas/${venta.id}`,
+    })),
+    ...deudas.map((deuda) => ({
+      tipo: "Deuda",
+      fecha: deuda.fecha_creacion || deuda.fecha || deuda.created_at,
+      titulo: `Deuda #${deuda.id}`,
+      detalle: `${renderOrigen(deuda)} - saldo ${formatMoney(deuda.saldo_actual)}`,
+      estado: deuda.estado,
+      to: `/deudas/${deuda.id}`,
+    })),
+    ...creditos.map((credito) => ({
+      tipo: "Credito",
+      fecha: credito.fecha_creacion || credito.fecha || credito.created_at,
+      titulo: `Credito #${credito.id}`,
+      detalle: `${renderOrigen(credito)} - saldo ${formatMoney(credito.saldo_actual)}`,
+      estado: credito.estado,
+      to: `/creditos/${credito.id}`,
+    })),
+    ...reservas.map((reserva) => ({
+      tipo: "Reserva",
+      fecha: reserva.fecha_reserva,
+      titulo: `Reserva #${reserva.id}`,
+      detalle: `Sena ${formatMoney(reserva.sena_total)} - saldo ${formatMoney(reserva.saldo_estimado)}`,
+      estado: reserva.estado,
+      to: `/reservas/${reserva.id}`,
+    })),
+    ...pagos.map((pago) => ({
+      tipo: "Pago",
+      fecha: pago.fecha,
+      titulo: `Pago #${pago.id}`,
+      detalle: `${renderMedioPago(pago.medio_pago)} - ${formatMoney(pago.monto_total_cobrado)}`,
+      estado: pago.estado,
+      to: getPagoOrigenUrl(pago),
+    })),
+    ...bicicletas.map((bici) => ({
+      tipo: "Bicicleta",
+      fecha: bici.fecha_compra || bici.created_at || bici.fecha_alta,
+      titulo: [bici.marca, bici.modelo].filter(Boolean).join(" ") || `Bicicleta #${bici.id}`,
+      detalle: `Cuadro ${bici.numero_cuadro || "-"} - ${calcularEstadoPostventa(bici)}`,
+      estado: bici.plan_postventa,
+      to: `/clientes/${bici.id_cliente}/bicicletas/${bici.id}`,
+    })),
+  ];
+
+  return items
+    .filter((item) => item.fecha)
+    .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
+    .slice(0, 30);
+}
+
+function HistorialCliente({ items }) {
+  if (!items.length) {
+    return <div style={styles.empty}>Todavia no hay historial para mostrar.</div>;
+  }
+
+  return (
+    <div style={styles.relationshipTimeline}>
+      {items.map((item, index) => (
+        <div key={`${item.tipo}-${item.titulo}-${index}`} style={styles.relationshipItem}>
+          <div style={styles.relationshipDot} />
+          <div style={styles.relationshipCard}>
+            <div style={styles.relationshipHeader}>
+              <div>
+                <span style={styles.recordEyebrow}>{item.tipo}</span>
+                <strong>{item.titulo}</strong>
+                <div style={styles.relationshipDate}>{formatDate(item.fecha)}</div>
+              </div>
+              {item.estado && <EstadoOperacionBadge estado={item.estado} />}
+            </div>
+            <p style={styles.relationshipDetail}>{item.detalle}</p>
+            {item.to && <Link to={item.to} style={styles.linkAction}>Abrir</Link>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ReservasList({ reservas }) {
+  if (!reservas.length) {
+    return <div style={styles.empty}>No hay reservas asociadas a este cliente.</div>;
+  }
+
+  const reservasRecientes = reservas
+    .slice()
+    .sort((a, b) => new Date(b.fecha_reserva).getTime() - new Date(a.fecha_reserva).getTime())
+    .slice(0, 10);
+
+  return (
+    <div style={styles.simpleList}>
+      {reservasRecientes.map((reserva) => (
+        <RecordCard
+          key={reserva.id}
+          eyebrow="Reserva"
+          title={`#${reserva.id}`}
+          badge={<EstadoOperacionBadge estado={reserva.estado} />}
+          fields={[
+            { label: "Fecha", value: formatDate(reserva.fecha_reserva) },
+            { label: "Vence", value: reserva.fecha_vencimiento ? formatDate(reserva.fecha_vencimiento) : "-" },
+            { label: "Sena", value: formatMoney(reserva.sena_total), strong: true },
+            { label: "Saldo", value: formatMoney(reserva.saldo_estimado) },
+          ]}
+          action={<Link to={`/reservas/${reserva.id}`} style={styles.mobilePrimaryAction}>Ver reserva</Link>}
+        />
+      ))}
+    </div>
+  );
+}
+
+function PagosList({ pagos }) {
+  if (!pagos.length) {
+    return <div style={styles.empty}>No hay pagos asociados a este cliente.</div>;
+  }
+
+  return (
+    <div style={styles.simpleList}>
+      {pagos.slice(0, 30).map((pago) => (
+        <RecordCard
+          key={pago.id}
+          eyebrow={renderMedioPago(pago.medio_pago)}
+          title={`Pago #${pago.id}`}
+          badge={<EstadoOperacionBadge estado={pago.estado} />}
+          fields={[
+            { label: "Fecha", value: formatDate(pago.fecha) },
+            { label: "Origen", value: renderOrigen(pago) },
+            { label: "Base", value: formatMoney(pago.monto_base_aplicado ?? pago.monto_base ?? pago.monto_total_cobrado) },
+            { label: "Descuento", value: formatMoney(pago.monto_descuento_aplicado ?? 0), tone: Number(pago.monto_descuento_aplicado || 0) > 0 ? "success" : undefined },
+            { label: "Recargo", value: formatMoney(pago.monto_recargo_aplicado ?? pago.monto_recargo_financiero ?? 0), tone: Number(pago.monto_recargo_aplicado || pago.monto_recargo_financiero || 0) > 0 ? "danger" : undefined },
+            { label: "Cobrado", value: formatMoney(pago.monto_total_cobrado), strong: true },
+          ]}
+          action={
+            getPagoOrigenUrl(pago) ? (
+              <Link to={getPagoOrigenUrl(pago)} style={styles.mobilePrimaryAction}>Ver origen</Link>
+            ) : null
+          }
+        />
+      ))}
+    </div>
+  );
 }
 
 function ActionLink({ to, children, variant = "outline" }) {
@@ -693,6 +943,27 @@ function renderOrigen(item) {
   return `${item.origen_tipo || "-"}${item.origen_id ? ` #${item.origen_id}` : ""}`;
 }
 
+function renderMedioPago(medio) {
+  const map = {
+    efectivo: "Efectivo",
+    transferencia: "Transferencia",
+    mercadopago: "MercadoPago",
+    tarjeta: "Tarjeta",
+  };
+
+  return map[medio] || medio || "-";
+}
+
+function getPagoOrigenUrl(pago) {
+  if (!pago?.origen_tipo || !pago?.origen_id) return null;
+
+  if (pago.origen_tipo === "venta") return `/ventas/${pago.origen_id}`;
+  if (pago.origen_tipo === "deuda_cliente") return `/deudas/${pago.origen_id}`;
+  if (pago.origen_tipo === "reserva") return `/reservas/${pago.origen_id}`;
+
+  return null;
+}
+
 function renderTipo(tipo) {
   const map = {
     consumidor_final: "Consumidor final",
@@ -802,6 +1073,32 @@ const styles = {
   accountMobile: {
     display: "grid",
     gap: 14,
+  },
+  relationFocus: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) minmax(260px, 360px)",
+    gap: 16,
+    alignItems: "center",
+  },
+  relationFocusMobile: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: 14,
+  },
+  recommendedActionBox: {
+    border: "1px solid #bfdbfe",
+    background: "#eff6ff",
+    borderRadius: 14,
+    padding: 14,
+    display: "grid",
+    gap: 8,
+    minWidth: 0,
+  },
+  recommendedLabel: {
+    color: "#1d4ed8",
+    fontSize: 12,
+    fontWeight: 1000,
+    textTransform: "uppercase",
   },
   kicker: {
     margin: 0,
@@ -935,6 +1232,55 @@ const styles = {
     background: "#2563eb",
     color: "white",
     fontWeight: 1000,
+  },
+  simpleList: {
+    display: "grid",
+    gap: 12,
+  },
+  relationshipTimeline: {
+    display: "grid",
+    gap: 12,
+  },
+  relationshipItem: {
+    display: "grid",
+    gridTemplateColumns: "18px minmax(0, 1fr)",
+    gap: 10,
+  },
+  relationshipDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+    background: "#2563eb",
+    marginTop: 18,
+    justifySelf: "center",
+  },
+  relationshipCard: {
+    border: "1px solid #e2e8f0",
+    borderRadius: 14,
+    padding: 12,
+    background: "#ffffff",
+    display: "grid",
+    gap: 8,
+    minWidth: 0,
+  },
+  relationshipHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 10,
+    alignItems: "flex-start",
+    flexWrap: "wrap",
+  },
+  relationshipDate: {
+    marginTop: 3,
+    color: "#64748b",
+    fontSize: 12,
+    fontWeight: 800,
+  },
+  relationshipDetail: {
+    margin: 0,
+    color: "#475569",
+    fontWeight: 750,
+    overflowWrap: "anywhere",
   },
   bikeGrid: {
     display: "grid",

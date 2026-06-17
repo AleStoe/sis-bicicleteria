@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import VentaHeader from "../components/ventas/detalle/VentaHeader";
 import VentaResumenCards from "../components/ventas/detalle/VentaResumenCards";
+import VentaLecturaRapida from "../components/ventas/detalle/VentaLecturaRapida";
 import VentaDocumentosPanel from "../components/ventas/detalle/VentaDocumentosPanel";
 import VentaPagosPanel from "../components/ventas/detalle/VentaPagosPanel";
 import { ConfirmModal } from "../components/ui/ConfirmModal";
@@ -558,6 +559,16 @@ const estaCerradaOperativamente =
         saldoPendiente={saldoPendiente}
         formatMoney={formatMoney}
       />
+
+      <VentaLecturaRapida
+        venta={venta}
+        items={items}
+        totalFinal={totalFinal}
+        totalPagadoReal={totalPagadoReal}
+        saldoPendiente={saldoPendiente}
+        formatMoney={formatMoney}
+      />
+
       {venta.id_reserva_origen && (
           <section style={reservaOrigenStyle}>
             <div>
@@ -575,17 +586,6 @@ const estaCerradaOperativamente =
             </a>
           </section>
         )}
-      <VentaSituacionFinanciera
-        venta={venta}
-        coberturaNoCobrada={coberturaNoCobrada}
-        creditoAplicadoReal={creditoAplicadoReal}
-        creditoGeneradoDevolucion={creditoGeneradoDevolucion}
-        deudaCanceladaPorDevolucion={deudaCanceladaPorDevolucion}
-        tieneDeuda={tieneDeuda}
-        deuda={deuda}
-      />
-
-      <VentaPagosPanel pagos={pagos} formatMoney={formatMoney} />
 
       <VentaAccionesPanel
         venta={venta}
@@ -601,6 +601,18 @@ const estaCerradaOperativamente =
       />
 
       <VentaDocumentosPanel ventaId={venta.id} />
+
+      <VentaSituacionFinanciera
+        venta={venta}
+        coberturaNoCobrada={coberturaNoCobrada}
+        creditoAplicadoReal={creditoAplicadoReal}
+        creditoGeneradoDevolucion={creditoGeneradoDevolucion}
+        deudaCanceladaPorDevolucion={deudaCanceladaPorDevolucion}
+        tieneDeuda={tieneDeuda}
+        deuda={deuda}
+      />
+
+      <VentaPagosPanel pagos={pagos} formatMoney={formatMoney} />
 
       <VentaItemsVendidos
         venta={venta}

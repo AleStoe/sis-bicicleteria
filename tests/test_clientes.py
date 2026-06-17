@@ -22,11 +22,11 @@ def test_crear_cliente_con_datos_fiscales(client, db_conn, clean_db):
 
     cliente = detalle.json()["cliente"]
 
-    assert cliente["nombre"] == "Bicicleteria Fiscal Test"
+    assert cliente["nombre"] == "BICICLETERIA FISCAL TEST"
     assert cliente["tipo_cliente"] == "mayorista"
     assert cliente["condicion_iva"] == "responsable_inscripto"
     assert cliente["cuit"] == "30-12345678-9"
-    assert cliente["razon_social"] == "Bicicleteria Fiscal Test SRL"
+    assert cliente["razon_social"] == "BICICLETERIA FISCAL TEST SRL"
 
 
 def test_actualizar_cliente_cambia_datos_fiscales(client, db_conn, clean_db):
@@ -68,12 +68,12 @@ def test_actualizar_cliente_cambia_datos_fiscales(client, db_conn, clean_db):
 
     cliente = detalle.json()["cliente"]
 
-    assert cliente["nombre"] == "Cliente Fiscal Actualizado"
+    assert cliente["nombre"] == "CLIENTE FISCAL ACTUALIZADO"
     assert cliente["telefono"] == "2912222222"
     assert cliente["tipo_cliente"] == "mayorista"
     assert cliente["condicion_iva"] == "responsable_inscripto"
     assert cliente["cuit"] == "30-22222222-2"
-    assert cliente["razon_social"] == "Cliente Fiscal Actualizado SRL"
+    assert cliente["razon_social"] == "CLIENTE FISCAL ACTUALIZADO SRL"
 
 
 def test_buscar_cliente_por_cuit_y_razon_social(client, clean_db):
@@ -98,7 +98,7 @@ def test_buscar_cliente_por_cuit_y_razon_social(client, clean_db):
     por_razon_social = client.get("/clientes/?q=Buscable")
     assert por_razon_social.status_code == 200, por_razon_social.text
     assert any(
-        c["razon_social"] == "Razon Social Buscable SA"
+        c["razon_social"] == "RAZON SOCIAL BUSCABLE SA"
         for c in por_razon_social.json()
     )
 

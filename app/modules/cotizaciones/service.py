@@ -5,6 +5,7 @@ from urllib.parse import quote_plus
 from fastapi import HTTPException
 
 from app.db.connection import get_connection
+from app.core.text_normalization import clean_text, normalize_text_upper
 
 from .repository import (
     cambiar_estado_cotizacion,
@@ -51,21 +52,21 @@ def crear_cotizacion(data):
                     "id_sucursal": data.id_sucursal,
                     "id_cliente": data.id_cliente,
                     "cliente_nombre_snapshot": (
-                        data.cliente_nombre_snapshot.strip()
+                        normalize_text_upper(data.cliente_nombre_snapshot)
                         if data.cliente_nombre_snapshot
                         else cliente["nombre"]
                         if cliente
                         else None
                     ),
                     "cliente_telefono_snapshot": (
-                        data.cliente_telefono_snapshot.strip()
+                        clean_text(data.cliente_telefono_snapshot)
                         if data.cliente_telefono_snapshot
                         else cliente.get("telefono")
                         if cliente
                         else None
                     ),
                     "id_bicicleta_cliente": data.id_bicicleta_cliente,
-                    "problema_reportado": _limpiar_texto(data.problema_reportado),
+                    "problema_reportado": normalize_text_upper(data.problema_reportado),
                     "observaciones": _limpiar_texto(data.observaciones),
                     "descuento_total": data.descuento_total,
                     "recargo_total": data.recargo_total,

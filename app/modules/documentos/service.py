@@ -15,6 +15,14 @@ from .repository_taller_presupuesto import (
     get_orden_taller_presupuesto_by_id,
     get_orden_taller_items_presupuesto_by_orden_id,
 )
+from app.modules.cotizaciones.repository import (
+    get_cotizacion_by_id,
+    get_cotizacion_items,
+)
+from .repository_etiquetas import (
+    get_bicicleta_etiqueta_by_id,
+    get_variante_etiqueta_by_id,
+)
 
 
 def obtener_datos_comprobante_x_venta(venta_id: int):
@@ -119,6 +127,71 @@ def obtener_datos_presupuesto_taller(orden_id: int):
         return {
             "orden": orden,
             "items": items,
+        }
+
+    finally:
+        conn.close()
+
+
+def obtener_datos_cotizacion_pdf(cotizacion_id: int):
+    conn = get_connection()
+
+    try:
+        cotizacion = get_cotizacion_by_id(conn, cotizacion_id)
+
+        if cotizacion is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No existe la cotizacion {cotizacion_id}",
+            )
+
+        items = get_cotizacion_items(conn, cotizacion_id)
+
+        return {
+            "cotizacion": cotizacion,
+            "items": items,
+        }
+
+    finally:
+        conn.close()
+
+
+def obtener_datos_etiqueta_variante(variante_id: int):
+    conn = get_connection()
+
+    try:
+        item = get_variante_etiqueta_by_id(conn, variante_id)
+
+        if item is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No existe la variante {variante_id}",
+            )
+
+        return {
+            "tipo": "variante",
+            "item": item,
+        }
+
+    finally:
+        conn.close()
+
+
+def obtener_datos_etiqueta_bicicleta(bicicleta_id: int):
+    conn = get_connection()
+
+    try:
+        item = get_bicicleta_etiqueta_by_id(conn, bicicleta_id)
+
+        if item is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No existe la bicicleta serializada {bicicleta_id}",
+            )
+
+        return {
+            "tipo": "bicicleta",
+            "item": item,
         }
 
     finally:

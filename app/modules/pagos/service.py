@@ -763,11 +763,11 @@ def revertir_pago(pago_id: int, data):
         conn.close()
 
 
-def listar_pagos():
+def listar_pagos(id_cliente: int | None = None):
     conn = get_connection()
 
     try:
-        return get_pagos(conn)
+        return get_pagos(conn, id_cliente=id_cliente)
     finally:
         conn.close()
 

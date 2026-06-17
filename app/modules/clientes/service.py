@@ -2,6 +2,7 @@ from fastapi import HTTPException
 
 from app.db.connection import get_connection
 from datetime import date
+from app.core.text_normalization import clean_text, normalize_text_upper
 from app.modules.taller.repository import (
     validar_sucursal_activa,
     validar_usuario_activo,
@@ -23,6 +24,7 @@ from .repository import (
     insert_bicicleta_cliente,
     get_bicicleta_cliente_detalle,
     get_historial_taller_bicicleta_cliente,
+    get_timeline_bicicleta_cliente,
     get_venta_origen_bicicleta_cliente,
     autorizar_service_vencido_bicicleta_cliente,
 )
@@ -32,33 +34,25 @@ CLIENTE_CONSUMIDOR_FINAL_ID = 1
 TIPOS_CLIENTE_VALIDOS = {"consumidor_final", "minorista", "mayorista"}
 
 
-def _limpiar_texto(valor):
-    if valor is None:
-        return None
-
-    valor = str(valor).strip()
-    return valor if valor else None
-
-
 def _normalizar_create_input(data):
-    data.nombre = _limpiar_texto(data.nombre)
-    data.telefono = _limpiar_texto(data.telefono)
-    data.dni = _limpiar_texto(data.dni)
-    data.direccion = _limpiar_texto(data.direccion)
-    data.notas = _limpiar_texto(data.notas)
-    data.cuit = _limpiar_texto(data.cuit)
-    data.razon_social = _limpiar_texto(data.razon_social)
+    data.nombre = normalize_text_upper(data.nombre)
+    data.telefono = clean_text(data.telefono)
+    data.dni = clean_text(data.dni)
+    data.direccion = clean_text(data.direccion)
+    data.notas = clean_text(data.notas)
+    data.cuit = clean_text(data.cuit)
+    data.razon_social = normalize_text_upper(data.razon_social)
     return data
 
 
 def _normalizar_update_input(data):
-    data.nombre = _limpiar_texto(data.nombre)
-    data.telefono = _limpiar_texto(data.telefono)
-    data.dni = _limpiar_texto(data.dni)
-    data.direccion = _limpiar_texto(data.direccion)
-    data.notas = _limpiar_texto(data.notas)
-    data.cuit = _limpiar_texto(data.cuit)
-    data.razon_social = _limpiar_texto(data.razon_social)
+    data.nombre = normalize_text_upper(data.nombre)
+    data.telefono = clean_text(data.telefono)
+    data.dni = clean_text(data.dni)
+    data.direccion = clean_text(data.direccion)
+    data.notas = clean_text(data.notas)
+    data.cuit = clean_text(data.cuit)
+    data.razon_social = normalize_text_upper(data.razon_social)
     return data
 
 
@@ -262,12 +256,12 @@ def crear_bicicleta_cliente_service(cliente_id: int, data):
         with conn.transaction():
             _obtener_cliente_o_404(conn, cliente_id)
 
-            data.marca = _limpiar_texto(data.marca)
-            data.modelo = _limpiar_texto(data.modelo)
-            data.rodado = _limpiar_texto(data.rodado)
-            data.color = _limpiar_texto(data.color)
-            data.numero_cuadro = _limpiar_texto(data.numero_cuadro)
-            data.notas = _limpiar_texto(data.notas)
+            data.marca = normalize_text_upper(data.marca)
+            data.modelo = normalize_text_upper(data.modelo)
+            data.rodado = clean_text(data.rodado)
+            data.color = normalize_text_upper(data.color)
+            data.numero_cuadro = normalize_text_upper(data.numero_cuadro)
+            data.notas = clean_text(data.notas)
 
             if not data.marca:
                 raise HTTPException(status_code=400, detail="La marca es obligatoria")
@@ -306,11 +300,13 @@ def obtener_historial_bicicleta_cliente_service(cliente_id: int, bicicleta_id: i
             conn,
             bicicleta_id=bicicleta_id,
         )
+        timeline = get_timeline_bicicleta_cliente(conn, bicicleta_id)
 
         return {
             "bicicleta": bicicleta,
             "venta_origen": venta_origen,
             "historial_taller": historial_taller,
+            "timeline": timeline,
         }
     finally:
         conn.close()
@@ -350,7 +346,7 @@ def autorizar_service_vencido_bicicleta_cliente_service(
                     detail="El service bonificado ya fue usado",
                 )
 
-            motivo = _limpiar_texto(data.motivo)
+            motivo = clean_text(data.motivo)
 
             if not motivo:
                 raise HTTPException(
@@ -452,7 +448,7 @@ def crear_orden_service_postventa_bicicleta_cliente_service(
                     "id_cliente": cliente_id,
                     "id_bicicleta_cliente": bicicleta_id,
                     "estado": "ingresada",
-                    "problema_reportado": "Service bonificado 30 días",
+                    "problema_reportado": "SERVICE BONIFICADO 30 DIAS",
                     "fecha_prometida": data.fecha_prometida,
                     "prioridad": data.prioridad,
                     "es_service_postventa": True,

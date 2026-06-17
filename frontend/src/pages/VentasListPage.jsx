@@ -3,11 +3,11 @@ import { Link } from "react-router-dom";
 import { listarVentas } from "../services/ventasService";
 import { formatDateTime, formatMoney } from "../utils/formatters";
 import {
-  Badge,
   Button,
   Card,
   Input,
   MetricCard,
+  OperationalStatusBadge,
   PageHeader,
   Select,
   Table,
@@ -56,24 +56,7 @@ function useIsMobile(breakpoint = MOBILE_BREAKPOINT) {
 }
 
 export function EstadoVentaBadge({ estado }) {
-  return <Badge variant={getEstadoVentaVariant(estado)}>{estado}</Badge>;
-}
-
-function getEstadoVentaVariant(estado) {
-  switch (estado) {
-    case "entregada":
-      return "success";
-    case "anulada":
-      return "danger";
-    case "pagada_total":
-      return "default";
-    case "pagada_parcial":
-      return "warning";
-    case "creada":
-      return "primary";
-    default:
-      return "default";
-  }
+  return <OperationalStatusBadge domain="venta" status={estado} />;
 }
 
 export default function VentasListPage() {

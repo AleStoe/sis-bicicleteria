@@ -1,7 +1,14 @@
 import { apiRequest } from "./api";
 
-export function listarPagos() {
-  return apiRequest("/pagos/");
+export function listarPagos(params = {}) {
+  const query = new URLSearchParams();
+
+  if (params.id_cliente) {
+    query.set("id_cliente", String(params.id_cliente));
+  }
+
+  const qs = query.toString();
+  return apiRequest(`/pagos/${qs ? `?${qs}` : ""}`);
 }
 
 export function listarPagosDeVenta(ventaId) {

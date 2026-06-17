@@ -1,4 +1,4 @@
-import { useBreakpoint } from "../../ui";
+import { OperationalStatusBadge, useBreakpoint } from "../../ui";
 
 export default function VentaPagosPanel({ pagos = [], formatMoney }) {
   const { isMobile } = useBreakpoint();
@@ -15,6 +15,9 @@ export default function VentaPagosPanel({ pagos = [], formatMoney }) {
       <div style={styles.list}>
         {pagos.map((pago) => {
           const esTarjeta = pago.medio_pago === "tarjeta";
+          const detalleFinanciero = getDetalleFinanciero(pago);
+          const tieneAjuste =
+            detalleFinanciero.descuento > 0 || detalleFinanciero.recargo > 0;
 
           return (
             <div key={pago.id} style={styles.paymentCard}>
@@ -22,7 +25,7 @@ export default function VentaPagosPanel({ pagos = [], formatMoney }) {
                 <div>
                   <div style={styles.method}>{renderMedioPago(pago)}</div>
                   <div style={styles.meta}>
-                    Estado: <strong>{pago.estado}</strong>
+                    <OperationalStatusBadge domain="pago" status={pago.estado} />
                   </div>
                 </div>
 
@@ -31,29 +34,38 @@ export default function VentaPagosPanel({ pagos = [], formatMoney }) {
                 </strong>
               </div>
 
-              {esTarjeta && (
+              {(tieneAjuste || esTarjeta) && (
                 <div style={styles.cardDetail}>
-                  <Row label="Plan" value={pago.tarjeta_plan_nombre || "Plan tarjeta"} isMobile={isMobile} />
-                  <Row label="Cuotas" value={pago.cuotas || "-"} isMobile={isMobile} />
-                  <Row label="Base sin recargo" value={formatMoney(pago.monto_base)} isMobile={isMobile} />
-                  <Row
-                    label="Recargo financiero"
-                    value={`+ ${formatMoney(pago.monto_recargo_financiero)}`}
-                    tone="warning"
-                    isMobile={isMobile}
-                  />
-                  <Row
-                    label="% aplicado"
-                    value={
-                      pago.porcentaje_recargo_aplicado != null
-                        ? `${Number(pago.porcentaje_recargo_aplicado).toFixed(2)}%`
-                        : "-"
-                    }
-                    isMobile={isMobile}
-                  />
+                  {esTarjeta && (
+                    <>
+                      <Row label="Plan" value={pago.tarjeta_plan_nombre || "Plan tarjeta"} isMobile={isMobile} />
+                      <Row label="Cuotas" value={pago.cuotas || "-"} isMobile={isMobile} />
+                    </>
+                  )}
+
+                  <Row label="Base aplicada" value={formatMoney(detalleFinanciero.base)} isMobile={isMobile} />
+
+                  {detalleFinanciero.descuento > 0 && (
+                    <Row
+                      label="Descuento aplicado"
+                      value={`- ${formatMoney(detalleFinanciero.descuento)}`}
+                      tone="success"
+                      isMobile={isMobile}
+                    />
+                  )}
+
+                  {detalleFinanciero.recargo > 0 && (
+                    <Row
+                      label="Recargo aplicado"
+                      value={`+ ${formatMoney(detalleFinanciero.recargo)}`}
+                      tone="warning"
+                      isMobile={isMobile}
+                    />
+                  )}
+
                   <Row
                     label="Total cobrado"
-                    value={formatMoney(pago.monto_neto_liquidado)}
+                    value={formatMoney(detalleFinanciero.total)}
                     strong
                     isMobile={isMobile}
                   />
@@ -75,7 +87,12 @@ function Row({ label, value, tone, strong = false, isMobile = false }) {
       <span>{label}</span>
       <strong
         style={{
-          color: tone === "warning" ? "#b54708" : "#111827",
+          color:
+            tone === "warning"
+              ? "#b54708"
+              : tone === "success"
+                ? "#047857"
+                : "#111827",
           fontSize: strong ? 15 : 13,
           textAlign: isMobile ? "left" : "right",
         }}
@@ -88,7 +105,7 @@ function Row({ label, value, tone, strong = false, isMobile = false }) {
 
 function renderMedioPago(pago) {
   if (pago.medio_pago === "tarjeta") {
-    return `Tarjeta${pago.cuotas ? ` · ${pago.cuotas} cuotas` : ""}`;
+    return `Tarjeta${pago.cuotas ? ` - ${pago.cuotas} cuotas` : ""}`;
   }
 
   if (pago.medio_pago === "efectivo") return "Efectivo";
@@ -96,6 +113,29 @@ function renderMedioPago(pago) {
   if (pago.medio_pago === "mercadopago") return "MercadoPago";
 
   return pago.medio_pago;
+}
+
+function getDetalleFinanciero(pago) {
+  const total = Number(pago.monto_total_cobrado ?? 0);
+  const base = Number(
+    pago.monto_base_aplicado ??
+      pago.monto_base ??
+      pago.monto_neto_liquidado ??
+      total
+  );
+  const descuento = Number(pago.monto_descuento_aplicado ?? 0);
+  const recargo = Number(
+    pago.monto_recargo_aplicado ??
+      pago.monto_recargo_financiero ??
+      0
+  );
+
+  return {
+    base: Number.isFinite(base) ? base : total,
+    descuento: Number.isFinite(descuento) ? descuento : 0,
+    recargo: Number.isFinite(recargo) ? recargo : 0,
+    total: Number.isFinite(total) ? total : 0,
+  };
 }
 
 const styles = {
@@ -162,6 +202,9 @@ const styles = {
     marginTop: 3,
     color: "#667085",
     fontSize: 12,
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
   },
   amount: {
     color: "#111827",

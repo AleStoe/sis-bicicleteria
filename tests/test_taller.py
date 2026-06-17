@@ -1192,7 +1192,7 @@ def test_agregar_item_servicio_taller_desde_servicios_taller(client, seed_taller
     assert item["tipo_item"] == "servicio"
     assert item["id_variante"] is None
     assert item["id_servicio_taller"] == servicio["id"]
-    assert item["descripcion_snapshot"] == "Service completo test"
+    assert item["descripcion_snapshot"] == "SERVICE COMPLETO TEST"
     assert float(item["cantidad"]) == 1.0
     assert float(item["precio_unitario"]) == 15000.0
     assert float(item["subtotal"]) == 15000.0
@@ -1516,7 +1516,7 @@ def test_generar_venta_desde_taller_con_servicio_taller(
     assert venta_item["id_variante"] is None
     assert venta_item["id_servicio_taller"] == servicio["id"]
     assert venta_item["id_orden_taller_item"] == item_id
-    assert venta_item["descripcion_snapshot"] == "Service completo facturable"
+    assert venta_item["descripcion_snapshot"] == "SERVICE COMPLETO FACTURABLE"
     assert _to_decimal(venta_item["cantidad"]) == Decimal("1.000")
     assert _to_decimal(venta_item["precio_lista"]) == Decimal("18000.00")
     assert _to_decimal(venta_item["precio_final"]) == Decimal("18000.00")

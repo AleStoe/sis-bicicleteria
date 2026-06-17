@@ -8,6 +8,7 @@ import {
 } from "../services/serviciosTallerService";
 import { formatMoney } from "../utils/formatters";
 import useMediaQuery from "../hooks/useMediaQuery";
+import { normalizeTextUpper } from "../utils/textNormalization";
 
 const FORM_INICIAL = {
   nombre: "",
@@ -57,7 +58,10 @@ export default function ServiciosPage() {
   }, [servicios, busqueda]);
 
   function actualizarCampo(campo, valor) {
-    setForm((prev) => ({ ...prev, [campo]: valor }));
+    setForm((prev) => ({
+      ...prev,
+      [campo]: campo === "nombre" ? normalizeTextUpper(valor) : valor,
+    }));
   }
 
   function editar(servicio) {

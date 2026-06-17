@@ -110,7 +110,7 @@ async def auth_middleware(request: Request, call_next):
         return await call_next(request)
 
     try:
-        usuario = obtener_usuario_token_desde_header(request.headers.get("Authorization"))
+        usuario = _obtener_usuario_request(request)
         request.state.usuario = usuario
 
         body = await request.body()
@@ -123,6 +123,19 @@ async def auth_middleware(request: Request, call_next):
         )
 
     return await call_next(request)
+
+
+def _obtener_usuario_request(request: Request) -> dict[str, Any]:
+    authorization = request.headers.get("Authorization")
+    if authorization:
+        return obtener_usuario_token_desde_header(authorization)
+
+    if request.url.path.startswith("/documentos/"):
+        token = request.query_params.get("access_token")
+        if token:
+            return verificar_token_usuario(token)
+
+    return obtener_usuario_token_desde_header(None)
 
 
 def _is_exempt_path(path: str) -> bool:

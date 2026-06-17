@@ -169,18 +169,21 @@ export function OperadorPanel({
       )}
 
       {accion.label && (
-        <button
-          type="button"
-          onClick={accion.onClick}
-          disabled={guardando || accion.disabled}
-          style={{
-            ...styles.operatorPrimary,
-            opacity: guardando || accion.disabled ? 0.55 : 1,
-            cursor: guardando || accion.disabled ? "not-allowed" : "pointer",
-          }}
-        >
-          {accion.label}
-        </button>
+        <div style={styles.operatorMainAction}>
+          <span style={styles.operatorMainActionLabel}>Accion recomendada</span>
+          <button
+            type="button"
+            onClick={accion.onClick}
+            disabled={guardando || accion.disabled}
+            style={{
+              ...styles.operatorPrimary,
+              opacity: guardando || accion.disabled ? 0.55 : 1,
+              cursor: guardando || accion.disabled ? "not-allowed" : "pointer",
+            }}
+          >
+            {accion.label}
+          </button>
+        </div>
       )}
 
       {accion.secondaryLabel && (

@@ -13,7 +13,7 @@ def test_crear_servicio_taller(client):
 
     data = response.json()
     assert data["id"] > 0
-    assert data["nombre"] == "Service completo"
+    assert data["nombre"] == "SERVICE COMPLETO"
     assert data["descripcion"] == "Revisión general, ajustes y lubricación"
     assert float(data["precio_sugerido"]) == 15000.0
     assert data["duracion_estimada_min"] == 60
@@ -101,7 +101,7 @@ def test_obtener_servicio_taller_por_id(client):
 
     data = response.json()
     assert data["id"] == servicio_id
-    assert data["nombre"] == "Armado de bicicleta"
+    assert data["nombre"] == "ARMADO DE BICICLETA"
 
 
 def test_obtener_servicio_taller_inexistente(client):
@@ -137,7 +137,7 @@ def test_editar_servicio_taller(client):
 
     data = response.json()
     assert data["id"] == servicio_id
-    assert data["nombre"] == "Service completo actualizado"
+    assert data["nombre"] == "SERVICE COMPLETO ACTUALIZADO"
     assert data["descripcion"] == "Descripción actualizada"
     assert float(data["precio_sugerido"]) == 18000.0
     assert data["duracion_estimada_min"] == 90

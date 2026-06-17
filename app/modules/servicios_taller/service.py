@@ -1,6 +1,7 @@
 from fastapi import HTTPException
 
 from app.db.connection import get_connection
+from app.core.text_normalization import clean_text, normalize_text_upper
 
 from .repository import (
     insert_servicio_taller,
@@ -18,8 +19,8 @@ def crear_servicio_taller(data):
             return insert_servicio_taller(
                 conn,
                 {
-                    "nombre": data.nombre.strip(),
-                    "descripcion": data.descripcion.strip() if data.descripcion else None,
+                    "nombre": normalize_text_upper(data.nombre),
+                    "descripcion": clean_text(data.descripcion),
                     "precio_sugerido": data.precio_sugerido,
                     "duracion_estimada_min": data.duracion_estimada_min,
                 },
@@ -65,8 +66,8 @@ def editar_servicio_taller(servicio_id: int, data):
                 conn,
                 servicio_id,
                 {
-                    "nombre": data.nombre.strip(),
-                    "descripcion": data.descripcion.strip() if data.descripcion else None,
+                    "nombre": normalize_text_upper(data.nombre),
+                    "descripcion": clean_text(data.descripcion),
                     "precio_sugerido": data.precio_sugerido,
                     "duracion_estimada_min": data.duracion_estimada_min,
                     "activo": data.activo,

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   subirImagenCatalogo,
   crearMarca,
@@ -16,11 +17,13 @@ import AltaMercaderiaImagenUpload from "../components/mercaderia/alta/AltaMercad
 import { formatMoney, formatNumber } from "../utils/formatters";
 import { useSession } from "../context/SessionContext";
 import useMediaQuery from "../hooks/useMediaQuery";
+import { normalizeTextUpper } from "../utils/textNormalization";
 
 const ID_SUCURSAL_DEFAULT = 1;
 
 const MARGEN_MINORISTA = 1.2;
 const MARGEN_MAYORISTA = 0.55;
+const UPPER_FIELDS = new Set(["nombre_producto", "nombre_variante", "codigo_proveedor"]);
 
 export default function AltaMercaderiaPage() {
   const { usuarioId } = useSession();
@@ -156,7 +159,7 @@ export default function AltaMercaderiaPage() {
   function setCampo(campo, valor) {
     setForm((p) => ({
       ...p,
-      [campo]: valor,
+      [campo]: UPPER_FIELDS.has(campo) ? normalizeTextUpper(valor) : valor,
     }));
   }
 
@@ -289,8 +292,8 @@ export default function AltaMercaderiaPage() {
         id_categoria: Number(form.id_categoria),
         id_marca: form.id_marca ? Number(form.id_marca) : null,
         nombre: form.nombre_producto.trim(),
-        tipo_item: form.tipo_item,
-        stockeable: form.tipo_item === "producto",
+        tipo_item: "producto",
+        stockeable: true,
         serializable: Boolean(form.controlar_numero_cuadro),
       });
 
@@ -309,7 +312,7 @@ export default function AltaMercaderiaPage() {
         gravado: true,
         precio_minorista: form.precio_minorista || "0",
         precio_mayorista: form.precio_mayorista || "0",
-        permite_precio_libre: form.tipo_item === "servicio",
+        permite_precio_libre: false,
       });
 
       if (form.imagen_archivo) {
@@ -422,6 +425,9 @@ export default function AltaMercaderiaPage() {
             lo creás rápido.
           </p>
         </div>
+        <Link to="/servicios" style={styles.serviceLink}>
+          Dar de alta servicio
+        </Link>
       </header>
 
       {error && <div style={styles.error}>Error: {error}</div>}
@@ -639,7 +645,7 @@ export default function AltaMercaderiaPage() {
                     <input
                       style={styles.input}
                       value={marcaNueva}
-                      onChange={(e) => setMarcaNueva(e.target.value)}
+                      onChange={(e) => setMarcaNueva(normalizeTextUpper(e.target.value))}
                       placeholder="Nueva marca..."
                     />
                     <button
@@ -862,6 +868,11 @@ const styles = {
 
   header: {
     marginBottom: "18px",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: "12px",
+    flexWrap: "wrap",
   },
 
   eyebrow: {
@@ -886,6 +897,20 @@ const styles = {
     margin: "6px 0 0",
     color: "#6b7280",
     fontSize: "14px",
+  },
+
+  serviceLink: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: "42px",
+    padding: "0 14px",
+    borderRadius: "12px",
+    background: "#111827",
+    color: "#ffffff",
+    fontWeight: 900,
+    textDecoration: "none",
+    whiteSpace: "nowrap",
   },
 
   searchCard: {

@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 from typing import Literal
 
@@ -123,3 +124,57 @@ class CajaHistorialOutput(BaseModel):
     id_usuario_cierre: int | None = None
     usuario_cierre_nombre: str | None = None
     usuario_cierre_username: str | None = None
+
+
+class CajaResumenDiarioCajaOutput(BaseModel):
+    caja_id: int | None = None
+    estado: str | None = None
+    fecha: date | None = None
+    monto_apertura: Decimal = Decimal("0")
+    efectivo_teorico: Decimal = Decimal("0")
+    monto_cierre_real: Decimal | None = None
+    diferencia: Decimal | None = None
+    ingresos: Decimal = Decimal("0")
+    egresos: Decimal = Decimal("0")
+    ajustes_positivos: Decimal = Decimal("0")
+    ajustes_negativos: Decimal = Decimal("0")
+
+
+class CajaResumenDiarioPagosOutput(BaseModel):
+    cantidad_pagos: int = 0
+    total_cobrado: Decimal = Decimal("0")
+    base_aplicada: Decimal = Decimal("0")
+    descuentos_aplicados: Decimal = Decimal("0")
+    recargos_aplicados: Decimal = Decimal("0")
+    efectivo: Decimal = Decimal("0")
+    transferencia: Decimal = Decimal("0")
+    mercadopago: Decimal = Decimal("0")
+    tarjeta: Decimal = Decimal("0")
+
+
+class CajaResumenDiarioRentabilidadOutput(BaseModel):
+    cantidad_ventas: int = 0
+    ventas_total: Decimal = Decimal("0")
+    ventas_items_total: Decimal = Decimal("0")
+    costo_mercaderia_vendida: Decimal = Decimal("0")
+    margen_bruto: Decimal = Decimal("0")
+    gastos_operativos: Decimal = Decimal("0")
+    ganancia_dia: Decimal = Decimal("0")
+
+
+class CajaResumenDiarioDocumentosOutput(BaseModel):
+    comprobantes_x: int = 0
+    recibos_pago: int = 0
+    resumenes_cobro: int = 0
+    cotizaciones: int = 0
+    presupuestos_taller: int = 0
+    total_disponibles: int = 0
+
+
+class CajaResumenDiarioOutput(BaseModel):
+    fecha: date
+    id_sucursal: int | None = None
+    caja: CajaResumenDiarioCajaOutput
+    pagos: CajaResumenDiarioPagosOutput
+    rentabilidad: CajaResumenDiarioRentabilidadOutput
+    documentos: CajaResumenDiarioDocumentosOutput

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { listarOrdenesTaller, obtenerDashboardTaller } from "../services/tallerService";
 import { formatDate, formatMoney, formatNumber } from "../utils/formatters";
-import { useBreakpoint } from "../components/ui";
+import { OperationalStatusBadge, useBreakpoint } from "../components/ui";
 
 const ESTADOS_ACTIVOS = new Set([
   "ingresada",
@@ -28,6 +28,16 @@ const ESTADOS = [
   { value: "retirada", label: "Retiradas" },
   { value: "cancelada", label: "Canceladas" },
   { value: "todas", label: "Todas" },
+];
+
+const TABLERO_ESTADOS = [
+  { value: "ingresada", label: "Ingresadas" },
+  { value: "presupuestada", label: "Presupuestadas" },
+  { value: "esperando_aprobacion", label: "Aprobacion" },
+  { value: "esperando_repuestos", label: "Repuestos" },
+  { value: "en_reparacion", label: "En reparacion" },
+  { value: "terminada", label: "Terminadas" },
+  { value: "lista_para_retirar", label: "Listas retiro" },
 ];
 
 export default function TallerListPage() {
@@ -123,6 +133,22 @@ export default function TallerListPage() {
     };
   }, [dashboard]);
 
+  const tablero = useMemo(() => {
+    const grupos = Object.fromEntries(
+      TABLERO_ESTADOS.map((estado) => [estado.value, []])
+    );
+
+    ordenesFiltradas.forEach((orden) => {
+      if (grupos[orden.estado]) {
+        grupos[orden.estado].push(orden);
+      }
+    });
+
+    return grupos;
+  }, [ordenesFiltradas]);
+
+  const mostrarTablero = estadoFiltro === "activas";
+
   if (loading) return <div style={styles.state}>Cargando taller...</div>;
 
   return (
@@ -182,6 +208,8 @@ export default function TallerListPage() {
 
           {ordenesFiltradas.length === 0 ? (
             <div style={styles.empty}>No hay órdenes para mostrar.</div>
+          ) : mostrarTablero ? (
+            <TallerBoard tablero={tablero} />
           ) : (
             <div style={{ ...styles.ordersGrid, ...(isMobile ? styles.ordersGridMobile : {}) }}>
               {ordenesFiltradas.map((orden) => (
@@ -205,6 +233,72 @@ export default function TallerListPage() {
         </aside>}
       </main>
     </div>
+  );
+}
+
+function TallerBoard({ tablero }) {
+  return (
+    <div style={styles.boardScroll}>
+      <div style={styles.boardGrid}>
+        {TABLERO_ESTADOS.map((columna) => {
+          const ordenes = tablero[columna.value] || [];
+
+          return (
+            <section key={columna.value} style={styles.boardColumn}>
+              <div style={styles.boardColumnHeader}>
+                <div>
+                  <EstadoBadge estado={columna.value} />
+                  <div style={styles.boardColumnTitle}>{columna.label}</div>
+                </div>
+                <strong style={styles.boardCount}>{ordenes.length}</strong>
+              </div>
+
+              <div style={styles.boardColumnBody}>
+                {ordenes.length === 0 ? (
+                  <div style={styles.boardEmpty}>Sin ordenes</div>
+                ) : (
+                  ordenes.map((orden) => (
+                    <TableroOrdenCard key={orden.id} orden={orden} />
+                  ))
+                )}
+              </div>
+            </section>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function TableroOrdenCard({ orden }) {
+  const esPostventa = orden.es_service_postventa === true;
+  const prioridadAlta = orden.prioridad === "urgente";
+
+  return (
+    <Link to={`/taller/${orden.id}`} style={styles.boardCard}>
+      <div style={styles.boardCardTop}>
+        <strong>OT #{orden.id}</strong>
+        <div style={styles.boardBadges}>
+          {prioridadAlta && <span style={styles.urgentBadge}>Urgente</span>}
+          {esPostventa && <span style={styles.postventaBadge}>Postventa</span>}
+        </div>
+      </div>
+
+      <div style={styles.boardProblem}>
+        {orden.problema_reportado || "Sin problema reportado"}
+      </div>
+
+      <div style={styles.boardMeta}>
+        <span>{nombreClienteOrden(orden)}</span>
+        <span>{descripcionBicicletaOrden(orden)}</span>
+        {orden.fecha_prometida && <span>Prometida: {formatDate(orden.fecha_prometida)}</span>}
+      </div>
+
+      <div style={styles.boardFooter}>
+        <span>{esPostventa ? "No aplica cobro" : formatMoney(orden.saldo_pendiente)}</span>
+        <span>Ver</span>
+      </div>
+    </Link>
   );
 }
 
@@ -244,8 +338,7 @@ function OrdenCard({ orden }) {
 }
 
 export function EstadoBadge({ estado }) {
-  const config = ESTADO_CONFIG[estado] || { label: estado || "Sin estado", tone: "muted" };
-  return <span style={{ ...styles.badge, ...(styles.badgeTones[config.tone] || {}) }}>{config.label}</span>;
+  return <OperationalStatusBadge domain="taller" status={estado} />;
 }
 
 function Metric({ label, value, tone }) {
@@ -353,6 +446,21 @@ const styles = {
   panelHeader: { padding: 16, borderBottom: "1px solid #e2e8f0" },
   panelTitle: { margin: 0, fontSize: 22 },
   panelSubtitle: { margin: "4px 0 0", color: "#64748b", fontWeight: 700, fontSize: 13 },
+  boardScroll: { overflowX: "auto", padding: 14, WebkitOverflowScrolling: "touch" },
+  boardGrid: { display: "grid", gridTemplateColumns: "repeat(7, minmax(245px, 1fr))", gap: 12, minWidth: 1780 },
+  boardColumn: { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 18, minHeight: 360, display: "grid", gridTemplateRows: "auto 1fr" },
+  boardColumnHeader: { padding: 12, borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "start", gap: 8 },
+  boardColumnTitle: { marginTop: 7, color: "#334155", fontWeight: 950, fontSize: 13 },
+  boardCount: { minWidth: 28, height: 28, borderRadius: 999, background: "white", border: "1px solid #e2e8f0", display: "grid", placeItems: "center", color: "#0f172a" },
+  boardColumnBody: { padding: 10, display: "grid", alignContent: "start", gap: 10 },
+  boardEmpty: { border: "1px dashed #cbd5e1", background: "white", color: "#64748b", borderRadius: 14, padding: 14, fontWeight: 900, textAlign: "center" },
+  boardCard: { textDecoration: "none", color: "#0f172a", background: "white", border: "1px solid #e2e8f0", borderRadius: 16, padding: 11, display: "grid", gap: 9, boxShadow: "0 8px 16px rgba(15,23,42,.05)" },
+  boardCardTop: { display: "flex", justifyContent: "space-between", gap: 8, alignItems: "start" },
+  boardBadges: { display: "flex", gap: 5, flexWrap: "wrap", justifyContent: "flex-end" },
+  urgentBadge: { background: "#fff1f0", color: "#b42318", border: "1px solid #fecaca", borderRadius: 999, padding: "4px 7px", fontSize: 10, fontWeight: 1000, textTransform: "uppercase" },
+  boardProblem: { fontWeight: 950, lineHeight: 1.25 },
+  boardMeta: { display: "grid", gap: 4, color: "#64748b", fontSize: 12, fontWeight: 800 },
+  boardFooter: { display: "flex", justifyContent: "space-between", gap: 8, borderTop: "1px solid #f1f5f9", paddingTop: 8, color: "#334155", fontWeight: 950, fontSize: 12 },
   ordersGrid: { display: "grid", gap: 12, padding: 16 },
   orderCard: { border: "1px solid #e2e8f0", borderRadius: 20, background: "white", padding: 14, display: "grid", gap: 12, boxShadow: "0 8px 18px rgba(15,23,42,.04)" },
   orderCardMuted: { border: "1px solid #e2e8f0", borderRadius: 20, background: "#f8fafc", padding: 14, display: "grid", gap: 12, opacity: 0.82 },

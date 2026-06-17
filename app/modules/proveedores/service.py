@@ -2,6 +2,7 @@ from fastapi import HTTPException
 from psycopg.errors import UniqueViolation
 
 from app.db.connection import get_connection
+from app.core.text_normalization import clean_text, normalize_text_upper
 
 from .repository import (
     get_proveedores,
@@ -46,10 +47,10 @@ def crear_proveedor(data):
                 proveedor = insert_proveedor(
                     conn,
                     {
-                        "nombre": data.nombre.strip(),
-                        "telefono": data.telefono,
-                        "email": data.email,
-                        "notas": data.notas,
+                        "nombre": normalize_text_upper(data.nombre),
+                        "telefono": clean_text(data.telefono),
+                        "email": clean_text(data.email),
+                        "notas": clean_text(data.notas),
                     },
                 )
             except UniqueViolation:

@@ -89,10 +89,19 @@ def update_pago_estado(conn, pago_id: int, estado: str):
         )
 
 
-def get_pagos(conn):
+def get_pagos(conn, id_cliente: int | None = None):
+    where = []
+    params = []
+
+    if id_cliente is not None:
+        where.append("p.id_cliente = %s")
+        params.append(id_cliente)
+
+    where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
-            """
+            f"""
             SELECT
                 p.id,
                 p.fecha,
@@ -111,8 +120,10 @@ def get_pagos(conn):
                 u.username AS usuario_username
             FROM pagos p
             LEFT JOIN usuarios u ON u.id = p.id_usuario
+            {where_sql}
             ORDER BY p.fecha DESC, p.id DESC
-            """
+            """,
+            params,
         )
         return cur.fetchall()
 

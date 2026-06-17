@@ -252,6 +252,7 @@ def get_catalogo_pos(
         "v.activo = TRUE",
         "p.activo = TRUE",
         "c.activo = TRUE",
+        "p.tipo_item = 'producto'",
     ]
 
     params = {
@@ -536,6 +537,7 @@ def get_catalogo_pos_por_codigo(
             WHERE v.activo = TRUE
               AND p.activo = TRUE
               AND c.activo = TRUE
+              AND p.tipo_item = 'producto'
               AND (
                 v.codigo_barras = %(codigo)s
                 OR v.sku = %(codigo)s

@@ -184,7 +184,7 @@ def test_cotizacion_reparacion_estados_y_whatsapp(client, db_conn, seed_venta_ba
     assert whatsapp.status_code == 200, whatsapp.text
     data = whatsapp.json()
     assert data["numero"] == crear.json()["numero"]
-    assert "Hace ruido al pedalear" in data["mensaje"]
+    assert "HACE RUIDO AL PEDALEAR" in data["mensaje"]
     assert "Total estimado" in data["mensaje"]
     assert data["whatsapp_url"].startswith("https://api.whatsapp.com/send?phone=549")
 

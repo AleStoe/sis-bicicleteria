@@ -48,6 +48,10 @@ def clean_db(db_conn):
         cur.execute(
             """
             TRUNCATE TABLE
+                inventario_fisico_items,
+                inventarios_fisicos,
+                cotizacion_items,
+                cotizaciones,
                 gastos_movimientos,
                 gastos_operativos,
                 gasto_categorias,
@@ -97,6 +101,8 @@ def clean_db(db_conn):
             )
             """
         )
+
+        cur.execute("SELECT setval('cotizaciones_numero_seq', 1, false)")
 
     db_conn.commit()
 
@@ -199,6 +205,7 @@ def seed_venta_basica(db_conn, clean_db):
         "usuario_id": usuario_id,
         "cliente_id": cliente_id,
         "sucursal_id": sucursal_id,
+        "categoria_id": categoria_id,
         "producto_id": producto_id,
         "variante_id": variante_id,
         "stock_id": stock_id,

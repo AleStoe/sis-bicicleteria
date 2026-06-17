@@ -44,7 +44,7 @@ export default function ProductoPOSCard({ producto, tipoPrecio, onAgregarItem })
               Stock: {formatNumber(producto.stock_disponible || 0)}
             </span>
           ) : (
-            <span style={serviceTagStyle}>Servicio</span>
+            <span style={stockTagStyle}>Sin control de stock</span>
           )}
           {bloqueado && (
             <span style={dangerTagStyle}>
@@ -122,7 +122,6 @@ const tagRowStyle = { display: "flex", gap: "6px", flexWrap: "wrap", marginTop: 
 const tagStyle = { background: "#eef4ff", color: "#175cd3", borderRadius: "999px", padding: "3px 8px", fontSize: "12px" };
 const stockTagStyle = { background: "#ecfdf3", color: "#067647", borderRadius: "999px", padding: "3px 8px", fontSize: "12px" };
 const serializableTagStyle = { background: "#fff8e1", color: "#8a6d00", borderRadius: "999px", padding: "3px 8px", fontSize: "12px" };
-const serviceTagStyle = { background: "#fef7c3", color: "#854a0e", borderRadius: "999px", padding: "3px 8px", fontSize: "12px" };
 const dangerTagStyle = { background: "#fee4e2", color: "#b42318", borderRadius: "999px", padding: "3px 8px", fontSize: "12px" };
 
 const productPriceStyle = {

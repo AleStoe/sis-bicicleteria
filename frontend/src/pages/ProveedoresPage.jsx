@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { crearProveedor, listarProveedores } from "../services/proveedoresService";
 import useMediaQuery from "../hooks/useMediaQuery";
+import { normalizeTextUpper } from "../utils/textNormalization";
 
 export default function ProveedoresPage() {
   const isMobile = useMediaQuery("(max-width: 760px)");
@@ -59,7 +60,7 @@ export default function ProveedoresPage() {
   function actualizarCampo(campo, valor) {
     setForm((prev) => ({
       ...prev,
-      [campo]: valor,
+      [campo]: campo === "nombre" ? normalizeTextUpper(valor) : valor,
     }));
   }
 

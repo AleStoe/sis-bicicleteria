@@ -120,7 +120,7 @@ export default function StockTable({
                           seleccionarItem(item, "ingreso");
                         }}
                       >
-                        Ingreso
+                        Cargar ingreso
                       </button>
 
                       <button
@@ -131,7 +131,7 @@ export default function StockTable({
                           seleccionarItem(item, "ajuste");
                         }}
                       >
-                        Ajuste
+                        Ajustar
                       </button>
                     </div>
                   </td>
@@ -206,7 +206,7 @@ export default function StockTable({
                     seleccionarItem(item, "ingreso");
                   }}
                 >
-                  Ingreso
+                  Cargar ingreso
                 </button>
 
                 <button
@@ -217,7 +217,7 @@ export default function StockTable({
                     seleccionarItem(item, "ajuste");
                   }}
                 >
-                  Ajuste
+                  Ajustar
                 </button>
               </div>
             </article>

@@ -3,6 +3,7 @@ from datetime import date, timedelta
 from fastapi import HTTPException
 
 from app.db.connection import get_connection
+from app.core.text_normalization import normalize_text_upper
 from app.shared.constants import (
     ORDEN_TALLER_ESTADO_INGRESADA,
     ORDEN_TALLER_EVENTO_CREADA,
@@ -45,7 +46,7 @@ def _build_problema_reportado_desde_turno(turno):
         partes.append(str(turno["descripcion"]).strip())
 
     texto = " - ".join([parte for parte in partes if parte])
-    return texto or "Turno convertido desde agenda"
+    return normalize_text_upper(texto) or "TURNO CONVERTIDO DESDE AGENDA"
 
 
 def _build_observaciones_desde_turno(turno):

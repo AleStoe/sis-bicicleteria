@@ -26,6 +26,7 @@ const ESTADOS = [
 ];
 
 const VISTAS = {
+  HOY: "hoy",
   GENERAL: "general",
   PARA_MANANA: "para_manana",
   ATRASADAS: "atrasadas",
@@ -73,6 +74,8 @@ export default function AgendaTallerPage() {
 
   const [busquedaCliente, setBusquedaCliente] = useState("");
   const [clientesEncontrados, setClientesEncontrados] = useState([]);
+  const [buscandoClientes, setBuscandoClientes] = useState(false);
+  const [errorBusquedaCliente, setErrorBusquedaCliente] = useState("");
   const [bicicletasCliente, setBicicletasCliente] = useState([]);
 
   useEffect(() => {
@@ -85,23 +88,42 @@ export default function AgendaTallerPage() {
 
     if (texto.length < 2 || form.id_cliente) {
       setClientesEncontrados([]);
+      setBuscandoClientes(false);
+      setErrorBusquedaCliente("");
       return;
     }
 
+    let busquedaActiva = true;
+
     const timeout = setTimeout(async () => {
       try {
+        setBuscandoClientes(true);
+        setErrorBusquedaCliente("");
         const data = await listarClientes({
           q: texto,
           solo_activos: true,
         });
 
-        setClientesEncontrados(Array.isArray(data) ? data : []);
-      } catch {
+        if (!busquedaActiva) return;
+
+        const clientes = Array.isArray(data) ? data : [];
+        setClientesEncontrados(clientes.filter((cliente) => Number(cliente.id) !== 1));
+      } catch (err) {
+        if (!busquedaActiva) return;
+
         setClientesEncontrados([]);
+        setErrorBusquedaCliente(err.message || "No se pudieron buscar clientes");
+      } finally {
+        if (busquedaActiva) {
+          setBuscandoClientes(false);
+        }
       }
     }, 300);
 
-    return () => clearTimeout(timeout);
+    return () => {
+      busquedaActiva = false;
+      clearTimeout(timeout);
+    };
   }, [busquedaCliente, form.id_cliente]);
 
   async function cargarTurnos(overrides = {}) {
@@ -116,7 +138,16 @@ export default function AgendaTallerPage() {
 
       let data;
 
-      if (vista === VISTAS.PARA_MANANA) {
+      if (vista === VISTAS.HOY) {
+        const hoy = getFechaISO();
+        data = await listarTurnosAgenda({
+          ...baseParams,
+          fecha_desde: hoy,
+          fecha_hasta: hoy,
+          solo_pendientes: true,
+          mostrar_convertidos: false,
+        });
+      } else if (vista === VISTAS.PARA_MANANA) {
         data = await listarTurnosAgendaParaManana(baseParams);
       } else if (vista === VISTAS.ATRASADAS) {
         data = await listarTurnosAgendaAtrasados(baseParams);
@@ -187,6 +218,19 @@ export default function AgendaTallerPage() {
     setTurnoEditandoId(null);
     setBusquedaCliente("");
     setClientesEncontrados([]);
+    setBuscandoClientes(false);
+    setErrorBusquedaCliente("");
+    setBicicletasCliente([]);
+  }
+
+  function limpiarClienteSeleccionado() {
+    setForm((current) => ({
+      ...current,
+      id_cliente: null,
+      id_bicicleta_cliente: null,
+      cliente_nombre: "",
+      cliente_telefono: "",
+    }));
     setBicicletasCliente([]);
   }
 
@@ -329,6 +373,7 @@ export default function AgendaTallerPage() {
 
       setMensaje(`Orden #${resp.orden_id} creada desde agenda`);
       await cargarTurnos();
+      navigate(`/taller/${resp.orden_id}`);
     } catch (err) {
       setError(err.message || "No se pudo crear la orden desde el turno");
     } finally {
@@ -338,17 +383,17 @@ export default function AgendaTallerPage() {
 
   async function copiarConfirmacionTurno(turno) {
     const mensajeTurno = buildMensajeConfirmacion(turno);
-    await copiarTexto(mensajeTurno);
-    setMensaje("Confirmación copiada al portapapeles.");
+    await enviarWhatsappTurno(turno, mensajeTurno);
+    setMensaje("WhatsApp de confirmación abierto y mensaje copiado.");
   }
 
   async function copiarRecordatorioTurno(turno) {
     const mensajeTurno = buildMensajeRecordatorio(turno);
 
     try {
-      await copiarTexto(mensajeTurno);
+      await enviarWhatsappTurno(turno, mensajeTurno);
       await marcarRecordatorioEnviado(turno.id);
-      setMensaje("Recordatorio copiado y marcado como enviado.");
+      setMensaje("WhatsApp de recordatorio abierto y marcado como enviado.");
       await cargarTurnos();
     } catch (err) {
       console.error(err);
@@ -360,12 +405,12 @@ export default function AgendaTallerPage() {
     const mensajeTurno = buildMensajeClienteAvisado(turno);
 
     try {
-      await copiarTexto(mensajeTurno);
+      await enviarWhatsappTurno(turno, mensajeTurno);
       await marcarClienteAvisado(turno.id, {
         id_usuario: usuarioId,
         observacion: "Aviso copiado desde agenda",
       });
-      setMensaje("Aviso copiado. El turno quedó marcado como cliente avisado.");
+      setMensaje("WhatsApp abierto. El turno quedó marcado como cliente avisado.");
       await cargarTurnos();
     } catch (err) {
       console.error(err);
@@ -440,6 +485,13 @@ export default function AgendaTallerPage() {
       <div style={styles.viewTabs}>
         <button
           type="button"
+          onClick={() => setVista(VISTAS.HOY)}
+          style={vista === VISTAS.HOY ? styles.tabActive : styles.tab}
+        >
+          Hoy
+        </button>
+        <button
+          type="button"
           onClick={() => setVista(VISTAS.GENERAL)}
           style={vista === VISTAS.GENERAL ? styles.tabActive : styles.tab}
         >
@@ -487,18 +539,36 @@ export default function AgendaTallerPage() {
                 setBusquedaCliente(e.target.value);
 
                 if (form.id_cliente) {
-                  setForm((current) => ({
-                    ...current,
-                    id_cliente: null,
-                    id_bicicleta_cliente: null,
-                    cliente_nombre: "",
-                    cliente_telefono: "",
-                  }));
-                  setBicicletasCliente([]);
+                  limpiarClienteSeleccionado();
                 }
               }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && clientesEncontrados.length > 0) {
+                  e.preventDefault();
+                  seleccionarCliente(clientesEncontrados[0]);
+                }
+              }}
+              autoComplete="off"
               style={styles.input}
             />
+
+            {buscandoClientes ? (
+              <div style={styles.searchHint}>Buscando clientes...</div>
+            ) : null}
+
+            {errorBusquedaCliente ? (
+              <div style={styles.warningText}>{errorBusquedaCliente}</div>
+            ) : null}
+
+            {!buscandoClientes &&
+            !errorBusquedaCliente &&
+            busquedaCliente.trim().length >= 2 &&
+            !form.id_cliente &&
+            clientesEncontrados.length === 0 ? (
+              <div style={styles.searchHint}>
+                No encontre clientes activos con esa busqueda.
+              </div>
+            ) : null}
 
             {clientesEncontrados.length > 0 ? (
               <div style={styles.resultsBox}>
@@ -520,6 +590,7 @@ export default function AgendaTallerPage() {
               <div style={styles.selectedBox}>
                 <strong>{form.cliente_nombre}</strong>
                 <span>{form.cliente_telefono || "Sin teléfono"}</span>
+                <span>Cliente vinculado: al crear OT desde agenda no se vuelve a cargar.</span>
               </div>
             ) : null}
 
@@ -772,6 +843,15 @@ export default function AgendaTallerPage() {
                       )}
                     </div>
 
+                    <TurnoAccionPrincipal
+                      turno={turno}
+                      procesando={procesando}
+                      onConfirmar={() => cambiarEstado(turno.id, "confirmado")}
+                      onMarcarEnTaller={() => cambiarEstado(turno.id, "en_taller")}
+                      onCrearOrden={() => crearOrdenDesdeTurno(turno)}
+                      onAbrirOrden={() => navigate(`/taller/${turno.id_orden_taller}`)}
+                    />
+
                     <div style={styles.actions}>
                       {turno.id_orden_taller ? (
                         <button
@@ -826,7 +906,7 @@ export default function AgendaTallerPage() {
                             onClick={() => copiarConfirmacionTurno(turno)}
                             disabled={procesando || !turno.cliente_telefono}
                           >
-                            Copiar confirmación
+                            WhatsApp confirmacion
                           </button>
 
                           <button
@@ -834,7 +914,7 @@ export default function AgendaTallerPage() {
                             onClick={() => copiarRecordatorioTurno(turno)}
                             disabled={procesando || !turno.cliente_telefono || turno.recordatorio_enviado}
                           >
-                            Copiar recordatorio
+                            WhatsApp recordatorio
                           </button>
 
                           <button
@@ -842,7 +922,7 @@ export default function AgendaTallerPage() {
                             onClick={() => avisarCliente(turno)}
                             disabled={procesando || !turno.cliente_telefono || turno.cliente_avisado}
                           >
-                            Avisar cliente
+                            WhatsApp aviso
                           </button>
 
                           <button
@@ -875,6 +955,100 @@ function Stat({ label, value }) {
   );
 }
 
+function TurnoAccionPrincipal({
+  turno,
+  procesando,
+  onConfirmar,
+  onMarcarEnTaller,
+  onCrearOrden,
+  onAbrirOrden,
+}) {
+  const accion = getAccionPrincipalTurno(turno);
+
+  if (!accion) return null;
+
+  const handlers = {
+    confirmar: onConfirmar,
+    en_taller: onMarcarEnTaller,
+    crear_orden: onCrearOrden,
+    abrir_orden: onAbrirOrden,
+  };
+
+  return (
+    <div style={styles.mainActionBox}>
+      <div>
+        <span style={styles.mainActionLabel}>Accion principal</span>
+        <strong>{accion.title}</strong>
+        <p style={styles.mainActionText}>{accion.description}</p>
+      </div>
+
+      <button
+        type="button"
+        onClick={handlers[accion.kind]}
+        disabled={procesando || accion.disabled}
+        style={{
+          ...styles.mainActionButton,
+          opacity: procesando || accion.disabled ? 0.55 : 1,
+          cursor: procesando || accion.disabled ? "not-allowed" : "pointer",
+        }}
+      >
+        {accion.label}
+      </button>
+    </div>
+  );
+}
+
+function getAccionPrincipalTurno(turno) {
+  if (turno.id_orden_taller) {
+    return {
+      kind: "abrir_orden",
+      title: `Orden #${turno.id_orden_taller} creada`,
+      description: "El turno ya entro al circuito de taller.",
+      label: "Abrir OT",
+    };
+  }
+
+  if (turno.estado === "cancelado") {
+    return {
+      kind: "crear_orden",
+      title: "Turno cancelado",
+      description: "No se puede crear OT desde un turno cancelado.",
+      label: "Crear OT",
+      disabled: true,
+    };
+  }
+
+  if (turno.estado === "pendiente") {
+    return {
+      kind: "confirmar",
+      title: "Confirmar turno",
+      description: "Primero confirmalo con el cliente para ordenar el ingreso.",
+      label: "Confirmar",
+    };
+  }
+
+  if (turno.estado === "confirmado") {
+    return {
+      kind: "en_taller",
+      title: "Marcar ingreso",
+      description: "La bicicleta llego al local. Marcala en taller antes de crear OT.",
+      label: "Marcar en taller",
+    };
+  }
+
+  if (turno.estado === "en_taller") {
+    return {
+      kind: "crear_orden",
+      title: "Crear OT",
+      description: "Cliente y bicicleta ya estan vinculados. Crea la orden sin volver a cargarlos.",
+      label: "Crear OT",
+      disabled: !turno.id_cliente || !turno.id_bicicleta_cliente,
+    };
+  }
+
+  return null;
+}
+
 async function copiarTexto(texto) {
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(texto);
@@ -887,6 +1061,40 @@ async function copiarTexto(texto) {
   textarea.select();
   document.execCommand("copy");
   document.body.removeChild(textarea);
+}
+
+async function enviarWhatsappTurno(turno, mensaje) {
+  const telefono = normalizarTelefonoWhatsapp(turno.cliente_telefono);
+
+  if (telefono) {
+    window.open(
+      `https://wa.me/${telefono}?text=${encodeURIComponent(mensaje)}`,
+      "_blank",
+      "noopener,noreferrer",
+    );
+  }
+
+  await copiarTexto(mensaje);
+}
+
+function normalizarTelefonoWhatsapp(value) {
+  let digits = String(value || "").replace(/\D/g, "");
+
+  if (!digits) return "";
+
+  while (digits.startsWith("0")) {
+    digits = digits.slice(1);
+  }
+
+  if (digits.startsWith("15") && digits.length >= 10) {
+    digits = digits.slice(2);
+  }
+
+  if (!digits.startsWith("54")) {
+    digits = `54${digits}`;
+  }
+
+  return digits;
 }
 
 function buildMensajeConfirmacion(turno) {
@@ -933,12 +1141,18 @@ function formatFecha(fecha) {
   return new Date(`${fecha}T00:00:00`).toLocaleDateString("es-AR");
 }
 
+function getFechaISO(date = new Date()) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
 function normalizarHora(hora) {
   if (!hora) return "";
   return String(hora).slice(0, 5);
 }
 
 function labelVista(vista) {
+  if (vista === VISTAS.HOY) return "Turnos de hoy";
   if (vista === VISTAS.PARA_MANANA) return "Turnos para mañana";
   if (vista === VISTAS.ATRASADAS) return "Turnos atrasados";
   return "Turnos";
@@ -1133,6 +1347,13 @@ const styles = {
     gap: 12,
   },
   resultsBox: { display: "grid", gap: 8, marginBottom: 12 },
+  searchHint: {
+    marginTop: -4,
+    marginBottom: 10,
+    color: "#64748b",
+    fontWeight: 800,
+    fontSize: 13,
+  },
   resultButton: {
     display: "grid",
     gap: 2,
@@ -1185,6 +1406,40 @@ const styles = {
   metaLine: { color: "#64748b", fontWeight: 800, fontSize: 13 },
   metaLineWarning: { color: "#9a3412", fontWeight: 900, fontSize: 13 },
   muted: { color: "#64748b", fontWeight: 700, fontSize: 13 },
+  mainActionBox: {
+    marginTop: 12,
+    border: "1px solid #fed7aa",
+    background: "#fff7ed",
+    borderRadius: 14,
+    padding: 12,
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) auto",
+    gap: 12,
+    alignItems: "center",
+  },
+  mainActionLabel: {
+    display: "block",
+    marginBottom: 4,
+    color: "#c2410c",
+    fontSize: 12,
+    fontWeight: 950,
+    textTransform: "uppercase",
+  },
+  mainActionText: {
+    margin: "4px 0 0",
+    color: "#7c2d12",
+    fontWeight: 750,
+    fontSize: 13,
+  },
+  mainActionButton: {
+    border: 0,
+    background: "#ea580c",
+    color: "white",
+    borderRadius: 12,
+    padding: "11px 14px",
+    fontWeight: 950,
+    whiteSpace: "nowrap",
+  },
   actions: { display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" },
   badgesRow: { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 },
   badgeOk: {

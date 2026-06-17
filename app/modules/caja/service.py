@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 
 from fastapi import HTTPException
@@ -20,6 +21,11 @@ from .repository import (
     insert_caja,
     insert_caja_movimiento,
     get_cajas_historial,
+    get_caja_del_dia,
+    get_documentos_disponibles_dia,
+    get_resumen_movimientos_caja,
+    get_resumen_pagos_caja,
+    get_resumen_rentabilidad_dia,
 )
 from app.shared.business_rules import (
     LIMITE_AJUSTE_CAJA,
@@ -370,5 +376,52 @@ def listar_historial_cajas(
             limit=limit,
             offset=offset,
         )
+    finally:
+        conn.close()
+
+
+def obtener_resumen_diario_caja(*, fecha: date | None = None, id_sucursal: int | None = None):
+    fecha_resumen = fecha or date.today()
+    conn = get_connection()
+
+    try:
+        caja = get_caja_del_dia(conn, fecha=fecha_resumen, id_sucursal=id_sucursal)
+        caja_id = caja["id"] if caja else None
+        movimientos = get_resumen_movimientos_caja(conn, caja_id)
+        efectivo_teorico = get_efectivo_teorico(conn, caja_id) if caja_id else Decimal("0")
+        pagos = get_resumen_pagos_caja(
+            conn,
+            caja_id,
+            fecha=fecha_resumen,
+            id_sucursal=id_sucursal,
+        )
+        rentabilidad = get_resumen_rentabilidad_dia(
+            conn,
+            fecha=fecha_resumen,
+            id_sucursal=id_sucursal,
+        )
+        documentos = get_documentos_disponibles_dia(
+            conn,
+            fecha=fecha_resumen,
+            id_sucursal=id_sucursal,
+        )
+
+        return {
+            "fecha": fecha_resumen,
+            "id_sucursal": id_sucursal,
+            "caja": {
+                "caja_id": caja_id,
+                "estado": caja["estado"] if caja else None,
+                "fecha": caja["fecha"] if caja else None,
+                "monto_apertura": caja["monto_apertura"] if caja else Decimal("0"),
+                "efectivo_teorico": efectivo_teorico,
+                "monto_cierre_real": caja["monto_cierre_real"] if caja else None,
+                "diferencia": caja["diferencia"] if caja else None,
+                **movimientos,
+            },
+            "pagos": pagos,
+            "rentabilidad": rentabilidad,
+            "documentos": documentos,
+        }
     finally:
         conn.close()

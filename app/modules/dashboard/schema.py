@@ -29,6 +29,17 @@ class DashboardCajaOutput(BaseModel):
     ajustes_negativos: Decimal
 
 
+class DashboardResultadoHoyOutput(BaseModel):
+    fecha: date
+    ventas_total: Decimal
+    cantidad_ventas: int
+    ventas_items_total: Decimal
+    cmv: Decimal
+    margen_bruto: Decimal
+    gastos_operativos: Decimal
+    resultado_estimado: Decimal
+
+
 class DashboardVentaMensualOutput(BaseModel):
     periodo: date
     etiqueta: str
@@ -105,6 +116,15 @@ class DashboardVentaPendienteEntregaOutput(BaseModel):
     cantidad_items: Decimal
 
 
+class DashboardAlertaOperativaOutput(BaseModel):
+    tipo: str
+    titulo: str
+    detalle: str
+    cantidad: int
+    severidad: str
+    to: str
+
+
 class DashboardResumenOutput(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -114,6 +134,7 @@ class DashboardResumenOutput(BaseModel):
     id_sucursal: Optional[int] = None
     kpis: DashboardKpiOutput
     caja: DashboardCajaOutput
+    resultado_hoy: DashboardResultadoHoyOutput
     ventas_ultimos_meses: List[DashboardVentaMensualOutput]
     top_clientes: List[DashboardTopClienteOutput]
     top_productos_cantidad: List[DashboardTopProductoOutput]
@@ -122,3 +143,4 @@ class DashboardResumenOutput(BaseModel):
     capital_inmovilizado: List[DashboardCapitalInmovilizadoOutput]
     taller_pendiente: List[DashboardTallerPendienteOutput]
     ventas_pendientes_entrega: List[DashboardVentaPendienteEntregaOutput]
+    alertas_operativas: List[DashboardAlertaOperativaOutput]

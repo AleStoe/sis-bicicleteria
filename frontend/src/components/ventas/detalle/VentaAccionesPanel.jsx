@@ -15,6 +15,22 @@ export default function VentaAccionesPanel({
   onDevolverCompleta,
 }) {
   const { isMobile } = useBreakpoint();
+  const accionPrincipal = puedeCobrar
+    ? {
+        title: "Cobrar venta",
+        description: "Hay saldo pendiente. Registrá el cobro antes de cerrar la operación.",
+        label: "Cobrar ahora",
+        to: `/ventas/${venta.id}/cobro`,
+      }
+    : puedeEntregar
+      ? {
+          title: "Entregar venta",
+          description: "La venta está lista para marcar salida de mercadería.",
+          label: "Entregar ahora",
+          onClick: onEntregar,
+          disabled: procesando,
+        }
+      : null;
   const hayAccionesPrimarias =
     puedeCobrar || puedeEntregar || puedeAnular || puedeDevolver;
 
@@ -37,6 +53,35 @@ export default function VentaAccionesPanel({
               No tiene saldo pendiente y ya fue entregada. No requiere nuevas acciones.
             </div>
           </div>
+        </div>
+      )}
+
+      {accionPrincipal && (
+        <div style={{ ...mainActionStyle, ...(isMobile ? mainActionMobileStyle : {}) }}>
+          <div>
+            <div style={mainActionLabelStyle}>Accion principal</div>
+            <strong>{accionPrincipal.title}</strong>
+            <p>{accionPrincipal.description}</p>
+          </div>
+
+          {accionPrincipal.to ? (
+            <Link to={accionPrincipal.to} style={mainActionButtonStyle}>
+              {accionPrincipal.label}
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={accionPrincipal.onClick}
+              disabled={accionPrincipal.disabled}
+              style={{
+                ...mainActionButtonStyle,
+                opacity: accionPrincipal.disabled ? 0.55 : 1,
+                cursor: accionPrincipal.disabled ? "not-allowed" : "pointer",
+              }}
+            >
+              {accionPrincipal.label}
+            </button>
+          )}
         </div>
       )}
 
@@ -103,10 +148,46 @@ const actionGridStyle = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
   gap: "10px",
+  marginTop: "12px",
 };
 
 const actionGridMobileStyle = {
   gridTemplateColumns: "1fr",
+};
+
+const mainActionStyle = {
+  border: "1px solid #bfdbfe",
+  background: "linear-gradient(135deg, #eff6ff 0%, #ffffff 100%)",
+  borderRadius: 14,
+  padding: 14,
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) auto",
+  gap: 14,
+  alignItems: "center",
+};
+
+const mainActionMobileStyle = {
+  gridTemplateColumns: "1fr",
+};
+
+const mainActionLabelStyle = {
+  color: "#1d4ed8",
+  fontSize: 12,
+  fontWeight: 1000,
+  textTransform: "uppercase",
+  marginBottom: 4,
+};
+
+const mainActionButtonStyle = {
+  border: "none",
+  borderRadius: 13,
+  padding: "13px 16px",
+  background: "#2563eb",
+  color: "white",
+  fontWeight: 1000,
+  textDecoration: "none",
+  textAlign: "center",
+  boxShadow: "0 10px 22px rgba(37,99,235,.22)",
 };
 
 const closedStateStyle = {

@@ -93,6 +93,9 @@ def get_pagos_comprobante_by_venta_id(conn, venta_id: int):
             SELECT
                 p.id,
                 p.medio_pago,
+                p.monto_base_aplicado,
+                p.monto_descuento_aplicado,
+                p.monto_recargo_aplicado,
                 p.monto_total_cobrado,
                 p.estado,
 

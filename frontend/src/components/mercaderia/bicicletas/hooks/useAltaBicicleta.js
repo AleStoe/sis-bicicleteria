@@ -10,6 +10,7 @@ import {
 } from "../../../../services/catalogoService";
 import { listarProveedores } from "../../../../services/proveedoresService";
 import { crearIngresoStock } from "../../../../services/stockService";
+import { normalizeTextUpper } from "../../../../utils/textNormalization";
 import {
   generarNombreBicicleta,
   generarNombreVarianteBicicleta,
@@ -37,6 +38,14 @@ function fichaVacia(grupo = "GENERAL", clave = "", valor = "") {
     orden: 0,
   };
 }
+
+const UPPER_PRODUCT_FIELDS = new Set([
+  "modelo",
+  "tipo_bicicleta",
+  "material_cuadro",
+  "transmision",
+]);
+const UPPER_VARIANT_FIELDS = new Set(["talle", "color", "codigo_proveedor"]);
 
 const initialForm = {
   id_categoria: "",
@@ -130,7 +139,7 @@ export default function useAltaBicicleta() {
   function setCampo(campo, valor) {
     setForm((prev) => ({
       ...prev,
-      [campo]: valor,
+      [campo]: UPPER_PRODUCT_FIELDS.has(campo) ? normalizeTextUpper(valor) : valor,
     }));
   }
 
@@ -138,7 +147,14 @@ export default function useAltaBicicleta() {
     setForm((prev) => ({
       ...prev,
       variantes: prev.variantes.map((v, i) =>
-        i === index ? { ...v, [campo]: valor } : v
+        i === index
+          ? {
+              ...v,
+              [campo]: UPPER_VARIANT_FIELDS.has(campo)
+                ? normalizeTextUpper(valor)
+                : valor,
+            }
+          : v
       ),
     }));
   }

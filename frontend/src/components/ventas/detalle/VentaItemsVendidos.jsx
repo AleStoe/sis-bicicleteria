@@ -9,6 +9,12 @@ export default function VentaItemsVendidos({
   onDevolverSerializada,
 }) {
   const { isMobile } = useBreakpoint();
+  const totalItems = items.length;
+  const totalUnidades = items.reduce(
+    (acc, item) => acc + Number(item.cantidad || 0),
+    0
+  );
+  const totalBicicletas = items.filter((item) => item.id_bicicleta_serializada).length;
 
   return (
     <section style={{ ...itemsCardStyle, ...(isMobile ? itemsCardMobileStyle : {}) }}>
@@ -17,7 +23,9 @@ export default function VentaItemsVendidos({
           <h2 style={{ margin: 0, fontSize: isMobile ? "18px" : "20px" }}>Items vendidos</h2>
 
           <span style={mutedStyle}>
-            Productos y bicicletas asociados a la venta.
+            {totalItems} item{totalItems === 1 ? "" : "s"} - {totalUnidades} unidad
+            {totalUnidades === 1 ? "" : "es"}
+            {totalBicicletas > 0 ? ` - ${totalBicicletas} bici${totalBicicletas === 1 ? "" : "s"}` : ""}
           </span>
         </div>
       </div>

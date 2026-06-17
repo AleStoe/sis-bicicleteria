@@ -69,6 +69,124 @@ function toDateTimeLocalValue(value) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+function AccionesRapidasTaller({
+  orden,
+  resumen,
+  guardando,
+  esOrdenPostventa,
+  items,
+  puedeGenerarVenta,
+  puedeMarcarListaParaRetirar,
+  puedeMarcarRetirada,
+  onImprimirPresupuesto,
+  onGenerarVenta,
+  onCobrar,
+  onListaParaRetirar,
+  onWhatsappRetiro,
+  onRetirada,
+}) {
+  const tieneItemsPresupuesto = items.some((item) => item.etapa !== "cancelado");
+  const tieneServiciosEjecutados = items.some(
+    (item) => item.tipo_item === "servicio" && item.etapa === "ejecutado"
+  );
+  const puedeWhatsApp = orden.estado === "lista_para_retirar";
+
+  return (
+    <section style={styles.quickActionsCard}>
+      <div>
+        <p style={styles.eyebrow}>Acciones operativas</p>
+        <h2 style={styles.quickActionsTitle}>Retiro, WhatsApp, presupuesto y facturacion</h2>
+      </div>
+
+      <div style={styles.quickActionsGrid}>
+        <QuickAction
+          title="Presupuesto"
+          detail={esOrdenPostventa ? "No aplica en postventa" : "PDF para aprobar trabajos"}
+          label={esOrdenPostventa ? "No aplica" : "Imprimir"}
+          disabled={guardando || esOrdenPostventa || !tieneItemsPresupuesto}
+          onClick={onImprimirPresupuesto}
+        />
+        <QuickAction
+          title="Facturacion"
+          detail={
+            esOrdenPostventa
+              ? "Service bonificado"
+              : orden.id_venta_generada
+                ? `Venta #${orden.id_venta_generada}`
+                : "Generar venta desde OT"
+          }
+          label={
+            esOrdenPostventa
+              ? "No aplica"
+              : orden.id_venta_generada
+                ? "Cobrar"
+                : "Generar venta"
+          }
+          disabled={
+            guardando ||
+            esOrdenPostventa ||
+            (orden.id_venta_generada ? false : !puedeGenerarVenta || tieneServiciosEjecutados)
+          }
+          onClick={orden.id_venta_generada ? onCobrar : onGenerarVenta}
+        />
+        <QuickAction
+          title="Lista para retirar"
+          detail="Deja la OT preparada para aviso"
+          label="Marcar lista"
+          disabled={guardando || !puedeMarcarListaParaRetirar}
+          onClick={onListaParaRetirar}
+        />
+        <QuickAction
+          title="WhatsApp retiro"
+          detail={puedeWhatsApp ? "Abre mensaje y marca aviso" : "Disponible cuando este lista"}
+          label="Enviar WhatsApp"
+          disabled={guardando || !puedeWhatsApp}
+          onClick={onWhatsappRetiro}
+        />
+        <QuickAction
+          title="Retiro"
+          detail="Cuando el cliente se lleva la bici"
+          label="Marcar retirada"
+          disabled={guardando || !puedeMarcarRetirada}
+          onClick={onRetirada}
+        />
+      </div>
+
+      {tieneServiciosEjecutados && !orden.id_venta_generada && !esOrdenPostventa ? (
+        <p style={styles.quickActionsWarning}>
+          Hay servicios ejecutados. La generacion de venta queda bloqueada hasta adaptar ventas para lineas sin variante.
+        </p>
+      ) : null}
+      {resumen.facturables === 0 && !esOrdenPostventa ? (
+        <p style={styles.quickActionsHint}>Para facturar, primero debe haber items ejecutados.</p>
+      ) : null}
+    </section>
+  );
+}
+
+function QuickAction({ title, detail, label, disabled, onClick }) {
+  return (
+    <div style={styles.quickAction}>
+      <div>
+        <strong style={styles.quickActionTitle}>{title}</strong>
+        <p style={styles.quickActionDetail}>{detail}</p>
+      </div>
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        style={{
+          ...styles.quickActionButton,
+          opacity: disabled ? 0.5 : 1,
+          cursor: disabled ? "not-allowed" : "pointer",
+        }}
+      >
+        {label}
+      </button>
+    </div>
+  );
+}
+
 export default function TallerDetallePage() {
   const { ordenId } = useParams();
   const navigate = useNavigate();
@@ -664,6 +782,23 @@ export default function TallerDetallePage() {
         <Metric label="Pendientes" value={resumen.presupuestados + resumen.aprobados} tone="info" />
       </section>
 
+      <AccionesRapidasTaller
+        orden={orden}
+        resumen={resumen}
+        guardando={guardando}
+        esOrdenPostventa={esOrdenPostventa}
+        items={items}
+        puedeGenerarVenta={puedeGenerarVenta}
+        puedeMarcarListaParaRetirar={puedeMarcarListaParaRetirar}
+        puedeMarcarRetirada={puedeMarcarRetirada}
+        onImprimirPresupuesto={imprimirPresupuesto}
+        onGenerarVenta={generarVenta}
+        onCobrar={irACobrarVenta}
+        onListaParaRetirar={() => cambiarEstadoDirecto("lista_para_retirar", "Orden lista para retirar")}
+        onWhatsappRetiro={enviarWhatsappRetiro}
+        onRetirada={() => cambiarEstadoDirecto("retirada", "Orden marcada como retirada")}
+      />
+
       <main style={{ ...styles.layout, ...(isMobile ? styles.layoutMobile : {}) }}>
         <section style={{ ...styles.mainColumn, ...(isMobile ? styles.mainColumnMobile : {}) }}>
           <section style={styles.card}>
@@ -961,91 +1096,6 @@ export default function TallerDetallePage() {
               </button>
             </form>
             <div style={styles.note}>La fecha prometida alimenta atrasadas y prioridad del tablero.</div>
-          </section>
-
-          <section style={styles.card}>
-            <h2 style={styles.sideTitle}>Retiro / WhatsApp</h2>
-            <div style={styles.billingBox}>
-              <Info label="Avisado" value={orden.cliente_avisado_retiro ? `Sí${orden.fecha_aviso_retiro ? ` · ${formatDate(orden.fecha_aviso_retiro)}` : ""}` : "No"} />
-              {orden.estado === "lista_para_retirar" ? (
-                <>
-                  <p style={styles.muted}>
-                    {esOrdenPostventa
-                      ? "Abre WhatsApp con un mensaje simple para avisar que la bici ya esta lista."
-                      : "Envía un resumen real de trabajos ejecutados, total, bicicleta y horarios del local."}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={enviarWhatsappRetiro}
-                    disabled={guardando}
-                    style={styles.primaryButton}
-                  >
-                    WhatsApp bici lista
-                  </button>
-                </>
-              ) : (
-                <p style={styles.muted}>El botón se habilita recién cuando la orden está lista para retirar.</p>
-              )}
-            </div>
-          </section>
-
-          <section style={styles.card}>
-            <h2 style={styles.sideTitle}>Presupuesto</h2>
-            <div style={styles.billingBox}>
-              {esOrdenPostventa ? (
-                <div style={styles.postventaNotice}>No aplica: este service esta bonificado y no requiere presupuesto.</div>
-              ) : (
-                <>
-                  <p style={styles.muted}>Imprimí el presupuesto para aprobación del cliente. No genera venta ni cobra.</p>
-                  <button
-                    type="button"
-                    onClick={imprimirPresupuesto}
-                    disabled={items.filter((item) => item.etapa !== "cancelado").length === 0}
-                    style={styles.secondaryButtonFull}
-                  >
-                    Imprimir presupuesto
-                  </button>
-                </>
-              )}
-            </div>
-          </section>
-
-          <section style={styles.card}>
-            <h2 style={styles.sideTitle}>Facturación</h2>
-            <div style={styles.billingBox}>
-              {esOrdenPostventa ? (
-                <div style={styles.postventaNotice}>No aplica: al retirarla se marca el service bonificado como usado, sin generar venta.</div>
-              ) : orden.id_venta_generada ? (
-                <>
-                  <Info label="Venta generada" value={`#${orden.id_venta_generada}`} />
-                  <Link to={`/ventas/${orden.id_venta_generada}/cobro`} style={styles.linkButton}>Cobrar venta</Link>
-                </>
-              ) : orden.estado === "terminada" ? (
-                <>
-                  {items.some((item) => item.tipo_item === "servicio" && item.etapa === "ejecutado") ? (
-                    <p style={styles.warningText}>
-                      Esta orden tiene servicios ejecutados. Todavía no generes venta desde taller hasta adaptar Ventas para líneas sin variante.
-                    </p>
-                  ) : (
-                    <p style={styles.muted}>El trabajo está terminado. Generá la venta para cobrar con el flujo normal de ventas.</p>
-                  )}
-                  <button
-                    type="button"
-                    onClick={generarVenta}
-                    disabled={
-                      guardando ||
-                      resumen.ejecutados === 0 ||
-                      items.some((item) => item.tipo_item === "servicio" && item.etapa === "ejecutado")
-                    }
-                    style={styles.primaryButton}
-                  >
-                    Generar venta
-                  </button>
-                </>
-              ) : (
-                <p style={styles.muted}>La venta se habilita cuando la orden queda terminada.</p>
-              )}
-            </div>
           </section>
 
           <section style={styles.card}>

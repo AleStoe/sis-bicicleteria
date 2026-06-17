@@ -18,7 +18,15 @@ app.middleware("http")(auth_middleware)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"http://(localhost|127\.0\.0\.1|192\.168\.0\.66):5173",
+    allow_origin_regex=(
+        r"^http://("
+        r"localhost|127\.0\.0\.1|"
+        r"sistema-agus|"
+        r"192\.168\.\d{1,3}\.\d{1,3}|"
+        r"10\.\d{1,3}\.\d{1,3}\.\d{1,3}|"
+        r"172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}"
+        r")(?::(80|8000|5173|5174|5175|5176|5177|5178|5179|4173))?$"
+    ),
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],

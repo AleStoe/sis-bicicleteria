@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { Link } from "react-router-dom";
+import { AlertTriangle, CheckCircle2, RefreshCw, TrendingDown, TrendingUp } from "lucide-react";
 import { getDashboardResumen } from "../services/dashboardService";
 import { formatMoney, formatInteger, formatNumber } from "../utils/formatters";
 import useMediaQuery from "../hooks/useMediaQuery";
@@ -36,6 +37,27 @@ const secondaryButton = {
   display: "inline-flex",
   alignItems: "center",
   gap: 8,
+};
+
+const severityStyles = {
+  alta: {
+    background: "#fff1f0",
+    border: "#fecaca",
+    color: "#b42318",
+    icon: "#dc2626",
+  },
+  media: {
+    background: "#fffbeb",
+    border: "#fde68a",
+    color: "#92400e",
+    icon: "#d97706",
+  },
+  baja: {
+    background: "#eff6ff",
+    border: "#bfdbfe",
+    color: "#1d4ed8",
+    icon: "#2563eb",
+  },
 };
 
 function money(value) {
@@ -82,6 +104,8 @@ export default function DashboardPage() {
 
   const k = data?.kpis || {};
   const ventasChartData = data?.ventas_ultimos_meses || [];
+  const alertas = data?.alertas_operativas || [];
+  const resultadoHoy = data?.resultado_hoy;
 
   return (
     <div style={{ padding: isMobile ? 12 : 24, display: "grid", gap: isMobile ? 12 : 18, minWidth: 0 }}>
@@ -99,6 +123,11 @@ export default function DashboardPage() {
       </header>
 
       {error && <div style={{ ...card, padding: 14, borderColor: "#fecaca", color: "#b91c1c", background: "#fef2f2" }}>{error}</div>}
+
+      <section style={{ display: "grid", gridTemplateColumns: isNarrow ? "1fr" : "minmax(280px, .75fr) minmax(0, 1.25fr)", gap: isMobile ? 12 : 18, alignItems: "stretch", minWidth: 0 }}>
+        <ResultadoHoyCard resultado={resultadoHoy} loading={loading} />
+        <OperacionHoyCard alertas={alertas} loading={loading} caja={data?.caja} isMobile={isMobile} />
+      </section>
 
       <section style={{ ...card, padding: isMobile ? 12 : 16, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(180px, 240px))", gap: 12, minWidth: 0 }}>
         <label style={{ display: "grid", gap: 6, fontWeight: 800, color: "#344054" }}>
@@ -152,6 +181,148 @@ export default function DashboardPage() {
         <ProductosSinMovimientoCard rows={data?.productos_sin_movimiento || []} loading={loading} />
       </section>
     </div>
+  );
+}
+
+function OperacionHoyCard({ alertas, loading, caja, isMobile }) {
+  const cajaAbierta = Boolean(caja?.caja_abierta_id);
+
+  return (
+    <section style={{ ...card, padding: isMobile ? 12 : 16, display: "grid", gap: 12 }}>
+      <div style={{ display: isMobile ? "grid" : "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#344054", fontSize: 13, fontWeight: 900 }}>
+            {alertas.length ? <AlertTriangle size={16} color="#d97706" /> : <CheckCircle2 size={16} color="#059669" />}
+            Operacion de hoy
+          </div>
+          <h2 style={{ margin: "4px 0 0", fontSize: 22, color: "#101828" }}>
+            {loading ? "Revisando pendientes..." : alertas.length ? `${alertas.length} frente(s) para mirar` : "Sin alertas criticas"}
+          </h2>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <StatusPill label={cajaAbierta ? "Caja abierta" : "Caja cerrada"} tone={cajaAbierta ? "ok" : "hot"} />
+          <Link to="/alertas-operativas" style={{ ...secondaryButton, textDecoration: "none", padding: "8px 10px" }}>
+            Ver alertas
+          </Link>
+        </div>
+      </div>
+
+      {loading ? (
+        <div style={{ color: "#667085", fontWeight: 800 }}>Cargando alertas...</div>
+      ) : alertas.length === 0 ? (
+        <div style={{ background: "#ecfdf5", border: "1px solid #bbf7d0", color: "#047857", borderRadius: 10, padding: 12, fontWeight: 850 }}>
+          No hay vencimientos operativos detectados. Buen momento para revisar stock o cargar movimientos pendientes.
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 10, minWidth: 0 }}>
+          {alertas.slice(0, 6).map((alerta) => (
+            <AlertaOperativa key={alerta.tipo} alerta={alerta} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ResultadoHoyCard({ resultado, loading }) {
+  const valor = Number(resultado?.resultado_estimado || 0);
+  const positivo = valor >= 0;
+  const Icon = positivo ? TrendingUp : TrendingDown;
+  const accent = positivo ? "#059669" : "#dc2626";
+  const bg = positivo ? "#ecfdf5" : "#fff1f0";
+  const border = positivo ? "#bbf7d0" : "#fecaca";
+
+  return (
+    <Link
+      to="/rentabilidad"
+      style={{
+        ...card,
+        padding: 16,
+        display: "grid",
+        alignContent: "space-between",
+        gap: 14,
+        textDecoration: "none",
+        color: "#101828",
+        minWidth: 0,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+        <div>
+          <div style={{ color: "#344054", fontSize: 13, fontWeight: 900 }}>Resultado de hoy</div>
+          <div style={{ marginTop: 6, fontSize: 28, fontWeight: 1000, color: loading ? "#667085" : accent }}>
+            {loading ? "..." : money(resultado?.resultado_estimado)}
+          </div>
+        </div>
+        <div style={{ width: 40, height: 40, borderRadius: 999, background: bg, border: `1px solid ${border}`, display: "grid", placeItems: "center" }}>
+          <Icon size={20} color={accent} />
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
+        <MiniBalanceRow label="Ventas" value={money(resultado?.ventas_total)} />
+        <MiniBalanceRow label="Costo mercaderia" value={`- ${money(resultado?.cmv)}`} />
+        <MiniBalanceRow label="Gastos" value={`- ${money(resultado?.gastos_operativos)}`} />
+      </div>
+
+      <div style={{ color: "#667085", fontSize: 12, fontWeight: 800 }}>
+        Estimado segun costos y gastos cargados.
+      </div>
+    </Link>
+  );
+}
+
+function MiniBalanceRow({ label, value }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+      <span style={{ color: "#667085", fontWeight: 800 }}>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function AlertaOperativa({ alerta }) {
+  const tone = severityStyles[alerta.severidad] || severityStyles.baja;
+
+  return (
+    <Link
+      to={alerta.to}
+      style={{
+        display: "grid",
+        gridTemplateColumns: "34px 1fr auto",
+        alignItems: "center",
+        gap: 10,
+        textDecoration: "none",
+        background: tone.background,
+        border: `1px solid ${tone.border}`,
+        borderRadius: 10,
+        padding: 12,
+        color: tone.color,
+        minWidth: 0,
+      }}
+    >
+      <div style={{ width: 34, height: 34, borderRadius: 999, background: "#fff", display: "grid", placeItems: "center" }}>
+        <AlertTriangle size={17} color={tone.icon} />
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <strong style={{ display: "block", color: "#101828" }}>{alerta.titulo}</strong>
+        <span style={{ display: "block", fontSize: 12, color: "#475467", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {alerta.detalle}
+        </span>
+      </div>
+      <strong style={{ fontSize: 20 }}>{formatInteger(alerta.cantidad)}</strong>
+    </Link>
+  );
+}
+
+function StatusPill({ label, tone }) {
+  const style = tone === "ok"
+    ? { background: "#ecfdf5", color: "#047857", border: "#bbf7d0" }
+    : { background: "#fff1f0", color: "#b42318", border: "#fecaca" };
+
+  return (
+    <span style={{ border: `1px solid ${style.border}`, background: style.background, color: style.color, borderRadius: 999, padding: "8px 10px", fontWeight: 950, fontSize: 13 }}>
+      {label}
+    </span>
   );
 }
 

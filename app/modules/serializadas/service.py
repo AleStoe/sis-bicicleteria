@@ -1,5 +1,6 @@
 from fastapi import HTTPException
 
+from app.core.text_normalization import normalize_text_upper
 from app.db.connection import get_connection
 from app.modules.auditoria import service as auditoria_service
 from app.modules.stock import service as stock_service
@@ -75,7 +76,7 @@ def armar_bicicleta_serializada(data):
             _validar_variante(conn, data.id_variante)
             _validar_sucursal(conn, data.id_sucursal_actual)
 
-            numero_cuadro = data.numero_cuadro.strip()
+            numero_cuadro = normalize_text_upper(data.numero_cuadro)
 
             existente = get_bicicleta_serializada_by_numero_cuadro(conn, numero_cuadro)
             if existente is not None:

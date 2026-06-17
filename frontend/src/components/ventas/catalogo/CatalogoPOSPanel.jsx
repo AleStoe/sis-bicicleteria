@@ -14,7 +14,12 @@ export default function CatalogoPOSPanel({
   onAgregarItem,
   isMobile = false,
 }) {
+  const categoriasVisibles = categorias.filter((categoria) => {
+    return categoria.nombre?.trim().toLowerCase() !== "servicios";
+  });
+
   const catalogoVisible = catalogo.filter((producto) => {
+    if (producto.tipo_item && producto.tipo_item !== "producto") return false;
     if (!producto.stockeable) return true;
     return Number(producto.stock_disponible || 0) > 0;
   });
@@ -42,7 +47,7 @@ export default function CatalogoPOSPanel({
           Todos
         </button>
 
-        {categorias.map((categoria) => (
+        {categoriasVisibles.map((categoria) => (
           <button
             key={categoria.id}
             type="button"

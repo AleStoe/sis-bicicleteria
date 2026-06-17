@@ -43,6 +43,11 @@ import UsuariosPage from "./pages/UsuariosPage";
 import LoginPage from "./pages/LoginPage";
 import { useSession } from "./context/SessionContext";
 import AgendaTallerPage from "./pages/AgendaTallerPage";
+import CotizacionesListPage from "./pages/CotizacionesListPage";
+import CotizacionDetallePage from "./pages/CotizacionDetallePage";
+import EtiquetasPage from "./pages/EtiquetasPage";
+import InventarioFisicoPage from "./pages/InventarioFisicoPage";
+import AlertasOperativasPage from "./pages/AlertasOperativasPage";
 
 const ADMIN = ["administrador"];
 const OPERACION = ["administrador", "encargado", "operador"];
@@ -107,6 +112,22 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/cotizaciones"
+            element={
+              <ProtectedRoute rolesPermitidos={OPERACION_TALLER}>
+                <CotizacionesListPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/cotizaciones/:cotizacionId"
+            element={
+              <ProtectedRoute rolesPermitidos={OPERACION_TALLER}>
+                <CotizacionDetallePage />
+              </ProtectedRoute>
+            }
+          />
 
           <Route
             path="/stock"
@@ -121,6 +142,30 @@ export default function App() {
             element={
               <ProtectedRoute rolesPermitidos={OPERACION_TALLER}>
                 <BicicletasSerializadasPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/inventario-fisico"
+            element={
+              <ProtectedRoute rolesPermitidos={ADMIN_ENCARGADO}>
+                <InventarioFisicoPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/alertas-operativas"
+            element={
+              <ProtectedRoute rolesPermitidos={OPERACION_TALLER}>
+                <AlertasOperativasPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/etiquetas"
+            element={
+              <ProtectedRoute rolesPermitidos={OPERACION_TALLER}>
+                <EtiquetasPage />
               </ProtectedRoute>
             }
           />

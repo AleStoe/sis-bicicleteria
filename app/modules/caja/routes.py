@@ -13,8 +13,9 @@ from .schema import (
     CajaEgresoOutput,
     CajaAjusteInput,
     CajaHistorialOutput,
+    CajaResumenDiarioOutput,
 )
-from .service import abrir_caja, cerrar_caja, obtener_caja_abierta, obtener_caja_detalle, registrar_egreso, registrar_ajuste, listar_historial_cajas
+from .service import abrir_caja, cerrar_caja, obtener_caja_abierta, obtener_caja_detalle, registrar_egreso, registrar_ajuste, listar_historial_cajas, obtener_resumen_diario_caja
 
 router = APIRouter()
 
@@ -46,6 +47,13 @@ def caja_historial_route(
         offset=offset,
     )
 
+@router.get("/resumen-diario", response_model=CajaResumenDiarioOutput)
+def caja_resumen_diario_route(
+    fecha: date | None = None,
+    id_sucursal: int | None = Query(default=None, gt=0),
+):
+    return obtener_resumen_diario_caja(fecha=fecha, id_sucursal=id_sucursal)
+
 @router.get("/{caja_id}", response_model=CajaDetalleOutput)
 def caja_detalle(caja_id: int):
     return obtener_caja_detalle(caja_id)
@@ -63,4 +71,3 @@ def cerrar_caja_route(caja_id: int, data: CajaCerrarInput):
 @router.post("/{caja_id}/ajustes", response_model=CajaEgresoOutput)
 def registrar_ajuste_route(caja_id: int, data: CajaAjusteInput):
     return registrar_ajuste(caja_id, data)
-

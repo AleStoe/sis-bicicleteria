@@ -365,3 +365,270 @@ def get_cajas_historial(
             (*params, limit, offset),
         )
         return cur.fetchall()
+
+
+def get_caja_del_dia(conn, *, fecha, id_sucursal: int | None = None):
+    params = [fecha]
+    sucursal_sql = ""
+    if id_sucursal is not None:
+        sucursal_sql = "AND id_sucursal = %s"
+        params.append(id_sucursal)
+
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            f"""
+            SELECT
+                id,
+                fecha,
+                id_sucursal,
+                estado,
+                monto_apertura,
+                monto_cierre_real,
+                diferencia
+            FROM cajas
+            WHERE fecha = %s
+              {sucursal_sql}
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            params,
+        )
+        return cur.fetchone()
+
+
+def get_resumen_movimientos_caja(conn, caja_id: int | None):
+    base = {
+        "ingresos": Decimal("0"),
+        "egresos": Decimal("0"),
+        "ajustes_positivos": Decimal("0"),
+        "ajustes_negativos": Decimal("0"),
+    }
+    if caja_id is None:
+        return base
+
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT
+                COALESCE(SUM(monto) FILTER (WHERE tipo_movimiento = 'ingreso'), 0)::numeric(14,2) AS ingresos,
+                COALESCE(SUM(monto) FILTER (WHERE tipo_movimiento = 'egreso'), 0)::numeric(14,2) AS egresos,
+                COALESCE(SUM(monto) FILTER (WHERE tipo_movimiento = 'ajuste' AND direccion_ajuste = 'positivo'), 0)::numeric(14,2) AS ajustes_positivos,
+                COALESCE(SUM(monto) FILTER (WHERE tipo_movimiento = 'ajuste' AND direccion_ajuste = 'negativo'), 0)::numeric(14,2) AS ajustes_negativos
+            FROM caja_movimientos
+            WHERE id_caja = %s
+            """,
+            (caja_id,),
+        )
+        return cur.fetchone() or base
+
+
+def get_resumen_pagos_caja(conn, caja_id: int | None, *, fecha, id_sucursal: int | None = None):
+    if caja_id is not None:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT
+                    COUNT(DISTINCT p.id)::int AS cantidad_pagos,
+                    COALESCE(SUM(p.monto_total_cobrado), 0)::numeric(14,2) AS total_cobrado,
+                    COALESCE(SUM(p.monto_base_aplicado), 0)::numeric(14,2) AS base_aplicada,
+                    COALESCE(SUM(p.monto_descuento_aplicado), 0)::numeric(14,2) AS descuentos_aplicados,
+                    COALESCE(SUM(p.monto_recargo_aplicado), 0)::numeric(14,2) AS recargos_aplicados,
+                    COALESCE(SUM(p.monto_total_cobrado) FILTER (WHERE p.medio_pago = 'efectivo'), 0)::numeric(14,2) AS efectivo,
+                    COALESCE(SUM(p.monto_total_cobrado) FILTER (WHERE p.medio_pago = 'transferencia'), 0)::numeric(14,2) AS transferencia,
+                    COALESCE(SUM(p.monto_total_cobrado) FILTER (WHERE p.medio_pago = 'mercadopago'), 0)::numeric(14,2) AS mercadopago,
+                    COALESCE(SUM(p.monto_total_cobrado) FILTER (WHERE p.medio_pago = 'tarjeta'), 0)::numeric(14,2) AS tarjeta
+                FROM caja_movimientos cm
+                INNER JOIN pagos p
+                    ON p.id = cm.origen_id
+                   AND cm.origen_tipo = 'pago'
+                WHERE cm.id_caja = %s
+                  AND p.estado = 'confirmado'
+                """,
+                (caja_id,),
+            )
+            return cur.fetchone()
+
+    params = [fecha]
+    sucursal_sql = ""
+    if id_sucursal is not None:
+        sucursal_sql = """
+          AND COALESCE(v.id_sucursal, r.id_sucursal, ot.id_sucursal) = %s
+        """
+        params.append(id_sucursal)
+
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            f"""
+            SELECT
+                COUNT(DISTINCT p.id)::int AS cantidad_pagos,
+                COALESCE(SUM(p.monto_total_cobrado), 0)::numeric(14,2) AS total_cobrado,
+                COALESCE(SUM(p.monto_base_aplicado), 0)::numeric(14,2) AS base_aplicada,
+                COALESCE(SUM(p.monto_descuento_aplicado), 0)::numeric(14,2) AS descuentos_aplicados,
+                COALESCE(SUM(p.monto_recargo_aplicado), 0)::numeric(14,2) AS recargos_aplicados,
+                COALESCE(SUM(p.monto_total_cobrado) FILTER (WHERE p.medio_pago = 'efectivo'), 0)::numeric(14,2) AS efectivo,
+                COALESCE(SUM(p.monto_total_cobrado) FILTER (WHERE p.medio_pago = 'transferencia'), 0)::numeric(14,2) AS transferencia,
+                COALESCE(SUM(p.monto_total_cobrado) FILTER (WHERE p.medio_pago = 'mercadopago'), 0)::numeric(14,2) AS mercadopago,
+                COALESCE(SUM(p.monto_total_cobrado) FILTER (WHERE p.medio_pago = 'tarjeta'), 0)::numeric(14,2) AS tarjeta
+            FROM pagos p
+            LEFT JOIN ventas v
+                ON p.origen_tipo = 'venta'
+               AND v.id = p.origen_id
+            LEFT JOIN reservas r
+                ON p.origen_tipo = 'reserva'
+               AND r.id = p.origen_id
+            LEFT JOIN ordenes_taller ot
+                ON p.origen_tipo = 'orden_taller'
+               AND ot.id = p.origen_id
+            WHERE p.fecha::date = %s
+              AND p.estado = 'confirmado'
+              {sucursal_sql}
+            """,
+            params,
+        )
+        return cur.fetchone()
+
+
+def get_resumen_rentabilidad_dia(conn, *, fecha, id_sucursal: int | None = None):
+    params = [fecha]
+    sucursal_sql = ""
+    if id_sucursal is not None:
+        sucursal_sql = "AND v.id_sucursal = %s"
+        params.append(id_sucursal)
+
+    gastos_params = [fecha]
+    gastos_sucursal_sql = ""
+    if id_sucursal is not None:
+        gastos_sucursal_sql = "AND go.id_sucursal = %s"
+        gastos_params.append(id_sucursal)
+
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            f"""
+            SELECT
+                COUNT(DISTINCT v.id)::int AS cantidad_ventas,
+                COALESCE((
+                    SELECT SUM(v2.total_final)
+                    FROM ventas v2
+                    WHERE v2.fecha::date = %s
+                      AND v2.estado NOT IN ('anulada', 'devuelta')
+                      {sucursal_sql.replace('v.', 'v2.')}
+                ), 0)::numeric(14,2) AS ventas_total,
+                COALESCE(SUM(vi.subtotal), 0)::numeric(14,2) AS ventas_items_total,
+                COALESCE(SUM(vi.costo_unitario_aplicado * vi.cantidad), 0)::numeric(14,2) AS costo_mercaderia_vendida,
+                (
+                    COALESCE(SUM(vi.subtotal), 0)
+                    - COALESCE(SUM(vi.costo_unitario_aplicado * vi.cantidad), 0)
+                )::numeric(14,2) AS margen_bruto
+            FROM ventas v
+            LEFT JOIN venta_items vi ON vi.id_venta = v.id
+            WHERE v.fecha::date = %s
+              AND v.estado NOT IN ('anulada', 'devuelta')
+              {sucursal_sql}
+            """,
+            [*params, *params],
+        )
+        ventas = cur.fetchone()
+
+        cur.execute(
+            f"""
+            SELECT COALESCE(SUM(go.monto), 0)::numeric(14,2) AS gastos_operativos
+            FROM gastos_operativos go
+            WHERE COALESCE(go.periodo_mes, go.fecha)::date = %s
+              AND go.estado = 'activo'
+              {gastos_sucursal_sql}
+            """,
+            gastos_params,
+        )
+        gastos = cur.fetchone()["gastos_operativos"]
+
+    return {
+        **ventas,
+        "gastos_operativos": gastos,
+        "ganancia_dia": ventas["margen_bruto"] - gastos,
+    }
+
+
+def get_documentos_disponibles_dia(conn, *, fecha, id_sucursal: int | None = None):
+    ventas_params = [fecha]
+    sucursal_sql = ""
+    if id_sucursal is not None:
+        sucursal_sql = "AND id_sucursal = %s"
+        ventas_params.append(id_sucursal)
+
+    pagos_params = [fecha]
+    pagos_sucursal_sql = ""
+    if id_sucursal is not None:
+        pagos_sucursal_sql = "AND COALESCE(v.id_sucursal, r.id_sucursal, ot.id_sucursal) = %s"
+        pagos_params.append(id_sucursal)
+
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            f"""
+            SELECT COUNT(*)::int AS total
+            FROM ventas
+            WHERE fecha::date = %s
+              AND estado NOT IN ('anulada', 'devuelta')
+              {sucursal_sql}
+            """,
+            ventas_params,
+        )
+        comprobantes_x = cur.fetchone()["total"]
+
+        cur.execute(
+            f"""
+            SELECT COUNT(DISTINCT p.id)::int AS total
+            FROM pagos p
+            LEFT JOIN ventas v
+                ON p.origen_tipo = 'venta'
+               AND v.id = p.origen_id
+            LEFT JOIN reservas r
+                ON p.origen_tipo = 'reserva'
+               AND r.id = p.origen_id
+            LEFT JOIN ordenes_taller ot
+                ON p.origen_tipo = 'orden_taller'
+               AND ot.id = p.origen_id
+            WHERE p.fecha::date = %s
+              AND p.estado = 'confirmado'
+              {pagos_sucursal_sql}
+            """,
+            pagos_params,
+        )
+        recibos_pago = cur.fetchone()["total"]
+
+        cur.execute(
+            f"""
+            SELECT COUNT(*)::int AS total
+            FROM cotizaciones
+            WHERE fecha::date = %s
+              {sucursal_sql}
+            """,
+            ventas_params,
+        )
+        cotizaciones = cur.fetchone()["total"]
+
+        cur.execute(
+            f"""
+            SELECT COUNT(*)::int AS total
+            FROM ordenes_taller
+            WHERE fecha_ingreso::date = %s
+              {sucursal_sql}
+            """,
+            ventas_params,
+        )
+        presupuestos_taller = cur.fetchone()["total"]
+
+    resumenes_cobro = comprobantes_x
+    return {
+        "comprobantes_x": comprobantes_x,
+        "recibos_pago": recibos_pago,
+        "resumenes_cobro": resumenes_cobro,
+        "cotizaciones": cotizaciones,
+        "presupuestos_taller": presupuestos_taller,
+        "total_disponibles": (
+            comprobantes_x
+            + recibos_pago
+            + resumenes_cobro
+            + cotizaciones
+            + presupuestos_taller
+        ),
+    }

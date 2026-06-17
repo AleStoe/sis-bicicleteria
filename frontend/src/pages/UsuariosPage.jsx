@@ -8,6 +8,7 @@ import {
   resetearPasswordUsuario,
 } from "../services/usuariosService";
 import useMediaQuery from "../hooks/useMediaQuery";
+import { normalizeTextUpper } from "../utils/textNormalization";
 
 const FORM_INICIAL = {
   nombre: "",
@@ -74,7 +75,10 @@ export default function UsuariosPage() {
   const usuariosFiltrados = useMemo(() => usuarios, [usuarios]);
 
   function actualizarCampo(campo, valor) {
-    setForm((prev) => ({ ...prev, [campo]: valor }));
+    setForm((prev) => ({
+      ...prev,
+      [campo]: campo === "nombre" ? normalizeTextUpper(valor) : valor,
+    }));
   }
 
   function editar(usuario) {

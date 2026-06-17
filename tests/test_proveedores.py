@@ -12,7 +12,7 @@ def test_crea_proveedor(client, seed_venta_basica):
     assert response.status_code == 200, response.text
 
     data = response.json()
-    assert data["nombre"] == "Proveedor Test"
+    assert data["nombre"] == "PROVEEDOR TEST"
     assert data["telefono"] == "2910000000"
     assert data["email"] == "proveedor@test.com"
     assert data["activo"] is True
@@ -30,7 +30,7 @@ def test_lista_proveedores(client, seed_venta_basica):
     assert response.status_code == 200, response.text
 
     data = response.json()
-    assert any(p["nombre"] == "Proveedor Lista" for p in data)
+    assert any(p["nombre"] == "PROVEEDOR LISTA" for p in data)
 
 
 def test_obtiene_proveedor_por_id(client, seed_venta_basica):
@@ -48,7 +48,7 @@ def test_obtiene_proveedor_por_id(client, seed_venta_basica):
 
     data = response.json()
     assert data["id"] == proveedor_id
-    assert data["nombre"] == "Proveedor Detalle"
+    assert data["nombre"] == "PROVEEDOR DETALLE"
 
 
 def test_no_permite_proveedor_duplicado(client, seed_venta_basica):

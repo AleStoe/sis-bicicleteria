@@ -44,6 +44,22 @@ function getMotivoTexto(item) {
   return "Revisar antes de vender";
 }
 
+function tienePrecio(value) {
+  return Number(value || 0) > 0;
+}
+
+function precioConsulta(value) {
+  return tienePrecio(value) ? formatMoney(value) : "No definido";
+}
+
+function precioConsultaClipboard(value) {
+  return precioConsulta(value).replace(/\$\s+/g, "$");
+}
+
+function getNombreConsulta(item) {
+  return [item.producto_nombre, item.nombre_variante].filter(Boolean).join("\n");
+}
+
 function normalizarTexto(valor) {
   return String(valor || "")
     .trim()
@@ -328,11 +344,40 @@ export default function CatalogoPage() {
 }
 
 function CatalogoCard({ item, selected, onSelect, onOpenDetail, isMobile }) {
+  const [copiado, setCopiado] = useState("");
   const stockColumns = isMobile
     ? "1fr"
     : Number(item.stock_reservado || 0) > 0
       ? "repeat(3, 1fr)"
       : "repeat(2, 1fr)";
+  const precioMinoristaDefinido = tienePrecio(item.precio_minorista);
+  const precioMayoristaDefinido = tienePrecio(item.precio_mayorista);
+  const puedeCopiarAmbos = precioMinoristaDefinido || precioMayoristaDefinido;
+  const nombreConsulta = getNombreConsulta(item) || getTituloItem(item) || "VARIANTE";
+
+  async function copiarConsulta(tipo) {
+    let texto = "";
+
+    if (tipo === "minorista") {
+      texto = `${nombreConsulta}\nPrecio: ${precioConsultaClipboard(item.precio_minorista)}`;
+    }
+
+    if (tipo === "mayorista") {
+      texto = `${nombreConsulta}\nPrecio mayorista: ${precioConsultaClipboard(item.precio_mayorista)}`;
+    }
+
+    if (tipo === "ambos") {
+      texto = [
+        nombreConsulta,
+        `Precio: ${precioConsultaClipboard(item.precio_minorista)}`,
+        `Mayorista: ${precioConsultaClipboard(item.precio_mayorista)}`,
+      ].join("\n");
+    }
+
+    await navigator.clipboard.writeText(texto);
+    setCopiado(tipo);
+    setTimeout(() => setCopiado((actual) => (actual === tipo ? "" : actual)), 1400);
+  }
 
   return (
     <article
@@ -379,12 +424,42 @@ function CatalogoCard({ item, selected, onSelect, onOpenDetail, isMobile }) {
         <div style={{ ...styles.priceGrid, ...(isMobile ? styles.priceGridMobile : {}) }}>
           <div style={styles.priceBox}>
             <span>Minorista</span>
-            <strong>{formatMoney(item.precio_minorista)}</strong>
+            <strong>{precioConsulta(item.precio_minorista)}</strong>
           </div>
           <div style={styles.priceBox}>
             <span>Mayorista</span>
-            <strong>{formatMoney(item.precio_mayorista)}</strong>
+            <strong>{precioConsulta(item.precio_mayorista)}</strong>
           </div>
+        </div>
+
+        <div style={{ ...styles.copyActions, ...(isMobile ? styles.copyActionsMobile : {}) }}>
+          <CopyButton
+            label="Copiar minorista"
+            copied={copiado === "minorista"}
+            disabled={!precioMinoristaDefinido}
+            onClick={(e) => {
+              e.stopPropagation();
+              copiarConsulta("minorista");
+            }}
+          />
+          <CopyButton
+            label="Copiar mayorista"
+            copied={copiado === "mayorista"}
+            disabled={!precioMayoristaDefinido}
+            onClick={(e) => {
+              e.stopPropagation();
+              copiarConsulta("mayorista");
+            }}
+          />
+          <CopyButton
+            label="Copiar ambos"
+            copied={copiado === "ambos"}
+            disabled={!puedeCopiarAmbos}
+            onClick={(e) => {
+              e.stopPropagation();
+              copiarConsulta("ambos");
+            }}
+          />
         </div>
 
         <div
@@ -414,6 +489,19 @@ function CatalogoCard({ item, selected, onSelect, onOpenDetail, isMobile }) {
         </div>
       </div>
     </article>
+  );
+}
+
+function CopyButton({ label, copied, disabled, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={disabled ? styles.copyButtonDisabled : copied ? styles.copyButtonCopied : styles.copyButton}
+    >
+      {copied ? "Copiado" : label}
+    </button>
   );
 }
 
@@ -815,6 +903,50 @@ const styles = {
     padding: 9,
     display: "grid",
     gap: 3,
+  },
+  copyActions: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gap: 6,
+  },
+  copyActionsMobile: {
+    gridTemplateColumns: "1fr",
+  },
+  copyButton: {
+    minHeight: 34,
+    border: "1px solid #bfdbfe",
+    background: "#eff6ff",
+    color: "#1d4ed8",
+    borderRadius: 10,
+    padding: "7px 8px",
+    fontSize: 12,
+    fontWeight: 1000,
+    cursor: "pointer",
+    whiteSpace: "normal",
+  },
+  copyButtonCopied: {
+    minHeight: 34,
+    border: "1px solid #bbf7d0",
+    background: "#ecfdf5",
+    color: "#047857",
+    borderRadius: 10,
+    padding: "7px 8px",
+    fontSize: 12,
+    fontWeight: 1000,
+    cursor: "pointer",
+    whiteSpace: "normal",
+  },
+  copyButtonDisabled: {
+    minHeight: 34,
+    border: "1px solid #e2e8f0",
+    background: "#f8fafc",
+    color: "#94a3b8",
+    borderRadius: 10,
+    padding: "7px 8px",
+    fontSize: 12,
+    fontWeight: 1000,
+    cursor: "not-allowed",
+    whiteSpace: "normal",
   },
   codesBox: {
     display: "grid",

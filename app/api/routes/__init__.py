@@ -22,6 +22,9 @@ from app.modules.dashboard.routes import router as dashboard_router
 from app.modules.usuarios.routes import router as usuarios_router
 from app.modules.auth.routes import router as auth_router
 from app.modules.agenda_taller.routes import router as agenda_taller_router
+from app.modules.cotizaciones.routes import router as cotizaciones_router
+from app.modules.inventario_fisico.routes import router as inventario_fisico_router
+from app.modules.alertas_operativas.routes import router as alertas_operativas_router
 
 router = APIRouter()
 
@@ -48,3 +51,6 @@ router.include_router(dashboard_router, prefix="/dashboard", tags=["Dashboard"])
 router.include_router(usuarios_router, prefix="/usuarios", tags=["Usuarios"])
 router.include_router(auth_router, prefix="/auth", tags=["Auth"])
 router.include_router(agenda_taller_router, prefix="/agenda-taller", tags=["Agenda Taller"],)
+router.include_router(cotizaciones_router, prefix="/cotizaciones", tags=["Cotizaciones"])
+router.include_router(inventario_fisico_router, prefix="/inventarios-fisicos", tags=["Inventario Fisico"])
+router.include_router(alertas_operativas_router, prefix="/alertas-operativas", tags=["Alertas Operativas"])

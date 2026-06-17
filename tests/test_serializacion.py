@@ -250,6 +250,21 @@ def test_crear_bicicleta_serializada_ok(client, db_conn, seed_serializacion):
     assert bicicleta["numero_cuadro"] == "CUADRO-OK-001"
     assert bicicleta["estado"] == "disponible"
 
+
+def test_crear_bicicleta_serializada_normaliza_numero_cuadro(
+    client,
+    db_conn,
+    seed_serializacion,
+):
+    response = _crear_bici_serializada(client, seed_serializacion, "  abc-123  ")
+
+    assert response.status_code == 200, response.text
+
+    bicicleta_id = response.json()["bicicleta_id"]
+    bicicleta = _get_bicicleta_serializada(db_conn, bicicleta_id)
+
+    assert bicicleta["numero_cuadro"] == "ABC-123"
+
     stock = get_stock_row(
         db_conn,
         seed_serializacion["sucursal_id"],

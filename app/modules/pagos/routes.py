@@ -1,5 +1,5 @@
 from typing import List
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from .schema import (
     PagoCreateInput,
@@ -26,8 +26,8 @@ def revertir_pago_route(pago_id: int, data: PagoReversionInput):
 
 
 @router.get("/", response_model=List[PagoResumenOutput])
-def pagos():
-    return listar_pagos()
+def pagos(id_cliente: int | None = Query(default=None, gt=0)):
+    return listar_pagos(id_cliente=id_cliente)
 
 
 @router.get("/ventas/{venta_id}/pagos", response_model=List[PagoResumenOutput])

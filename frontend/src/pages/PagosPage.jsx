@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import { listarPagos, revertirPago } from "../services/pagosService";
 import { formatMoney, formatDate } from "../utils/formatters";
 import { PromptModal } from "../components/ui/PromptModal";
+import { getReciboPagoUrl } from "../services/documentosService";
+import { OperationalStatusBadge } from "../components/ui";
 
 import { useSession } from "../context/SessionContext";
 import useMediaQuery from "../hooks/useMediaQuery";
@@ -357,19 +359,40 @@ function PagoCard({ pago, selected, guardando, onSelect, onRevertir }) {
         <span style={styles.noteText}>{pago.nota || "Sin nota"}</span>
 
         {confirmado && pago.origen_tipo === "venta" ? (
+          <div style={styles.inlineActions}>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                window.open(getReciboPagoUrl(pago.id), "_blank", "noopener,noreferrer");
+              }}
+              style={styles.smallSecondary}
+            >
+              Recibo
+            </button>
+            <button
+              type="button"
+              disabled={guardando}
+              onClick={(e) => {
+                e.stopPropagation();
+                onRevertir();
+              }}
+              style={styles.smallDanger}
+            >
+              Revertir
+            </button>
+          </div>
+        ) : (
           <button
             type="button"
-            disabled={guardando}
             onClick={(e) => {
               e.stopPropagation();
-              onRevertir();
+              window.open(getReciboPagoUrl(pago.id), "_blank", "noopener,noreferrer");
             }}
-            style={styles.smallDanger}
+            style={styles.smallSecondary}
           >
-            Revertir
+            Recibo
           </button>
-        ) : (
-          <span style={styles.smallMuted}>Sin acciones</span>
         )}
       </div>
     </article>
@@ -416,11 +439,18 @@ function PagoDetalle({ pago, guardando, onRevertir }) {
       )}
 
       {pago.estado === "confirmado" && pago.origen_tipo === "venta" ? (
-        <button type="button" disabled={guardando} onClick={onRevertir} style={styles.dangerButtonFull}>
-          Revertir pago
-        </button>
+        <div style={styles.actionStack}>
+          <button type="button" onClick={() => window.open(getReciboPagoUrl(pago.id), "_blank", "noopener,noreferrer")} style={styles.secondaryButtonFull}>
+            Ver recibo PDF
+          </button>
+          <button type="button" disabled={guardando} onClick={onRevertir} style={styles.dangerButtonFull}>
+            Revertir pago
+          </button>
+        </div>
       ) : (
-        <div style={styles.emptySmall}>Este pago no tiene acciones disponibles desde esta pantalla.</div>
+        <button type="button" onClick={() => window.open(getReciboPagoUrl(pago.id), "_blank", "noopener,noreferrer")} style={styles.secondaryButtonFull}>
+          Ver recibo PDF
+        </button>
       )}
     </div>
   );
@@ -464,16 +494,7 @@ function formatUsuario(item) {
 }
 
 function EstadoPagoBadge({ estado }) {
-  const tone =
-    estado === "confirmado"
-      ? "ok"
-      : estado === "revertido"
-        ? "danger"
-        : estado === "devuelto_externo"
-          ? "warning"
-          : "muted";
-
-  return <span style={{ ...styles.badge, ...(styles.badgeTones[tone] || {}) }}>{labelEstadoPago(estado)}</span>;
+  return <OperationalStatusBadge domain="pago" status={estado} />;
 }
 
 function OrigenBadge({ origen }) {
@@ -571,11 +592,13 @@ const styles = {
   paymentAmount: { fontSize: 18, whiteSpace: "nowrap" },
   paymentMetaGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(125px, 1fr))", gap: 8 },
   paymentBottom: { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", borderTop: "1px solid #f1f5f9", paddingTop: 10 },
+  inlineActions: { display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" },
   badge: { borderRadius: 999, padding: "5px 8px", fontSize: 12, fontWeight: 1000, border: "1px solid transparent", whiteSpace: "nowrap" },
   badgeTones: { ok: { background: "#dcfce7", color: "#166534", borderColor: "#bbf7d0" }, info: { background: "#eff6ff", color: "#1d4ed8", borderColor: "#bfdbfe" }, warning: { background: "#fef3c7", color: "#92400e", borderColor: "#fde68a" }, danger: { background: "#fee2e2", color: "#991b1b", borderColor: "#fecaca" }, muted: { background: "#f8fafc", color: "#475569", borderColor: "#e2e8f0" } },
   muted: { color: "#64748b", margin: "4px 0 0", fontWeight: 700 },
   noteText: { color: "#64748b", fontWeight: 800 },
   smallDanger: { border: "1px solid #fecaca", background: "#fff1f0", color: "#b42318", borderRadius: 11, padding: "8px 10px", fontWeight: 900, cursor: "pointer" },
+  smallSecondary: { border: "1px solid #cbd5e1", background: "white", color: "#0f172a", borderRadius: 11, padding: "8px 10px", fontWeight: 900, cursor: "pointer" },
   smallMuted: { color: "#64748b", fontWeight: 800 },
   sidePanel: { display: "grid", gap: 16, position: "sticky", top: 16 },
   sidePanelMobile: { display: "grid", gap: 14, position: "static" },
@@ -588,7 +611,9 @@ const styles = {
   infoBox: { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 14, padding: 12, display: "grid", gap: 5, color: "#64748b" },
   infoCompact: { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: 9, display: "grid", gap: 3, color: "#64748b" },
   noteBox: { background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", borderRadius: 14, padding: 12 },
+  actionStack: { display: "grid", gap: 10 },
   dangerButtonFull: { width: "100%", border: "1px solid #fecaca", background: "#fff1f0", color: "#b42318", borderRadius: 13, padding: "12px 16px", fontWeight: 1000, cursor: "pointer" },
+  secondaryButtonFull: { width: "100%", border: "1px solid #cbd5e1", background: "white", color: "#0f172a", borderRadius: 13, padding: "12px 16px", fontWeight: 1000, cursor: "pointer" },
   tipsBox: { display: "grid", gap: 10, color: "#475569", fontWeight: 700 },
   inlineLink: { color: "#1d4ed8", fontWeight: 900, textDecoration: "none" },
   empty: { padding: 22, color: "#64748b", fontWeight: 900 },

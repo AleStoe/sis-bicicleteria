@@ -2,6 +2,7 @@ from decimal import Decimal
 from urllib.parse import quote_plus
 from fastapi import HTTPException
 from pydantic import ValidationError
+from app.core.text_normalization import normalize_text_upper
 from app.modules.clientes.repository import marcar_service_gratis_utilizado
 from app.db.connection import get_connection
 from app.shared.constants import (
@@ -128,7 +129,7 @@ def crear_orden_taller(data):
                     "id_cliente": data.id_cliente,
                     "id_bicicleta_cliente": data.id_bicicleta_cliente,
                     "estado": ORDEN_TALLER_ESTADO_INGRESADA,
-                    "problema_reportado": data.problema_reportado.strip(),
+                    "problema_reportado": normalize_text_upper(data.problema_reportado),
                     "fecha_prometida": data.fecha_prometida,
                     "prioridad": data.prioridad,
                     "id_usuario": data.id_usuario,

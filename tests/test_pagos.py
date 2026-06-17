@@ -557,6 +557,43 @@ def test_lista_pagos_de_una_venta_con_dos_medios(client, seed_venta_basica):
     assert medios == ["efectivo", "transferencia"]
 
 
+def test_lista_pagos_filtrados_por_cliente(client, seed_venta_basica):
+    venta_id = crear_venta_base(client, seed_venta_basica)
+
+    abrir_caja = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+    assert abrir_caja.status_code == 200
+
+    pago = client.post(
+        "/pagos/",
+        json=_payload_pago(
+            venta_id,
+            "efectivo",
+            10000,
+            seed_venta_basica["usuario_id"],
+            "Pago filtrado por cliente",
+        ),
+    )
+    assert pago.status_code == 200
+
+    cliente_id = seed_venta_basica["cliente_id"]
+
+    response = client.get(f"/pagos/?id_cliente={cliente_id}")
+    assert response.status_code == 200
+
+    data = response.json()
+    assert len(data) >= 1
+    assert all(pago["id_cliente"] == cliente_id for pago in data)
+    assert any(pago["origen_id"] == venta_id for pago in data)
+
+    response_otro_cliente = client.get("/pagos/?id_cliente=999999")
+    assert response_otro_cliente.status_code == 200
+    assert response_otro_cliente.json() == []
+
+
 def test_permite_entregar_venta_con_saldo_pendiente_si_usuario_tiene_permiso(
     client, db_conn, seed_venta_basica
 ):

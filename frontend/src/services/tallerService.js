@@ -1,4 +1,5 @@
 import { apiRequest } from "./api";
+import { getPresupuestoTallerUrl as buildPresupuestoTallerUrl } from "./documentosService";
 
 export function listarOrdenesTaller(params = {}) {
   const query = new URLSearchParams();
@@ -85,8 +86,7 @@ export function generarVentaDesdeOrdenTaller(ordenId, data) {
 
 
 export function getPresupuestoTallerUrl(ordenId) {
-  const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
-  return `${baseUrl}/documentos/taller/${ordenId}/presupuesto`;
+  return buildPresupuestoTallerUrl(ordenId);
 }
 
 export function actualizarOperativoOrdenTaller(ordenId, data) {

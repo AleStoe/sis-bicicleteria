@@ -4,6 +4,7 @@ import {
   cerrarCaja,
   obtenerCajaAbierta,
   obtenerCajaDetalle,
+  obtenerResumenDiarioCaja,
   registrarEgresoCaja,
   registrarAjusteCaja,
   listarHistorialCajas,
@@ -26,6 +27,7 @@ export default function CajaPage() {
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
   const [detalle, setDetalle] = useState(null);
+  const [resumenDiario, setResumenDiario] = useState(null);
   const [historial, setHistorial] = useState([]);
   const [montoApertura, setMontoApertura] = useState("");
   const [montoReal, setMontoReal] = useState("");
@@ -69,6 +71,14 @@ export default function CajaPage() {
     setHistorial(Array.isArray(data) ? data : []);
   }
 
+  async function cargarResumenDiario() {
+    const data = await obtenerResumenDiarioCaja({
+      id_sucursal: sucursalId,
+    });
+
+    setResumenDiario(data);
+  }
+
   async function cargarCaja() {
     try {
       setLoading(true);
@@ -76,6 +86,7 @@ export default function CajaPage() {
       setMensaje("");
 
       await cargarHistorial();
+      await cargarResumenDiario();
 
       const cajaAbierta = await obtenerCajaAbierta(sucursalId);
       const detalleCaja = await obtenerCajaDetalle(cajaAbierta.caja.id);
@@ -91,6 +102,7 @@ export default function CajaPage() {
       ) {
         setDetalle(null);
         setError("");
+        await cargarResumenDiario();
         return;
       }
 
@@ -359,16 +371,30 @@ export default function CajaPage() {
       {mensaje ? <CajaAlert type="success" message={mensaje} /> : null}
 
       {!detalle ? (
-        <CajaAperturaCard
-          montoApertura={montoApertura}
-          setMontoApertura={setMontoApertura}
-          onSubmit={handleAbrirCaja}
-          puedeAbrirCaja={puedeAbrirCaja}
-          procesando={procesando}
-        />
+        <>
+          <CajaResumenDiario
+            resumen={resumenDiario}
+            formatCurrency={formatCurrency}
+            isMobile={isMobile}
+          />
+
+          <CajaAperturaCard
+            montoApertura={montoApertura}
+            setMontoApertura={setMontoApertura}
+            onSubmit={handleAbrirCaja}
+            puedeAbrirCaja={puedeAbrirCaja}
+            procesando={procesando}
+          />
+        </>
       ) : (
         <>
           <CajaResumenCards detalle={detalle} formatCurrency={formatCurrency} />
+
+          <CajaResumenDiario
+            resumen={resumenDiario}
+            formatCurrency={formatCurrency}
+            isMobile={isMobile}
+          />
 
           <CajaTotalesSubmedio totales={totales} formatCurrency={formatCurrency} />
 
@@ -523,6 +549,116 @@ function formatearUsuario(nombre, username) {
   return nombre || `@${username}`;
 }
 
+function CajaResumenDiario({ resumen, formatCurrency, isMobile }) {
+  if (!resumen) return null;
+
+  const caja = resumen.caja || {};
+  const pagos = resumen.pagos || {};
+  const rentabilidad = resumen.rentabilidad || {};
+  const documentos = resumen.documentos || {};
+  const diferencia =
+    caja.diferencia ?? calcularDiferencia(caja.monto_cierre_real, caja.efectivo_teorico);
+  const cierreReal =
+    caja.monto_cierre_real !== null && caja.monto_cierre_real !== undefined
+      ? formatCurrency(caja.monto_cierre_real)
+      : "Sin cerrar";
+
+  return (
+    <section style={styles.resumenDiarioCard}>
+      <div style={styles.resumenDiarioHeader}>
+        <div>
+          <h2 style={styles.resumenDiarioTitle}>Cierre operativo del dia</h2>
+          <p style={styles.resumenDiarioSubtitle}>
+            Caja, cobros, egresos, ganancia y documentos disponibles para {resumen.fecha}.
+          </p>
+        </div>
+        <span
+          style={
+            caja.estado === "abierta"
+              ? styles.estadoAbierta
+              : caja.estado === "cerrada"
+                ? styles.estadoCerrada
+                : styles.estadoSinCaja
+          }
+        >
+          {caja.estado === "abierta"
+            ? "Caja abierta"
+            : caja.estado === "cerrada"
+              ? "Caja cerrada"
+              : "Sin caja"}
+        </span>
+      </div>
+
+      <div style={{ ...styles.resumenDiarioGrid, ...(isMobile ? styles.resumenDiarioGridMobile : {}) }}>
+        <ResumenDiarioMetric
+          label="Efectivo esperado"
+          value={formatCurrency(caja.efectivo_teorico)}
+          detail={`Real: ${cierreReal}`}
+          tone="primary"
+        />
+        <ResumenDiarioMetric
+          label="Diferencia caja"
+          value={
+            diferencia !== null && diferencia !== undefined
+              ? formatCurrency(diferencia)
+              : "-"
+          }
+          detail={`Apertura: ${formatCurrency(caja.monto_apertura)}`}
+          tone={Number(diferencia || 0) === 0 ? "neutral" : "warning"}
+        />
+        <ResumenDiarioMetric
+          label="Cobrado"
+          value={formatCurrency(pagos.total_cobrado)}
+          detail={`${pagos.cantidad_pagos || 0} pagos`}
+          tone="success"
+        />
+        <ResumenDiarioMetric
+          label="Desc./rec."
+          value={`${formatCurrency(pagos.descuentos_aplicados)} / ${formatCurrency(pagos.recargos_aplicados)}`}
+          detail={`Base: ${formatCurrency(pagos.base_aplicada)}`}
+        />
+        <ResumenDiarioMetric
+          label="Egresos"
+          value={formatCurrency(caja.egresos)}
+          detail={`Ajustes: +${formatCurrency(caja.ajustes_positivos)} / -${formatCurrency(caja.ajustes_negativos)}`}
+          tone="danger"
+        />
+        <ResumenDiarioMetric
+          label="Ganancia del dia"
+          value={formatCurrency(rentabilidad.ganancia_dia)}
+          detail={`Margen ${formatCurrency(rentabilidad.margen_bruto)} - gastos ${formatCurrency(rentabilidad.gastos_operativos)}`}
+          tone="primary"
+        />
+        <ResumenDiarioMetric
+          label="Ventas"
+          value={formatCurrency(rentabilidad.ventas_total)}
+          detail={`${rentabilidad.cantidad_ventas || 0} operaciones`}
+        />
+        <ResumenDiarioMetric
+          label="Documentos"
+          value={String(documentos.total_disponibles || 0)}
+          detail={`${documentos.comprobantes_x || 0} X, ${documentos.recibos_pago || 0} recibos, ${documentos.cotizaciones || 0} cotiz.`}
+        />
+      </div>
+    </section>
+  );
+}
+
+function ResumenDiarioMetric({ label, value, detail, tone = "neutral" }) {
+  return (
+    <div style={{ ...styles.resumenMetric, ...(styles[`resumenMetric_${tone}`] || {}) }}>
+      <span style={styles.resumenMetricLabel}>{label}</span>
+      <strong style={styles.resumenMetricValue}>{value}</strong>
+      <small style={styles.resumenMetricDetail}>{detail}</small>
+    </div>
+  );
+}
+
+function calcularDiferencia(real, teorico) {
+  if (real === null || real === undefined || real === "") return null;
+  return Number(real || 0) - Number(teorico || 0);
+}
+
 const styles = {
   pageMobile: {
     padding: "0 0 12px",
@@ -537,6 +673,83 @@ const styles = {
   operacionesGridMobile: {
     gridTemplateColumns: "1fr",
     gap: "12px",
+  },
+  resumenDiarioCard: {
+    marginBottom: 16,
+    background: "#fff",
+    border: "1px solid #e2e8f0",
+    borderRadius: 16,
+    padding: 18,
+    boxShadow: "0 10px 24px rgba(15, 23, 42, 0.06)",
+  },
+  resumenDiarioHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 12,
+    alignItems: "flex-start",
+    marginBottom: 14,
+  },
+  resumenDiarioTitle: {
+    margin: 0,
+    color: "#0f172a",
+    fontSize: 20,
+  },
+  resumenDiarioSubtitle: {
+    margin: "4px 0 0",
+    color: "#64748b",
+    fontWeight: 700,
+  },
+  resumenDiarioGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+    gap: 10,
+  },
+  resumenDiarioGridMobile: {
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  },
+  resumenMetric: {
+    minHeight: 96,
+    border: "1px solid #e2e8f0",
+    borderRadius: 12,
+    padding: 12,
+    background: "#f8fafc",
+    display: "grid",
+    alignContent: "space-between",
+    gap: 6,
+  },
+  resumenMetric_primary: {
+    borderColor: "#fed7aa",
+    background: "#fff7ed",
+  },
+  resumenMetric_success: {
+    borderColor: "#bbf7d0",
+    background: "#f0fdf4",
+  },
+  resumenMetric_warning: {
+    borderColor: "#fde68a",
+    background: "#fffbeb",
+  },
+  resumenMetric_danger: {
+    borderColor: "#fecaca",
+    background: "#fef2f2",
+  },
+  resumenMetricLabel: {
+    color: "#64748b",
+    fontSize: 12,
+    fontWeight: 950,
+    textTransform: "uppercase",
+  },
+  resumenMetricValue: {
+    color: "#0f172a",
+    fontSize: 20,
+    fontWeight: 1000,
+    lineHeight: 1.15,
+    overflowWrap: "anywhere",
+  },
+  resumenMetricDetail: {
+    color: "#64748b",
+    fontWeight: 750,
+    lineHeight: 1.35,
   },
   historialCard: {
     marginTop: 20,
@@ -608,6 +821,16 @@ const styles = {
     color: "#475569",
     fontWeight: 1000,
     fontSize: 12,
+  },
+  estadoSinCaja: {
+    display: "inline-flex",
+    borderRadius: 999,
+    padding: "5px 9px",
+    background: "#fff7ed",
+    color: "#c2410c",
+    fontWeight: 1000,
+    fontSize: 12,
+    whiteSpace: "nowrap",
   },
   linkButton: {
     border: "1px solid #fed7aa",

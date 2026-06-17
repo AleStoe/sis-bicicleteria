@@ -121,7 +121,9 @@ export default function ClienteBicicletaDetallePage() {
   const bicicleta = data?.bicicleta;
   const ventaOrigen = data?.venta_origen;
   const historialTaller = data?.historial_taller || [];
+  const timeline = data?.timeline || [];
   const estadoPostventa = calcularEstadoPostventa(bicicleta);
+  const ultimoEvento = getUltimoEventoBicicleta(timeline, historialTaller, ventaOrigen);
 
   if (!bicicleta) {
     return <p style={{ padding: "24px" }}>No se encontró la bicicleta.</p>;
@@ -156,6 +158,15 @@ export default function ClienteBicicletaDetallePage() {
           </Link>
         </div>
       </header>
+
+      <BicicletaLecturaRapida
+        bicicleta={bicicleta}
+        ventaOrigen={ventaOrigen}
+        historialTaller={historialTaller}
+        timeline={timeline}
+        estadoPostventa={estadoPostventa}
+        ultimoEvento={ultimoEvento}
+      />
 
       <section style={gridStyle}>
         <div style={cardStyle}>
@@ -251,6 +262,51 @@ export default function ClienteBicicletaDetallePage() {
       <section style={cardStyle}>
         <div style={sectionHeaderStyle}>
           <div>
+            <h2 style={cardTitleStyle}>Línea de tiempo</h2>
+            <span style={mutedStyle}>
+              Venta, service, reparaciones y repuestos asociados.
+            </span>
+          </div>
+        </div>
+
+        {timeline.length === 0 ? (
+          <div style={emptyStyle}>Todavía no hay eventos para esta bicicleta.</div>
+        ) : (
+          <div style={timelineStyle}>
+            {timeline.map((evento, index) => (
+              <div key={`${evento.tipo}-${evento.referencia_id || index}-${index}`} style={timelineItemStyle}>
+                <div style={timelineDotStyle} />
+                <div style={timelineCardStyle}>
+                  <div style={timelineHeaderStyle}>
+                    <div>
+                      <strong>{evento.titulo}</strong>
+                      <div style={mutedStyle}>{formatDate(evento.fecha)}</div>
+                    </div>
+                    <span style={badgeEstado(evento.tipo)}>{evento.tipo}</span>
+                  </div>
+                  {evento.descripcion && <div style={problemStyle}>{evento.descripcion}</div>}
+                  {(evento.importe != null || evento.saldo != null) && (
+                    <div style={moneyRowStyle}>
+                      {evento.importe != null && <span>Importe: <strong>{formatMoney(evento.importe)}</strong></span>}
+                      {evento.saldo != null && <span>Saldo: <strong>{formatMoney(evento.saldo)}</strong></span>}
+                    </div>
+                  )}
+                  {evento.referencia_tipo === "orden_taller" && (
+                    <Link to={`/taller/${evento.referencia_id}`} style={detailLinkStyle}>Ver orden</Link>
+                  )}
+                  {evento.referencia_tipo === "venta" && (
+                    <Link to={`/ventas/${evento.referencia_id}`} style={detailLinkStyle}>Ver venta</Link>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section style={cardStyle}>
+        <div style={sectionHeaderStyle}>
+          <div>
             <h2 style={cardTitleStyle}>Historial de taller</h2>
             <span style={mutedStyle}>
               Reparaciones y órdenes asociadas a esta bicicleta.
@@ -304,6 +360,81 @@ export default function ClienteBicicletaDetallePage() {
 
 function formatNullableDate(value) {
   return value ? formatDate(value) : "-";
+}
+
+function getUltimoEventoBicicleta(timeline, historialTaller, ventaOrigen) {
+  const eventos = [
+    ...(timeline || []).map((evento) => ({
+      fecha: evento.fecha,
+      titulo: evento.titulo || evento.tipo,
+    })),
+    ...(historialTaller || []).map((orden) => ({
+      fecha: orden.fecha_ingreso,
+      titulo: `Orden #${orden.id}`,
+    })),
+    ventaOrigen
+      ? {
+          fecha: ventaOrigen.fecha,
+          titulo: `Venta #${ventaOrigen.id}`,
+        }
+      : null,
+  ].filter((evento) => evento?.fecha);
+
+  return eventos.sort(
+    (a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()
+  )[0] || null;
+}
+
+function BicicletaLecturaRapida({
+  bicicleta,
+  ventaOrigen,
+  historialTaller,
+  timeline,
+  estadoPostventa,
+  ultimoEvento,
+}) {
+  const otAbiertas = historialTaller.filter((orden) =>
+    !["retirada", "cancelada"].includes(orden.estado)
+  );
+
+  return (
+    <section style={quickCardStyle}>
+      <QuickInfo
+        label="Postventa"
+        value={<BadgePostventa estado={estadoPostventa} />}
+        detail={
+          bicicleta?.id_orden_service_gratis
+            ? `Usado en OT #${bicicleta.id_orden_service_gratis}`
+            : formatNullableDate(bicicleta?.fecha_limite_service_gratis)
+        }
+      />
+      <QuickInfo
+        label="Origen"
+        value={ventaOrigen ? `Venta #${ventaOrigen.id}` : "Manual"}
+        detail={ventaOrigen ? formatMoney(ventaOrigen.total_final) : "Sin venta vinculada"}
+      />
+      <QuickInfo
+        label="Taller"
+        value={`${historialTaller.length} OT`}
+        detail={otAbiertas.length > 0 ? `${otAbiertas.length} abierta(s)` : "Sin OT abierta"}
+      />
+      <QuickInfo
+        label="Ultimo movimiento"
+        value={ultimoEvento?.titulo || "-"}
+        detail={ultimoEvento?.fecha ? formatDate(ultimoEvento.fecha) : `${timeline.length} evento(s)`}
+      />
+    </section>
+  );
+}
+
+function QuickInfo({ label, value, detail }) {
+  return (
+    <div style={quickInfoStyle}>
+      <span style={quickLabelStyle}>{label}</span>
+      <strong style={quickValueStyle}>{value}</strong>
+      <span style={quickDetailStyle}>{detail || "-"}</span>
+    </div>
+  );
 }
 
 function labelCondicionEntrega(value) {
@@ -441,6 +572,7 @@ function PostventaActions({
     return (
       <div style={postventaActionBoxStyle}>
         <div style={postventaActionTextStyle}>
+          <span style={actionLabelStyle}>Accion principal</span>
           <strong>Service bonificado disponible</strong>
           <span>Crealo desde aca para que quede vinculado a esta bicicleta y despues se marque como usado automaticamente.</span>
         </div>
@@ -572,6 +704,44 @@ const gridStyle = {
   gridTemplateColumns: "minmax(360px, 1.4fr) minmax(320px, .9fr)",
   gap: "16px",
   marginBottom: "16px",
+};
+
+const quickCardStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+  gap: "12px",
+  marginBottom: "16px",
+};
+
+const quickInfoStyle = {
+  background: "#ffffff",
+  border: "1px solid #eaecf0",
+  borderRadius: "14px",
+  padding: "14px",
+  display: "grid",
+  gap: "6px",
+  boxShadow: "0 2px 10px rgba(0,0,0,0.05)",
+  minWidth: 0,
+};
+
+const quickLabelStyle = {
+  color: "#667085",
+  fontSize: "12px",
+  fontWeight: 900,
+  textTransform: "uppercase",
+};
+
+const quickValueStyle = {
+  color: "#111827",
+  fontSize: "17px",
+  overflowWrap: "anywhere",
+};
+
+const quickDetailStyle = {
+  color: "#667085",
+  fontSize: "13px",
+  fontWeight: 700,
+  overflowWrap: "anywhere",
 };
 
 const cardStyle = {
@@ -729,8 +899,10 @@ const secondaryBtnStyle = {
 
 const postventaActionBoxStyle = {
   marginTop: "14px",
-  borderTop: "1px solid #eaecf0",
-  paddingTop: "14px",
+  border: "1px solid #bfdbfe",
+  background: "linear-gradient(135deg, #eff6ff 0%, #ffffff 100%)",
+  borderRadius: "14px",
+  padding: "14px",
   display: "flex",
   gap: "10px",
   alignItems: "center",
@@ -744,6 +916,13 @@ const postventaActionTextStyle = {
   minWidth: "240px",
   flex: "1 1 280px",
   color: "#344054",
+};
+
+const actionLabelStyle = {
+  color: "#175cd3",
+  fontSize: "12px",
+  fontWeight: 1000,
+  textTransform: "uppercase",
 };
 
 const primaryBtnStyle = {

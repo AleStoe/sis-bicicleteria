@@ -82,6 +82,60 @@ def get_resultado_estimado(conn, fecha_desde, fecha_hasta, id_sucursal=None):
         return cur.fetchone()
 
 
+def get_resultado_dia(conn, fecha, id_sucursal=None):
+    params = [fecha]
+    ventas_sucursal_sql = ""
+    gastos_sucursal_sql = ""
+    if id_sucursal is not None:
+        ventas_sucursal_sql = "AND v.id_sucursal = %s"
+        gastos_sucursal_sql = "AND go.id_sucursal = %s"
+        params.append(id_sucursal)
+
+    gastos_params = [fecha]
+    if id_sucursal is not None:
+        gastos_params.append(id_sucursal)
+
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            f"""
+            SELECT
+              COALESCE(SUM(v.total_final), 0)::numeric(14,2) AS ventas_total,
+              COUNT(DISTINCT v.id)::int AS cantidad_ventas,
+              COALESCE(SUM(vi.subtotal), 0)::numeric(14,2) AS ventas_items_total,
+              COALESCE(SUM(vi.costo_unitario_aplicado * vi.cantidad), 0)::numeric(14,2) AS cmv,
+              (
+                COALESCE(SUM(vi.subtotal), 0)
+                - COALESCE(SUM(vi.costo_unitario_aplicado * vi.cantidad), 0)
+              )::numeric(14,2) AS margen_bruto
+            FROM ventas v
+            LEFT JOIN venta_items vi ON vi.id_venta = v.id
+            WHERE v.fecha::date = %s
+              AND v.estado NOT IN ('anulada', 'devuelta')
+              {ventas_sucursal_sql}
+            """,
+            params,
+        )
+        ventas = cur.fetchone()
+
+        cur.execute(
+            f"""
+            SELECT COALESCE(SUM(go.monto), 0)::numeric(14,2) AS gastos_operativos
+            FROM gastos_operativos go
+            WHERE COALESCE(go.periodo_mes, go.fecha)::date = %s
+              AND go.estado = 'activo'
+              {gastos_sucursal_sql}
+            """,
+            gastos_params,
+        )
+        gastos = cur.fetchone()["gastos_operativos"]
+
+    return {
+        **ventas,
+        "gastos_operativos": gastos,
+        "resultado_estimado": ventas["margen_bruto"] - gastos,
+    }
+
+
 def get_caja_actual(conn, id_sucursal=None):
     params = []
     sucursal_sql = ""
@@ -206,6 +260,88 @@ def get_taller_pendiente_count(conn, id_sucursal=None):
             SELECT COUNT(*)::int AS cantidad
             FROM ordenes_taller
             WHERE estado NOT IN ('retirada', 'cancelada', 'facturada')
+              {sucursal_sql}
+            """,
+            params,
+        )
+        return cur.fetchone()["cantidad"]
+
+
+def get_bicis_listas_retiro_count(conn, *, id_sucursal=None, dias=7):
+    params = [dias]
+    sucursal_sql = ""
+    if id_sucursal is not None:
+        sucursal_sql = "AND ot.id_sucursal = %s"
+        params.append(id_sucursal)
+
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            f"""
+            SELECT COUNT(*)::int AS cantidad
+            FROM ordenes_taller ot
+            WHERE ot.estado = 'lista_para_retirar'
+              AND ot.updated_at <= NOW() - (%s || ' days')::interval
+              {sucursal_sql}
+            """,
+            params,
+        )
+        return cur.fetchone()["cantidad"]
+
+
+def get_reservas_vencidas_count(conn, *, id_sucursal=None):
+    params = []
+    sucursal_sql = ""
+    if id_sucursal is not None:
+        sucursal_sql = "AND r.id_sucursal = %s"
+        params.append(id_sucursal)
+
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            f"""
+            SELECT COUNT(*)::int AS cantidad
+            FROM reservas r
+            WHERE r.estado = 'activa'
+              AND r.fecha_vencimiento IS NOT NULL
+              AND r.fecha_vencimiento < NOW()
+              {sucursal_sql}
+            """,
+            params,
+        )
+        return cur.fetchone()["cantidad"]
+
+
+def get_deudas_vencidas_resumen(conn):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT
+              COUNT(*)::int AS cantidad,
+              COALESCE(SUM(saldo_actual), 0)::numeric(14,2) AS total
+            FROM deudas_cliente
+            WHERE estado = 'abierta'
+              AND saldo_actual > 0
+              AND proximo_vencimiento IS NOT NULL
+              AND proximo_vencimiento < NOW()
+            """
+        )
+        return cur.fetchone()
+
+
+def get_taller_atrasado_count(conn, *, id_sucursal=None):
+    params = []
+    sucursal_sql = ""
+    if id_sucursal is not None:
+        sucursal_sql = "AND ot.id_sucursal = %s"
+        params.append(id_sucursal)
+
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            f"""
+            SELECT COUNT(*)::int AS cantidad
+            FROM ordenes_taller ot
+            WHERE ot.estado NOT IN ('retirada', 'cancelada')
+              AND ot.fecha_prometida IS NOT NULL
+              AND ot.fecha_prometida < NOW()
               {sucursal_sql}
             """,
             params,

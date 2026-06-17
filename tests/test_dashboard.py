@@ -26,6 +26,8 @@ def test_dashboard_resumen_devuelve_estructura(client, seed_venta_basica):
     assert "capital_inmovilizado" in data
     assert "taller_pendiente" in data
     assert "ventas_pendientes_entrega" in data
+    assert "alertas_operativas" in data
+    assert "resultado_hoy" in data
     assert "stock_bajo" not in data
     assert "reservas_activas" not in data
 
@@ -45,6 +47,21 @@ def test_dashboard_resumen_devuelve_estructura(client, seed_venta_basica):
         "productos_sin_movimiento",
     ]:
         assert key in kpis
+
+    assert isinstance(data["alertas_operativas"], list)
+
+    resultado_hoy = data["resultado_hoy"]
+    for key in [
+        "fecha",
+        "ventas_total",
+        "cantidad_ventas",
+        "ventas_items_total",
+        "cmv",
+        "margen_bruto",
+        "gastos_operativos",
+        "resultado_estimado",
+    ]:
+        assert key in resultado_hoy
 
 
 def test_dashboard_parametros_invalidos(client, seed_venta_basica):

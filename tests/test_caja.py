@@ -39,6 +39,25 @@ def _ajuste_payload(seed_venta_basica, monto, direccion, nota="ajuste test"):
     }
 
 
+def _crear_venta_base(client, seed_venta_basica):
+    response = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 1,
+                }
+            ],
+        },
+    )
+    assert response.status_code == 200, response.text
+    return response.json()["venta_id"]
+
+
 def test_abre_caja_correctamente(client, db_conn, seed_venta_basica):
     response = client.post(
         "/cajas/abrir",
@@ -89,6 +108,100 @@ def test_obtiene_resumen_de_caja_abierta(client, seed_venta_basica):
     assert data["caja"]["estado"] == "abierta"
     assert float(data["efectivo_teorico"]) == 500.0
     assert float(data["totales_por_submedio"]["efectivo"]) == 0.0
+
+
+def test_resumen_diario_consolida_caja_pagos_rentabilidad_y_documentos(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    venta_id = _crear_venta_base(client, seed_venta_basica)
+
+    abrir = client.post(
+        "/cajas/abrir",
+        json=_abrir_caja_payload(seed_venta_basica, monto_apertura=1000),
+    )
+    assert abrir.status_code == 200, abrir.text
+    caja_id = abrir.json()["caja_id"]
+
+    pago = client.post(
+        "/pagos/",
+        json={
+            "origen_tipo": "venta",
+            "origen_id": venta_id,
+            "medio_pago": "efectivo",
+            "monto": 24440,
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "nota": "Pago caja diaria",
+        },
+    )
+    assert pago.status_code == 200, pago.text
+    pago_id = pago.json()["pago_id"]
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE pagos
+            SET monto_base_aplicado = 24540,
+                monto_descuento_aplicado = 100,
+                monto_recargo_aplicado = 0
+            WHERE id = %s
+            """,
+            (pago_id,),
+        )
+        cur.execute(
+            """
+            INSERT INTO gastos_operativos (
+                fecha,
+                id_sucursal,
+                descripcion,
+                monto,
+                medio_pago,
+                impacta_caja,
+                estado,
+                id_usuario
+            )
+            VALUES (CURRENT_DATE, %s, 'Gasto diario test', 500, 'efectivo', FALSE, 'activo', %s)
+            """,
+            (seed_venta_basica["sucursal_id"], seed_venta_basica["usuario_id"]),
+        )
+    db_conn.commit()
+
+    egreso = client.post(
+        f"/cajas/{caja_id}/egresos",
+        json=_egreso_payload(seed_venta_basica, monto=200, nota="egreso cierre"),
+    )
+    assert egreso.status_code == 200, egreso.text
+
+    response = client.get(
+        "/cajas/resumen-diario",
+        params={"id_sucursal": seed_venta_basica["sucursal_id"]},
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+
+    assert data["caja"]["caja_id"] == caja_id
+    assert float(data["caja"]["monto_apertura"]) == 1000.0
+    assert float(data["caja"]["efectivo_teorico"]) == 25240.0
+    assert float(data["caja"]["egresos"]) == 200.0
+
+    assert data["pagos"]["cantidad_pagos"] == 1
+    assert float(data["pagos"]["total_cobrado"]) == 24440.0
+    assert float(data["pagos"]["base_aplicada"]) == 24540.0
+    assert float(data["pagos"]["descuentos_aplicados"]) == 100.0
+    assert float(data["pagos"]["efectivo"]) == 24440.0
+
+    assert data["rentabilidad"]["cantidad_ventas"] == 1
+    assert float(data["rentabilidad"]["ventas_items_total"]) == 24440.0
+    assert float(data["rentabilidad"]["costo_mercaderia_vendida"]) == 10000.0
+    assert float(data["rentabilidad"]["margen_bruto"]) == 14440.0
+    assert float(data["rentabilidad"]["gastos_operativos"]) == 500.0
+    assert float(data["rentabilidad"]["ganancia_dia"]) == 13940.0
+
+    assert data["documentos"]["comprobantes_x"] == 1
+    assert data["documentos"]["recibos_pago"] == 1
+    assert data["documentos"]["resumenes_cobro"] == 1
+    assert data["documentos"]["total_disponibles"] >= 3
 
 
 def test_registra_egreso_en_caja_abierta(client, db_conn, seed_venta_basica):

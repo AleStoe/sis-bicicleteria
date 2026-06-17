@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { crearAjusteStock, crearIngresoStock, listarStock, obtenerResumenStock } from "../services/stockService";
 import { listarProveedores } from "../services/proveedoresService";
@@ -8,11 +8,14 @@ import { getEstadoStock, calcularResumenStock } from "../utils/stockUtils";
 import { buildIngresoStockPayload, buildAjusteStockPayload } from "../builders/stockPayloadBuilder";
 import StockTable from "../components/stock/StockTable";
 import StockDrawer from "../components/stock/StockDrawer";
+import useMediaQuery from "../hooks/useMediaQuery";
 
 
 export default function StockPage() {
   const navigate = useNavigate();
   const { usuarioId, sucursalId } = useSession();
+  const searchInputRef = useRef(null);
+  const isMobile = useMediaQuery("(max-width: 760px)");
 
   const [stock, setStock] = useState([]);
   const [stockBase, setStockBase] = useState([]);
@@ -31,6 +34,7 @@ export default function StockPage() {
   const [orden, setOrden] = useState("asc");
 
   const [loading, setLoading] = useState(true);
+  const [buscandoStock, setBuscandoStock] = useState(false);
   const [procesando, setProcesando] = useState(false);
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
@@ -63,6 +67,7 @@ export default function StockPage() {
 
   useEffect(() => {
     cargarTodo();
+    setTimeout(() => searchInputRef.current?.focus(), 100);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -70,7 +75,6 @@ export default function StockPage() {
     cargarStock();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    query,
     filtroEstado,
     tipoOperativo,
     idCategoria,
@@ -81,6 +85,15 @@ export default function StockPage() {
     ordenarPor,
     orden,
   ]);
+
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      cargarStock({ silencioso: true });
+    }, 260);
+
+    return () => clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
 
   async function cargarTodo() {
     await Promise.all([cargarStockBase(), cargarStock(), cargarProveedores()]);
@@ -112,22 +125,55 @@ export default function StockPage() {
     }
   }
 
-  async function cargarStock() {
+  async function cargarStock({
+    paramsExtra = {},
+    autoSeleccionarUnico = false,
+    silencioso = false,
+  } = {}) {
     try {
-      setLoading(true);
+      const esCargaInicial = stock.length === 0 && !resumenServer && !silencioso;
+
+      if (esCargaInicial) {
+        setLoading(true);
+      } else {
+        setBuscandoStock(true);
+      }
+
       setError("");
-      const params = stockParams();
+      const params = stockParams(paramsExtra);
       const [data, resumen] = await Promise.all([
         listarStock(params),
         obtenerResumenStock(params),
       ]);
-      setStock(data || []);
+      const items = data || [];
+      setStock(items);
       setResumenServer(resumen || null);
+
+      if (autoSeleccionarUnico && items.length === 1) {
+        seleccionarItem(items[0], "detalle");
+      }
     } catch (err) {
       setError(err.message || "No se pudo cargar el stock");
     } finally {
       setLoading(false);
+      setBuscandoStock(false);
     }
+  }
+
+  async function buscarAhora({ autoSeleccionarUnico = false } = {}) {
+    await cargarStock({
+      paramsExtra: { q: query.trim() },
+      autoSeleccionarUnico,
+      silencioso: true,
+    });
+
+    setTimeout(() => searchInputRef.current?.select(), 0);
+  }
+
+  function limpiarBusqueda() {
+    setQuery("");
+    setFiltroEstado("todos");
+    setTimeout(() => searchInputRef.current?.focus(), 0);
   }
 
   async function cargarProveedores() {
@@ -337,6 +383,12 @@ export default function StockPage() {
         </div>
 
         <div className="erp-page-actions" style={styles.actionsHeader}>
+          <button type="button" onClick={() => navigate("/inventario-fisico")} style={styles.secondaryButton}>
+            Inventario físico
+          </button>
+          <button type="button" onClick={() => navigate("/etiquetas")} style={styles.secondaryButton}>
+            Etiquetas
+          </button>
           <button type="button" onClick={cargarTodo} style={styles.secondaryButton}>
             Refrescar
           </button>
@@ -384,18 +436,40 @@ export default function StockPage() {
           <p style={styles.searchHelp}>Producto, variante, código, SKU, sucursal o ID.</p>
         </div>
 
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              e.currentTarget.select();
-            }
-          }}
-          placeholder="Buscar producto, variante, SKU, sucursal o ID..."
-          style={styles.searchInput}
-        />
+        {buscandoStock && <span style={styles.searchingPill}>Buscando...</span>}
+
+        <div style={{ ...styles.searchBar, ...(isMobile ? styles.searchBarMobile : {}) }}>
+          <input
+            ref={searchInputRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                buscarAhora({ autoSeleccionarUnico: true });
+              }
+              if (e.key === "Escape") {
+                e.preventDefault();
+                limpiarBusqueda();
+              }
+            }}
+            placeholder="Escanear código, SKU, producto, variante o ID..."
+            style={styles.searchInput}
+          />
+
+          <button
+            type="button"
+            onClick={() => buscarAhora({ autoSeleccionarUnico: true })}
+            style={styles.primaryButton}
+            disabled={buscandoStock}
+          >
+            Buscar
+          </button>
+
+          <button type="button" onClick={limpiarBusqueda} style={styles.secondaryButton}>
+            Limpiar
+          </button>
+        </div>
 
         <button
           type="button"
@@ -779,6 +853,29 @@ const styles = {
   },
   searchTitle: { margin: 0, fontSize: "20px", fontWeight: 900 },
   searchHelp: { margin: "4px 0 0", color: "#6b7280", fontSize: "14px" },
+  searchBar: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) auto auto",
+    gap: "10px",
+    alignItems: "center",
+  },
+  searchBarMobile: {
+    gridTemplateColumns: "1fr",
+    alignItems: "stretch",
+  },
+  searchingPill: {
+    justifySelf: "start",
+    display: "inline-flex",
+    alignItems: "center",
+    minHeight: "28px",
+    padding: "0 10px",
+    borderRadius: "999px",
+    background: "#eff6ff",
+    color: "#1d4ed8",
+    border: "1px solid #bfdbfe",
+    fontSize: "12px",
+    fontWeight: 900,
+  },
   searchInput: {
     width: "100%",
     padding: "14px 16px",

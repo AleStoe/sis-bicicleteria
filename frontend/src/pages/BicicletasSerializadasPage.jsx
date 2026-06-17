@@ -7,6 +7,7 @@ import { listarCatalogoPOS } from "../services/catalogoService";
 import { getImageUrl } from "../utils/images";
 import { useSession } from "../context/SessionContext";
 import useMediaQuery from "../hooks/useMediaQuery";
+import { normalizeTextUpper } from "../utils/textNormalization";
 const ESTADOS = [
   { value: "disponible", label: "Disponibles", emoji: "✅" },
   { value: "reservada", label: "Reservadas", emoji: "🟡" },
@@ -228,7 +229,7 @@ export default function BicicletasSerializadasPage() {
       const res = await crearSerializada({
         id_variante: Number(form.id_variante),
         id_sucursal_actual: Number(form.id_sucursal_actual),
-        numero_cuadro: form.numero_cuadro.trim(),
+        numero_cuadro: normalizeTextUpper(form.numero_cuadro),
         observaciones: form.observaciones.trim() || null,
         id_usuario: usuarioId,
       });
@@ -512,7 +513,7 @@ export default function BicicletasSerializadasPage() {
               <TextInput
                 label="Número de cuadro"
                 value={form.numero_cuadro}
-                onChange={(v) => setForm((p) => ({ ...p, numero_cuadro: v }))}
+                onChange={(v) => setForm((p) => ({ ...p, numero_cuadro: normalizeTextUpper(v) }))}
                 type="text"
                 placeholder="Ej: JY25023453"
               />

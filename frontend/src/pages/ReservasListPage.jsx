@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { listarReservas } from "../services/reservasService";
 import { formatDate, formatMoney } from "../utils/formatters";
 import useMediaQuery from "../hooks/useMediaQuery";
+import { OperationalStatusBadge } from "../components/ui";
 
 const ESTADOS = ["", "activa", "vencida", "cancelada", "convertida_en_venta"];
 
@@ -202,55 +203,11 @@ function Metric({ label, value }) {
 }
 
 export function EstadoReservaBadge({ estado }) {
-  const colors = {
-    activa: { bg: "#ecfdf3", color: "#067647" },
-    vencida: { bg: "#fffaeb", color: "#b54708" },
-    cancelada: { bg: "#fff1f0", color: "#b42318" },
-    convertida_en_venta: { bg: "#eef4ff", color: "#175cd3" },
-  };
-
-  const style = colors[estado] || { bg: "#f2f4f7", color: "#475467" };
-
-  return (
-    <span style={{
-      background: style.bg,
-      color: style.color,
-      borderRadius: "999px",
-      padding: "4px 8px",
-      fontSize: "13px",
-      fontWeight: "bold",
-      whiteSpace: "nowrap",
-    }}>
-      {estado}
-    </span>
-  );
+  return <OperationalStatusBadge domain="reserva" status={estado} />;
 }
 
 function VencimientoBadge({ label, variant }) {
-  const variants = {
-    none: { bg: "#f2f4f7", color: "#475467" },
-    ok: { bg: "#ecfdf3", color: "#067647" },
-    soon: { bg: "#fffaeb", color: "#b54708" },
-    today: { bg: "#fff7ed", color: "#c2410c" },
-    overdue: { bg: "#fff1f0", color: "#b42318" },
-    closed: { bg: "#eef4ff", color: "#175cd3" },
-  };
-
-  const style = variants[variant] || variants.none;
-
-  return (
-    <span style={{
-      background: style.bg,
-      color: style.color,
-      borderRadius: "999px",
-      padding: "4px 8px",
-      fontSize: "13px",
-      fontWeight: "bold",
-      whiteSpace: "nowrap",
-    }}>
-      {label}
-    </span>
-  );
+  return <OperationalStatusBadge domain="vencimiento" status={variant} label={label} />;
 }
 
 function describirVencimiento(fecha, estado) {

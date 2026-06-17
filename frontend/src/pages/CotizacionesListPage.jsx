@@ -6,6 +6,7 @@ import { listarClientes } from "../services/clientesService";
 import { listarVariantes } from "../services/catalogoService";
 import { listarServiciosTaller } from "../services/serviciosTallerService";
 import { crearCotizacion, listarCotizaciones } from "../services/cotizacionesService";
+import { normalizeTextUpper } from "../utils/textNormalization";
 import { formatDate, formatMoney } from "../utils/formatters";
 import { useBreakpoint } from "../components/ui";
 
@@ -219,7 +220,7 @@ export default function CotizacionesListPage() {
               <div style={styles.twoCols}>
                 <label style={styles.field}>
                   <span>Nombre</span>
-                  <input value={form.cliente_nombre_snapshot} onChange={(e) => setForm((p) => ({ ...p, cliente_nombre_snapshot: e.target.value }))} style={styles.input} />
+                  <input value={form.cliente_nombre_snapshot} onChange={(e) => setForm((p) => ({ ...p, cliente_nombre_snapshot: normalizeTextUpper(e.target.value) }))} style={styles.input} />
                 </label>
                 <label style={styles.field}>
                   <span>Telefono</span>
@@ -231,7 +232,7 @@ export default function CotizacionesListPage() {
             {form.tipo === "reparacion" && (
               <label style={styles.field}>
                 <span>Consulta / problema</span>
-                <textarea value={form.problema_reportado} onChange={(e) => setForm((p) => ({ ...p, problema_reportado: e.target.value }))} style={styles.textarea} required />
+                <textarea value={form.problema_reportado} onChange={(e) => setForm((p) => ({ ...p, problema_reportado: normalizeTextUpper(e.target.value) }))} style={styles.textarea} required />
               </label>
             )}
 

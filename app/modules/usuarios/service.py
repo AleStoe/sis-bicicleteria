@@ -2,6 +2,7 @@ from fastapi import HTTPException
 import bcrypt
 
 from app.db.connection import get_connection
+from app.core.text_normalization import clean_text, normalize_text_upper
 from .repository import (
     get_usuarios,
     get_usuario_by_id,
@@ -31,18 +32,10 @@ def verificar_password(password: str, password_hash: str) -> bool:
         password_hash.encode("utf-8"),
     )
 
-def _limpiar_texto(valor):
-    if valor is None:
-        return None
-
-    valor = str(valor).strip()
-    return valor if valor else None
-
-
 def _normalizar_usuario(data):
-    data.nombre = _limpiar_texto(data.nombre)
-    data.username = _limpiar_texto(data.username)
-    data.email = _limpiar_texto(data.email)
+    data.nombre = normalize_text_upper(data.nombre)
+    data.username = clean_text(data.username)
+    data.email = clean_text(data.email)
 
     if data.username:
         data.username = data.username.lower()

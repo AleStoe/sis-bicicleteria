@@ -1,4 +1,5 @@
 from app.db.connection import get_connection
+from app.core.text_normalization import clean_text, normalize_text_upper
 from fastapi import HTTPException
 from psycopg.errors import UniqueViolation, CheckViolation, ForeignKeyViolation
 from .repository import (
@@ -266,6 +267,12 @@ def crear_producto(data):
 
     try:
         with conn.transaction():
+            if data.tipo_item != "producto":
+                raise HTTPException(
+                    status_code=400,
+                    detail="Los servicios se dan de alta desde el módulo Servicios",
+                )
+
             _validar_categoria_activa(conn, data.id_categoria)
             _validar_marca_activa(conn, data.id_marca)
 
@@ -281,10 +288,13 @@ def crear_producto(data):
                     {
                         "id_categoria": data.id_categoria,
                         "id_marca": data.id_marca,
-                        "nombre": data.nombre.strip(),
+                        "nombre": normalize_text_upper(data.nombre),
                         "tipo_item": data.tipo_item,
                         "stockeable": data.stockeable,
                         "serializable": data.serializable,
+                        "rodado": clean_text(data.rodado),
+                        "tipo_bicicleta": normalize_text_upper(data.tipo_bicicleta),
+                        "material_cuadro": normalize_text_upper(data.material_cuadro),
                     },
                 )
             except UniqueViolation:
@@ -319,7 +329,7 @@ def crear_variante(data):
                 )
 
             codigo_proveedor = (
-                data.codigo_proveedor.strip()
+                normalize_text_upper(data.codigo_proveedor)
                 if data.codigo_proveedor
                 else None
             )
@@ -344,9 +354,9 @@ def crear_variante(data):
                     conn,
                     {
                         "id_producto": data.id_producto,
-                        "nombre_variante": data.nombre_variante.strip(),
-                        "talle": data.talle.strip() if data.talle else None,
-                        "color": data.color.strip() if data.color else None,
+                        "nombre_variante": normalize_text_upper(data.nombre_variante),
+                        "talle": normalize_text_upper(data.talle),
+                        "color": normalize_text_upper(data.color),
                         "sku": None,
                         "codigo_barras": None,
                         "codigo_proveedor": codigo_proveedor,
@@ -397,7 +407,7 @@ def crear_marca(data):
             try:
                 return crear_marca_catalogo(
                     conn,
-                    {"nombre": data.nombre.strip()},
+                    {"nombre": normalize_text_upper(data.nombre)},
                 )
             except UniqueViolation:
                 raise HTTPException(
@@ -433,6 +443,12 @@ def editar_producto(producto_id: int, data):
             if producto is None:
                 raise HTTPException(status_code=404, detail="Producto no encontrado")
 
+            if payload.get("tipo_item") not in (None, "producto"):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Los servicios se dan de alta desde el módulo Servicios",
+                )
+
             if "id_categoria" in payload:
                 _validar_categoria_activa(conn, payload["id_categoria"])
 
@@ -449,7 +465,14 @@ def editar_producto(producto_id: int, data):
                 )
 
             if "nombre" in payload and payload["nombre"] is not None:
-                payload["nombre"] = payload["nombre"].strip()
+                payload["nombre"] = normalize_text_upper(payload["nombre"])
+
+            for campo in ["tipo_bicicleta", "material_cuadro"]:
+                if campo in payload and payload[campo] is not None:
+                    payload[campo] = normalize_text_upper(payload[campo])
+
+            if "rodado" in payload and payload["rodado"] is not None:
+                payload["rodado"] = clean_text(payload["rodado"])
 
             return update_producto_catalogo(conn, producto_id, payload)
 
@@ -516,9 +539,9 @@ def editar_variante(variante_id: int, data):
             payload.pop("sku", None)
             payload.pop("codigo_barras", None)
 
-            for campo in ["nombre_variante", "codigo_proveedor"]:
+            for campo in ["nombre_variante", "codigo_proveedor", "talle", "color"]:
                 if campo in payload and payload[campo] is not None:
-                    payload[campo] = payload[campo].strip()
+                    payload[campo] = normalize_text_upper(payload[campo])
             return update_variante_catalogo(conn, variante_id, payload)
 
     finally:

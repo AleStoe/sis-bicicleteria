@@ -1,38 +1,42 @@
+import { useEffect, useMemo, useState } from "react";
 import { NavLink } from "react-router-dom";
 import { useSession } from "../../context/SessionContext";
 import {
+  BarChart3,
   Bike,
   Boxes,
   Calculator,
+  CalendarDays,
   ClipboardList,
   CreditCard,
   DollarSign,
   FileSearch,
+  FileText,
   Gauge,
   HandCoins,
+  LayoutDashboard,
   PackagePlus,
+  PiggyBank,
   Receipt,
+  Settings2,
   ShoppingCart,
   Tags,
+  UserCog,
+  UserPlus,
   Users,
   Wrench,
-  Settings2,
-  PiggyBank,
-  BarChart3,
-  LayoutDashboard,
-  UserCog,
-  CalendarDays,
 } from "lucide-react";
 import { sidebarContainerStyle } from "../../styles/layout/appLayoutStyles";
 import {
-  sidebarHeaderStyle,
-  navSectionStyle,
   navGroupTitleStyle,
-  navItemStyle,
-  navItemActiveStyle,
   navIconStyle,
+  navItemActiveStyle,
   navItemLabelStyle,
+  navItemStyle,
+  navSectionStyle,
+  sidebarHeaderStyle,
 } from "../../styles/layout/sidebarStyles";
+import { obtenerAlertasOperativas } from "../../services/alertasOperativasService";
 
 const ADMIN = ["administrador"];
 const OPERACION = ["administrador", "encargado", "operador"];
@@ -42,66 +46,109 @@ const ADMIN_ENCARGADO = ["administrador", "encargado"];
 
 const groups = [
   {
-    title: "Inicio",
+    title: "Acciones rapidas",
     links: [
-      { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ADMIN_ENCARGADO },
+      { to: "/ventas/nueva", label: "Nueva Venta", icon: ShoppingCart, roles: OPERACION, highlight: true },
+      { to: "/agenda-taller", label: "Nuevo turno taller", icon: CalendarDays, roles: OPERACION_TALLER },
+      { to: "/clientes/nuevo", label: "Nuevo cliente", icon: UserPlus, roles: OPERACION },
     ],
   },
   {
-    title: "Mostrador",
+    title: "Operacion",
     links: [
-      { to: "/ventas/nueva", label: "Nueva Venta", icon: ShoppingCart, roles: OPERACION },
       { to: "/ventas", label: "Ventas", icon: Receipt, roles: OPERACION },
-      { to: "/reservas", label: "Reservas", icon: ClipboardList, roles: OPERACION },
-      { to: "/clientes", label: "Clientes", icon: Users, roles: OPERACION },
-    ],
-  },
-  {
-    title: "Finanzas",
-    links: [
       { to: "/caja", label: "Caja", icon: DollarSign, roles: OPERACION },
+      { to: "/clientes", label: "Clientes", icon: Users, roles: OPERACION },
+      { to: "/cotizaciones", label: "Cotizaciones", icon: FileText, roles: OPERACION_TALLER },
+      { to: "/reservas", label: "Reservas", icon: ClipboardList, roles: OPERACION },
       { to: "/pagos", label: "Pagos", icon: CreditCard, roles: OPERACION },
-      { to: "/gastos", label: "Gastos", icon: Receipt, roles: ADMIN_ENCARGADO },
-      { to: "/deudas", label: "Deudas", icon: FileSearch, roles: OPERACION },
-      { to: "/creditos", label: "Créditos", icon: HandCoins, roles: OPERACION },
-      { to: "/capital-retiros", label: "Capital y Retiros", icon: PiggyBank, roles: ADMIN },
-      { to: "/rentabilidad", label: "Rentabilidad", icon: BarChart3, roles: ADMIN },
+      { to: "/etiquetas", label: "Etiquetas", icon: Tags, roles: OPERACION_TALLER },
     ],
   },
   {
-    title: "Operación",
+    title: "Taller",
+    links: [
+      { to: "/agenda-taller", label: "Agenda Taller", icon: CalendarDays, roles: OPERACION_TALLER },
+      { to: "/taller", label: "Ordenes Taller", icon: Wrench, roles: TALLER },
+      { to: "/serializadas", label: "Bicicletas", icon: Bike, roles: OPERACION_TALLER },
+      { to: "/servicios-taller", label: "Servicios Taller", icon: Wrench, roles: ADMIN_ENCARGADO },
+    ],
+  },
+  {
+    title: "Stock",
     links: [
       { to: "/stock", label: "Stock", icon: Boxes, roles: OPERACION_TALLER },
-      { to: "/mercaderia/alta", label: "Alta mercadería", icon: PackagePlus, roles: ADMIN_ENCARGADO },
-      { to: "/mercaderia/bicicletas/alta", label: "Alta bicicletas", icon: Bike, roles: ADMIN_ENCARGADO },
+      { to: "/catalogo", label: "Catalogo", icon: Tags, roles: ADMIN_ENCARGADO },
+      { to: "/mercaderia/alta", label: "Ingresar Mercaderia", icon: PackagePlus, roles: ADMIN_ENCARGADO },
+      { to: "/inventario-fisico", label: "Inventario Fisico", icon: ClipboardList, roles: ADMIN_ENCARGADO },
       { to: "/serializadas", label: "Serializadas", icon: ClipboardList, roles: OPERACION_TALLER },
-      { to: "/catalogo", label: "Catálogo", icon: Tags, roles: ADMIN_ENCARGADO },
       { to: "/precios", label: "Precios", icon: Calculator, roles: ADMIN_ENCARGADO },
       { to: "/proveedores", label: "Proveedores", icon: HandCoins, roles: ADMIN_ENCARGADO },
+      { to: "/mercaderia/bicicletas/alta", label: "Alta bicicletas", icon: Bike, roles: ADMIN_ENCARGADO },
     ],
   },
   {
-    title: "Taller y control",
+    title: "Control",
     links: [
-      { to: "/taller", label: "Taller", icon: Wrench, roles: TALLER },
-      { to: "/servicios-taller", label: "Servicios Taller", icon: Wrench, roles: ADMIN_ENCARGADO },
-      { to: "/auditoria", label: "Auditoría", icon: Gauge, roles: ADMIN },
+      { to: "/alertas-operativas", label: "Alertas Operativas", icon: Gauge, roles: OPERACION_TALLER, badge: "alertas" },
+      { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ADMIN_ENCARGADO },
+      { to: "/gastos", label: "Gastos", icon: Receipt, roles: ADMIN_ENCARGADO },
+      { to: "/deudas", label: "Deudas", icon: FileSearch, roles: OPERACION },
+      { to: "/creditos", label: "Creditos", icon: HandCoins, roles: OPERACION },
+      { to: "/rentabilidad", label: "Rentabilidad", icon: BarChart3, roles: ADMIN },
+      { to: "/capital-retiros", label: "Capital y Retiros", icon: PiggyBank, roles: ADMIN },
+    ],
+  },
+  {
+    title: "Sistema",
+    links: [
       { to: "/usuarios", label: "Usuarios", icon: UserCog, roles: ADMIN },
+      { to: "/auditoria", label: "Auditoria", icon: Gauge, roles: ADMIN },
       { to: "/configuracion-comercial", label: "Config. Comercial", icon: Settings2, roles: ADMIN },
-      { to: "/agenda-taller", label: "Agenda Taller", icon: CalendarDays, roles: OPERACION_TALLER },
     ],
   },
 ];
 
 export default function Sidebar({ onNavigate }) {
   const { rolActual } = useSession();
+  const [alertasCount, setAlertasCount] = useState(0);
 
-  const gruposVisibles = groups
-    .map((group) => ({
-      ...group,
-      links: group.links.filter((link) => link.roles.includes(rolActual)),
-    }))
-    .filter((group) => group.links.length > 0);
+  const puedeVerAlertas = OPERACION_TALLER.includes(rolActual);
+
+  useEffect(() => {
+    let activo = true;
+
+    async function cargarBadgeAlertas() {
+      if (!puedeVerAlertas) {
+        setAlertasCount(0);
+        return;
+      }
+
+      try {
+        const data = await obtenerAlertasOperativas();
+        if (activo) setAlertasCount(contarAlertasOperativas(data));
+      } catch {
+        if (activo) setAlertasCount(0);
+      }
+    }
+
+    cargarBadgeAlertas();
+
+    return () => {
+      activo = false;
+    };
+  }, [puedeVerAlertas]);
+
+  const gruposVisibles = useMemo(
+    () =>
+      groups
+        .map((group) => ({
+          ...group,
+          links: group.links.filter((link) => link.roles.includes(rolActual)),
+        }))
+        .filter((group) => group.links.length > 0),
+    [rolActual],
+  );
 
   return (
     <aside style={sidebarContainerStyle}>
@@ -142,18 +189,20 @@ export default function Sidebar({ onNavigate }) {
 
             {group.links.map((link) => {
               const Icon = link.icon;
+              const badgeValue = link.badge === "alertas" ? alertasCount : 0;
 
               return (
                 <NavLink
-                  key={link.to}
+                  key={`${group.title}-${link.to}-${link.label}`}
                   to={link.to}
                   onClick={onNavigate}
-                  style={({ isActive }) =>
-                    isActive ? navItemActiveStyle : navItemStyle
-                  }
+                  style={({ isActive }) => getNavItemStyle(link, isActive)}
                 >
                   <Icon style={navIconStyle} size={18} strokeWidth={2.2} />
                   <span style={navItemLabelStyle}>{link.label}</span>
+                  {badgeValue > 0 ? (
+                    <span style={badgeStyle}>{badgeValue > 99 ? "99+" : badgeValue}</span>
+                  ) : null}
                 </NavLink>
               );
             })}
@@ -163,3 +212,47 @@ export default function Sidebar({ onNavigate }) {
     </aside>
   );
 }
+
+function contarAlertasOperativas(data) {
+  if (!data || typeof data !== "object") return 0;
+
+  return [
+    data.bicis_listas,
+    data.reservas_vencidas,
+    data.deudas_vencidas,
+    data.taller_atrasado,
+    data.stock_critico,
+  ].reduce((total, items) => total + (Array.isArray(items) ? items.length : 0), 0);
+}
+
+function getNavItemStyle(link, isActive) {
+  const base = isActive ? navItemActiveStyle : navItemStyle;
+
+  if (!link.highlight || isActive) {
+    return base;
+  }
+
+  return {
+    ...base,
+    background: "rgba(255, 106, 0, 0.14)",
+    border: "1px solid rgba(255, 106, 0, 0.45)",
+    color: "#fff7ed",
+    fontWeight: 900,
+  };
+}
+
+const badgeStyle = {
+  marginLeft: "auto",
+  minWidth: 22,
+  height: 22,
+  padding: "0 7px",
+  borderRadius: 999,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: "#ef4444",
+  color: "white",
+  fontSize: 12,
+  fontWeight: 950,
+  lineHeight: 1,
+};

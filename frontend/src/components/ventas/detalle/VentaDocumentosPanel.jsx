@@ -1,19 +1,26 @@
 import { useBreakpoint } from "../../ui";
+import {
+  getComprobanteXVentaUrl,
+  getResumenCobrosVentaUrl,
+} from "../../../services/documentosService";
 
 export default function VentaDocumentosPanel({ ventaId }) {
   const { isMobile } = useBreakpoint();
-  const baseUrl = `http://127.0.0.1:8000/documentos/ventas/${ventaId}/comprobante-x`;
 
   function abrirComprobante() {
-    window.open(baseUrl, "_blank", "noopener,noreferrer");
+    window.open(getComprobanteXVentaUrl(ventaId), "_blank", "noopener,noreferrer");
+  }
+
+  function abrirResumenCobros() {
+    window.open(getResumenCobrosVentaUrl(ventaId), "_blank", "noopener,noreferrer");
   }
 
   return (
     <section style={{ ...panelStyle, ...(isMobile ? panelMobileStyle : {}) }}>
       <div>
-        <h3 style={titleStyle}>Documentos</h3>
+        <h3 style={titleStyle}>Documentos imprimibles</h3>
         <p style={textStyle}>
-          Comprobantes imprimibles asociados a esta venta.
+          Accesos rapidos para entregar, archivar o revisar el cobro.
         </p>
       </div>
 
@@ -23,7 +30,14 @@ export default function VentaDocumentosPanel({ ventaId }) {
           onClick={abrirComprobante}
           style={{ ...primaryButtonStyle, ...(isMobile ? primaryButtonMobileStyle : {}) }}
         >
-          Ver Comprobante X
+          Imprimir comprobante X
+        </button>
+        <button
+          type="button"
+          onClick={abrirResumenCobros}
+          style={{ ...secondaryButtonStyle, ...(isMobile ? primaryButtonMobileStyle : {}) }}
+        >
+          Imprimir resumen de cobros
         </button>
       </div>
     </section>
@@ -87,4 +101,14 @@ const primaryButtonStyle = {
 const primaryButtonMobileStyle = {
   width: "100%",
   minHeight: 44,
+};
+
+const secondaryButtonStyle = {
+  border: "1px solid #d1d5db",
+  borderRadius: "12px",
+  padding: "10px 14px",
+  cursor: "pointer",
+  background: "#ffffff",
+  color: "#111827",
+  fontWeight: 700,
 };

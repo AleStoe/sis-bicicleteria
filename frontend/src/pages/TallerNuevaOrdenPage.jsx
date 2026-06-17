@@ -4,6 +4,7 @@ import { listarClientes, listarBicicletasCliente, crearBicicletaCliente } from "
 import { crearOrdenTaller } from "../services/tallerService";
 import { useBreakpoint } from "../components/ui";
 import { useSession } from "../context/SessionContext";
+import { normalizeTextUpper } from "../utils/textNormalization";
 
 export default function TallerNuevaOrdenPage() {
   const navigate = useNavigate();
@@ -70,7 +71,11 @@ export default function TallerNuevaOrdenPage() {
   }
 
   function cambiarNuevaBici(campo, valor) {
-    setNuevaBici((prev) => ({ ...prev, [campo]: valor }));
+    const upper = ["marca", "modelo", "color", "numero_cuadro"].includes(campo);
+    setNuevaBici((prev) => ({
+      ...prev,
+      [campo]: upper ? normalizeTextUpper(valor) : valor,
+    }));
   }
 
   async function guardarBicicleta(e) {
@@ -240,7 +245,7 @@ export default function TallerNuevaOrdenPage() {
               <span style={styles.label}>Problema reportado *</span>
               <textarea
                 value={problema}
-                onChange={(e) => setProblema(e.target.value)}
+                onChange={(e) => setProblema(normalizeTextUpper(e.target.value))}
                 placeholder="Ej: freno trasero no responde, cambio salta en piñón 3, revisar transmisión completa..."
                 rows={7}
                 style={{ ...styles.input, resize: "vertical" }}

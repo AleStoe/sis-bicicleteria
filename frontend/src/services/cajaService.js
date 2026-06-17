@@ -49,3 +49,13 @@ export function listarHistorialCajas(params = {}) {
   const qs = query.toString();
   return apiRequest(`/cajas/historial${qs ? `?${qs}` : ""}`);
 }
+
+export function obtenerResumenDiarioCaja(params = {}) {
+  const query = new URLSearchParams();
+
+  if (params.id_sucursal) query.set("id_sucursal", params.id_sucursal);
+  if (params.fecha) query.set("fecha", params.fecha);
+
+  const qs = query.toString();
+  return apiRequest(`/cajas/resumen-diario${qs ? `?${qs}` : ""}`);
+}

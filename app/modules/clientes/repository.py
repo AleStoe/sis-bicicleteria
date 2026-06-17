@@ -371,6 +371,144 @@ def get_venta_origen_bicicleta_cliente(conn, venta_id: int | None):
         )
         return cur.fetchone()
 
+
+def get_timeline_bicicleta_cliente(conn, bicicleta_id: int):
+    eventos = []
+
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT
+                bc.created_at AS fecha,
+                bc.id,
+                bc.marca,
+                bc.modelo,
+                bc.color,
+                bc.numero_cuadro
+            FROM bicicletas_clientes bc
+            WHERE bc.id = %s
+            """,
+            (bicicleta_id,),
+        )
+        bici = cur.fetchone()
+        if bici:
+            eventos.append(
+                {
+                    "fecha": bici["fecha"],
+                    "tipo": "bicicleta_alta",
+                    "titulo": "Bicicleta registrada",
+                    "descripcion": " ".join(
+                        str(v)
+                        for v in [
+                            bici.get("marca"),
+                            bici.get("modelo"),
+                            bici.get("color"),
+                            bici.get("numero_cuadro"),
+                        ]
+                        if v
+                    ),
+                    "referencia_tipo": "bicicleta_cliente",
+                    "referencia_id": bici["id"],
+                }
+            )
+
+        cur.execute(
+            """
+            SELECT
+                v.fecha,
+                v.id,
+                v.estado,
+                v.total_final,
+                v.saldo_pendiente
+            FROM ventas v
+            JOIN bicicletas_clientes bc ON bc.id_venta_origen = v.id
+            WHERE bc.id = %s
+            """,
+            (bicicleta_id,),
+        )
+        for venta in cur.fetchall():
+            eventos.append(
+                {
+                    "fecha": venta["fecha"],
+                    "tipo": "venta_origen",
+                    "titulo": f"Venta #{venta['id']}",
+                    "descripcion": f"Estado {venta['estado']}. Total {venta['total_final']}. Saldo {venta['saldo_pendiente']}.",
+                    "referencia_tipo": "venta",
+                    "referencia_id": venta["id"],
+                }
+            )
+
+        cur.execute(
+            """
+            SELECT
+                ot.id,
+                ot.fecha_ingreso,
+                ot.estado,
+                ot.problema_reportado,
+                ot.total_final,
+                ot.saldo_pendiente,
+                ot.es_service_postventa
+            FROM ordenes_taller ot
+            WHERE ot.id_bicicleta_cliente = %s
+            ORDER BY ot.fecha_ingreso ASC, ot.id ASC
+            """,
+            (bicicleta_id,),
+        )
+        ordenes = cur.fetchall()
+
+        for orden in ordenes:
+            eventos.append(
+                {
+                    "fecha": orden["fecha_ingreso"],
+                    "tipo": "service_postventa" if orden["es_service_postventa"] else "orden_taller",
+                    "titulo": f"OT #{orden['id']} - {orden['estado']}",
+                    "descripcion": orden["problema_reportado"],
+                    "referencia_tipo": "orden_taller",
+                    "referencia_id": orden["id"],
+                    "importe": orden["total_final"],
+                    "saldo": orden["saldo_pendiente"],
+                }
+            )
+
+        cur.execute(
+            """
+            SELECT
+                oti.id,
+                oti.id_orden_taller,
+                ot.fecha_ingreso,
+                oti.tipo_item,
+                oti.descripcion_snapshot,
+                oti.cantidad,
+                oti.precio_unitario,
+                oti.subtotal,
+                oti.etapa
+            FROM ordenes_taller_items oti
+            JOIN ordenes_taller ot ON ot.id = oti.id_orden_taller
+            WHERE ot.id_bicicleta_cliente = %s
+              AND oti.etapa <> 'cancelado'
+            ORDER BY ot.fecha_ingreso ASC, oti.id ASC
+            """,
+            (bicicleta_id,),
+        )
+        for item in cur.fetchall():
+            eventos.append(
+                {
+                    "fecha": item["fecha_ingreso"],
+                    "tipo": "repuesto_usado" if item["tipo_item"] == "repuesto" else "servicio_taller",
+                    "titulo": item["descripcion_snapshot"],
+                    "descripcion": f"OT #{item['id_orden_taller']} · {item['cantidad']} x {item['precio_unitario']} · {item['etapa']}",
+                    "referencia_tipo": "orden_taller",
+                    "referencia_id": item["id_orden_taller"],
+                    "importe": item["subtotal"],
+                }
+            )
+
+    return sorted(
+        eventos,
+        key=lambda evento: (evento["fecha"] is None, evento["fecha"] or ""),
+        reverse=True,
+    )
+
 def autorizar_service_vencido_bicicleta_cliente(
     conn,
     cliente_id: int,

@@ -3,11 +3,11 @@ import { Link } from "react-router-dom";
 import { listarDeudas } from "../services/deudasService";
 import { formatMoney } from "../utils/formatters";
 import {
-  Badge,
   Button,
   Card,
   Input,
   MetricCard,
+  OperationalStatusBadge,
   PageHeader,
   Select,
   Table,
@@ -55,20 +55,7 @@ function useIsMobile(breakpoint = MOBILE_BREAKPOINT) {
 }
 
 export function EstadoDeudaBadge({ estado }) {
-  return <Badge variant={getEstadoDeudaVariant(estado)}>{estado || "-"}</Badge>;
-}
-
-function getEstadoDeudaVariant(estado) {
-  switch (estado) {
-    case "abierta":
-      return "warning";
-    case "cerrada":
-      return "success";
-    case "cancelada":
-      return "danger";
-    default:
-      return "default";
-  }
+  return <OperationalStatusBadge domain="deuda" status={estado} />;
 }
 
 export default function DeudasListPage() {

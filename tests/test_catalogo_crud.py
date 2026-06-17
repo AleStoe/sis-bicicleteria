@@ -116,7 +116,7 @@ def test_crear_marca(client):
     marca = _crear_marca(client, "Marca Test Crear")
 
     assert marca["id"] > 0
-    assert marca["nombre"] == "Marca Test Crear"
+    assert marca["nombre"] == "MARCA TEST CREAR"
     assert marca["activa"] is True
 
 
@@ -129,7 +129,7 @@ def test_listar_marcas(client):
     data = response.json()
 
     assert isinstance(data, list)
-    assert any(m["nombre"] == "Marca Test Listar" for m in data)
+    assert any(m["nombre"] == "MARCA TEST LISTAR" for m in data)
 
 
 def test_crear_producto_basico(client):
@@ -146,7 +146,7 @@ def test_crear_producto_basico(client):
     assert producto["id"] > 0
     assert producto["id_categoria"] == categoria["id"]
     assert producto["id_marca"] == marca["id"]
-    assert producto["nombre"] == "Producto Catalogo Basico"
+    assert producto["nombre"] == "PRODUCTO CATALOGO BASICO"
     assert producto["tipo_item"] == "producto"
     assert producto["stockeable"] is True
     assert producto["serializable"] is False
@@ -172,6 +172,25 @@ def test_rechaza_producto_serializable_no_stockeable(client):
     assert "serializable debe ser stockeable" in response.json()["detail"]
 
 
+def test_rechaza_alta_de_servicio_en_catalogo(client):
+    categoria = _get_first_categoria(client)
+
+    response = client.post(
+        "/catalogo/productos",
+        json={
+            "id_categoria": categoria["id"],
+            "id_marca": None,
+            "nombre": "Service armado viejo",
+            "tipo_item": "servicio",
+            "stockeable": False,
+            "serializable": False,
+        },
+    )
+
+    assert response.status_code == 400
+    assert "módulo Servicios" in response.json()["detail"]
+
+
 def test_obtener_producto_detalle(client):
     categoria = _get_first_categoria(client)
     producto = _crear_producto(
@@ -186,7 +205,7 @@ def test_obtener_producto_detalle(client):
     data = response.json()
 
     assert data["id"] == producto["id"]
-    assert data["nombre"] == "Producto Detalle Catalogo"
+    assert data["nombre"] == "PRODUCTO DETALLE CATALOGO"
     assert data["id_categoria"] == categoria["id"]
     assert data["activo"] is True
 
@@ -222,7 +241,7 @@ def test_editar_producto(client):
     data = response.json()
 
     assert data["id"] == producto["id"]
-    assert data["nombre"] == "Producto Despues Editar"
+    assert data["nombre"] == "PRODUCTO DESPUES EDITAR"
     assert data["serializable"] is True
     assert data["stockeable"] is True
 
@@ -295,7 +314,7 @@ def test_crear_variante_basica(client):
 
     assert variante["id"] > 0
     assert variante["id_producto"] == producto["id"]
-    assert variante["nombre_variante"] == "Rodado 29 Negro"
+    assert variante["nombre_variante"] == "RODADO 29 NEGRO"
     assert variante["sku"] == f"VAR-{variante['id']:08d}"
     assert variante["codigo_barras"].startswith("29")
     assert _ean13_valido(variante["codigo_barras"])
@@ -327,8 +346,8 @@ def test_obtener_variante_detalle(client):
 
     assert data["id"] == variante["id"]
     assert data["id_producto"] == producto["id"]
-    assert data["producto_nombre"] == "Producto Variante Detalle"
-    assert data["nombre_variante"] == "Detalle Variante"
+    assert data["producto_nombre"] == "PRODUCTO VARIANTE DETALLE"
+    assert data["nombre_variante"] == "DETALLE VARIANTE"
     assert data["sku"] == f"VAR-{variante['id']:08d}"
     assert _ean13_valido(data["codigo_barras"])
 
@@ -374,7 +393,7 @@ def test_editar_variante_sin_tocar_precios(client):
     data = response.json()
 
     assert data["id"] == variante["id"]
-    assert data["nombre_variante"] == "Variante Despues Editar"
+    assert data["nombre_variante"] == "VARIANTE DESPUES EDITAR"
     assert data["sku"] == f"VAR-{variante['id']:08d}"
     assert data["codigo_barras"] == variante["codigo_barras"]
     assert _ean13_valido(data["codigo_barras"])
@@ -456,6 +475,30 @@ def test_catalogo_pos_busca_por_nombre_sku_codigo_barras_y_codigo_proveedor(
 
         ids = [item["id_variante"] for item in data["items"]]
         assert variante["id"] in ids
+
+
+def test_catalogo_pos_excluye_servicios_de_variantes(client, seed_venta_mixta):
+    response = client.get(
+        f"/catalogo/pos?id_sucursal={seed_venta_mixta['sucursal_id']}&query=Armado&limit=50&offset=0"
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+
+    ids = [item["id_variante"] for item in data["items"]]
+    assert seed_venta_mixta["variante_servicio_id"] not in ids
+    assert all(item["tipo_item"] == "producto" for item in data["items"])
+
+
+def test_catalogo_pos_busqueda_exacta_no_devuelve_servicio_de_variante(
+    client,
+    seed_venta_mixta,
+):
+    response = client.get(
+        f"/catalogo/pos/buscar-exacto?id_sucursal={seed_venta_mixta['sucursal_id']}&codigo=SERV-TEST"
+    )
+
+    assert response.status_code == 404
 
 
 def test_catalogo_pos_rechaza_limit_menor_a_1(client, seed_venta_basica):
@@ -729,7 +772,7 @@ def test_catalogo_pos_incluye_marca_y_permite_buscar_por_marca(
     item = next(i for i in items if i["id_variante"] == variante["id"])
 
     assert item["id_marca"] == marca["id"]
-    assert item["marca_nombre"] == "Marca POS Busqueda Test"
+    assert item["marca_nombre"] == "MARCA POS BUSQUEDA TEST"
 
 def _ean13_valido(value: str) -> bool:
     if not value or len(value) != 13 or not value.isdigit():
@@ -782,7 +825,7 @@ def test_catalogo_pos_busqueda_exacta_por_codigo(
     data = response.json()
 
     assert data["id_variante"] == variante["id"]
-    assert data["producto_nombre"] == "Producto Codigo Exacto POS"
+    assert data["producto_nombre"] == "PRODUCTO CODIGO EXACTO POS"
     assert data["codigo_barras"] == codigo_barras
     assert data["motivo_no_disponible"] == "sin_stock"
 
