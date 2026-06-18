@@ -77,11 +77,28 @@ def get_orden_taller_items_presupuesto_by_orden_id(conn, orden_id: int):
                 oti.subtotal,
                 oti.etapa,
                 oti.aprobado,
-                p.tipo_item,
-                p.stockeable
+                COALESCE(oti.tipo_item, p.tipo_item) AS tipo_item,
+                p.stockeable,
+                COALESCE(img_var.url, img_prod.url) AS imagen_principal
             FROM ordenes_taller_items oti
             LEFT JOIN variantes v ON v.id = oti.id_variante
             LEFT JOIN productos p ON p.id = v.id_producto
+            LEFT JOIN LATERAL (
+                SELECT ci.url
+                FROM catalogo_imagenes ci
+                WHERE ci.id_variante = v.id
+                  AND ci.activo = TRUE
+                ORDER BY ci.es_principal DESC, ci.id ASC
+                LIMIT 1
+            ) img_var ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT ci.url
+                FROM catalogo_imagenes ci
+                WHERE ci.id_producto = p.id
+                  AND ci.activo = TRUE
+                ORDER BY ci.es_principal DESC, ci.id ASC
+                LIMIT 1
+            ) img_prod ON TRUE
             WHERE oti.id_orden_taller = %s
               AND oti.etapa <> 'cancelado'
             ORDER BY oti.id

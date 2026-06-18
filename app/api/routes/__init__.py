@@ -25,6 +25,7 @@ from app.modules.agenda_taller.routes import router as agenda_taller_router
 from app.modules.cotizaciones.routes import router as cotizaciones_router
 from app.modules.inventario_fisico.routes import router as inventario_fisico_router
 from app.modules.alertas_operativas.routes import router as alertas_operativas_router
+from app.modules.configuracion_negocio.routes import router as configuracion_negocio_router
 
 router = APIRouter()
 
@@ -54,3 +55,4 @@ router.include_router(agenda_taller_router, prefix="/agenda-taller", tags=["Agen
 router.include_router(cotizaciones_router, prefix="/cotizaciones", tags=["Cotizaciones"])
 router.include_router(inventario_fisico_router, prefix="/inventarios-fisicos", tags=["Inventario Fisico"])
 router.include_router(alertas_operativas_router, prefix="/alertas-operativas", tags=["Alertas Operativas"])
+router.include_router(configuracion_negocio_router, prefix="/configuracion-negocio", tags=["Configuracion Negocio"])

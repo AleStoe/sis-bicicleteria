@@ -12,8 +12,11 @@ from .pdf import (
     _draw_image_fit,
     _fecha,
     _money,
+    _resolver_imagen_local,
     _text,
 )
+from app.modules.configuracion_negocio.service import obtener_configuracion_negocio
+from app.modules.configuracion_negocio.template import lineas_configurables
 
 
 ESTADOS_HUMANOS = {
@@ -97,7 +100,8 @@ def _wrap_text(text, max_chars=70):
 
 def _table_header(c, y, width, margin_x):
     c.setFont("Helvetica-Bold", 8)
-    c.drawString(margin_x, y, "Detalle")
+    c.drawString(margin_x, y, "Img.")
+    c.drawString(margin_x + 19 * mm, y, "Detalle")
     c.drawRightString(width - margin_x - 52 * mm, y, "Cant.")
     c.drawRightString(width - margin_x - 24 * mm, y, "Unitario")
     c.drawRightString(width - margin_x, y, "Subtotal")
@@ -115,18 +119,33 @@ def _ensure_space(c, y, needed, width, height, margin_x):
     return _table_header(c, height - 18 * mm, width, margin_x)
 
 
-def _draw_row(c, *, y, width, margin_x, detalle, cantidad, precio, subtotal):
+def _draw_row(c, *, y, width, margin_x, detalle, cantidad, precio, subtotal, imagen=None):
     lines = _wrap_text(detalle, 58)[:4]
     line_height = 4.6 * mm
     row_padding_top = 1.5 * mm
     row_padding_bottom = 3.2 * mm
-    row_height = max(10 * mm, row_padding_top + len(lines) * line_height + row_padding_bottom)
+    img_size = 14 * mm
+    row_height = max(17 * mm, row_padding_top + len(lines) * line_height + row_padding_bottom)
 
     text_y = y - row_padding_top
+    img_path = _resolver_imagen_local(imagen)
+
+    if img_path:
+        _draw_image_fit(
+            c,
+            img_path,
+            margin_x,
+            y - img_size + 1 * mm,
+            img_size,
+            img_size,
+        )
+    else:
+        c.setFont("Helvetica", 6)
+        c.drawCentredString(margin_x + img_size / 2, y - 7 * mm, "Sin img.")
 
     c.setFont("Helvetica", 8)
     for line in lines:
-        c.drawString(margin_x, text_y, line)
+        c.drawString(margin_x + 19 * mm, text_y, line)
         text_y -= line_height
 
     c.drawRightString(width - margin_x - 52 * mm, y - row_padding_top, f"{cantidad:g}")
@@ -142,6 +161,7 @@ def _draw_row(c, *, y, width, margin_x, detalle, cantidad, precio, subtotal):
 def generar_presupuesto_taller_pdf(data: dict) -> bytes:
     orden = data["orden"]
     items = data.get("items", [])
+    config = obtener_configuracion_negocio()
 
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
@@ -163,7 +183,7 @@ def generar_presupuesto_taller_pdf(data: dict) -> bytes:
         )
     else:
         c.setFont("Helvetica-Bold", 15)
-        c.drawString(margin_x, y, "EMPRENDIMIENTO AGUS")
+        c.drawString(margin_x, y, _text(config.get("nombre_negocio")).upper()[:40])
 
     c.setFont("Helvetica-Bold", 16)
     c.drawRightString(width - margin_x, y, "PRESUPUESTO TALLER")
@@ -271,7 +291,7 @@ def generar_presupuesto_taller_pdf(data: dict) -> bytes:
         total += subtotal
 
         lines_count = len(_wrap_text(item.get("descripcion_snapshot"), 58)[:4])
-        needed = max(10 * mm, 1.5 * mm + lines_count * 4.6 * mm + 3.2 * mm) + 8 * mm
+        needed = max(17 * mm, 1.5 * mm + lines_count * 4.6 * mm + 3.2 * mm) + 8 * mm
         y = _ensure_space(c, y, needed, width, height, margin_x)
 
         y = _draw_row(
@@ -283,6 +303,7 @@ def generar_presupuesto_taller_pdf(data: dict) -> bytes:
             cantidad=cantidad,
             precio=precio,
             subtotal=subtotal,
+            imagen=item.get("imagen_principal"),
         )
 
     y = _ensure_space(c, y, 38 * mm, width, height, margin_x)
@@ -300,18 +321,21 @@ def generar_presupuesto_taller_pdf(data: dict) -> bytes:
     c.drawString(margin_x, y, "Condiciones")
     y -= 6 * mm
 
-    condiciones = [
-        "Presupuesto no fiscal. No válido como factura.",
-        "Validez estimada: 7 días desde la fecha de emisión.",
-        "El importe puede variar si durante la reparación aparecen fallas o repuestos no detectados inicialmente.",
-        "La reparación se cobra por el módulo de ventas al finalizar el trabajo.",
-    ]
+    condiciones = lineas_configurables(
+        config.get("condiciones_presupuesto_taller"),
+        config,
+    )
 
     c.setFont("Helvetica", 8)
     for condicion in condiciones:
         for line in _wrap_text(condicion, 105):
             c.drawString(margin_x, y, f"- {line}")
             y -= 5 * mm
+
+    c.showPage()
+    c.save()
+    buffer.seek(0)
+    return buffer.getvalue()
 
     y -= 8 * mm
     c.setFont("Helvetica", 8)

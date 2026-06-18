@@ -1,7 +1,10 @@
 from decimal import Decimal
 
 from app.modules.documentos.pdf import _detalle_pago_financiero
-from app.modules.documentos.repository import get_pagos_comprobante_by_venta_id
+from app.modules.documentos.repository import (
+    get_pagos_comprobante_by_venta_id,
+    get_venta_items_comprobante_by_venta_id,
+)
 
 
 def _crear_venta_basica(client, seed_venta_basica):
@@ -30,6 +33,51 @@ def test_comprobante_x_venta_devuelve_pdf(client, seed_venta_basica):
     response = client.get(f"/documentos/ventas/{venta_id}/comprobante-x")
 
     assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.content.startswith(b"%PDF")
+
+
+def test_comprobante_x_incluye_servicios_taller(client, db_conn, seed_venta_basica):
+    servicio = client.post(
+        "/servicios_taller/",
+        json={
+            "nombre": "Armado general comprobante",
+            "descripcion": "Servicio para comprobante X",
+            "precio_sugerido": 15000,
+            "duracion_estimada_min": 60,
+        },
+    )
+    assert servicio.status_code == 201, servicio.text
+    servicio_id = servicio.json()["id"]
+
+    crear = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "tipo_item": "servicio_taller",
+                    "id_servicio_taller": servicio_id,
+                    "cantidad": 1,
+                    "precio_unitario_manual": 15000,
+                    "motivo_precio_manual": "Test comprobante X servicio",
+                }
+            ],
+        },
+    )
+    assert crear.status_code == 200, crear.text
+    venta_id = crear.json()["venta_id"]
+
+    items = get_venta_items_comprobante_by_venta_id(db_conn, venta_id)
+    assert len(items) == 1
+    assert items[0]["tipo_item"] == "servicio_taller"
+    assert items[0]["id_servicio_taller"] == servicio_id
+
+    response = client.get(f"/documentos/ventas/{venta_id}/comprobante-x")
+
+    assert response.status_code == 200, response.text
     assert response.headers["content-type"] == "application/pdf"
     assert response.content.startswith(b"%PDF")
 
@@ -79,6 +127,39 @@ def test_comprobante_x_usa_descuento_efectivo_del_motor_financiero(
     response = client.get(f"/documentos/ventas/{venta_id}/comprobante-x")
 
     assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.content.startswith(b"%PDF")
+
+
+def test_presupuesto_taller_devuelve_pdf(client, seed_taller_basico, seed_venta_basica):
+    crear_orden = client.post(
+        "/ordenes_taller/",
+        json={
+            "id_sucursal": seed_taller_basico["sucursal_id"],
+            "id_cliente": seed_taller_basico["cliente_id"],
+            "id_bicicleta_cliente": seed_taller_basico["bicicleta_cliente_id"],
+            "problema_reportado": "Ruido en transmision",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert crear_orden.status_code == 201, crear_orden.text
+    orden_id = crear_orden.json()["id"]
+
+    item = client.post(
+        f"/ordenes_taller/{orden_id}/items",
+        json={
+            "tipo_item": "repuesto",
+            "id_variante": seed_venta_basica["variante_id"],
+            "cantidad": 1,
+            "precio_unitario": 5000,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert item.status_code == 201, item.text
+
+    response = client.get(f"/documentos/taller/{orden_id}/presupuesto")
+
+    assert response.status_code == 200, response.text
     assert response.headers["content-type"] == "application/pdf"
     assert response.content.startswith(b"%PDF")
 

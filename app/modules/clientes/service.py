@@ -3,6 +3,7 @@ from fastapi import HTTPException
 from app.db.connection import get_connection
 from datetime import date
 from app.core.text_normalization import clean_text, normalize_text_upper
+from app.modules.auditoria import service as auditoria_service
 from app.modules.taller.repository import (
     validar_sucursal_activa,
     validar_usuario_activo,
@@ -23,6 +24,7 @@ from .repository import (
     get_bicicletas_cliente,
     insert_bicicleta_cliente,
     get_bicicleta_cliente_detalle,
+    update_bicicleta_cliente,
     get_historial_taller_bicicleta_cliente,
     get_timeline_bicicleta_cliente,
     get_venta_origen_bicicleta_cliente,
@@ -114,6 +116,16 @@ def _validar_no_crear_otro_consumidor_final(data):
             status_code=400,
             detail="Ese nombre está reservado para el cliente genérico del sistema",
         )
+
+
+def _normalizar_bicicleta_cliente_input(data):
+    data.marca = normalize_text_upper(data.marca)
+    data.modelo = normalize_text_upper(data.modelo)
+    data.rodado = clean_text(data.rodado)
+    data.color = normalize_text_upper(data.color)
+    data.numero_cuadro = normalize_text_upper(data.numero_cuadro)
+    data.notas = clean_text(data.notas)
+    return data
 
 
 def listar_clientes_service(q=None, solo_activos=False):
@@ -256,22 +268,89 @@ def crear_bicicleta_cliente_service(cliente_id: int, data):
         with conn.transaction():
             _obtener_cliente_o_404(conn, cliente_id)
 
-            data.marca = normalize_text_upper(data.marca)
-            data.modelo = normalize_text_upper(data.modelo)
-            data.rodado = clean_text(data.rodado)
-            data.color = normalize_text_upper(data.color)
-            data.numero_cuadro = normalize_text_upper(data.numero_cuadro)
-            data.notas = clean_text(data.notas)
+            data = _normalizar_bicicleta_cliente_input(data)
 
             if not data.marca:
                 raise HTTPException(status_code=400, detail="La marca es obligatoria")
 
-            if not data.modelo:
-                raise HTTPException(status_code=400, detail="El modelo es obligatorio")
-
             return insert_bicicleta_cliente(conn, cliente_id, data)
     finally:
         conn.close()
+
+
+def actualizar_bicicleta_cliente_service(cliente_id: int, bicicleta_id: int, data):
+    conn = get_connection()
+    try:
+        with conn.transaction():
+            _obtener_cliente_o_404(conn, cliente_id)
+
+            anterior = get_bicicleta_cliente_detalle(
+                conn,
+                cliente_id=cliente_id,
+                bicicleta_id=bicicleta_id,
+            )
+
+            if anterior is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No existe la bicicleta {bicicleta_id} para el cliente {cliente_id}",
+                )
+
+            data = _normalizar_bicicleta_cliente_input(data)
+
+            if not data.marca:
+                raise HTTPException(status_code=400, detail="La marca es obligatoria")
+
+            actualizada = update_bicicleta_cliente(
+                conn,
+                cliente_id=cliente_id,
+                bicicleta_id=bicicleta_id,
+                data=data,
+            )
+
+            if actualizada is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No existe la bicicleta {bicicleta_id} para el cliente {cliente_id}",
+                )
+
+            if data.id_usuario:
+                auditoria_service.registrar_evento(
+                    conn,
+                    id_usuario=data.id_usuario,
+                    id_sucursal=data.id_sucursal,
+                    entidad="bicicleta_cliente",
+                    entidad_id=bicicleta_id,
+                    accion="bicicleta_cliente_actualizada",
+                    detalle=(
+                        "Bicicleta de cliente actualizada. "
+                        f"cliente_id={cliente_id}, bicicleta_id={bicicleta_id}"
+                    ),
+                    metadata={
+                        "cliente_id": cliente_id,
+                        "antes": {
+                            "marca": anterior.get("marca"),
+                            "modelo": anterior.get("modelo"),
+                            "rodado": anterior.get("rodado"),
+                            "color": anterior.get("color"),
+                            "numero_cuadro": anterior.get("numero_cuadro"),
+                            "notas": anterior.get("notas"),
+                        },
+                        "despues": {
+                            "marca": actualizada.get("marca"),
+                            "modelo": actualizada.get("modelo"),
+                            "rodado": actualizada.get("rodado"),
+                            "color": actualizada.get("color"),
+                            "numero_cuadro": actualizada.get("numero_cuadro"),
+                            "notas": actualizada.get("notas"),
+                        },
+                    },
+                )
+
+            return actualizada
+    finally:
+        conn.close()
+
 
 def obtener_historial_bicicleta_cliente_service(cliente_id: int, bicicleta_id: int):
     conn = get_connection()

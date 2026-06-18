@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { FileText, Plus, RefreshCw, Search } from "lucide-react";
+import { FileText, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 import { useSession } from "../context/SessionContext";
 import { listarClientes } from "../services/clientesService";
 import { listarVariantes } from "../services/catalogoService";
@@ -20,14 +20,19 @@ const ESTADOS = [
   { value: "cancelada", label: "Canceladas" },
 ];
 
-const itemInicial = {
-  tipo_item: "producto",
-  id_variante: "",
-  id_servicio_taller: "",
+const lineaLibreInicial = {
   descripcion_snapshot: "",
   cantidad: "1",
   precio_unitario: "",
 };
+
+function crearTempId(prefix = "cot-item") {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
 
 export default function CotizacionesListPage() {
   const navigate = useNavigate();
@@ -39,6 +44,9 @@ export default function CotizacionesListPage() {
   const [servicios, setServicios] = useState([]);
   const [estadoFiltro, setEstadoFiltro] = useState("");
   const [busqueda, setBusqueda] = useState("");
+  const [catalogoQuery, setCatalogoQuery] = useState("");
+  const [carritoItems, setCarritoItems] = useState([]);
+  const [lineaLibre, setLineaLibre] = useState(lineaLibreInicial);
   const [loading, setLoading] = useState(true);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
@@ -49,7 +57,6 @@ export default function CotizacionesListPage() {
     cliente_telefono_snapshot: "",
     problema_reportado: "",
     observaciones: "",
-    item: itemInicial,
   });
 
   useEffect(() => {
@@ -111,15 +118,65 @@ export default function CotizacionesListPage() {
     );
   }, [cotizaciones, busqueda]);
 
-  function actualizarItem(campo, value) {
-    setForm((prev) => ({
-      ...prev,
-      item: {
-        ...prev.item,
-        [campo]: value,
-      },
-    }));
-  }
+  const productosFiltrados = useMemo(() => {
+    const q = catalogoQuery.trim().toLowerCase();
+
+    return variantes
+      .filter((variante) => {
+        if (!q) return true;
+
+        return [
+          variante.producto_nombre,
+          variante.nombre_variante,
+          variante.categoria_nombre,
+          variante.sku,
+          variante.codigo_proveedor,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+          .includes(q);
+      })
+      .slice(0, 40);
+  }, [variantes, catalogoQuery]);
+
+  const serviciosFiltrados = useMemo(() => {
+    const q = catalogoQuery.trim().toLowerCase();
+
+    return servicios
+      .filter((servicio) => {
+        if (!q) return true;
+
+        return [servicio.nombre, servicio.descripcion]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+          .includes(q);
+      })
+      .slice(0, 30);
+  }, [servicios, catalogoQuery]);
+
+  const totalCotizacionDraft = useMemo(() => {
+    return carritoItems.reduce((acc, item) => {
+      return acc + Number(item.cantidad || 0) * Number(item.precio_unitario || 0);
+    }, 0);
+  }, [carritoItems]);
+
+  const variantesAgregadas = useMemo(() => {
+    return new Set(
+      carritoItems
+        .filter((item) => item.tipo_item === "producto" && item.id_variante)
+        .map((item) => String(item.id_variante))
+    );
+  }, [carritoItems]);
+
+  const serviciosAgregados = useMemo(() => {
+    return new Set(
+      carritoItems
+        .filter((item) => item.tipo_item === "servicio_taller" && item.id_servicio_taller)
+        .map((item) => String(item.id_servicio_taller))
+    );
+  }, [carritoItems]);
 
   function seleccionarCliente(clienteId) {
     const cliente = clientes.find((item) => String(item.id) === String(clienteId));
@@ -131,14 +188,92 @@ export default function CotizacionesListPage() {
     }));
   }
 
-  function cambiarTipoItem(tipoItem) {
-    setForm((prev) => ({
-      ...prev,
-      item: {
-        ...itemInicial,
-        tipo_item: tipoItem,
+  function agregarProducto(variante) {
+    setCarritoItems((actual) => {
+      const existente = actual.find(
+        (item) =>
+          item.tipo_item === "producto" &&
+          Number(item.id_variante) === Number(variante.id)
+      );
+
+      if (existente) {
+        return actual.map((item) =>
+          item.temp_id === existente.temp_id
+            ? { ...item, cantidad: String(Number(item.cantidad || 0) + 1) }
+            : item
+        );
+      }
+
+      return [
+        ...actual,
+        {
+          temp_id: crearTempId("producto"),
+          tipo_item: "producto",
+          id_variante: variante.id,
+          id_servicio_taller: null,
+          descripcion_snapshot: descripcionVariante(variante),
+          detalle: variante.nombre_variante || variante.sku || "",
+          cantidad: "1",
+          precio_unitario: String(variante.precio_minorista || 0),
+        },
+      ];
+    });
+  }
+
+  function agregarServicio(servicio) {
+    setCarritoItems((actual) => [
+      ...actual,
+      {
+        temp_id: crearTempId("servicio"),
+        tipo_item: "servicio_taller",
+        id_variante: null,
+        id_servicio_taller: servicio.id,
+        descripcion_snapshot: servicio.nombre,
+        detalle: servicio.descripcion || "Servicio de taller",
+        cantidad: "1",
+        precio_unitario: String(servicio.precio_sugerido || 0),
       },
-    }));
+    ]);
+  }
+
+  function agregarLineaLibre() {
+    if (!lineaLibre.descripcion_snapshot.trim()) {
+      setError("La linea libre necesita descripcion");
+      return;
+    }
+
+    if (Number(lineaLibre.precio_unitario || 0) < 0) {
+      setError("El precio de la linea libre no puede ser negativo");
+      return;
+    }
+
+    setError("");
+    setCarritoItems((actual) => [
+      ...actual,
+      {
+        temp_id: crearTempId("libre"),
+        tipo_item: "linea_libre",
+        id_variante: null,
+        id_servicio_taller: null,
+        descripcion_snapshot: normalizeTextUpper(lineaLibre.descripcion_snapshot),
+        detalle: "Linea libre",
+        cantidad: lineaLibre.cantidad || "1",
+        precio_unitario: lineaLibre.precio_unitario || "0",
+      },
+    ]);
+    setLineaLibre(lineaLibreInicial);
+  }
+
+  function actualizarItemCarrito(tempId, campo, value) {
+    setCarritoItems((actual) =>
+      actual.map((item) =>
+        item.temp_id === tempId ? { ...item, [campo]: value } : item
+      )
+    );
+  }
+
+  function quitarItemCarrito(tempId) {
+    setCarritoItems((actual) => actual.filter((item) => item.temp_id !== tempId));
   }
 
   async function handleCrear(e) {
@@ -147,7 +282,11 @@ export default function CotizacionesListPage() {
     setError("");
 
     try {
-      const item = normalizarItem(form.item);
+      if (carritoItems.length === 0) {
+        setError("Agrega al menos un item para crear la cotizacion");
+        return;
+      }
+
       const payload = {
         tipo: form.tipo,
         id_sucursal: Number(sucursalId || 1),
@@ -157,7 +296,7 @@ export default function CotizacionesListPage() {
         cliente_telefono_snapshot: form.cliente_telefono_snapshot || null,
         problema_reportado: form.tipo === "reparacion" ? form.problema_reportado : null,
         observaciones: form.observaciones || null,
-        items: item ? [item] : [],
+        items: carritoItems.map(normalizarItem),
       };
 
       const creada = await crearCotizacion(payload);
@@ -236,62 +375,128 @@ export default function CotizacionesListPage() {
               </label>
             )}
 
-            <div style={styles.itemBox}>
+            <section style={styles.quoteBuilder}>
               <div style={styles.itemHeader}>
-                <strong>Primer item</strong>
-                <select value={form.item.tipo_item} onChange={(e) => cambiarTipoItem(e.target.value)} style={styles.compactSelect}>
-                  <option value="producto">Producto</option>
-                  <option value="servicio_taller">Servicio taller</option>
-                  <option value="linea_libre">Linea libre</option>
-                </select>
+                <div>
+                  <strong>Items de la cotizacion</strong>
+                  <p style={styles.builderHint}>
+                    Busca productos o servicios y agregalos rapido a la cotizacion.
+                  </p>
+                </div>
+                <strong style={styles.builderTotal}>{formatMoney(totalCotizacionDraft)}</strong>
               </div>
 
-              {form.item.tipo_item === "producto" && (
-                <label style={styles.field}>
-                  <span>Producto / variante</span>
-                  <select value={form.item.id_variante} onChange={(e) => actualizarItem("id_variante", e.target.value)} style={styles.input}>
-                    <option value="">Sin item inicial</option>
-                    {variantes.map((variante) => (
-                      <option key={variante.id} value={variante.id}>
-                        {variante.producto_nombre} {variante.nombre_variante ? `- ${variante.nombre_variante}` : ""} ({formatMoney(variante.precio_minorista)})
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-
-              {form.item.tipo_item === "servicio_taller" && (
-                <label style={styles.field}>
-                  <span>Servicio</span>
-                  <select value={form.item.id_servicio_taller} onChange={(e) => actualizarItem("id_servicio_taller", e.target.value)} style={styles.input}>
-                    <option value="">Sin item inicial</option>
-                    {servicios.map((servicio) => (
-                      <option key={servicio.id} value={servicio.id}>
-                        {servicio.nombre} ({formatMoney(servicio.precio_sugerido)})
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-
-              {form.item.tipo_item === "linea_libre" && (
-                <label style={styles.field}>
-                  <span>Descripcion</span>
-                  <input value={form.item.descripcion_snapshot} onChange={(e) => actualizarItem("descripcion_snapshot", e.target.value)} style={styles.input} />
-                </label>
-              )}
-
-              <div style={styles.twoCols}>
-                <label style={styles.field}>
-                  <span>Cantidad</span>
-                  <input type="number" min="0.01" step="0.01" value={form.item.cantidad} onChange={(e) => actualizarItem("cantidad", e.target.value)} style={styles.input} />
-                </label>
-                <label style={styles.field}>
-                  <span>Precio manual</span>
-                  <input type="number" min="0" step="0.01" value={form.item.precio_unitario} onChange={(e) => actualizarItem("precio_unitario", e.target.value)} placeholder="Opcional" style={styles.input} />
-                </label>
+              <div style={styles.searchBox}>
+                <Search size={17} />
+                <input
+                  value={catalogoQuery}
+                  onChange={(e) => setCatalogoQuery(e.target.value)}
+                  placeholder="Buscar producto, SKU, servicio o codigo..."
+                  style={styles.searchInput}
+                />
               </div>
-            </div>
+
+              <div style={styles.catalogArea}>
+                <div style={styles.catalogColumn}>
+                  <div style={styles.catalogHeader}>
+                    <strong>Productos</strong>
+                    <span>{productosFiltrados.length}</span>
+                  </div>
+
+                  <div style={styles.catalogList}>
+                    {productosFiltrados.length === 0 ? (
+                      <div style={styles.emptySmall}>No hay productos para esa busqueda.</div>
+                    ) : (
+                      productosFiltrados.map((variante) => (
+                        <CotizacionCatalogCard
+                          key={variante.id}
+                          title={descripcionVariante(variante)}
+                          meta={metaVariante(variante)}
+                          price={variante.precio_minorista}
+                          badge={variante.categoria_nombre || "Producto"}
+                          selected={variantesAgregadas.has(String(variante.id))}
+                          onAdd={() => agregarProducto(variante)}
+                        />
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {form.tipo === "reparacion" && (
+                  <div style={styles.catalogColumn}>
+                    <div style={styles.catalogHeader}>
+                      <strong>Servicios</strong>
+                      <span>{serviciosFiltrados.length}</span>
+                    </div>
+
+                    <div style={styles.catalogList}>
+                      {serviciosFiltrados.length === 0 ? (
+                        <div style={styles.emptySmall}>No hay servicios para esa busqueda.</div>
+                      ) : (
+                        serviciosFiltrados.map((servicio) => (
+                          <CotizacionCatalogCard
+                            key={servicio.id}
+                            title={servicio.nombre}
+                            meta={servicio.descripcion || "Servicio de taller"}
+                            price={servicio.precio_sugerido}
+                            badge="Servicio"
+                            selected={serviciosAgregados.has(String(servicio.id))}
+                            onAdd={() => agregarServicio(servicio)}
+                          />
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div style={styles.lineaLibreBox}>
+                <strong>Linea libre</strong>
+                <div style={styles.lineaLibreGrid}>
+                  <input
+                    value={lineaLibre.descripcion_snapshot}
+                    onChange={(e) =>
+                      setLineaLibre((prev) => ({
+                        ...prev,
+                        descripcion_snapshot: e.target.value,
+                      }))
+                    }
+                    placeholder="Descripcion manual"
+                    style={styles.input}
+                  />
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={lineaLibre.cantidad}
+                    onChange={(e) =>
+                      setLineaLibre((prev) => ({ ...prev, cantidad: e.target.value }))
+                    }
+                    style={styles.input}
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={lineaLibre.precio_unitario}
+                    onChange={(e) =>
+                      setLineaLibre((prev) => ({ ...prev, precio_unitario: e.target.value }))
+                    }
+                    placeholder="Precio"
+                    style={styles.input}
+                  />
+                  <button type="button" onClick={agregarLineaLibre} style={styles.secondaryButton}>
+                    <Plus size={16} /> Agregar
+                  </button>
+                </div>
+              </div>
+
+              <CotizacionCarrito
+                items={carritoItems}
+                onChange={actualizarItemCarrito}
+                onRemove={quitarItemCarrito}
+              />
+            </section>
 
             <label style={styles.field}>
               <span>Observaciones</span>
@@ -339,6 +544,87 @@ export default function CotizacionesListPage() {
   );
 }
 
+function CotizacionCatalogCard({ title, meta, price, badge, selected = false, onAdd }) {
+  return (
+    <button
+      type="button"
+      onClick={onAdd}
+      style={{ ...styles.catalogCard, ...(selected ? styles.catalogCardSelected : {}) }}
+      title={selected ? "Ya esta agregado. Click para sumar otra unidad" : "Click para agregar"}
+    >
+      <div>
+        <strong>{title}</strong>
+        <p style={styles.catalogMeta}>{meta || "-"}</p>
+      </div>
+      <div style={styles.catalogRight}>
+        <span style={selected ? styles.catalogBadgeSelected : styles.catalogBadge}>
+          {selected ? "Agregado" : badge}
+        </span>
+        <strong>{formatMoney(price || 0)}</strong>
+      </div>
+    </button>
+  );
+}
+
+function CotizacionCarrito({ items, onChange, onRemove }) {
+  if (items.length === 0) {
+    return <div style={styles.cartEmpty}>Todavia no agregaste items a la cotizacion.</div>;
+  }
+
+  return (
+    <div style={styles.cartBox}>
+      <div style={styles.catalogHeader}>
+        <strong>Carrito</strong>
+        <span>{items.length} item(s)</span>
+      </div>
+
+      {items.map((item) => (
+        <article key={item.temp_id} style={styles.cartRow}>
+          <div style={styles.cartInfo}>
+            <span style={badgeTipo(item.tipo_item === "servicio_taller" ? "reparacion" : "venta")}>
+              {labelTipoItem(item.tipo_item)}
+            </span>
+            <strong>{item.descripcion_snapshot}</strong>
+            {item.detalle && <small>{item.detalle}</small>}
+          </div>
+
+          <div style={styles.cartControls}>
+            <input
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={item.cantidad}
+              onChange={(e) => onChange(item.temp_id, "cantidad", e.target.value)}
+              style={styles.qtyInput}
+              title="Cantidad"
+            />
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={item.precio_unitario}
+              onChange={(e) => onChange(item.temp_id, "precio_unitario", e.target.value)}
+              style={styles.priceInput}
+              title="Precio"
+            />
+            <strong style={styles.cartSubtotal}>
+              {formatMoney(Number(item.cantidad || 0) * Number(item.precio_unitario || 0))}
+            </strong>
+            <button
+              type="button"
+              onClick={() => onRemove(item.temp_id)}
+              style={styles.iconDanger}
+              title="Quitar item"
+            >
+              <Trash2 size={15} />
+            </button>
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
 function CotizacionCard({ cotizacion }) {
   return (
     <article style={styles.card}>
@@ -375,11 +661,7 @@ function Info({ label, value }) {
   );
 }
 
-function normalizarItem(item) {
-  if (item.tipo_item === "producto" && !item.id_variante) return null;
-  if (item.tipo_item === "servicio_taller" && !item.id_servicio_taller) return null;
-  if (item.tipo_item === "linea_libre" && !item.descripcion_snapshot.trim()) return null;
-
+function normalizarItem(item, index) {
   return {
     tipo_item: item.tipo_item,
     id_variante: item.id_variante ? Number(item.id_variante) : null,
@@ -387,7 +669,33 @@ function normalizarItem(item) {
     descripcion_snapshot: item.descripcion_snapshot || null,
     cantidad: item.cantidad || "1",
     precio_unitario: item.precio_unitario === "" ? null : item.precio_unitario,
+    orden: index,
   };
+}
+
+function descripcionVariante(variante) {
+  return [variante.producto_nombre, variante.nombre_variante]
+    .filter(Boolean)
+    .join(" - ");
+}
+
+function metaVariante(variante) {
+  return [
+    variante.sku ? `SKU ${variante.sku}` : null,
+    variante.codigo_proveedor ? `Prov ${variante.codigo_proveedor}` : null,
+    variante.stock_disponible != null ? `Stock ${variante.stock_disponible}` : null,
+  ]
+    .filter(Boolean)
+    .join(" - ");
+}
+
+function labelTipoItem(tipo) {
+  const labels = {
+    producto: "Producto",
+    servicio_taller: "Servicio",
+    linea_libre: "Libre",
+  };
+  return labels[tipo] || tipo;
 }
 
 function labelEstado(estado) {
@@ -435,7 +743,7 @@ const styles = {
   title: { margin: "3px 0 0", fontSize: 34, fontWeight: 1000 },
   subtitle: { margin: "8px 0 0", color: "#cbd5e1", fontWeight: 700 },
   heroButton: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, border: "1px solid rgba(255,255,255,.22)", background: "rgba(255,255,255,.08)", color: "white", borderRadius: 13, padding: "12px 14px", fontWeight: 1000, cursor: "pointer" },
-  layout: { display: "grid", gridTemplateColumns: "420px minmax(0, 1fr)", gap: 16, alignItems: "start" },
+  layout: { display: "grid", gridTemplateColumns: "minmax(460px, 560px) minmax(0, 1fr)", gap: 16, alignItems: "start" },
   layoutMobile: { gridTemplateColumns: "1fr" },
   panel: { background: "white", border: "1px solid #e2e8f0", borderRadius: 20, overflow: "hidden", boxShadow: "0 14px 30px rgba(15,23,42,.06)" },
   panelHeader: { padding: 16, borderBottom: "1px solid #e2e8f0" },
@@ -453,6 +761,32 @@ const styles = {
   itemBox: { display: "grid", gap: 10, border: "1px solid #e2e8f0", borderRadius: 16, padding: 12, background: "#f8fafc" },
   itemHeader: { display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" },
   primaryButton: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, border: "none", background: "#f97316", color: "white", borderRadius: 13, padding: "12px 16px", fontWeight: 1000, cursor: "pointer" },
+  secondaryButton: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, border: "1px solid #cbd5e1", background: "#0f172a", color: "white", borderRadius: 12, padding: "11px 12px", fontWeight: 1000, cursor: "pointer", whiteSpace: "nowrap" },
+  quoteBuilder: { display: "grid", gap: 12, border: "1px solid #e2e8f0", borderRadius: 16, padding: 12, background: "#f8fafc" },
+  builderHint: { margin: "4px 0 0", color: "#64748b", fontSize: 12, fontWeight: 750 },
+  builderTotal: { color: "#047857", fontSize: 18, whiteSpace: "nowrap" },
+  catalogArea: { display: "grid", gridTemplateColumns: "1fr", gap: 10 },
+  catalogColumn: { display: "grid", gap: 8, minWidth: 0 },
+  catalogHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, color: "#334155", fontSize: 13, fontWeight: 1000 },
+  catalogList: { display: "grid", gap: 8, maxHeight: 310, overflow: "auto", paddingRight: 2 },
+  catalogCard: { width: "100%", display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 10, alignItems: "center", textAlign: "left", border: "1px solid #dbe3ef", background: "white", color: "#0f172a", borderRadius: 12, padding: 10, cursor: "pointer" },
+  catalogCardSelected: { border: "1px solid #34d399", background: "#ecfdf5", boxShadow: "inset 4px 0 0 #10b981" },
+  catalogMeta: { margin: "4px 0 0", color: "#64748b", fontSize: 12, fontWeight: 750, overflowWrap: "anywhere" },
+  catalogRight: { display: "grid", justifyItems: "end", gap: 5, whiteSpace: "nowrap" },
+  catalogBadge: { borderRadius: 999, padding: "4px 7px", background: "#eef2ff", color: "#3730a3", fontSize: 11, fontWeight: 1000, maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis" },
+  catalogBadgeSelected: { borderRadius: 999, padding: "4px 7px", background: "#d1fae5", color: "#047857", border: "1px solid #6ee7b7", fontSize: 11, fontWeight: 1000 },
+  emptySmall: { padding: 10, borderRadius: 12, border: "1px dashed #cbd5e1", color: "#64748b", fontWeight: 850, background: "white" },
+  lineaLibreBox: { display: "grid", gap: 8, borderTop: "1px solid #e2e8f0", paddingTop: 10 },
+  lineaLibreGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8, alignItems: "center" },
+  cartEmpty: { border: "1px dashed #cbd5e1", borderRadius: 12, padding: 12, color: "#64748b", background: "white", fontWeight: 850 },
+  cartBox: { display: "grid", gap: 8, borderTop: "1px solid #e2e8f0", paddingTop: 10 },
+  cartRow: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 10, alignItems: "center", border: "1px solid #e2e8f0", borderRadius: 12, padding: 10, background: "white" },
+  cartInfo: { display: "grid", gap: 5, minWidth: 0 },
+  cartControls: { display: "grid", gridTemplateColumns: "72px 105px minmax(82px, auto) 34px", gap: 7, alignItems: "center" },
+  qtyInput: { width: "100%", border: "1px solid #cbd5e1", borderRadius: 10, padding: "9px 8px", fontWeight: 850, boxSizing: "border-box" },
+  priceInput: { width: "100%", border: "1px solid #cbd5e1", borderRadius: 10, padding: "9px 8px", fontWeight: 850, boxSizing: "border-box" },
+  cartSubtotal: { textAlign: "right", whiteSpace: "nowrap" },
+  iconDanger: { width: 34, height: 34, display: "inline-flex", alignItems: "center", justifyContent: "center", border: "1px solid #fecaca", background: "#fef2f2", color: "#b91c1c", borderRadius: 10, cursor: "pointer" },
   filters: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) 180px", gap: 10, padding: 16, borderBottom: "1px solid #e2e8f0" },
   searchBox: { display: "flex", alignItems: "center", gap: 8, border: "1px solid #cbd5e1", borderRadius: 12, padding: "0 11px", background: "#f8fafc" },
   searchInput: { flex: 1, border: "none", outline: "none", background: "transparent", padding: "12px 0", fontWeight: 750, minWidth: 0 },

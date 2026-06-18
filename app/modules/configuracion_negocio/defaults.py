@@ -1,0 +1,18 @@
+DEFAULT_CONFIGURACION_NEGOCIO = {
+    "id": 1,
+    "nombre_negocio": "Emprendimiento Agus",
+    "direccion": None,
+    "telefono": None,
+    "horarios_retiro": "Lunes a viernes\n09:00 a 12:00\n16:30 a 20:00\n\nSábados\n09:00 a 12:00\n17:00 a 19:00",
+    "whatsapp_cierre": "Gracias por confiar en nosotros.\n¡Te esperamos!",
+    "texto_beneficio_pago": "Abonando en efectivo o transferencia tenés 10% de descuento sobre los trabajos presupuestados.",
+    "whatsapp_retiro_mostrar_total": True,
+    "whatsapp_retiro_mostrar_trabajos": True,
+    "plantilla_turno_confirmacion": "Hola {cliente_nombre} 👋\n\nTu turno quedó agendado para el {fecha_turno} {momento_turno} en {nombre_negocio}.\n\nTrabajo solicitado:\n{tipo_servicio}\n\n{fecha_prometida_bloque}{whatsapp_cierre} 🚲",
+    "plantilla_turno_recordatorio": "Hola {cliente_nombre} 👋\n\nTe recordamos que el {fecha_turno} {momento_turno} te esperamos en {nombre_negocio} para recibir tu bicicleta.\n\nTrabajo solicitado:\n{tipo_servicio}\n\nSi necesitás reprogramar, avisanos con anticipación.\n\n{whatsapp_cierre} 🚲",
+    "plantilla_turno_aviso": "Hola {cliente_nombre} 👋\n\nTe avisamos desde {nombre_negocio} por tu turno de taller del {fecha_turno}.\n\nTrabajo solicitado:\n{tipo_servicio}\n\n{fecha_prometida_bloque}Cualquier cambio te avisamos por este medio. 🚲",
+    "plantilla_retiro_taller": "🚲 *¡Tu bicicleta está lista para retirar!*\n\nHola {cliente_nombre} 👋\n\nTenemos buenas noticias:\n\n🔹 {bicicleta}\n\nya se encuentra lista para retirar.\n\n{trabajos_bloque}{total_bloque}📍 *{nombre_negocio}*\n\n🕒 *Horarios de retiro:*\n\n{horarios_retiro}\n\n🙌 {whatsapp_cierre} 🚲",
+    "plantilla_cotizacion_whatsapp": "Hola {cliente_nombre}, te paso la cotización {numero_cotizacion}.\n\nTipo: {tipo_cotizacion}.\n{consulta_bloque}{detalle_bloque}Total estimado: {total}\n{validez_bloque}\nNo reserva stock ni genera deuda hasta que la confirmes.",
+    "condiciones_presupuesto_taller": "Presupuesto no fiscal. No válido como factura.\nValidez estimada: 7 días desde la fecha de emisión.\nEl importe puede variar si durante la reparación aparecen fallas o repuestos no detectados inicialmente.\n{texto_beneficio_pago}",
+    "condiciones_cotizacion": "Cotización no fiscal. No válida como factura.\nNo reserva stock ni genera deuda hasta que sea confirmada.\nLos precios pueden variar al vencer la validez indicada.",
+}

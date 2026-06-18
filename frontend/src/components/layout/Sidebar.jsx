@@ -104,6 +104,7 @@ const groups = [
     links: [
       { to: "/usuarios", label: "Usuarios", icon: UserCog, roles: ADMIN },
       { to: "/auditoria", label: "Auditoria", icon: Gauge, roles: ADMIN },
+      { to: "/configuracion-negocio", label: "Config. Negocio", icon: Settings2, roles: ADMIN },
       { to: "/configuracion-comercial", label: "Config. Comercial", icon: Settings2, roles: ADMIN },
     ],
   },

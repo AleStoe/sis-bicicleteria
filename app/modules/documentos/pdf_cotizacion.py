@@ -14,6 +14,8 @@ from .pdf import (
     _money,
     _text,
 )
+from app.modules.configuracion_negocio.service import obtener_configuracion_negocio
+from app.modules.configuracion_negocio.template import lineas_configurables
 
 
 def _draw_watermark(c, width, height):
@@ -107,6 +109,7 @@ def _draw_row(c, *, y, width, margin_x, item):
 def generar_cotizacion_pdf(data: dict) -> bytes:
     cotizacion = data["cotizacion"]
     items = data.get("items", [])
+    config = obtener_configuracion_negocio()
 
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
@@ -229,17 +232,13 @@ def generar_cotizacion_pdf(data: dict) -> bytes:
     c.line(margin_x, y, width - margin_x, y)
     y -= 7 * mm
     c.setFont("Helvetica", 8)
-    condiciones = [
-        "Cotizacion no fiscal. No valida como factura.",
-        "No reserva stock ni genera deuda hasta que sea confirmada.",
-        "Los precios pueden variar al vencer la validez indicada.",
-    ]
+    condiciones = lineas_configurables(config.get("condiciones_cotizacion"), config)
     for condicion in condiciones:
         c.drawString(margin_x, y, f"- {condicion}")
         y -= 5 * mm
 
     c.setFont("Helvetica", 8)
-    c.drawCentredString(width / 2, 12 * mm, "Emprendimiento Agus - Documento interno")
+    c.drawCentredString(width / 2, 12 * mm, f"{config.get('nombre_negocio')} - Documento interno")
 
     c.showPage()
     c.save()

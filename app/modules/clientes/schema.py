@@ -36,11 +36,22 @@ class ClienteUpdateInput(BaseModel):
 
 class BicicletaClienteCreateInput(BaseModel):
     marca: str = Field(min_length=1, max_length=100)
-    modelo: str = Field(min_length=1, max_length=100)
+    modelo: str | None = Field(default=None, max_length=100)
     rodado: str | None = Field(default=None, max_length=50)
     color: str | None = Field(default=None, max_length=50)
     numero_cuadro: str | None = Field(default=None, max_length=100)
     notas: str | None = None
+
+
+class BicicletaClienteUpdateInput(BaseModel):
+    marca: str = Field(min_length=1, max_length=100)
+    modelo: str | None = Field(default=None, max_length=100)
+    rodado: str | None = Field(default=None, max_length=50)
+    color: str | None = Field(default=None, max_length=50)
+    numero_cuadro: str | None = Field(default=None, max_length=100)
+    notas: str | None = None
+    id_usuario: int | None = Field(default=None, gt=0)
+    id_sucursal: int | None = Field(default=None, gt=0)
 
 
 class AutorizarServiceVencidoInput(BaseModel):

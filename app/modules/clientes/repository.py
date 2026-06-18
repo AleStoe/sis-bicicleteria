@@ -292,6 +292,57 @@ def insert_bicicleta_cliente(conn, cliente_id: int, data):
             ),
         )
         return cur.fetchone()
+
+
+def update_bicicleta_cliente(conn, cliente_id: int, bicicleta_id: int, data):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE bicicletas_clientes
+            SET
+                marca = %s,
+                modelo = %s,
+                rodado = %s,
+                color = %s,
+                numero_cuadro = %s,
+                notas = %s,
+                updated_at = now()
+            WHERE id = %s
+              AND id_cliente = %s
+            RETURNING
+                id,
+                id_cliente,
+                id_bicicleta_serializada,
+                id_venta_origen,
+                marca,
+                modelo,
+                rodado,
+                color,
+                numero_cuadro,
+                notas,
+                fecha_compra,
+                condicion_entrega,
+                plan_postventa,
+                fecha_limite_service_gratis,
+                service_gratis_usado,
+                id_orden_service_gratis,
+                service_gratis_autorizado_fuera_plazo,
+                motivo_service_gratis_fuera_plazo,
+                id_usuario_autoriza_service_gratis,
+                fecha_autoriza_service_gratis
+            """,
+            (
+                data.marca,
+                data.modelo,
+                data.rodado,
+                data.color,
+                data.numero_cuadro,
+                data.notas,
+                bicicleta_id,
+                cliente_id,
+            ),
+        )
+        return cur.fetchone()
     
 def get_bicicleta_cliente_detalle(conn, cliente_id: int, bicicleta_id: int):
     with conn.cursor() as cur:

@@ -54,6 +54,7 @@ export default function VentaCarritoSidebar({
   const clienteSeleccionado = clientes.find(
     (cliente) => Number(cliente.id) === Number(clienteId)
   );
+  const clienteEsConsumidorFinal = Number(clienteId) === 1;
 
   return (
     <div style={styles.wrapper}>
@@ -81,7 +82,13 @@ export default function VentaCarritoSidebar({
             <input
               value={clienteQuery}
               onChange={(e) => onClienteQueryChange(e.target.value)}
+              onFocus={() => {
+                if (clienteEsConsumidorFinal) {
+                  onClienteQueryChange("");
+                }
+              }}
               placeholder="Buscar por nombre, DNI o teléfono..."
+              {...{ placeholder: "Buscar cliente por nombre/telefono..." }}
               style={styles.clientSearchInput}
             />
           </label>

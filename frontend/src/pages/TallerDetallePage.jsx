@@ -86,10 +86,10 @@ function AccionesRapidasTaller({
   onRetirada,
 }) {
   const tieneItemsPresupuesto = items.some((item) => item.etapa !== "cancelado");
-  const tieneServiciosEjecutados = items.some(
-    (item) => item.tipo_item === "servicio" && item.etapa === "ejecutado"
-  );
-  const puedeWhatsApp = orden.estado === "lista_para_retirar";
+  const puedeWhatsApp =
+    orden.estado === "lista_para_retirar" ||
+    puedeMarcarListaParaRetirar ||
+    puedeGenerarVenta;
 
   return (
     <section style={styles.quickActionsCard}>
@@ -125,7 +125,7 @@ function AccionesRapidasTaller({
           disabled={
             guardando ||
             esOrdenPostventa ||
-            (orden.id_venta_generada ? false : !puedeGenerarVenta || tieneServiciosEjecutados)
+            (orden.id_venta_generada ? false : !puedeGenerarVenta)
           }
           onClick={orden.id_venta_generada ? onCobrar : onGenerarVenta}
         />
@@ -138,7 +138,7 @@ function AccionesRapidasTaller({
         />
         <QuickAction
           title="WhatsApp retiro"
-          detail={puedeWhatsApp ? "Abre mensaje y marca aviso" : "Disponible cuando este lista"}
+          detail={puedeWhatsApp ? "Abre mensaje y registra aviso" : "Disponible cuando este terminada"}
           label="Enviar WhatsApp"
           disabled={guardando || !puedeWhatsApp}
           onClick={onWhatsappRetiro}
@@ -152,11 +152,6 @@ function AccionesRapidasTaller({
         />
       </div>
 
-      {tieneServiciosEjecutados && !orden.id_venta_generada && !esOrdenPostventa ? (
-        <p style={styles.quickActionsWarning}>
-          Hay servicios ejecutados. La generacion de venta queda bloqueada hasta adaptar ventas para lineas sin variante.
-        </p>
-      ) : null}
       {resumen.facturables === 0 && !esOrdenPostventa ? (
         <p style={styles.quickActionsHint}>Para facturar, primero debe haber items ejecutados.</p>
       ) : null}
@@ -496,7 +491,7 @@ export default function TallerDetallePage() {
     }
   }
 
- async function agregarItem(e) {
+  async function agregarItem(e) {
     e.preventDefault();
 
 
@@ -576,6 +571,59 @@ export default function TallerDetallePage() {
     }
   }
 
+  async function agregarItemDirectoDesdeSelector({ tipo_item, id, precio_unitario }) {
+    if (guardando) return;
+
+    const esServicio = tipo_item === "servicio";
+    const cantidad = Number(itemForm.cantidad || 1);
+
+    if (cantidad <= 0) {
+      setError("La cantidad debe ser mayor a cero");
+      return;
+    }
+
+    if (!esServicio) {
+      const varianteSeleccionada = variantes.find((v) => String(v.id) === String(id));
+
+      if (varianteSeleccionada && !esItemPermitidoParaTaller(varianteSeleccionada)) {
+        setError("No podés agregar bicicletas completas al taller. Seleccioná repuestos o accesorios.");
+        return;
+      }
+    }
+
+    try {
+      setGuardando(true);
+      setError("");
+      setMensaje("");
+
+      await agregarItemOrdenTaller(ordenId, {
+        tipo_item,
+        ...(esServicio
+          ? { id_servicio_taller: Number(id) }
+          : { id_variante: Number(id) }),
+        cantidad,
+        precio_unitario: Number(precio_unitario || 0),
+        id_usuario: usuarioId,
+      });
+
+      setItemForm({
+        tipo_item,
+        id_variante: "",
+        id_servicio_taller: "",
+        cantidad: "1",
+        precio_unitario: "",
+      });
+      setBusquedaVariante("");
+      setBusquedaServicio("");
+      await refrescarOrden();
+      setMensaje(esServicio ? "Servicio agregado correctamente" : "Repuesto agregado correctamente");
+    } catch (err) {
+      setError(err?.detail || err?.message || "No se pudo agregar el item");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
   async function aprobarItem(item, aprobado) {
     try {
       setGuardando(true);
@@ -649,8 +697,7 @@ export default function TallerDetallePage() {
       setMensaje("");
       const resultado = await generarVentaDesdeOrdenTaller(ordenId, { id_usuario: usuarioId });
       await refrescarOrden();
-      setMensaje(`Venta #${resultado.venta_id} generada desde taller`);
-      navigate(`/ventas/${resultado.venta_id}/cobro`);
+      setMensaje(`Venta #${resultado.venta_id} generada desde taller. Ya podés cobrarla desde esta OT.`);
     } catch (err) {
       setError(err?.detail || err?.message || "No se pudo generar la venta desde taller");
     } finally {
@@ -715,6 +762,13 @@ export default function TallerDetallePage() {
       setGuardando(true);
       setError("");
       setMensaje("");
+      if (orden.estado !== "lista_para_retirar" && puedeMarcarListaParaRetirar) {
+        await cambiarEstadoOrdenTaller(ordenId, {
+          nuevo_estado: "lista_para_retirar",
+          id_usuario: usuarioId,
+        });
+      }
+
       const data = await generarMensajeListaRetiroOrdenTaller(ordenId);
 
       if (data.whatsapp_url) {
@@ -896,6 +950,13 @@ export default function TallerDetallePage() {
                           servicio={servicio}
                           selected={String(itemForm.id_servicio_taller) === String(servicio.id)}
                           onSelect={() => seleccionarServicio(servicio.id)}
+                          onDoubleAdd={() =>
+                            agregarItemDirectoDesdeSelector({
+                              tipo_item: "servicio",
+                              id: servicio.id,
+                              precio_unitario: servicio.precio_sugerido,
+                            })
+                          }
                         />
                       ))
                     )}
@@ -927,6 +988,13 @@ export default function TallerDetallePage() {
                           item={v}
                           selected={String(itemForm.id_variante) === String(v.id)}
                           onSelect={() => seleccionarVariante(v.id)}
+                          onDoubleAdd={() =>
+                            agregarItemDirectoDesdeSelector({
+                              tipo_item: "repuesto",
+                              id: v.id,
+                              precio_unitario: v.precio_minorista,
+                            })
+                          }
                         />
                       ))
                     )}

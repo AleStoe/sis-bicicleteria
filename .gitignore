@@ -1,50 +1,30 @@
 # Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
 .pytest_cache/
 
 # Entornos
 .env
-.env.test
+.env.*
+!.env.example
 venv/
 .venv/
-
-# Uploads
-uploads/
 
 # Frontend
 frontend/node_modules/
-
-# OS
-.DS_Store
-Thumbs.db
-__pycache__/
-*.pyc
-.pytest_cache/
-__pycache__/
-*.pyc
-.pytest_cache/
-
-# Frontend build
 frontend/dist/
-
-# Node
-frontend/node_modules/
-
-# Python
-__pycache__/
-*.pyc
-.pytest_cache/
-
-# Env
-.env
-.venv/
-venv/
-
-# OS
-.DS_Store
-Thumbs.db
-
-frontend/dist/
-frontend/node_modules/
 frontend/.vite/
+
+# Uploads / generados locales
+uploads/
+*.zip
+*.bak
+*.tmp
+*.log
+backup*.sql
+*.backup.sql
+
+# OS
+.DS_Store
+Thumbs.db

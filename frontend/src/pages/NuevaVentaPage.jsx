@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   listarCatalogoPOS,
   listarCategorias,
@@ -23,6 +23,11 @@ import {
   puedeAgregarItemCatalogo,
 } from "../helpers/ventasItemsHelper";
 import { useSession } from "../context/SessionContext";
+import {
+  borrarVentaDraftGuardado,
+  guardarVentaDraft,
+  leerVentaDraftGuardado,
+} from "../services/ventaDraftStore";
 import {
   pageStyle,
   topBarStyle,
@@ -74,62 +79,6 @@ import {
 const DEFAULT_LIMIT = 80;
 const MOBILE_BREAKPOINT = 760;
 
-function getVentaDraftStorageKey({ sucursalId, usuarioId }) {
-  return `pos_venta_draft_sucursal_${sucursalId || "default"}_usuario_${usuarioId || "default"}`;
-}
-
-function leerVentaDraftGuardado({ sucursalId, usuarioId }) {
-  if (typeof window === "undefined") return null;
-
-  try {
-    const raw = window.localStorage.getItem(
-      getVentaDraftStorageKey({ sucursalId, usuarioId })
-    );
-
-    if (!raw) return null;
-
-    const draft = JSON.parse(raw);
-
-    if (!draft || !Array.isArray(draft.items)) return null;
-
-    return draft;
-  } catch (err) {
-    console.warn("No se pudo recuperar el carrito POS guardado", err);
-    return null;
-  }
-}
-
-function guardarVentaDraft({ sucursalId, usuarioId, draft }) {
-  if (typeof window === "undefined") return;
-
-  const storageKey = getVentaDraftStorageKey({ sucursalId, usuarioId });
-
-  try {
-    if (!draft?.items?.length) {
-      window.localStorage.removeItem(storageKey);
-      return;
-    }
-
-    window.localStorage.setItem(
-      storageKey,
-      JSON.stringify({
-        ...draft,
-        updated_at: new Date().toISOString(),
-      })
-    );
-  } catch (err) {
-    console.warn("No se pudo guardar el carrito POS", err);
-  }
-}
-
-function borrarVentaDraftGuardado({ sucursalId, usuarioId }) {
-  if (typeof window === "undefined") return;
-
-  window.localStorage.removeItem(
-    getVentaDraftStorageKey({ sucursalId, usuarioId })
-  );
-}
-
 function formatMoneyPOS(value) {
   return Number(value || 0).toLocaleString("es-AR", {
     style: "currency",
@@ -175,6 +124,7 @@ function useIsMobile(breakpoint = MOBILE_BREAKPOINT) {
 
 export default function NuevaVentaPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const searchRef = useRef(null);
   const { usuarioId, sucursalId, usuarioActual } = useSession();
   const [catalogo, setCatalogo] = useState([]);
@@ -206,6 +156,21 @@ export default function NuevaVentaPage() {
   const [draftPendiente, setDraftPendiente] = useState(null);
   const isMobile = useIsMobile();
 
+  const total = useMemo(() => {
+    return items.reduce((acc, item) => {
+      const precioUnitario = item.bonificado
+        ? 0
+        : Number(
+            item.precio_unitario_manual ||
+              item.precio_final ||
+              item.precio_lista ||
+              0
+          );
+
+      return acc + precioUnitario * Number(item.cantidad || 0);
+    }, 0);
+  }, [items]);
+
   useEffect(() => {
     cargarInicial();
   }, []);
@@ -224,10 +189,14 @@ export default function NuevaVentaPage() {
       usuarioId,
       draft: {
         clienteId,
+        cliente: getClienteSeleccionado(),
         tipoPrecio,
         items,
+        total,
         observaciones,
         usarCredito,
+        idUsuario: usuarioId,
+        idSucursal: sucursalId,
       },
     });
   }, [
@@ -237,8 +206,10 @@ export default function NuevaVentaPage() {
     clienteId,
     tipoPrecio,
     items,
+    total,
     observaciones,
     usarCredito,
+    clientes,
   ]);
 
   useEffect(() => {
@@ -322,13 +293,27 @@ export default function NuevaVentaPage() {
       const draftGuardado = leerVentaDraftGuardado({ sucursalId, usuarioId });
 
       if (draftGuardado?.items?.length) {
-        setDraftPendiente({
+        const draftConContexto = {
           ...draftGuardado,
           clienteInicialId,
           tipoPrecioInicial,
           clienteGuardadoExiste: (clientesData || []).some(
             (cliente) => Number(cliente.id) === Number(draftGuardado.clienteId)
           ),
+        };
+
+        if (location.state?.restaurarVentaDraft) {
+          aplicarVentaPendiente(draftConContexto, {
+            abrirCarrito: Boolean(location.state?.abrirCarrito),
+            mostrarMensaje: false,
+          });
+          navigate(location.pathname, { replace: true });
+          setCarritoRestaurado(true);
+          return;
+        }
+
+        setDraftPendiente({
+          ...draftConContexto,
         });
         setMostrarRecuperacionDraft(true);
       }
@@ -416,11 +401,9 @@ async function handleBuscarEnter(e) {
       return;
     }
 
-    await agregarItem(producto);
+    const agregado = await agregarItem(producto);
 
-    if (isMobile) {
-      setCarritoMobileAbierto(true);
-    }
+    if (!agregado) return;
 
     setCodigoRapido("");
     mostrarMensajePOS(`${producto.producto_nombre} agregado`);
@@ -459,21 +442,6 @@ async function handleBuscarEnter(e) {
     }
   }
 
-  const total = useMemo(() => {
-    return items.reduce((acc, item) => {
-      const precioUnitario = item.bonificado
-        ? 0
-        : Number(
-            item.precio_unitario_manual ||
-              item.precio_final ||
-              item.precio_lista ||
-              0
-          );
-
-      return acc + precioUnitario * Number(item.cantidad || 0);
-    }, 0);
-  }, [items]);
-
   function getClienteSeleccionado() {
     return clientes.find((cliente) => Number(cliente.id) === Number(clienteId));
   }
@@ -508,7 +476,7 @@ async function handleBuscarEnter(e) {
   async function agregarItem(producto) {
     if (!puedeAgregarItemCatalogo(producto, tipoPrecio)) {
       setError(`No se puede agregar: ${getMotivoBloqueoItemCatalogo(producto, tipoPrecio)}`);
-      return;
+      return false;
     }
 
     setError("");
@@ -540,7 +508,7 @@ async function handleBuscarEnter(e) {
         },
       ]);
 
-      return;
+      return true;
     }
 
     setItems((actual) => {
@@ -594,13 +562,15 @@ async function handleBuscarEnter(e) {
         },
       ];
     });
+
+    return true;
   }
 
   async function handleAgregarItemCatalogo(producto) {
-    await agregarItem(producto);
+    const agregado = await agregarItem(producto);
 
-    if (isMobile) {
-      setCarritoMobileAbierto(true);
+    if (agregado && isMobile) {
+      mostrarMensajePOS(`${producto.producto_nombre || "Producto"} agregado`);
     }
   }
 
@@ -678,41 +648,67 @@ async function handleBuscarEnter(e) {
   }
 
   function vaciarVenta() {
+    const consumidorFinal = clientes.find((cliente) => Number(cliente.id) === 1);
+
     setItems([]);
     setObservaciones("");
+    setClienteId("1");
+    setTipoPrecio(consumidorFinal ? tipoPrecioParaCliente(consumidorFinal) : "minorista");
+    setClienteQuery(consumidorFinal ? formatearClienteParaBusqueda(consumidorFinal) : "");
     setError("");
     setMensaje("");
     borrarVentaDraftGuardado({ sucursalId, usuarioId });
   }
 
-  function recuperarVentaPendiente() {
-    if (!draftPendiente) return;
+  function aplicarVentaPendiente(draft, { abrirCarrito = isMobile, mostrarMensaje = true } = {}) {
+    if (!draft) return;
 
     setClienteId(
-      draftPendiente.clienteGuardadoExiste
-        ? String(draftPendiente.clienteId)
-        : String(draftPendiente.clienteInicialId || "1")
+      draft.clienteGuardadoExiste
+        ? String(draft.clienteId)
+        : String(draft.clienteInicialId || "1")
     );
-    setTipoPrecio(draftPendiente.tipoPrecio || draftPendiente.tipoPrecioInicial || "minorista");
-    setItems(Array.isArray(draftPendiente.items) ? draftPendiente.items : []);
-    setObservaciones(draftPendiente.observaciones || "");
+
+    if (!draft.clienteGuardadoExiste && Number(draft.clienteId) !== 1) {
+      setError(
+        "Atención: la venta guardada tenía un cliente real, pero no se pudo restaurar. Revisá el cliente antes de cobrar."
+      );
+    }
+
+    setTipoPrecio(draft.tipoPrecio || draft.tipoPrecioInicial || "minorista");
+    setItems(Array.isArray(draft.items) ? draft.items : []);
+    setObservaciones(draft.observaciones || "");
     setUsarCredito(
-      typeof draftPendiente.usarCredito === "boolean"
-        ? draftPendiente.usarCredito
+      typeof draft.usarCredito === "boolean"
+        ? draft.usarCredito
         : true
     );
 
     setMostrarRecuperacionDraft(false);
     setDraftPendiente(null);
-    setMensaje("Venta pendiente recuperada.");
 
-    if (isMobile) {
+    if (mostrarMensaje) {
+      setMensaje("Venta pendiente recuperada.");
+    }
+
+    if (abrirCarrito) {
       setCarritoMobileAbierto(true);
     }
   }
 
+  function recuperarVentaPendiente() {
+    aplicarVentaPendiente(draftPendiente);
+  }
+
   function descartarVentaPendiente() {
+    const consumidorFinal = clientes.find((cliente) => Number(cliente.id) === 1);
+
     borrarVentaDraftGuardado({ sucursalId, usuarioId });
+    setItems([]);
+    setObservaciones("");
+    setClienteId("1");
+    setTipoPrecio(consumidorFinal ? tipoPrecioParaCliente(consumidorFinal) : "minorista");
+    setClienteQuery(consumidorFinal ? formatearClienteParaBusqueda(consumidorFinal) : "");
     setMostrarRecuperacionDraft(false);
     setDraftPendiente(null);
     setMensaje("Venta pendiente descartada.");
@@ -786,20 +782,27 @@ async function handleBuscarEnter(e) {
     if (!validarVentaAntesDeFinalizar()) return;
 
     setCarritoMobileAbierto(false);
+    const ventaDraft = {
+      clienteId,
+      cliente: getClienteSeleccionado(),
+      tipoPrecio,
+      items,
+      total,
+      observaciones,
+      usarCredito,
+      idUsuario: usuarioId,
+      idSucursal: sucursalId,
+    };
+
+    guardarVentaDraft({
+      sucursalId,
+      usuarioId,
+      draft: ventaDraft,
+    });
 
     navigate("/ventas/checkout", {
       state: {
-        ventaDraft: {
-          clienteId,
-          cliente: getClienteSeleccionado(),
-          tipoPrecio,
-          items,
-          total,
-          observaciones,
-          usarCredito,
-          idUsuario: usuarioId,
-          idSucursal: sucursalId,
-        },
+        ventaDraft,
       },
     });
   }

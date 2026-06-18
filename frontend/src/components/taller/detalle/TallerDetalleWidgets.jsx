@@ -215,12 +215,14 @@ function CheckLine({ ok, label }) {
   );
 }
 
-export function ServicioTallerOption({ servicio, selected, onSelect }) {
+export function ServicioTallerOption({ servicio, selected, onSelect, onDoubleAdd }) {
   return (
     <button
       type="button"
       onClick={onSelect}
+      onDoubleClick={onDoubleAdd}
       style={selected ? styles.tallerOptionSelected : styles.tallerOption}
+      title="Doble click para agregar"
     >
       <div style={styles.optionImageBox}>
         <span style={styles.serviceIcon}>🛠</span>
@@ -243,7 +245,7 @@ export function ServicioTallerOption({ servicio, selected, onSelect }) {
   );
 }
 
-export function TallerItemOption({ item, selected, onSelect }) {
+export function TallerItemOption({ item, selected, onSelect, onDoubleAdd }) {
   const tipo = tipoTallerLabel(item);
   const esServicio = tipo === "Servicio";
 
@@ -251,7 +253,9 @@ export function TallerItemOption({ item, selected, onSelect }) {
     <button
       type="button"
       onClick={onSelect}
+      onDoubleClick={onDoubleAdd}
       style={selected ? styles.tallerOptionSelected : styles.tallerOption}
+      title="Doble click para agregar"
     >
       <div style={styles.optionImageBox}>
         {esServicio ? (

@@ -43,6 +43,8 @@ def get_venta_items_comprobante_by_venta_id(conn, venta_id: int):
             SELECT
                 vi.id,
                 vi.id_variante,
+                vi.tipo_item,
+                vi.id_servicio_taller,
                 vi.descripcion_snapshot,
                 vi.cantidad,
                 vi.precio_final,
@@ -52,10 +54,10 @@ def get_venta_items_comprobante_by_venta_id(conn, venta_id: int):
 
             FROM venta_items vi
 
-            INNER JOIN variantes var
+            LEFT JOIN variantes var
                 ON var.id = vi.id_variante
 
-            INNER JOIN productos p
+            LEFT JOIN productos p
                 ON p.id = var.id_producto
 
             LEFT JOIN LATERAL (

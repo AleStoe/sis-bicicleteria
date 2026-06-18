@@ -34,7 +34,13 @@ export default function CheckoutAgregarPago({
   const tramoPreview = tramoMontoActual || tramoSaldar;
 
   const montoBaseSugerido =
-    Number(tramoPreview?.monto_base ?? previewSaldar?.monto_base_sugerido_para_saldar ?? montoManual ?? 0);
+    Number(
+      tramoPreview?.monto_base_aplicado ??
+        tramoPreview?.monto_base ??
+        previewSaldar?.monto_base_sugerido_para_saldar ??
+        montoManual ??
+        0
+    );
   const montoSugeridoCobrado =
     Number(tramoPreview?.monto_total_cobrado ?? previewSaldar?.monto_sugerido_para_saldar ?? montoManual ?? 0);
 
@@ -101,13 +107,11 @@ export default function CheckoutAgregarPago({
 
       {mostrarInstruccion && (
         <div style={styles.operatorHint}>
-          <span style={styles.operatorHintLabel}>Qué cobrar ahora</span>
-          <strong>
-            Cobrá {formatMoney(montoACobrarAhora)} en {medioActivo?.label || "este medio"}
-          </strong>
+          <span style={styles.operatorHintLabel}>Total a cobrar ahora</span>
+          <strong>{formatMoney(montoACobrarAhora)}</strong>
           {mostrarPreview ? (
             <small>
-              Cubre {formatMoney(montoBaseSugerido)} de la venta.
+              En {medioActivo?.label || "este medio"} cubre {formatMoney(montoBaseSugerido)} de la venta.
               {hayDescuento && ` Descuento aplicado: ${formatMoney(descuentoPreview)}.`}
               {hayRecargo && ` Recargo aplicado: ${formatMoney(recargoPreview)}.`}
               {Number.isFinite(saldoPendienteLuego) && ` Queda pendiente: ${formatMoney(saldoPendienteLuego)}.`}
@@ -139,7 +143,7 @@ export default function CheckoutAgregarPago({
           </div>
 
           <div style={styles.previewRow}>
-            <span>Total cubierto</span>
+            <span>Cubre saldo</span>
             <strong>{formatMoney(montoBaseSugerido)}</strong>
           </div>
 
@@ -170,7 +174,7 @@ export default function CheckoutAgregarPago({
           </div>
 
           <div style={styles.previewTotalRow}>
-            <span>Cliente paga</span>
+            <span>Total a cobrar ahora</span>
             <strong>{formatMoney(montoSugeridoCobrado)}</strong>
           </div>
         </div>
@@ -178,7 +182,7 @@ export default function CheckoutAgregarPago({
 
       <div style={styles.amountHeader}>
         <div style={styles.amountLabel}>
-          {esTarjeta ? "Monto a financiar" : "Monto a cobrar"}
+          {esTarjeta ? "Cliente paga / financia" : "Cliente paga"}
         </div>
 
         <button

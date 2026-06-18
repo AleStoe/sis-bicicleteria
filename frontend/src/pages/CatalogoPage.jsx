@@ -60,6 +60,48 @@ function getNombreConsulta(item) {
   return [item.producto_nombre, item.nombre_variante].filter(Boolean).join("\n");
 }
 
+async function copiarTextoPortapapeles(texto) {
+  if (navigator.clipboard?.writeText && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(texto);
+      return true;
+    } catch {
+      // Sigue con fallback para celulares/navegadores que bloquean permisos.
+    }
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = texto;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.top = "0";
+  textarea.style.left = "0";
+  textarea.style.width = "1px";
+  textarea.style.height = "1px";
+  textarea.style.opacity = "0";
+  textarea.style.pointerEvents = "none";
+
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  textarea.setSelectionRange(0, textarea.value.length);
+
+  let copiado = false;
+  try {
+    copiado = document.execCommand("copy");
+  } catch {
+    copiado = false;
+  } finally {
+    document.body.removeChild(textarea);
+  }
+
+  if (!copiado) {
+    window.prompt("Copiá este texto para responder la consulta:", texto);
+  }
+
+  return copiado;
+}
+
 function normalizarTexto(valor) {
   return String(valor || "")
     .trim()
@@ -345,6 +387,7 @@ export default function CatalogoPage() {
 
 function CatalogoCard({ item, selected, onSelect, onOpenDetail, isMobile }) {
   const [copiado, setCopiado] = useState("");
+  const [copyFallback, setCopyFallback] = useState(false);
   const stockColumns = isMobile
     ? "1fr"
     : Number(item.stock_reservado || 0) > 0
@@ -374,9 +417,15 @@ function CatalogoCard({ item, selected, onSelect, onOpenDetail, isMobile }) {
       ].join("\n");
     }
 
-    await navigator.clipboard.writeText(texto);
-    setCopiado(tipo);
-    setTimeout(() => setCopiado((actual) => (actual === tipo ? "" : actual)), 1400);
+    const copiadoOk = await copiarTextoPortapapeles(texto);
+    setCopyFallback(!copiadoOk);
+
+    if (copiadoOk) {
+      setCopiado(tipo);
+      setTimeout(() => setCopiado((actual) => (actual === tipo ? "" : actual)), 1400);
+    } else {
+      setTimeout(() => setCopyFallback(false), 3000);
+    }
   }
 
   return (
@@ -461,6 +510,12 @@ function CatalogoCard({ item, selected, onSelect, onOpenDetail, isMobile }) {
             }}
           />
         </div>
+
+        {copyFallback ? (
+          <div style={styles.copyFallbackText}>
+            Tu navegador bloqueó el copiado automático. Te dejé el texto abierto para copiar manual.
+          </div>
+        ) : null}
 
         <div
           style={{
@@ -947,6 +1002,17 @@ const styles = {
     fontWeight: 1000,
     cursor: "not-allowed",
     whiteSpace: "normal",
+  },
+  copyFallbackText: {
+    marginTop: -2,
+    marginBottom: 8,
+    padding: "8px 10px",
+    borderRadius: 10,
+    background: "#fff7ed",
+    color: "#9a3412",
+    fontWeight: 800,
+    fontSize: 12,
+    lineHeight: 1.35,
   },
   codesBox: {
     display: "grid",

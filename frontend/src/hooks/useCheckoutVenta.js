@@ -19,27 +19,62 @@ function crearTempId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function toMoneyNumber(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return 0;
+  return Number(number.toFixed(2));
+}
+
+function casiIgualMonto(a, b) {
+  return Math.abs(toMoneyNumber(a) - toMoneyNumber(b)) < 0.01;
+}
+
+const MEDIO_PAGO_DEFAULT = "efectivo";
+
+function getSaldoPendienteSimulacion(data) {
+  return toMoneyNumber(
+    data?.total_a_cobrar ??
+      data?.saldo_estimado ??
+      data?.saldo_base_estimado ??
+      0
+  );
+}
+
 export default function useCheckoutVenta({
   clienteId,
   total,
   tipoPrecio,
   items,
   usarCreditoInicial = true,
+  initialCheckoutDraft = null,
+  onDraftChange,
   onEstadoCheckoutChange,
 }) {
   const [pagosDraft, setPagosDraft] = useState([]);
-  const [medioPago, setMedioPago] = useState("efectivo");
-  const [monto, setMonto] = useState("");
-  const [entregarAhora, setEntregarAhora] = useState(false);
+  const [medioPago, setMedioPago] = useState(
+    initialCheckoutDraft?.medioPago || MEDIO_PAGO_DEFAULT
+  );
+  const [monto, setMonto] = useState(initialCheckoutDraft?.monto || "");
+  const [entregarAhora, setEntregarAhora] = useState(
+    Boolean(initialCheckoutDraft?.entregarAhora)
+  );
   const [errorLocal, setErrorLocal] = useState("");
   const [simulacion, setSimulacion] = useState(null);
   const [simulando, setSimulando] = useState(false);
   const [previewSaldar, setPreviewSaldar] = useState(null);
   const [previewMontoActual, setPreviewMontoActual] = useState(null);
   const [planesTarjeta, setPlanesTarjeta] = useState([]);
-  const [planTarjetaId, setPlanTarjetaId] = useState("");
-  const [usarCredito, setUsarCredito] = useState(usarCreditoInicial);
-  const [montoCreditoAAplicar, setMontoCreditoAAplicar] = useState("");
+  const [planTarjetaId, setPlanTarjetaId] = useState(
+    initialCheckoutDraft?.planTarjetaId || ""
+  );
+  const [usarCredito, setUsarCredito] = useState(
+    typeof initialCheckoutDraft?.usarCredito === "boolean"
+      ? initialCheckoutDraft.usarCredito
+      : usarCreditoInicial
+  );
+  const [montoCreditoAAplicar, setMontoCreditoAAplicar] = useState(
+    initialCheckoutDraft?.montoCreditoAAplicar || ""
+  );
   const simulacionSeqRef = useRef(0);
 
   const cantidadItems = useMemo(() => {
@@ -168,14 +203,14 @@ export default function useCheckoutVenta({
     setPreviewSaldar(data);
     setSimulacion(data);
 
-    const baseSugerida = data.monto_base_sugerido_para_saldar;
+    const montoSugeridoCobrado = data.monto_sugerido_para_saldar;
 
-    if (baseSugerida === null || baseSugerida === undefined) {
-      setErrorLocal("No se pudo calcular el monto base sugerido para saldar");
+    if (montoSugeridoCobrado === null || montoSugeridoCobrado === undefined) {
+      setErrorLocal("No se pudo calcular el monto sugerido para saldar");
       return;
     }
 
-    setMonto(String(Number(baseSugerida).toFixed(2)));
+    setMonto(String(toMoneyNumber(montoSugeridoCobrado).toFixed(2)));
     setErrorLocal("");
   }, [
     getDatosFinancierosPago,
@@ -185,6 +220,84 @@ export default function useCheckoutVenta({
     planesTarjeta,
     simularPagos,
   ]);
+
+  const calcularBaseParaMontoCobrado = useCallback(
+    async (montoCobradoObjetivo) => {
+      const objetivo = toMoneyNumber(montoCobradoObjetivo);
+
+      if (objetivo <= 0) return null;
+
+      let previewSaldarActual = previewSaldar;
+
+      if (!previewSaldarActual) {
+        previewSaldarActual = await simularPagos(
+          pagosDraft,
+          {
+            medio_pago: medioPago,
+            ...getDatosFinancierosPago(),
+          },
+          false
+        );
+      }
+
+      const baseParaSaldar = toMoneyNumber(
+        previewSaldarActual?.monto_base_sugerido_para_saldar ?? saldoBasePendiente
+      );
+      const cobradoParaSaldar = toMoneyNumber(
+        previewSaldarActual?.monto_sugerido_para_saldar ?? baseParaSaldar
+      );
+
+      if (baseParaSaldar <= 0) return objetivo;
+
+      if (casiIgualMonto(objetivo, cobradoParaSaldar)) {
+        return baseParaSaldar;
+      }
+
+      if (cobradoParaSaldar <= 0) {
+        return Math.min(objetivo, baseParaSaldar);
+      }
+
+      const proporcion = baseParaSaldar / cobradoParaSaldar;
+      let baseEstimada = toMoneyNumber(
+        Math.min(Math.max(objetivo * proporcion, 0), baseParaSaldar)
+      );
+
+      const datosFinancieros = getDatosFinancierosPago();
+
+      for (let intento = 0; intento < 3; intento += 1) {
+        const pagoPrueba = {
+          temp_id: "preview-base-cobrado",
+          medio_pago: medioPago,
+          monto_base: baseEstimada,
+          cuotas: datosFinancieros.cuotas,
+          entidad: datosFinancieros.entidad,
+          nota: null,
+        };
+
+        const dataPrueba = await simularPagos([...pagosDraft, pagoPrueba], null, false);
+        const tramoPrueba = dataPrueba?.tramos_pago?.[dataPrueba.tramos_pago.length - 1];
+        const cobradoPrueba = toMoneyNumber(tramoPrueba?.monto_total_cobrado);
+
+        if (cobradoPrueba <= 0 || casiIgualMonto(cobradoPrueba, objetivo)) {
+          break;
+        }
+
+        baseEstimada = toMoneyNumber(
+          Math.min(Math.max(baseEstimada * (objetivo / cobradoPrueba), 0), baseParaSaldar)
+        );
+      }
+
+      return baseEstimada;
+    },
+    [
+      getDatosFinancierosPago,
+      medioPago,
+      pagosDraft,
+      previewSaldar,
+      saldoBasePendiente,
+      simularPagos,
+    ]
+  );
 
   const agregarPago = useCallback(async () => {
     const errorMonto = validarMontoPago(monto);
@@ -204,7 +317,14 @@ export default function useCheckoutVenta({
       return;
     }
 
-    const montoBaseInput = Number(monto);
+    const montoCobradoInput = Number(monto);
+    const montoBaseInput = await calcularBaseParaMontoCobrado(montoCobradoInput);
+
+    if (!montoBaseInput || montoBaseInput <= 0) {
+      setErrorLocal("No se pudo calcular cuanto saldo cubre este cobro");
+      return;
+    }
+
     const datosFinancieros = getDatosFinancierosPago();
 
     const pagoDraft = {
@@ -234,13 +354,25 @@ export default function useCheckoutVenta({
       };
     });
 
+    const saldoPendienteLuego = getSaldoPendienteSimulacion(nuevaSimulacion);
+
     setPagosDraft(pagosConTramo);
     setSimulacion(nuevaSimulacion);
     setPreviewSaldar(null);
     setPreviewMontoActual(null);
     setMonto("");
+
+    // Caso mixto: efectivo parcial + tarjeta 3 cuotas para completar saldo.
+    // Si la venta queda cubierta, el formulario debe quedar limpio para no
+    // conservar visualmente el ultimo medio/plan usado.
+    if (saldoPendienteLuego <= 0) {
+      setMedioPago(MEDIO_PAGO_DEFAULT);
+      setPlanTarjetaId("");
+    }
+
     setErrorLocal("");
   }, [
+    calcularBaseParaMontoCobrado,
     getDatosFinancierosPago,
     medioPago,
     monto,
@@ -300,24 +432,33 @@ export default function useCheckoutVenta({
         setPlanesTarjeta(data || []);
 
         const primerPlan = data?.[0];
-        if (primerPlan) setPlanTarjetaId(String(primerPlan.id));
+        if (primerPlan && medioPago === "tarjeta" && !planTarjetaId) {
+          setPlanTarjetaId(String(primerPlan.id));
+        }
       } catch (err) {
         setErrorLocal(err.message || "No se pudieron cargar los planes de tarjeta");
       }
     }
 
     cargarPlanesTarjeta();
-  }, []);
+  }, [medioPago, planTarjetaId]);
 
   useEffect(() => {
     setPagosDraft([]);
-    setMonto("");
+    setMonto(initialCheckoutDraft?.monto || "");
     setErrorLocal("");
     setSimulacion(null);
     setPreviewSaldar(null);
     setPreviewMontoActual(null);
-    setMontoCreditoAAplicar("");
-    setUsarCredito(true);
+    setMedioPago(initialCheckoutDraft?.medioPago || MEDIO_PAGO_DEFAULT);
+    setPlanTarjetaId(initialCheckoutDraft?.planTarjetaId || "");
+    setEntregarAhora(Boolean(initialCheckoutDraft?.entregarAhora));
+    setMontoCreditoAAplicar(initialCheckoutDraft?.montoCreditoAAplicar || "");
+    setUsarCredito(
+      typeof initialCheckoutDraft?.usarCredito === "boolean"
+        ? initialCheckoutDraft.usarCredito
+        : true
+    );
 
     if (items.length > 0) {
       recalcularSimulacion([]);
@@ -325,6 +466,25 @@ export default function useCheckoutVenta({
     // Se reinicia intencionalmente al cambiar el carrito/tipo de precio.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clienteId, items, total, tipoPrecio]);
+
+  useEffect(() => {
+    onDraftChange?.({
+      medioPago,
+      planTarjetaId,
+      monto,
+      entregarAhora,
+      usarCredito,
+      montoCreditoAAplicar,
+    });
+  }, [
+    entregarAhora,
+    medioPago,
+    monto,
+    montoCreditoAAplicar,
+    onDraftChange,
+    planTarjetaId,
+    usarCredito,
+  ]);
 
   useEffect(() => {
     let cancelado = false;
@@ -345,9 +505,19 @@ export default function useCheckoutVenta({
       );
 
       if (cancelado || !data) return;
+
+      const saldoPendientePreview = getSaldoPendienteSimulacion(data);
+
+      if (saldoPendientePreview <= 0) {
+        setPreviewSaldar(null);
+        setPreviewMontoActual(null);
+        setMonto("");
+        return;
+      }
+
       setPreviewSaldar(data);
-      if (data.monto_base_sugerido_para_saldar != null) {
-        setMonto(String(data.monto_base_sugerido_para_saldar));
+      if (data.monto_sugerido_para_saldar != null && !String(monto || "").trim()) {
+        setMonto(String(toMoneyNumber(data.monto_sugerido_para_saldar).toFixed(2)));
       }
     }
 
@@ -356,16 +526,16 @@ export default function useCheckoutVenta({
     return () => {
       cancelado = true;
     };
-  }, [getDatosFinancierosPago, items, medioPago, pagosDraft, planTarjetaId, simularPagos, tipoPrecio]);
+  }, [getDatosFinancierosPago, items, medioPago, monto, pagosDraft, planTarjetaId, simularPagos, tipoPrecio]);
 
 
   useEffect(() => {
     let cancelado = false;
     const montoTexto = String(monto || "").trim();
-    const montoBaseInput = Number(montoTexto);
+    const montoCobradoInput = Number(montoTexto);
 
     async function simularMontoActual() {
-      if (!montoTexto || !Number.isFinite(montoBaseInput) || montoBaseInput <= 0) {
+      if (!montoTexto || !Number.isFinite(montoCobradoInput) || montoCobradoInput <= 0) {
         setPreviewMontoActual(null);
         return;
       }
@@ -382,6 +552,12 @@ export default function useCheckoutVenta({
       }
 
       const datosFinancieros = getDatosFinancierosPago();
+      const montoBaseInput = await calcularBaseParaMontoCobrado(montoCobradoInput);
+
+      if (!montoBaseInput || montoBaseInput <= 0) {
+        setPreviewMontoActual(null);
+        return;
+      }
 
       const pagoDraft = {
         temp_id: "preview-monto-actual",
@@ -406,6 +582,7 @@ export default function useCheckoutVenta({
       clearTimeout(handle);
     };
   }, [
+    calcularBaseParaMontoCobrado,
     getDatosFinancierosPago,
     medioPago,
     monto,

@@ -56,6 +56,13 @@ export function crearBicicletaCliente(clienteId, data) {
   });
 }
 
+export function actualizarBicicletaCliente(clienteId, bicicletaId, data) {
+  return apiRequest(`/clientes/${clienteId}/bicicletas/${bicicletaId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
 export function obtenerHistorialBicicletaCliente(
   clienteId,
   bicicletaId

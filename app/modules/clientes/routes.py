@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Query
 
-from .schema import ClienteCreateInput, ClienteUpdateInput, BicicletaClienteCreateInput, AutorizarServiceVencidoInput, CrearOrdenServicePostventaInput 
+from .schema import ClienteCreateInput, ClienteUpdateInput, BicicletaClienteCreateInput, BicicletaClienteUpdateInput, AutorizarServiceVencidoInput, CrearOrdenServicePostventaInput 
 from .service import (
     listar_clientes_service,
     obtener_cliente_service,
@@ -10,6 +10,7 @@ from .service import (
     activar_cliente_service,
     listar_bicicletas_cliente_service,
     crear_bicicleta_cliente_service,
+    actualizar_bicicleta_cliente_service,
     obtener_historial_bicicleta_cliente_service,
     autorizar_service_vencido_bicicleta_cliente_service,
     crear_orden_service_postventa_bicicleta_cliente_service,
@@ -57,6 +58,14 @@ def listar_bicicletas_cliente(cliente_id: int):
 @router.post("/{cliente_id}/bicicletas", status_code=201)
 def crear_bicicleta_cliente(cliente_id: int, data: BicicletaClienteCreateInput):
     return crear_bicicleta_cliente_service(cliente_id, data)
+
+@router.patch("/{cliente_id}/bicicletas/{bicicleta_id}")
+def actualizar_bicicleta_cliente(
+    cliente_id: int,
+    bicicleta_id: int,
+    data: BicicletaClienteUpdateInput,
+):
+    return actualizar_bicicleta_cliente_service(cliente_id, bicicleta_id, data)
 
 @router.get("/{cliente_id}/bicicletas/{bicicleta_id}/historial")
 def historial_bicicleta_cliente(cliente_id: int, bicicleta_id: int):

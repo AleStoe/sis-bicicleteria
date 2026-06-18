@@ -1,4 +1,4 @@
-from decimal import Decimal
+﻿from decimal import Decimal
 from urllib.parse import quote_plus
 from fastapi import HTTPException
 from pydantic import ValidationError
@@ -81,6 +81,8 @@ from .repository import (
 )
 
 from app.modules.servicios_taller.repository import get_servicio_taller_by_id
+from app.modules.configuracion_negocio.service import obtener_configuracion_negocio
+from app.modules.configuracion_negocio.template import render_template
 
 def _build_descripcion_snapshot(variante: dict) -> str:
     producto_nombre = (variante.get("producto_nombre") or "").strip()
@@ -921,6 +923,7 @@ def _format_money_mensaje(value) -> str:
     return f"${monto:,.0f}".replace(",", ".")
 
 def _build_mensaje_lista_retiro(orden, conn, items):
+    config = obtener_configuracion_negocio()
     cliente = (orden.get("cliente_nombre") or "cliente").strip()
     bicicleta = _format_bicicleta_mensaje(orden)
 
@@ -930,22 +933,12 @@ def _build_mensaje_lista_retiro(orden, conn, items):
         and item.get("aprobado") is True
     ]
 
-    lineas = [
-        "🚲 *¡Tu bicicleta está lista para retirar!*",
-        "",
-        f"Hola {cliente} 👋",
-        "",
-        "Tenemos buenas noticias:",
-        "",
-        f"🔹 {bicicleta}",
-        "",
-        "ya se encuentra lista para retirar.",
-        "",
-        "🛠️ *Trabajos realizados:*",
-        "",
-    ]
+    trabajos_lineas = []
+    if config.get("whatsapp_retiro_mostrar_trabajos"):
+        trabajos_lineas.extend(["*Trabajos realizados:*", ""])
+        if not items_ejecutados:
+            trabajos_lineas.append("• Service/reparación realizada")
 
-    if items_ejecutados:
         for item in items_ejecutados:
             descripcion = get_nombre_cliente_item_taller(
                 conn,
@@ -959,48 +952,22 @@ def _build_mensaje_lista_retiro(orden, conn, items):
                 )
 
             subtotal = _format_money_mensaje(item.get("subtotal"))
-            lineas.append(f"• {descripcion}: {subtotal}")
-    else:
-        lineas.append("• Service/reparación realizada")
+            trabajos_lineas.append(f"• {descripcion}: {subtotal}")
+        trabajos_lineas.extend(["", "--------------------", ""])
 
-    lineas.extend([
-        "",
-        "━━━━━━━━━━━━━━━━━━━━",
-        "",
-        f"💰 *Total:* {_format_money_mensaje(orden.get('total_final'))}",
-    ])
+    total_bloque = ""
+    if config.get("whatsapp_retiro_mostrar_total"):
+        total_bloque = f"*Total:* {_format_money_mensaje(orden.get('total_final'))}\n\n"
 
-    saldo = orden.get("saldo_pendiente")
+    variables = {
+        **config,
+        "cliente_nombre": cliente,
+        "bicicleta": bicicleta,
+        "trabajos_bloque": "\n".join(trabajos_lineas),
+        "total_bloque": total_bloque,
+    }
 
-    try:
-        saldo_num = float(saldo or 0)
-    except (TypeError, ValueError):
-        saldo_num = 0
-
-    if saldo_num > 0:
-        lineas.append(f"⚠️ *Saldo pendiente:* {_format_money_mensaje(saldo)}")
-    else:
-        lineas.append("✅ *Trabajo abonado*")
-
-    lineas.extend([
-        "",
-        "📍 *Emprendimiento Agus*",
-        "",
-        "🕒 *Horarios de retiro:*",
-        "",
-        "Lunes a viernes",
-        "09:00 a 12:00",
-        "16:30 a 20:00",
-        "",
-        "Sábados",
-        "09:00 a 12:00",
-        "17:00 a 19:00",
-        "",
-        "🙌 Gracias por confiar en nosotros.",
-        "¡Te esperamos! 🚴",
-    ])
-
-    return "\n".join(lineas)
+    return render_template(config.get("plantilla_retiro_taller"), variables)
 
 def actualizar_datos_operativos_orden_taller(orden_id: int, data):
     conn = get_connection()
@@ -1054,10 +1021,10 @@ def generar_mensaje_lista_retiro_orden_taller(orden_id: int):
                 detail=f"No existe la orden de taller {orden_id}",
             )
 
-        if orden["estado"] != "lista_para_retirar":
+        if orden["estado"] not in {"terminada", "facturada", "lista_para_retirar"}:
             raise HTTPException(
                 status_code=400,
-                detail="El mensaje de retiro solo se genera cuando la orden está lista para retirar",
+                detail="El mensaje de retiro solo se genera cuando la orden esta terminada o lista para retirar",
             )
 
         items = get_items_orden_taller(conn, orden_id)
@@ -1104,10 +1071,10 @@ def registrar_aviso_retiro_orden_taller(orden_id: int, data):
             if orden is None:
                 raise HTTPException(status_code=404, detail=f"No existe la orden de taller {orden_id}")
 
-            if orden["estado"] != "lista_para_retirar":
+            if orden["estado"] not in {"terminada", "facturada", "lista_para_retirar"}:
                 raise HTTPException(
                     status_code=400,
-                    detail="Solo se puede avisar retiro cuando la orden está lista para retirar",
+                    detail="Solo se puede avisar retiro cuando la orden esta terminada o lista para retirar",
                 )
 
             marcar_aviso_retiro_enviado(conn, orden_id)
@@ -1116,7 +1083,7 @@ def registrar_aviso_retiro_orden_taller(orden_id: int, data):
                 conn,
                 id_orden_taller=orden_id,
                 tipo_evento="cliente_avisado_retiro",
-                detalle="Se envió aviso de bicicleta lista para retirar por WhatsApp",
+                detalle="Se enviÃ³ aviso de bicicleta lista para retirar por WhatsApp",
                 id_usuario=data.id_usuario,
             )
 

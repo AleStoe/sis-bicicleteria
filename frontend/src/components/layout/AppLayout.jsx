@@ -1,4 +1,4 @@
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { Menu, X, ChevronDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import Sidebar from "./Sidebar";
@@ -18,16 +18,23 @@ import {
 } from "../../styles/layout/appLayoutStyles";
 
 export default function AppLayout({ children }) {
+  const location = useLocation();
   const isMobile = useMediaQuery("(max-width: 900px)");
   const [menuOpen, setMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
   const userMenuRef = useRef(null);
+  const contentRef = useRef(null);
   const { usuarioActual, cerrarSesionOperativa, rolLabel } = useSession();
 
   useEffect(() => {
     if (!isMobile) setMenuOpen(false);
   }, [isMobile]);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    contentRef.current?.scrollTo?.({ top: 0, left: 0, behavior: "auto" });
+  }, [location.pathname]);
 
   useEffect(() => {
     document.body.style.overflow = isMobile && menuOpen ? "hidden" : "";
@@ -173,7 +180,7 @@ export default function AppLayout({ children }) {
             </div>
           </header>
 
-          <main style={contentStyle(isMobile)}>{children || <Outlet />}</main>
+          <main ref={contentRef} style={contentStyle(isMobile)}>{children || <Outlet />}</main>
         </div>
       </div>
     </>

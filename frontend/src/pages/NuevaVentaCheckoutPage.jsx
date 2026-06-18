@@ -3,28 +3,23 @@ import { useLocation, useNavigate } from "react-router-dom";
 import CheckoutVentaPanel from "../components/ventas/CheckoutVentaPanel";
 import CheckoutClienteVentaCard from "../components/ventas/checkout/CheckoutClienteVentaCard";
 import CheckoutResumenLateral from "../components/ventas/checkout/CheckoutResumenLateral";
+import { ConfirmModal } from "../components/ui/ConfirmModal";
 import { crearVenta, entregarVenta } from "../services/ventasService";
 import { buildVentaPayload } from "../builders/ventasPayloadBuilder";
 import { validarVentaAntesDeCrear } from "../validators/ventasValidator";
 import { useToast } from "../hooks/useToast";
+import { useSession } from "../context/SessionContext";
+import {
+  borrarVentaDraftGuardado,
+  guardarVentaDraft,
+  leerVentaDraftGuardado,
+} from "../services/ventaDraftStore";
 import {
   calcularResumenCheckout,
   getClienteNombre,
 } from "../helpers/checkoutVentaHelper";
 
 const MOBILE_BREAKPOINT = 760;
-
-function getVentaDraftStorageKey({ sucursalId, usuarioId }) {
-  return `pos_venta_draft_sucursal_${sucursalId || "default"}_usuario_${usuarioId || "default"}`;
-}
-
-function borrarVentaDraftGuardado({ sucursalId, usuarioId }) {
-  if (typeof window === "undefined") return;
-
-  window.localStorage.removeItem(
-    getVentaDraftStorageKey({ sucursalId, usuarioId })
-  );
-}
 
 function useIsMobile(breakpoint = MOBILE_BREAKPOINT) {
   const [isMobile, setIsMobile] = useState(() => {
@@ -50,7 +45,10 @@ function useIsMobile(breakpoint = MOBILE_BREAKPOINT) {
 export default function NuevaVentaCheckoutPage() {
   const navigate = useNavigate();
   const { state } = useLocation();
-  const draft = state?.ventaDraft;
+  const { usuarioId, sucursalId } = useSession();
+  const [draft, setDraft] = useState(state?.ventaDraft || null);
+  const [draftPendiente, setDraftPendiente] = useState(null);
+  const [draftRevisado, setDraftRevisado] = useState(Boolean(state?.ventaDraft));
   const [checkoutEstado, setCheckoutEstado] = useState(null);
   const [guardando, setGuardando] = useState(false);
   const toast = useToast();
@@ -66,6 +64,71 @@ export default function NuevaVentaCheckoutPage() {
       }),
     [draft, checkoutEstado]
   );
+
+  useEffect(() => {
+    if (draft) {
+      setDraftRevisado(true);
+      return;
+    }
+
+    const draftGuardado = leerVentaDraftGuardado({ sucursalId, usuarioId });
+
+    if (draftGuardado?.items?.length) {
+      setDraftPendiente(draftGuardado);
+    }
+
+    setDraftRevisado(true);
+  }, [draft, sucursalId, usuarioId]);
+
+  function continuarDraftGuardado() {
+    setDraft(draftPendiente);
+    setDraftPendiente(null);
+  }
+
+  function descartarDraftGuardado() {
+    borrarVentaDraftGuardado({ sucursalId, usuarioId });
+    setDraftPendiente(null);
+    navigate("/ventas/nueva", { replace: true });
+  }
+
+  function volverAlCarrito() {
+    navigate("/ventas/nueva", {
+      state: {
+        restaurarVentaDraft: true,
+        abrirCarrito: isMobile,
+      },
+    });
+  }
+
+  function guardarCheckoutDraft(checkoutDraft) {
+    if (!draft?.items?.length || guardando) return;
+
+    guardarVentaDraft({
+      sucursalId: draft.idSucursal ?? sucursalId,
+      usuarioId: draft.idUsuario ?? usuarioId,
+      draft: {
+        ...draft,
+        checkout: checkoutDraft,
+      },
+    });
+  }
+
+  if (!draft && (!draftRevisado || draftPendiente)) {
+    return (
+      <div style={{ ...styles.page, ...(isMobile ? styles.pageMobile : {}) }}>
+        <ConfirmModal
+          open={Boolean(draftPendiente)}
+          title="Venta sin finalizar"
+          message="Hay una venta sin finalizar. ¿Querés continuar o descartarla?"
+          confirmText="Continuar"
+          cancelText="Descartar"
+          variant="info"
+          onConfirm={continuarDraftGuardado}
+          onCancel={descartarDraftGuardado}
+        />
+      </div>
+    );
+  }
 
   if (!draft) {
     return (
@@ -102,8 +165,8 @@ export default function NuevaVentaCheckoutPage() {
 
     const payload = buildVentaPayload({
       clienteId: draft.clienteId,
-      sucursalId: draft.idSucursal,
-      usuarioId: draft.idUsuario,
+      sucursalId: draft.idSucursal ?? sucursalId,
+      usuarioId: draft.idUsuario ?? usuarioId,
       tipoPrecio: draft.tipoPrecio,
       items: draft.items,
       pagos,
@@ -118,13 +181,13 @@ export default function NuevaVentaCheckoutPage() {
 
       if (entregar_ahora) {
         await entregarVenta(resultado.venta_id, {
-          id_usuario: draft.idUsuario,
+          id_usuario: draft.idUsuario ?? usuarioId,
         });
       }
 
       borrarVentaDraftGuardado({
-        sucursalId: draft.idSucursal,
-        usuarioId: draft.idUsuario,
+        sucursalId: draft.idSucursal ?? sucursalId,
+        usuarioId: draft.idUsuario ?? usuarioId,
       });
       navigate(`/ventas/${resultado.venta_id}`);
     } catch (err) {
@@ -137,7 +200,7 @@ export default function NuevaVentaCheckoutPage() {
   return (
     <div style={{ ...styles.page, ...(isMobile ? styles.pageMobile : {}) }}>
       <header style={{ ...styles.header, ...(isMobile ? styles.headerMobile : {}) }}>
-        <button type="button" onClick={() => navigate(-1)} style={styles.backBtn}>
+        <button type="button" onClick={volverAlCarrito} style={styles.backBtn}>
           ← Carrito
         </button>
 
@@ -162,9 +225,11 @@ export default function NuevaVentaCheckoutPage() {
             tipoPrecio={draft.tipoPrecio}
             items={draft.items}
             guardando={guardando}
-            onVaciar={() => navigate("/ventas/nueva")}
+            onVaciar={volverAlCarrito}
             onFinalizar={finalizarCheckout}
             onEstadoCheckoutChange={setCheckoutEstado}
+            initialCheckoutDraft={draft.checkout}
+            onCheckoutDraftChange={guardarCheckoutDraft}
             mostrarPagosCargados={false}
           />
         </section>

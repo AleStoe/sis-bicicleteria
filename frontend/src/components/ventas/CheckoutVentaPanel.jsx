@@ -14,6 +14,8 @@ export default function CheckoutVentaPanel({
   onVaciar,
   onFinalizar,
   onEstadoCheckoutChange,
+  initialCheckoutDraft,
+  onCheckoutDraftChange,
   mostrarPagosCargados = true,
   
 }) {
@@ -22,6 +24,8 @@ export default function CheckoutVentaPanel({
     total,
     tipoPrecio,
     items,
+    initialCheckoutDraft,
+    onDraftChange: onCheckoutDraftChange,
     onEstadoCheckoutChange,
   });
 

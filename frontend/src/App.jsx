@@ -33,6 +33,7 @@ import ClienteBicicletaDetallePage from "./pages/ClienteBicicletaDetallePage";
 import AltaBicicletaPage from "./pages/AltaBicicletaPage";
 import CatalogoProductoDetallePage from "./pages/CatalogoProductoDetallePage";
 import ConfiguracionComercialPage from "./pages/ConfiguracionComercialPage";
+import ConfiguracionNegocioPage from "./pages/ConfiguracionNegocioPage";
 import ServiciosPage from "./pages/ServiciosPage";
 import CapitalRetirosPage from "./pages/CapitalRetirosPage";
 import CapitalRetirosParticipantePerfilPage from "./pages/CapitalRetirosParticipantePerfilPage";
@@ -371,6 +372,14 @@ export default function App() {
             element={
               <ProtectedRoute rolesPermitidos={ADMIN}>
                 <ConfiguracionComercialPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/configuracion-negocio"
+            element={
+              <ProtectedRoute rolesPermitidos={ADMIN}>
+                <ConfiguracionNegocioPage />
               </ProtectedRoute>
             }
           />

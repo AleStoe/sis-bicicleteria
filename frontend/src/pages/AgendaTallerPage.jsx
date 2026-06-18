@@ -14,8 +14,13 @@ import {
 import {
   listarClientes,
   listarBicicletasCliente,
+  crearBicicletaCliente,
 } from "../services/clientesService";
 import { useSession } from "../context/SessionContext";
+import { normalizeTextUpper } from "../utils/textNormalization";
+import { DEFAULT_CONFIGURACION_NEGOCIO } from "../config/defaultConfiguracionNegocio";
+import { obtenerConfiguracionNegocio } from "../services/configuracionNegocioService";
+import { renderMessageTemplate } from "../utils/messageTemplate";
 
 const ESTADOS = [
   "pendiente",
@@ -47,6 +52,15 @@ const FORM_INICIAL = {
   notas: "",
 };
 
+const BICICLETA_FORM_INICIAL = {
+  marca: "",
+  modelo: "",
+  rodado: "",
+  color: "",
+  numero_cuadro: "",
+  notas: "",
+};
+
 const FILTROS_INICIALES = {
   fecha_desde: "",
   fecha_hasta: "",
@@ -58,12 +72,14 @@ const FILTROS_INICIALES = {
 export default function AgendaTallerPage() {
   const navigate = useNavigate();
   const { usuarioId, sucursalId } = useSession();
+  const isCompact = useAgendaCompactLayout();
 
   const [turnos, setTurnos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [procesando, setProcesando] = useState(false);
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
+  const [configNegocio, setConfigNegocio] = useState(DEFAULT_CONFIGURACION_NEGOCIO);
 
   const [vista, setVista] = useState(VISTAS.GENERAL);
   const [filtros, setFiltros] = useState(FILTROS_INICIALES);
@@ -77,11 +93,23 @@ export default function AgendaTallerPage() {
   const [buscandoClientes, setBuscandoClientes] = useState(false);
   const [errorBusquedaCliente, setErrorBusquedaCliente] = useState("");
   const [bicicletasCliente, setBicicletasCliente] = useState([]);
+  const [mostrarAltaBicicleta, setMostrarAltaBicicleta] = useState(false);
+  const [biciForm, setBiciForm] = useState(BICICLETA_FORM_INICIAL);
 
   useEffect(() => {
     cargarTurnos();
+    cargarConfiguracionMensajes();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sucursalId, vista]);
+
+  async function cargarConfiguracionMensajes() {
+    try {
+      const data = await obtenerConfiguracionNegocio();
+      setConfigNegocio({ ...DEFAULT_CONFIGURACION_NEGOCIO, ...(data || {}) });
+    } catch {
+      setConfigNegocio(DEFAULT_CONFIGURACION_NEGOCIO);
+    }
+  }
 
   useEffect(() => {
     const texto = busquedaCliente.trim();
@@ -186,6 +214,8 @@ export default function AgendaTallerPage() {
 
       setBusquedaCliente(cliente.nombre || "");
       setClientesEncontrados([]);
+      setMostrarAltaBicicleta(false);
+      setBiciForm(BICICLETA_FORM_INICIAL);
 
       const bicis = await listarBicicletasCliente(cliente.id);
       const lista = Array.isArray(bicis) ? bicis : [];
@@ -221,6 +251,8 @@ export default function AgendaTallerPage() {
     setBuscandoClientes(false);
     setErrorBusquedaCliente("");
     setBicicletasCliente([]);
+    setMostrarAltaBicicleta(false);
+    setBiciForm(BICICLETA_FORM_INICIAL);
   }
 
   function limpiarClienteSeleccionado() {
@@ -232,6 +264,61 @@ export default function AgendaTallerPage() {
       cliente_telefono: "",
     }));
     setBicicletasCliente([]);
+    setMostrarAltaBicicleta(false);
+    setBiciForm(BICICLETA_FORM_INICIAL);
+  }
+
+  function actualizarBiciForm(campo, valor) {
+    const camposUpper = ["marca", "modelo", "color", "numero_cuadro"];
+
+    setBiciForm((current) => ({
+      ...current,
+      [campo]: camposUpper.includes(campo) ? normalizeTextUpper(valor) : valor,
+    }));
+  }
+
+  async function crearBicicletaRapida() {
+    if (!form.id_cliente) {
+      setError("Primero seleccioná un cliente.");
+      return;
+    }
+
+    if (!biciForm.marca.trim()) {
+      setError("La marca de la bicicleta es obligatoria. El resto se puede completar después.");
+      return;
+    }
+
+    try {
+      setProcesando(true);
+      setError("");
+      setMensaje("");
+
+      const resp = await crearBicicletaCliente(form.id_cliente, {
+        marca: biciForm.marca.trim(),
+        modelo: biciForm.modelo.trim() || null,
+        rodado: biciForm.rodado.trim() || null,
+        color: biciForm.color.trim() || null,
+        numero_cuadro: biciForm.numero_cuadro.trim() || null,
+        notas: biciForm.notas.trim() || null,
+      });
+
+      const bicis = await listarBicicletasCliente(form.id_cliente);
+      const lista = Array.isArray(bicis) ? bicis : [];
+      const bicicletaId = resp?.id || lista[0]?.id || null;
+
+      setBicicletasCliente(lista);
+      setForm((current) => ({
+        ...current,
+        id_bicicleta_cliente: bicicletaId,
+      }));
+      setBiciForm(BICICLETA_FORM_INICIAL);
+      setMostrarAltaBicicleta(false);
+      setMensaje("Bicicleta agregada al cliente y seleccionada para el turno.");
+    } catch (err) {
+      setError(err.message || "No se pudo agregar la bicicleta al cliente");
+    } finally {
+      setProcesando(false);
+    }
   }
 
   async function iniciarEdicion(turno) {
@@ -382,13 +469,13 @@ export default function AgendaTallerPage() {
   }
 
   async function copiarConfirmacionTurno(turno) {
-    const mensajeTurno = buildMensajeConfirmacion(turno);
+    const mensajeTurno = buildMensajeConfirmacion(turno, configNegocio);
     await enviarWhatsappTurno(turno, mensajeTurno);
     setMensaje("WhatsApp de confirmación abierto y mensaje copiado.");
   }
 
   async function copiarRecordatorioTurno(turno) {
-    const mensajeTurno = buildMensajeRecordatorio(turno);
+    const mensajeTurno = buildMensajeRecordatorio(turno, configNegocio);
 
     try {
       await enviarWhatsappTurno(turno, mensajeTurno);
@@ -402,7 +489,7 @@ export default function AgendaTallerPage() {
   }
 
   async function avisarCliente(turno) {
-    const mensajeTurno = buildMensajeClienteAvisado(turno);
+    const mensajeTurno = buildMensajeClienteAvisado(turno, configNegocio);
 
     try {
       await enviarWhatsappTurno(turno, mensajeTurno);
@@ -453,7 +540,7 @@ export default function AgendaTallerPage() {
 
   return (
     <div style={styles.page}>
-      <div style={styles.pageHeader}>
+      <div style={isCompact ? styles.pageHeaderCompact : styles.pageHeader}>
         <div>
           <h1 style={styles.title}>Agenda Taller</h1>
           <p style={styles.subtitle}>
@@ -474,7 +561,7 @@ export default function AgendaTallerPage() {
       {error ? <div style={styles.alertError}>{error}</div> : null}
       {mensaje ? <div style={styles.alertSuccess}>{mensaje}</div> : null}
 
-      <div style={styles.statsGrid}>
+      <div style={isCompact ? styles.statsGridCompact : styles.statsGrid}>
         <Stat label="Turnos" value={resumen.total} />
         <Stat label="Pendientes" value={resumen.pendientes} />
         <Stat label="Confirmados" value={resumen.confirmados} />
@@ -513,9 +600,9 @@ export default function AgendaTallerPage() {
         </button>
       </div>
 
-      <div style={styles.grid}>
+      <div style={isCompact ? styles.gridCompact : styles.grid}>
         <section style={styles.card}>
-          <div style={styles.headerRow}>
+          <div style={isCompact ? styles.headerRowCompact : styles.headerRow}>
             <h2 style={styles.cardTitle}>{modoEdicion ? "Editar turno" : "Nuevo turno"}</h2>
             {modoEdicion ? (
               <button
@@ -615,13 +702,101 @@ export default function AgendaTallerPage() {
               ))}
             </select>
 
-            {form.id_cliente && bicicletasCliente.length === 0 ? (
-              <div style={styles.warningText}>
-                Este cliente no tiene bicicletas cargadas. Cargala desde la ficha del cliente antes de agendar.
+            {form.id_cliente ? (
+              <div style={styles.inlineActions}>
+                <button
+                  type="button"
+                  onClick={() => setMostrarAltaBicicleta((value) => !value)}
+                  style={styles.secondaryButtonSmall}
+                  disabled={procesando}
+                >
+                  {mostrarAltaBicicleta ? "Ocultar alta bici" : "Agregar bicicleta"}
+                </button>
               </div>
             ) : null}
 
-            <div style={styles.twoCols}>
+            {form.id_cliente && bicicletasCliente.length === 0 && !mostrarAltaBicicleta ? (
+              <div style={styles.warningText}>
+                Este cliente no tiene bicicletas cargadas. Podés agregarla acá sin salir de la agenda.
+              </div>
+            ) : null}
+
+            {form.id_cliente && mostrarAltaBicicleta ? (
+              <div style={styles.quickBikeBox}>
+                <div style={styles.quickBikeHeader}>
+                  <strong>Alta rápida de bicicleta</strong>
+                  <span>Con marca alcanza. Modelo, color y cuadro se pueden completar después.</span>
+                </div>
+
+                <div style={isCompact ? styles.singleCol : styles.twoCols}>
+                  <input
+                    placeholder="Marca obligatoria"
+                    value={biciForm.marca}
+                    onChange={(e) => actualizarBiciForm("marca", e.target.value)}
+                    style={styles.input}
+                  />
+                  <input
+                    placeholder="Modelo opcional"
+                    value={biciForm.modelo}
+                    onChange={(e) => actualizarBiciForm("modelo", e.target.value)}
+                    style={styles.input}
+                  />
+                </div>
+
+                <div style={isCompact ? styles.singleCol : styles.twoCols}>
+                  <input
+                    placeholder="Rodado"
+                    value={biciForm.rodado}
+                    onChange={(e) => actualizarBiciForm("rodado", e.target.value)}
+                    style={styles.input}
+                  />
+                  <input
+                    placeholder="Color"
+                    value={biciForm.color}
+                    onChange={(e) => actualizarBiciForm("color", e.target.value)}
+                    style={styles.input}
+                  />
+                </div>
+
+                <input
+                  placeholder="Número de cuadro"
+                  value={biciForm.numero_cuadro}
+                  onChange={(e) => actualizarBiciForm("numero_cuadro", e.target.value)}
+                  style={styles.input}
+                />
+
+                <textarea
+                  placeholder="Notas de la bicicleta"
+                  value={biciForm.notas}
+                  onChange={(e) => actualizarBiciForm("notas", e.target.value)}
+                  style={styles.textareaSmall}
+                />
+
+                <div style={styles.inlineActions}>
+                  <button
+                    type="button"
+                    onClick={crearBicicletaRapida}
+                    style={styles.primaryButton}
+                    disabled={procesando}
+                  >
+                    Guardar bicicleta
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBiciForm(BICICLETA_FORM_INICIAL);
+                      setMostrarAltaBicicleta(false);
+                    }}
+                    style={styles.secondaryButtonSmall}
+                    disabled={procesando}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            <div style={isCompact ? styles.singleCol : styles.twoCols}>
               <div>
                 <label style={styles.label}>Fecha turno</label>
                 <input
@@ -645,7 +820,7 @@ export default function AgendaTallerPage() {
               </div>
             </div>
 
-            <div style={styles.twoCols}>
+            <div style={isCompact ? styles.singleCol : styles.twoCols}>
               <select
                 value={form.franja}
                 onChange={(e) => {
@@ -708,7 +883,7 @@ export default function AgendaTallerPage() {
         </section>
 
         <section style={styles.card}>
-          <div style={styles.headerRow}>
+          <div style={isCompact ? styles.headerRowCompact : styles.headerRow}>
             <div>
               <h2 style={styles.cardTitle}>{labelVista(vista)}</h2>
               <p style={styles.muted}>{turnos.length} turno(s) encontrados</p>
@@ -716,7 +891,7 @@ export default function AgendaTallerPage() {
           </div>
 
           {vista === VISTAS.GENERAL ? (
-            <div style={styles.filters}>
+            <div style={isCompact ? styles.filtersCompact : styles.filters}>
               <input
                 type="date"
                 value={filtros.fecha_desde}
@@ -789,7 +964,7 @@ export default function AgendaTallerPage() {
 
                 {items.map((turno) => (
                   <article key={turno.id} style={styles.turno}>
-                    <div style={styles.turnoTop}>
+                    <div style={isCompact ? styles.turnoTopCompact : styles.turnoTop}>
                       <div>
                         <strong>
                           {labelFranja(turno.franja)}
@@ -858,6 +1033,7 @@ export default function AgendaTallerPage() {
                           type="button"
                           onClick={() => navigate(`/taller/${turno.id_orden_taller}`)}
                           disabled={procesando}
+                          style={getActionButtonStyle("abrir", procesando)}
                         >
                           Abrir orden #{turno.id_orden_taller}
                         </button>
@@ -868,6 +1044,7 @@ export default function AgendaTallerPage() {
                               type="button"
                               onClick={() => cambiarEstado(turno.id, "confirmado")}
                               disabled={procesando}
+                              style={getActionButtonStyle("confirmar", procesando)}
                             >
                               Confirmar
                             </button>
@@ -878,6 +1055,7 @@ export default function AgendaTallerPage() {
                               type="button"
                               onClick={() => cambiarEstado(turno.id, "en_taller")}
                               disabled={procesando}
+                              style={getActionButtonStyle("ingreso", procesando)}
                             >
                               Marcar en taller
                             </button>
@@ -887,6 +1065,10 @@ export default function AgendaTallerPage() {
                             type="button"
                             onClick={() => iniciarEdicion(turno)}
                             disabled={procesando || turno.estado === "convertido_orden"}
+                            style={getActionButtonStyle(
+                              "editar",
+                              procesando || turno.estado === "convertido_orden",
+                            )}
                           >
                             Editar / reprogramar
                           </button>
@@ -896,6 +1078,7 @@ export default function AgendaTallerPage() {
                               type="button"
                               onClick={() => cambiarEstado(turno.id, "cancelado")}
                               disabled={procesando}
+                              style={getActionButtonStyle("cancelar", procesando)}
                             >
                               Cancelar
                             </button>
@@ -905,6 +1088,10 @@ export default function AgendaTallerPage() {
                             type="button"
                             onClick={() => copiarConfirmacionTurno(turno)}
                             disabled={procesando || !turno.cliente_telefono}
+                            style={getActionButtonStyle(
+                              "whatsapp",
+                              procesando || !turno.cliente_telefono,
+                            )}
                           >
                             WhatsApp confirmacion
                           </button>
@@ -913,6 +1100,10 @@ export default function AgendaTallerPage() {
                             type="button"
                             onClick={() => copiarRecordatorioTurno(turno)}
                             disabled={procesando || !turno.cliente_telefono || turno.recordatorio_enviado}
+                            style={getActionButtonStyle(
+                              "whatsapp",
+                              procesando || !turno.cliente_telefono || turno.recordatorio_enviado,
+                            )}
                           >
                             WhatsApp recordatorio
                           </button>
@@ -921,6 +1112,10 @@ export default function AgendaTallerPage() {
                             type="button"
                             onClick={() => avisarCliente(turno)}
                             disabled={procesando || !turno.cliente_telefono || turno.cliente_avisado}
+                            style={getActionButtonStyle(
+                              "whatsapp",
+                              procesando || !turno.cliente_telefono || turno.cliente_avisado,
+                            )}
                           >
                             WhatsApp aviso
                           </button>
@@ -929,6 +1124,10 @@ export default function AgendaTallerPage() {
                             type="button"
                             onClick={() => crearOrdenDesdeTurno(turno)}
                             disabled={procesando || turno.estado === "cancelado"}
+                            style={getActionButtonStyle(
+                              "crear",
+                              procesando || turno.estado === "cancelado",
+                            )}
                           >
                             Crear orden
                           </button>
@@ -953,6 +1152,26 @@ function Stat({ label, value }) {
       <div style={styles.statLabel}>{label}</div>
     </div>
   );
+}
+
+function useAgendaCompactLayout() {
+  const [isCompact, setIsCompact] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia("(max-width: 1100px)").matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const query = window.matchMedia("(max-width: 1100px)");
+    const update = () => setIsCompact(query.matches);
+    update();
+    query.addEventListener("change", update);
+
+    return () => query.removeEventListener("change", update);
+  }, []);
+
+  return isCompact;
 }
 
 function TurnoAccionPrincipal({
@@ -1049,6 +1268,24 @@ function getAccionPrincipalTurno(turno) {
   return null;
 }
 
+function getActionButtonStyle(kind, disabled = false) {
+  const tones = {
+    abrir: styles.actionOpenButton,
+    confirmar: styles.actionConfirmButton,
+    ingreso: styles.actionProgressButton,
+    editar: styles.actionEditButton,
+    cancelar: styles.actionDangerButton,
+    whatsapp: styles.actionWhatsAppButton,
+    crear: styles.actionCreateButton,
+  };
+
+  return {
+    ...styles.actionButton,
+    ...(tones[kind] || styles.actionNeutralButton),
+    ...(disabled ? styles.actionButtonDisabled : {}),
+  };
+}
+
 async function copiarTexto(texto) {
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(texto);
@@ -1097,43 +1334,32 @@ function normalizarTelefonoWhatsapp(value) {
   return digits;
 }
 
-function buildMensajeConfirmacion(turno) {
-  const momento = turno.franja === "mañana" ? "por la mañana" : "por la tarde";
-
-  return `Hola ${turno.cliente_nombre} 👋
-
-Tu turno quedó agendado para el ${formatFecha(turno.fecha)} ${momento} en Emprendimiento Agus.
-
-Trabajo solicitado:
-${turno.tipo_servicio}
-
-${turno.fecha_prometida_entrega ? `Fecha estimada/prometida de entrega: ${formatFecha(turno.fecha_prometida_entrega)}\n\n` : ""}¡Muchas gracias! 🚲`;
+function buildMensajeConfirmacion(turno, config) {
+  return renderMessageTemplate(config.plantilla_turno_confirmacion, variablesTurno(turno, config));
 }
 
-function buildMensajeRecordatorio(turno) {
-  const momento = turno.franja === "mañana" ? "por la mañana" : "por la tarde";
-
-  return `Hola ${turno.cliente_nombre} 👋
-
-Te recordamos que el ${formatFecha(turno.fecha)} ${momento} te esperamos en Emprendimiento Agus para recibir tu bicicleta.
-
-Trabajo solicitado:
-${turno.tipo_servicio}
-
-Si necesitás reprogramar, avisanos con anticipación.
-
-¡Muchas gracias! 🚲`;
+function buildMensajeRecordatorio(turno, config) {
+  return renderMessageTemplate(config.plantilla_turno_recordatorio, variablesTurno(turno, config));
 }
 
-function buildMensajeClienteAvisado(turno) {
-  return `Hola ${turno.cliente_nombre} 👋
+function buildMensajeClienteAvisado(turno, config) {
+  return renderMessageTemplate(config.plantilla_turno_aviso, variablesTurno(turno, config));
+}
 
-Te avisamos desde Emprendimiento Agus por tu turno de taller del ${formatFecha(turno.fecha)}.
+function variablesTurno(turno, config) {
+  const momento = turno.franja === "mañana" ? "por la mañana" : "por la tarde";
+  const fechaPrometidaBloque = turno.fecha_prometida_entrega
+    ? `Fecha estimada/prometida de entrega: ${formatFecha(turno.fecha_prometida_entrega)}\n\n`
+    : "";
 
-Trabajo solicitado:
-${turno.tipo_servicio}
-
-${turno.fecha_prometida_entrega ? `Fecha estimada/prometida de entrega: ${formatFecha(turno.fecha_prometida_entrega)}\n\n` : ""}Cualquier cambio te avisamos por este medio. 🚲`;
+  return {
+    ...config,
+    cliente_nombre: turno.cliente_nombre || "cliente",
+    fecha_turno: formatFecha(turno.fecha),
+    momento_turno: momento,
+    tipo_servicio: turno.tipo_servicio || "-",
+    fecha_prometida_bloque: fechaPrometidaBloque,
+  };
 }
 
 function formatFecha(fecha) {
@@ -1215,20 +1441,41 @@ function formatBicicleta(bici) {
 }
 
 const styles = {
-  page: { display: "grid", gap: 20 },
+  page: { display: "grid", gap: 20, minWidth: 0 },
   pageHeader: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
   },
+  pageHeaderCompact: {
+    display: "grid",
+    gap: 12,
+  },
   title: { margin: 0, color: "#0f172a" },
   subtitle: { margin: "4px 0 0", color: "#64748b", fontWeight: 700 },
-  grid: { display: "grid", gridTemplateColumns: "420px 1fr", gap: 20 },
+  grid: {
+    display: "grid",
+    gridTemplateColumns: "minmax(340px, 420px) minmax(0, 1fr)",
+    gap: 20,
+    alignItems: "start",
+    minWidth: 0,
+  },
+  gridCompact: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr)",
+    gap: 16,
+    minWidth: 0,
+  },
   statsGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
     gap: 12,
+  },
+  statsGridCompact: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
+    gap: 10,
   },
   statCard: {
     background: "#fff",
@@ -1262,6 +1509,7 @@ const styles = {
     border: "1px solid #e2e8f0",
     borderRadius: 16,
     padding: 20,
+    minWidth: 0,
   },
   cardTitle: { margin: 0, color: "#0f172a" },
   label: {
@@ -1298,9 +1546,17 @@ const styles = {
   },
   twoCols: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 },
   twoColsCompact: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 },
+  singleCol: { display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 10 },
   filters: {
     display: "grid",
     gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gap: 10,
+    marginTop: 14,
+    alignItems: "center",
+  },
+  filtersCompact: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
     gap: 10,
     marginTop: 14,
     alignItems: "center",
@@ -1346,6 +1602,17 @@ const styles = {
     justifyContent: "space-between",
     gap: 12,
   },
+  headerRowCompact: {
+    display: "grid",
+    gap: 10,
+  },
+  inlineActions: {
+    display: "flex",
+    gap: 8,
+    flexWrap: "wrap",
+    alignItems: "center",
+    marginBottom: 10,
+  },
   resultsBox: { display: "grid", gap: 8, marginBottom: 12 },
   searchHint: {
     marginTop: -4,
@@ -1374,6 +1641,21 @@ const styles = {
     padding: 10,
     color: "#166534",
   },
+  quickBikeBox: {
+    display: "grid",
+    gap: 2,
+    marginBottom: 14,
+    border: "1px solid #bfdbfe",
+    background: "#eff6ff",
+    borderRadius: 12,
+    padding: 12,
+  },
+  quickBikeHeader: {
+    display: "grid",
+    gap: 2,
+    marginBottom: 6,
+    color: "#1e3a8a",
+  },
   warningText: {
     marginTop: -4,
     marginBottom: 10,
@@ -1388,8 +1670,13 @@ const styles = {
     borderRadius: 14,
     padding: 14,
     marginBottom: 12,
+    minWidth: 0,
   },
   turnoTop: { display: "flex", justifyContent: "space-between", gap: 12 },
+  turnoTopCompact: {
+    display: "grid",
+    gap: 8,
+  },
   estado: {
     background: "#f1f5f9",
     color: "#334155",
@@ -1413,7 +1700,7 @@ const styles = {
     borderRadius: 14,
     padding: 12,
     display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) auto",
+    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
     gap: 12,
     alignItems: "center",
   },
@@ -1441,6 +1728,65 @@ const styles = {
     whiteSpace: "nowrap",
   },
   actions: { display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" },
+  actionButton: {
+    border: "1px solid transparent",
+    borderRadius: 10,
+    padding: "9px 11px",
+    cursor: "pointer",
+    fontWeight: 900,
+    fontSize: 13,
+    minHeight: 38,
+    flex: "1 1 150px",
+    whiteSpace: "normal",
+    lineHeight: 1.15,
+    transition: "transform .12s ease, box-shadow .12s ease, opacity .12s ease",
+  },
+  actionOpenButton: {
+    background: "#eef2ff",
+    borderColor: "#c7d2fe",
+    color: "#3730a3",
+  },
+  actionConfirmButton: {
+    background: "#fff7ed",
+    borderColor: "#fed7aa",
+    color: "#c2410c",
+  },
+  actionProgressButton: {
+    background: "#ecfeff",
+    borderColor: "#a5f3fc",
+    color: "#0e7490",
+  },
+  actionEditButton: {
+    background: "#eff6ff",
+    borderColor: "#bfdbfe",
+    color: "#1d4ed8",
+  },
+  actionDangerButton: {
+    background: "#fef2f2",
+    borderColor: "#fecaca",
+    color: "#b91c1c",
+  },
+  actionWhatsAppButton: {
+    background: "#ecfdf5",
+    borderColor: "#bbf7d0",
+    color: "#047857",
+  },
+  actionCreateButton: {
+    background: "#ea580c",
+    borderColor: "#ea580c",
+    color: "white",
+    boxShadow: "0 8px 18px rgba(234, 88, 12, .18)",
+  },
+  actionNeutralButton: {
+    background: "#f8fafc",
+    borderColor: "#e2e8f0",
+    color: "#334155",
+  },
+  actionButtonDisabled: {
+    opacity: 0.45,
+    cursor: "not-allowed",
+    boxShadow: "none",
+  },
   badgesRow: { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 },
   badgeOk: {
     color: "#166534",

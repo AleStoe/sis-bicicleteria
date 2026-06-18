@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useSession } from "../context/SessionContext";
 import {
   obtenerHistorialBicicletaCliente,
+  actualizarBicicletaCliente,
   autorizarServiceVencido,
   crearServicePostventa,
 } from "../services/clientesService";
@@ -17,6 +18,15 @@ export default function ClienteBicicletaDetallePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
+  const [editando, setEditando] = useState(false);
+  const [editForm, setEditForm] = useState({
+    marca: "",
+    modelo: "",
+    rodado: "",
+    color: "",
+    numero_cuadro: "",
+    notas: "",
+  });
 
   useEffect(() => {
     cargarHistorial();
@@ -103,6 +113,52 @@ export default function ClienteBicicletaDetallePage() {
     }
   }
 
+  function abrirEdicionBicicleta() {
+    const bicicleta = data?.bicicleta;
+    if (!bicicleta) return;
+
+    setEditForm({
+      marca: bicicleta.marca || "",
+      modelo: bicicleta.modelo || "",
+      rodado: bicicleta.rodado || "",
+      color: bicicleta.color || "",
+      numero_cuadro: bicicleta.numero_cuadro || "",
+      notas: bicicleta.notas || "",
+    });
+    setEditando(true);
+    setError("");
+  }
+
+  function actualizarCampoBicicleta(campo, valor) {
+    const camposUpper = new Set(["marca", "modelo", "color", "numero_cuadro"]);
+    setEditForm((actual) => ({
+      ...actual,
+      [campo]: camposUpper.has(campo) ? valor.toUpperCase() : valor,
+    }));
+  }
+
+  async function guardarEdicionBicicleta(e) {
+    e.preventDefault();
+
+    try {
+      setActionLoading(true);
+      setError("");
+
+      await actualizarBicicletaCliente(clienteId, bicicletaId, {
+        ...editForm,
+        id_usuario: usuarioId || null,
+        id_sucursal: sucursalId || null,
+      });
+
+      setEditando(false);
+      await cargarHistorial();
+    } catch (err) {
+      setError(err?.detail || err?.message || "No se pudo actualizar la bicicleta");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
   if (loading) {
     return <p style={{ padding: "24px" }}>Cargando historial de bicicleta...</p>;
   }
@@ -146,6 +202,10 @@ export default function ClienteBicicletaDetallePage() {
             Refrescar
           </button>
 
+          <button type="button" onClick={abrirEdicionBicicleta} style={secondaryBtnStyle}>
+            Editar bicicleta
+          </button>
+
           <Link to={`/clientes/${clienteId}`} style={secondaryLinkStyle}>
             Volver al cliente
           </Link>
@@ -167,6 +227,92 @@ export default function ClienteBicicletaDetallePage() {
         estadoPostventa={estadoPostventa}
         ultimoEvento={ultimoEvento}
       />
+
+      {editando && (
+        <section style={cardStyle}>
+          <div style={sectionHeaderStyle}>
+            <div>
+              <h2 style={cardTitleStyle}>Editar bicicleta</h2>
+              <span style={mutedStyle}>
+                Cambia solo los datos descriptivos. Historial y postventa no se alteran.
+              </span>
+            </div>
+          </div>
+
+          <form onSubmit={guardarEdicionBicicleta} style={editFormStyle}>
+            <label style={fieldStyle}>
+              <span>Marca *</span>
+              <input
+                value={editForm.marca}
+                onChange={(e) => actualizarCampoBicicleta("marca", e.target.value)}
+                style={inputStyle}
+                required
+              />
+            </label>
+
+            <label style={fieldStyle}>
+              <span>Modelo</span>
+              <input
+                value={editForm.modelo}
+                onChange={(e) => actualizarCampoBicicleta("modelo", e.target.value)}
+                style={inputStyle}
+              />
+            </label>
+
+            <label style={fieldStyle}>
+              <span>Rodado</span>
+              <input
+                value={editForm.rodado}
+                onChange={(e) => actualizarCampoBicicleta("rodado", e.target.value)}
+                style={inputStyle}
+              />
+            </label>
+
+            <label style={fieldStyle}>
+              <span>Color</span>
+              <input
+                value={editForm.color}
+                onChange={(e) => actualizarCampoBicicleta("color", e.target.value)}
+                style={inputStyle}
+              />
+            </label>
+
+            <label style={fieldStyle}>
+              <span>Numero de cuadro</span>
+              <input
+                value={editForm.numero_cuadro}
+                onChange={(e) => actualizarCampoBicicleta("numero_cuadro", e.target.value)}
+                style={inputStyle}
+              />
+            </label>
+
+            <label style={{ ...fieldStyle, gridColumn: "1 / -1" }}>
+              <span>Notas</span>
+              <textarea
+                value={editForm.notas}
+                onChange={(e) => actualizarCampoBicicleta("notas", e.target.value)}
+                style={textareaStyle}
+                rows={3}
+              />
+            </label>
+
+            <div style={editActionsStyle}>
+              <button
+                type="button"
+                onClick={() => setEditando(false)}
+                style={secondaryBtnStyle}
+                disabled={actionLoading}
+              >
+                Cancelar
+              </button>
+
+              <button type="submit" style={primaryBtnStyle} disabled={actionLoading}>
+                {actionLoading ? "Guardando..." : "Guardar cambios"}
+              </button>
+            </div>
+          </form>
+        </section>
+      )}
 
       <section style={gridStyle}>
         <div style={cardStyle}>
@@ -783,6 +929,43 @@ const infoLabelStyle = {
   fontSize: "13px",
   color: "#667085",
   marginBottom: "6px",
+};
+
+const editFormStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+  gap: "12px",
+};
+
+const fieldStyle = {
+  display: "grid",
+  gap: "6px",
+  fontSize: "13px",
+  fontWeight: 900,
+  color: "#344054",
+};
+
+const inputStyle = {
+  width: "100%",
+  boxSizing: "border-box",
+  border: "1px solid #d0d5dd",
+  borderRadius: "10px",
+  padding: "10px 12px",
+  fontWeight: 800,
+};
+
+const textareaStyle = {
+  ...inputStyle,
+  resize: "vertical",
+  fontFamily: "inherit",
+};
+
+const editActionsStyle = {
+  gridColumn: "1 / -1",
+  display: "flex",
+  justifyContent: "flex-end",
+  gap: "10px",
+  flexWrap: "wrap",
 };
 
 const originBoxStyle = {

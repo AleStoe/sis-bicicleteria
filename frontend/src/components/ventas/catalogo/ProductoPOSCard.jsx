@@ -15,10 +15,14 @@ export default function ProductoPOSCard({ producto, tipoPrecio, onAgregarItem })
 
   return (
     <div
+      onDoubleClick={() => {
+        if (!bloqueado) onAgregarItem(producto);
+      }}
       style={{
         ...(bloqueado ? productRowBlockedStyle : productRowStyle),
         ...(isMobile ? productRowMobileStyle : {}),
       }}
+      title={bloqueado ? getMotivoBloqueoItemCatalogo(producto, tipoPrecio) : "Doble click para agregar"}
     >
       <div style={{ ...imageBoxStyle, ...(isMobile ? imageBoxMobileStyle : {}) }}>
         {producto.imagen_principal ? (

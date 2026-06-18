@@ -103,6 +103,97 @@ def test_buscar_cliente_por_cuit_y_razon_social(client, clean_db):
     )
 
 
+def test_crear_bicicleta_cliente_permite_datos_minimos(client, clean_db):
+    crear_cliente = client.post(
+        "/clientes/",
+        json={
+            "nombre": "Cliente Bici Minima",
+            "telefono": "2915551111",
+            "tipo_cliente": "minorista",
+        },
+    )
+    assert crear_cliente.status_code == 200, crear_cliente.text
+    cliente_id = crear_cliente.json()["cliente_id"]
+
+    crear_bici = client.post(
+        f"/clientes/{cliente_id}/bicicletas",
+        json={
+            "marca": "venzo",
+        },
+    )
+
+    assert crear_bici.status_code == 201, crear_bici.text
+    bicicleta = crear_bici.json()
+    assert bicicleta["marca"] == "VENZO"
+    assert bicicleta["modelo"] is None
+
+    listado = client.get(f"/clientes/{cliente_id}/bicicletas")
+    assert listado.status_code == 200, listado.text
+    assert any(item["id"] == bicicleta["id"] for item in listado.json())
+
+
+def test_actualizar_bicicleta_cliente_normaliza_y_valida_pertenencia(client, clean_db):
+    cliente_a = client.post(
+        "/clientes/",
+        json={
+            "nombre": "Cliente Bici Update A",
+            "telefono": "2915552222",
+            "tipo_cliente": "minorista",
+        },
+    )
+    assert cliente_a.status_code == 200, cliente_a.text
+    cliente_a_id = cliente_a.json()["cliente_id"]
+
+    cliente_b = client.post(
+        "/clientes/",
+        json={
+            "nombre": "Cliente Bici Update B",
+            "telefono": "2915553333",
+            "tipo_cliente": "minorista",
+        },
+    )
+    assert cliente_b.status_code == 200, cliente_b.text
+    cliente_b_id = cliente_b.json()["cliente_id"]
+
+    crear_bici = client.post(
+        f"/clientes/{cliente_a_id}/bicicletas",
+        json={
+            "marca": "venzo",
+            "modelo": "raptor",
+            "color": "negra",
+        },
+    )
+    assert crear_bici.status_code == 201, crear_bici.text
+    bicicleta_id = crear_bici.json()["id"]
+
+    editar = client.patch(
+        f"/clientes/{cliente_a_id}/bicicletas/{bicicleta_id}",
+        json={
+            "marca": "  trek ",
+            "modelo": " marlin 5 ",
+            "rodado": "29",
+            "color": " rojo mate ",
+            "numero_cuadro": "abc123",
+            "notas": "Se respeta libre",
+        },
+    )
+    assert editar.status_code == 200, editar.text
+    bicicleta = editar.json()
+    assert bicicleta["marca"] == "TREK"
+    assert bicicleta["modelo"] == "MARLIN 5"
+    assert bicicleta["color"] == "ROJO MATE"
+    assert bicicleta["numero_cuadro"] == "ABC123"
+    assert bicicleta["notas"] == "Se respeta libre"
+
+    no_pertenece = client.patch(
+        f"/clientes/{cliente_b_id}/bicicletas/{bicicleta_id}",
+        json={
+            "marca": "otra",
+        },
+    )
+    assert no_pertenece.status_code == 404
+
+
 def test_rechaza_condicion_iva_invalida(client, clean_db):
     response = client.post(
         "/clientes/",

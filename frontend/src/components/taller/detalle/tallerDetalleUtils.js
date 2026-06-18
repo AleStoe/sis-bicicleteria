@@ -56,7 +56,13 @@ export function esBicicletaCatalogo(item) {
 }
 
 export function esItemPermitidoParaTaller(item) {
-  return !esBicicletaCatalogo(item);
+  const texto = normalizarTexto(
+    [item?.categoria_nombre, item?.tipo_item, item?.producto_nombre]
+      .filter(Boolean)
+      .join(" ")
+  );
+
+  return !esBicicletaCatalogo(item) && !texto.includes("servicio");
 }
 
 export function tipoTallerLabel(item) {

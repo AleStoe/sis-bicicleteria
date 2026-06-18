@@ -5,6 +5,8 @@ from urllib.parse import quote_plus
 from fastapi import HTTPException
 
 from app.db.connection import get_connection
+from app.modules.configuracion_negocio.service import obtener_configuracion_negocio
+from app.modules.configuracion_negocio.template import render_template
 from app.core.text_normalization import clean_text, normalize_text_upper
 
 from .repository import (
@@ -165,33 +167,41 @@ def actualizar_estado_cotizacion(cotizacion_id: int, data):
 def generar_mensaje_whatsapp_cotizacion(cotizacion_id: int):
     conn = get_connection()
     try:
+        config = obtener_configuracion_negocio()
         cotizacion = obtener_cotizacion(cotizacion_id, conn=conn)
         items = cotizacion["items"]
         cliente = cotizacion.get("cliente_nombre_snapshot") or cotizacion.get("cliente_nombre") or "cliente"
 
-        lineas = [
-            f"Hola {cliente}, te paso la cotizacion {cotizacion['numero']}.",
-            f"Tipo: {'reparacion' if cotizacion['tipo'] == 'reparacion' else 'bicicleta/productos'}.",
-        ]
-
+        consulta_bloque = ""
         if cotizacion.get("problema_reportado"):
-            lineas.append(f"Consulta: {cotizacion['problema_reportado']}")
+            consulta_bloque = f"Consulta: {cotizacion['problema_reportado']}\n"
 
+        detalle_bloque = ""
         if items:
-            lineas.append("Detalle:")
+            detalle_lineas = ["Detalle:"]
             for item in items:
-                lineas.append(
+                detalle_lineas.append(
                     f"- {item['descripcion_snapshot']} x {item['cantidad']}: ${item['subtotal']}"
                 )
+            detalle_bloque = "\n".join(detalle_lineas) + "\n"
 
-        lineas.append(f"Total estimado: ${cotizacion['total_final']}")
-
+        validez_bloque = ""
         if cotizacion.get("fecha_validez"):
-            lineas.append(f"Valida hasta: {cotizacion['fecha_validez']}")
+            validez_bloque = f"Valida hasta: {cotizacion['fecha_validez']}\n"
 
-        lineas.append("No reserva stock ni genera deuda hasta que la confirmes.")
-
-        mensaje = "\n".join(lineas)
+        mensaje = render_template(
+            config.get("plantilla_cotizacion_whatsapp"),
+            {
+                **config,
+                "cliente_nombre": cliente,
+                "numero_cotizacion": cotizacion["numero"],
+                "tipo_cotizacion": "reparacion" if cotizacion["tipo"] == "reparacion" else "bicicleta/productos",
+                "consulta_bloque": consulta_bloque,
+                "detalle_bloque": detalle_bloque,
+                "total": f"${cotizacion['total_final']}",
+                "validez_bloque": validez_bloque,
+            },
+        )
         telefono = _normalizar_telefono_whatsapp(
             cotizacion.get("cliente_telefono_snapshot")
         )
