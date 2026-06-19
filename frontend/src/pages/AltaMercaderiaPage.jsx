@@ -14,6 +14,7 @@ import { crearIngresoStock } from "../services/stockService";
 import AltaMercaderiaProveedorSelect from "../components/mercaderia/alta/AltaMercaderiaProveedorSelect";
 import AltaMercaderiaIngresoFields from "../components/mercaderia/alta/AltaMercaderiaIngresoFields";
 import AltaMercaderiaImagenUpload from "../components/mercaderia/alta/AltaMercaderiaImagenUpload";
+import CalculadoraPrecioPagoPreview from "../components/precios/CalculadoraPrecioPagoPreview";
 import { formatMoney, formatNumber } from "../utils/formatters";
 import { useSession } from "../context/SessionContext";
 import useMediaQuery from "../hooks/useMediaQuery";
@@ -745,15 +746,24 @@ export default function AltaMercaderiaPage() {
                   <h3 style={styles.formSectionTitle}>Precios</h3>
 
                   <div style={isMobile ? styles.suggestionBoxMobile : styles.suggestionBox}>
-                    <div>
-                      <span>Minorista sugerido</span>
+                    <div style={styles.suggestionItem}>
+                      <span style={styles.suggestionLabel}>Minorista sugerido</span>
                       <strong>{formatMoney(sugeridoMinorista)}</strong>
                     </div>
-                    <div>
-                      <span>Mayorista sugerido</span>
+                    <div style={styles.suggestionItem}>
+                      <span style={styles.suggestionLabel}>Mayorista sugerido</span>
                       <strong>{formatMoney(sugeridoMayorista)}</strong>
                     </div>
                   </div>
+
+                  <CalculadoraPrecioPagoPreview
+                    onUsarComoMinorista={(monto) =>
+                      setCampo("precio_minorista", monto)
+                    }
+                    onUsarComoMayorista={(monto) =>
+                      setCampo("precio_mayorista", monto)
+                    }
+                  />
 
                   <div style={isMobile ? styles.oneCol : styles.twoCols}>
                     <label style={styles.label}>
@@ -1220,6 +1230,17 @@ const styles = {
     border: "1px solid #bfdbfe",
     borderRadius: "14px",
     padding: "14px",
+  },
+  suggestionItem: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: "10px",
+  },
+  suggestionLabel: {
+    color: "#1e3a8a",
+    fontSize: "13px",
+    fontWeight: 800,
   },
   suggestionBoxMobile: {
     display: "grid",
