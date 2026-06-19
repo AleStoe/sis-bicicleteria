@@ -75,3 +75,59 @@ def insert_proveedor(conn, data: dict):
             ),
         )
         return cur.fetchone()
+
+
+def update_proveedor(conn, proveedor_id: int, data: dict):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            UPDATE proveedores
+            SET
+                nombre = %s,
+                telefono = %s,
+                email = %s,
+                notas = %s,
+                updated_at = now()
+            WHERE id = %s
+            RETURNING
+                id,
+                nombre,
+                telefono,
+                email,
+                notas,
+                activo,
+                created_at,
+                updated_at
+            """,
+            (
+                data["nombre"],
+                data.get("telefono"),
+                data.get("email"),
+                data.get("notas"),
+                proveedor_id,
+            ),
+        )
+        return cur.fetchone()
+
+
+def set_proveedor_activo(conn, proveedor_id: int, activo: bool):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            UPDATE proveedores
+            SET activo = %s,
+                updated_at = now()
+            WHERE id = %s
+            RETURNING
+                id,
+                nombre,
+                telefono,
+                email,
+                notas,
+                activo,
+                created_at,
+                updated_at
+            """,
+            (activo, proveedor_id),
+        )
+        return cur.fetchone()

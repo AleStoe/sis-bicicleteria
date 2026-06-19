@@ -11,6 +11,10 @@ class ProveedorCreateInput(BaseModel):
     notas: Optional[str] = None
 
 
+class ProveedorUpdateInput(ProveedorCreateInput):
+    pass
+
+
 class ProveedorOutput(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

@@ -19,3 +19,22 @@ export function crearProveedor(data) {
     body: JSON.stringify(data),
   });
 }
+
+export function actualizarProveedor(id, data) {
+  return apiRequest(`/proveedores/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export function activarProveedor(id) {
+  return apiRequest(`/proveedores/${id}/activar`, {
+    method: "PATCH",
+  });
+}
+
+export function desactivarProveedor(id) {
+  return apiRequest(`/proveedores/${id}/desactivar`, {
+    method: "PATCH",
+  });
+}

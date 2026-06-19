@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { crearProveedor, listarProveedores } from "../services/proveedoresService";
+import {
+  activarProveedor,
+  actualizarProveedor,
+  crearProveedor,
+  desactivarProveedor,
+  listarProveedores,
+} from "../services/proveedoresService";
 import useMediaQuery from "../hooks/useMediaQuery";
 import { normalizeTextUpper } from "../utils/textNormalization";
 
@@ -21,6 +27,7 @@ export default function ProveedoresPage() {
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
+  const [proveedorEditando, setProveedorEditando] = useState(null);
 
   async function cargarProveedores() {
     try {
@@ -64,6 +71,28 @@ export default function ProveedoresPage() {
     }));
   }
 
+  function limpiarFormulario() {
+    setProveedorEditando(null);
+    setForm({
+      nombre: "",
+      telefono: "",
+      email: "",
+      notas: "",
+    });
+  }
+
+  function iniciarEdicion(proveedor) {
+    setProveedorEditando(proveedor);
+    setError("");
+    setMensaje("");
+    setForm({
+      nombre: proveedor.nombre || "",
+      telefono: proveedor.telefono || "",
+      email: proveedor.email || "",
+      notas: proveedor.notas || "",
+    });
+  }
+
   async function guardarProveedor(e) {
     e.preventDefault();
 
@@ -77,24 +106,49 @@ export default function ProveedoresPage() {
       setError("");
       setMensaje("");
 
-      await crearProveedor({
+      const payload = {
         nombre: form.nombre.trim(),
         telefono: form.telefono.trim() || null,
         email: form.email.trim() || null,
         notas: form.notas.trim() || null,
-      });
+      };
 
-      setMensaje("Proveedor creado correctamente");
-      setForm({
-        nombre: "",
-        telefono: "",
-        email: "",
-        notas: "",
-      });
+      if (proveedorEditando) {
+        await actualizarProveedor(proveedorEditando.id, payload);
+        setMensaje("Proveedor actualizado correctamente");
+      } else {
+        await crearProveedor(payload);
+        setMensaje("Proveedor creado correctamente");
+      }
+
+      limpiarFormulario();
 
       await cargarProveedores();
     } catch (err) {
-      setError(err.message || "Error al crear proveedor");
+      setError(err.message || "Error al guardar proveedor");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  async function cambiarEstadoProveedor(proveedor) {
+    const accion = proveedor.activo ? desactivarProveedor : activarProveedor;
+
+    try {
+      setGuardando(true);
+      setError("");
+      setMensaje("");
+
+      await accion(proveedor.id);
+
+      if (proveedorEditando?.id === proveedor.id && proveedor.activo) {
+        limpiarFormulario();
+      }
+
+      setMensaje(proveedor.activo ? "Proveedor desactivado" : "Proveedor activado");
+      await cargarProveedores();
+    } catch (err) {
+      setError(err.message || "No se pudo cambiar el estado del proveedor");
     } finally {
       setGuardando(false);
     }
@@ -116,7 +170,26 @@ export default function ProveedoresPage() {
 
       <div style={isNarrow ? styles.gridMobile : styles.grid}>
         <section style={styles.card}>
-          <h2 style={styles.cardTitle}>Nuevo proveedor</h2>
+          <div style={styles.formHeader}>
+            <div>
+              <h2 style={styles.cardTitle}>
+                {proveedorEditando ? "Editar proveedor" : "Nuevo proveedor"}
+              </h2>
+              {proveedorEditando && (
+                <p style={styles.editingHint}>Editando #{proveedorEditando.id}</p>
+              )}
+            </div>
+            {proveedorEditando && (
+              <button
+                type="button"
+                style={styles.linkButton}
+                onClick={limpiarFormulario}
+                disabled={guardando}
+              >
+                Cancelar
+              </button>
+            )}
+          </div>
 
           <form onSubmit={guardarProveedor} style={styles.form}>
             <label style={styles.label}>
@@ -161,7 +234,11 @@ export default function ProveedoresPage() {
             </label>
 
             <button type="submit" style={styles.primaryButton} disabled={guardando}>
-              {guardando ? "Guardando..." : "Crear proveedor"}
+              {guardando
+                ? "Guardando..."
+                : proveedorEditando
+                  ? "Guardar cambios"
+                  : "Crear proveedor"}
             </button>
           </form>
         </section>
@@ -212,6 +289,7 @@ export default function ProveedoresPage() {
                   <th style={styles.th}>Teléfono</th>
                   <th style={styles.th}>Email</th>
                   <th style={styles.th}>Estado</th>
+                  <th style={styles.th}>Acciones</th>
                 </tr>
               </thead>
 
@@ -232,12 +310,35 @@ export default function ProveedoresPage() {
                         {p.activo ? "Activo" : "Inactivo"}
                       </span>
                     </td>
+                    <td style={styles.td}>
+                      <div style={styles.actions}>
+                        <button
+                          type="button"
+                          style={styles.smallButton}
+                          onClick={() => iniciarEdicion(p)}
+                          disabled={guardando}
+                        >
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          style={{
+                            ...styles.smallButton,
+                            ...(p.activo ? styles.dangerButton : styles.successButton),
+                          }}
+                          onClick={() => cambiarEstadoProveedor(p)}
+                          disabled={guardando}
+                        >
+                          {p.activo ? "Desactivar" : "Activar"}
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
 
                 {!cargando && proveedoresFiltrados.length === 0 && (
                   <tr>
-                    <td style={styles.empty} colSpan={5}>
+                    <td style={styles.empty} colSpan={6}>
                       No hay proveedores para mostrar.
                     </td>
                   </tr>
@@ -245,7 +346,7 @@ export default function ProveedoresPage() {
 
                 {cargando && (
                   <tr>
-                    <td style={styles.empty} colSpan={5}>
+                    <td style={styles.empty} colSpan={6}>
                       Cargando proveedores...
                     </td>
                   </tr>
@@ -314,6 +415,17 @@ const styles = {
     fontSize: "20px",
     fontWeight: 700,
   },
+  formHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: "12px",
+    alignItems: "flex-start",
+  },
+  editingHint: {
+    margin: "4px 0 0",
+    color: "#666",
+    fontSize: "13px",
+  },
   form: {
     display: "grid",
     gap: "12px",
@@ -359,6 +471,40 @@ const styles = {
     color: "#222",
     fontWeight: 600,
     cursor: "pointer",
+  },
+  linkButton: {
+    border: "none",
+    background: "transparent",
+    color: "#1f6feb",
+    fontWeight: 700,
+    cursor: "pointer",
+    padding: "4px",
+  },
+  smallButton: {
+    border: "1px solid #cfd7e3",
+    borderRadius: "7px",
+    padding: "7px 9px",
+    background: "#fff",
+    color: "#1f2937",
+    fontSize: "12px",
+    fontWeight: 700,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  },
+  dangerButton: {
+    borderColor: "#fecaca",
+    background: "#fff1f2",
+    color: "#b91c1c",
+  },
+  successButton: {
+    borderColor: "#bbf7d0",
+    background: "#f0fdf4",
+    color: "#166534",
+  },
+  actions: {
+    display: "flex",
+    gap: "8px",
+    flexWrap: "wrap",
   },
   toolbar: {
     display: "flex",
