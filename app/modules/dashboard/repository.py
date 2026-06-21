@@ -83,7 +83,8 @@ def get_resultado_estimado(conn, fecha_desde, fecha_hasta, id_sucursal=None):
 
 
 def get_resultado_dia(conn, fecha, id_sucursal=None):
-    params = [fecha]
+    estados_operativos = ["pagada_parcial", "pagada_total", "entregada"]
+    params = [fecha, estados_operativos]
     ventas_sucursal_sql = ""
     gastos_sucursal_sql = ""
     if id_sucursal is not None:
@@ -110,7 +111,7 @@ def get_resultado_dia(conn, fecha, id_sucursal=None):
             FROM ventas v
             LEFT JOIN venta_items vi ON vi.id_venta = v.id
             WHERE v.fecha::date = %s
-              AND v.estado NOT IN ('anulada', 'devuelta')
+              AND v.estado = ANY(%s)
               {ventas_sucursal_sql}
             """,
             params,

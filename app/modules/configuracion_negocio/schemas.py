@@ -8,6 +8,7 @@ class ConfiguracionNegocioBase(BaseModel):
     horarios_retiro: str = Field(min_length=1)
     whatsapp_cierre: str = Field(min_length=1)
     texto_beneficio_pago: str = Field(min_length=1)
+    porcentaje_descuento_contado_calculadora_precios: float = Field(default=10, ge=0, lt=100)
     whatsapp_retiro_mostrar_total: bool = True
     whatsapp_retiro_mostrar_trabajos: bool = True
     plantilla_turno_confirmacion: str = Field(min_length=1)

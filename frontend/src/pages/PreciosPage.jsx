@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { listarCatalogoPOS } from "../services/catalogoService";
 import { listarProveedores } from "../services/proveedoresService";
+import { obtenerConfiguracionNegocio } from "../services/configuracionNegocioService";
 import RecalculoMasivoPanel from "../components/precios/RecalculoMasivoPanel";
+import AjusteRapidoProveedorPanel from "../components/precios/AjusteRapidoProveedorPanel";
 import PrecioManualPanel from "../components/precios/PrecioManualPanel";
 import ReglasPrecioPanel from "../components/precios/ReglasPrecioPanel";
 import { ConfirmModal } from "../components/ui/ConfirmModal";
@@ -15,6 +17,7 @@ import {
 } from "../utils/preciosUtils";
 import {
   actualizarPrecioVariante,
+  ajustarPreciosProveedor,
   crearReglaPrecio,
   desactivarReglaPrecio,
   listarFamiliasPrecio,
@@ -27,6 +30,7 @@ import {
 } from "../services/preciosService";
 import { useSession } from "../context/SessionContext";
 import useMediaQuery from "../hooks/useMediaQuery";
+import { DEFAULT_CONFIGURACION_NEGOCIO } from "../config/defaultConfiguracionNegocio";
 
 export default function PreciosPage() {
   const isMobile = useMediaQuery("(max-width: 760px)");
@@ -39,6 +43,7 @@ export default function PreciosPage() {
   const [proveedores, setProveedores] = useState([]);
   const [familias, setFamilias] = useState([]);
   const [reglas, setReglas] = useState([]);
+  const [configuracionNegocio, setConfiguracionNegocio] = useState(DEFAULT_CONFIGURACION_NEGOCIO);
 
   const [query, setQuery] = useState("");
   const [resultados, setResultados] = useState([]);
@@ -61,6 +66,18 @@ export default function PreciosPage() {
   const [motivoMasivo, setMotivoMasivo] = useState(
     "Ajuste por actualización de proveedor"
   );
+
+  const [ajusteProveedorForm, setAjusteProveedorForm] = useState({
+    id_proveedor: "",
+    aplicar_sobre: "ambos",
+    tipo_ajuste: "porcentaje",
+    valor: "",
+    motivo: "Aumento lista proveedor",
+    solo_productos_activos: true,
+    solo_variantes_activas: true,
+    solo_con_stock: false,
+  });
+  const [ajusteProveedorResultado, setAjusteProveedorResultado] = useState(null);
 
   const [reglaForm, setReglaForm] = useState({
     nombre: "",
@@ -106,15 +123,20 @@ export default function PreciosPage() {
     try {
       setError("");
 
-      const [provs, reglasData, familiasData] = await Promise.all([
+      const [provs, reglasData, familiasData, config] = await Promise.all([
         listarProveedores({ solo_activos: true }),
         listarReglasPrecio({ solo_activas: false }),
         listarFamiliasPrecio(),
+        obtenerConfiguracionNegocio().catch(() => DEFAULT_CONFIGURACION_NEGOCIO),
       ]);
 
       setProveedores(provs || []);
       setReglas(reglasData || []);
       setFamilias(familiasData || []);
+      setConfiguracionNegocio({
+        ...DEFAULT_CONFIGURACION_NEGOCIO,
+        ...(config || {}),
+      });
     } catch (err) {
       setError(err.message || "No se pudieron cargar datos iniciales");
     }
@@ -374,6 +396,92 @@ export default function PreciosPage() {
     }
   }
 
+  function buildAjusteProveedorPayload(aplicar) {
+    return {
+      id_proveedor: Number(ajusteProveedorForm.id_proveedor),
+      aplicar_sobre: ajusteProveedorForm.aplicar_sobre,
+      tipo_ajuste: ajusteProveedorForm.tipo_ajuste,
+      valor: ajusteProveedorForm.valor,
+      aplicar,
+      id_usuario: aplicar ? usuarioId : undefined,
+      motivo: ajusteProveedorForm.motivo?.trim() || undefined,
+      solo_productos_activos: Boolean(ajusteProveedorForm.solo_productos_activos),
+      solo_variantes_activas: Boolean(ajusteProveedorForm.solo_variantes_activas),
+      solo_con_stock: Boolean(ajusteProveedorForm.solo_con_stock),
+    };
+  }
+
+  async function previsualizarAjusteProveedor() {
+    if (!ajusteProveedorForm.id_proveedor) {
+      setError("SeleccionÃ¡ un proveedor");
+      return;
+    }
+
+    if (!Number(ajusteProveedorForm.valor || 0)) {
+      setError("IngresÃ¡ un valor de ajuste mayor a cero");
+      return;
+    }
+
+    try {
+      setProcesando(true);
+      setError("");
+      setMensaje("");
+
+      const data = await ajustarPreciosProveedor(
+        buildAjusteProveedorPayload(false)
+      );
+
+      setAjusteProveedorResultado(data);
+
+      if ((data?.total_detectados || 0) === 0) {
+        setMensaje("No hay cambios para aplicar con este ajuste");
+      }
+    } catch (err) {
+      setError(err.message || "Error al previsualizar ajuste por proveedor");
+    } finally {
+      setProcesando(false);
+    }
+  }
+
+  async function aplicarAjusteProveedor() {
+    if (!ajusteProveedorResultado || ajusteProveedorResultado.total_detectados === 0) {
+      setError("Primero generÃ¡ una previsualizaciÃ³n con cambios");
+      return;
+    }
+
+    if (!ajusteProveedorForm.motivo.trim()) {
+      setError("El motivo es obligatorio para aplicar cambios");
+      return;
+    }
+
+    const confirmado = await pedirConfirmacion({
+      title: "Aplicar ajuste rÃ¡pido",
+      message: "Â¿Aplicar este ajuste de precios al proveedor seleccionado?",
+      confirmText: "Aplicar ajuste",
+      cancelText: "Cancelar",
+      variant: "warning",
+    });
+
+    if (!confirmado) return;
+
+    try {
+      setProcesando(true);
+      setError("");
+      setMensaje("");
+
+      const data = await ajustarPreciosProveedor(
+        buildAjusteProveedorPayload(true)
+      );
+
+      setAjusteProveedorResultado(data);
+      setMensaje(`Ajuste aplicado: ${data.total_aplicados} variante(s)`);
+    } catch (err) {
+      setError(err.message || "Error al aplicar ajuste por proveedor");
+    } finally {
+      setProcesando(false);
+    }
+  }
+
   async function crearRegla(e) {
     e.preventDefault();
 
@@ -523,33 +631,50 @@ export default function PreciosPage() {
           usarSugerencia={usarSugerencia}
           sugerencia={sugerencia}
           historial={historial}
+          porcentajeDescuentoContado={
+            configuracionNegocio.porcentaje_descuento_contado_calculadora_precios
+          }
           styles={viewStyles}
           InfoBox={InfoBox}
         />
       )}
 
       {tab === "masivo" && (
-        <RecalculoMasivoPanel
-          proveedores={proveedores}
-          idProveedor={idProveedor}
-          setIdProveedor={setIdProveedor}
-          tipoCliente={tipoCliente}
-          setTipoCliente={setTipoCliente}
-          motivoMasivo={motivoMasivo}
-          setMotivoMasivo={setMotivoMasivo}
-          loading={loading}
-          procesando={procesando}
-          buscarDesfasados={buscarDesfasados}
-          generarPreview={generarPreview}
-          aplicarCambios={aplicarCambios}
-          resumenMasivo={resumenMasivo}
-          preview={preview}
-          desfasados={desfasados}
-          setPreview={setPreview}
-          setDesfasados={setDesfasados}
-          styles={viewStyles}
-          InfoBox={InfoBox}
-        />
+        <>
+          <AjusteRapidoProveedorPanel
+            proveedores={proveedores}
+            form={ajusteProveedorForm}
+            setForm={setAjusteProveedorForm}
+            resultado={ajusteProveedorResultado}
+            loading={loading}
+            procesando={procesando}
+            onPreview={previsualizarAjusteProveedor}
+            onAplicar={aplicarAjusteProveedor}
+            styles={viewStyles}
+          />
+
+          <RecalculoMasivoPanel
+            proveedores={proveedores}
+            idProveedor={idProveedor}
+            setIdProveedor={setIdProveedor}
+            tipoCliente={tipoCliente}
+            setTipoCliente={setTipoCliente}
+            motivoMasivo={motivoMasivo}
+            setMotivoMasivo={setMotivoMasivo}
+            loading={loading}
+            procesando={procesando}
+            buscarDesfasados={buscarDesfasados}
+            generarPreview={generarPreview}
+            aplicarCambios={aplicarCambios}
+            resumenMasivo={resumenMasivo}
+            preview={preview}
+            desfasados={desfasados}
+            setPreview={setPreview}
+            setDesfasados={setDesfasados}
+            styles={viewStyles}
+            InfoBox={InfoBox}
+          />
+        </>
       )}
 
       {tab === "reglas" && (
@@ -709,6 +834,26 @@ const styles = {
     gap: "10px",
     marginBottom: "12px",
   },
+  quickGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+    gap: "12px",
+    marginBottom: "12px",
+  },
+  checkboxGrid: {
+    display: "flex",
+    gap: "12px",
+    flexWrap: "wrap",
+    margin: "4px 0 12px",
+  },
+  checkboxLabel: {
+    display: "flex",
+    alignItems: "center",
+    gap: "7px",
+    fontSize: "13px",
+    fontWeight: 800,
+    color: "#344054",
+  },
   form: {
     display: "grid",
     gap: "10px",
@@ -820,6 +965,36 @@ const styles = {
     border: "1px solid #bae6fd",
     borderRadius: "12px",
     padding: "12px",
+    display: "grid",
+    gap: "10px",
+  },
+  priceToolsBox: {
+    marginTop: "14px",
+    display: "grid",
+    gap: "12px",
+    border: "1px solid #dbeafe",
+    borderRadius: "14px",
+    padding: "12px",
+    background: "#f8fbff",
+  },
+  priceToolsHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: "10px",
+    alignItems: "start",
+  },
+  priceToolsTitle: {
+    margin: 0,
+    fontSize: "17px",
+    fontWeight: 900,
+  },
+  priceToolsHelp: {
+    margin: "3px 0 0",
+    color: "#64748b",
+    fontSize: "13px",
+    fontWeight: 700,
+  },
+  priceToolsGrid: {
     display: "grid",
     gap: "10px",
   },
@@ -935,5 +1110,11 @@ const styles = {
     padding: "10px",
     borderRadius: "8px",
     color: "#344054",
+  },
+  mutedText: {
+    margin: "-6px 0 14px",
+    color: "#667085",
+    fontSize: "13px",
+    fontWeight: 700,
   },
 };

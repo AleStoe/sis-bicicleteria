@@ -21,8 +21,8 @@ from .repository import (
     insert_pago,
     insert_pago_reversion_relacion,
     obtener_pagos_por_venta,
+    sincronizar_venta_financiera_desde_pagos,
     update_pago_estado,
-    update_venta_saldo_y_estado,
     insert_pago_tarjeta_detalle,
 )
 
@@ -30,7 +30,6 @@ from app.shared.constants import (
     MEDIOS_PAGO_VALIDOS,
     ORIGENES_PAGO_VALIDOS,
     ORIGEN_VENTA,
-    VENTA_ESTADO_CREADA,
     VENTA_ESTADO_ANULADA,
     VENTA_ESTADO_ENTREGADA,
     VENTA_ESTADO_PAGADA_TOTAL,
@@ -378,12 +377,12 @@ def registrar_pago(conn, data: dict):
             id_usuario=data["id_usuario"],
         )
 
-        update_venta_saldo_y_estado(
+        venta_actualizada = sincronizar_venta_financiera_desde_pagos(
             conn,
             venta["id"],
-            saldo_restante,
-            nuevo_estado,
         )
+        saldo_restante = redondear_monto(venta_actualizada["saldo_pendiente"])
+        nuevo_estado = venta_actualizada["estado"]
 
         auditoria_service.registrar_evento(
             conn,
@@ -653,23 +652,11 @@ def revertir_pago(pago_id: int, data):
                 pago_original["medio_pago"],
                 tramo_original,
             )
-            total_final = redondear_monto(venta["total_final"])
-
             saldo_restante = redondear_monto(
                 saldo_pendiente + tramo_original["monto_base_aplicado"]
             )
 
-            if saldo_restante > total_final:
-                raise HTTPException(
-                    status_code=500,
-                    detail="Inconsistencia en cálculo de saldo tras reversión",
-                )
-
-            nuevo_estado = (
-                VENTA_ESTADO_CREADA
-                if saldo_restante == total_final
-                else VENTA_ESTADO_PAGADA_PARCIAL
-            )
+            nuevo_estado = VENTA_ESTADO_PAGADA_PARCIAL
 
             caja = _obtener_caja_abierta_obligatoria(conn, venta["id_sucursal"])
 
@@ -711,12 +698,12 @@ def revertir_pago(pago_id: int, data):
                 id_usuario=data.id_usuario,
             )
 
-            update_venta_saldo_y_estado(
+            venta_actualizada = sincronizar_venta_financiera_desde_pagos(
                 conn,
                 venta["id"],
-                saldo_restante,
-                nuevo_estado,
             )
+            saldo_restante = redondear_monto(venta_actualizada["saldo_pendiente"])
+            nuevo_estado = venta_actualizada["estado"]
 
             auditoria_service.registrar_evento(
                 conn,

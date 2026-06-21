@@ -7,8 +7,16 @@ import {
   obtenerFichaTecnicaProducto,
   listarCategorias,
   listarMarcas,
+  editarProducto,
+  editarVariante,
+  subirImagenCatalogo,
+  listarImagenesProducto,
+  eliminarImagenCatalogo,
   listarCatalogoPOS,
 } from "../services/catalogoService";
+import { actualizarPrecioVariante } from "../services/preciosService";
+import { listarProveedores } from "../services/proveedoresService";
+import { useSession } from "../context/SessionContext";
 import { formatMoney, formatNumber } from "../utils/formatters";
 
 const ID_SUCURSAL_DEFAULT = 1;
@@ -16,6 +24,7 @@ const TAB_OPERATIVO = "operativo";
 const TAB_VARIANTES = "variantes";
 const TAB_FICHA = "ficha";
 const MOBILE_BREAKPOINT = 760;
+const RUBROS_PRODUCTO = ["BICICLETAS", "REPUESTOS", "ACCESORIOS", "INDUMENTARIA", "SERVICIOS"];
 
 function useIsMobile(breakpoint = MOBILE_BREAKPOINT) {
   const [isMobile, setIsMobile] = useState(() => {
@@ -62,33 +71,57 @@ function valorMostrar(valor) {
 export default function CatalogoProductoDetallePage() {
   const { productoId } = useParams();
   const navigate = useNavigate();
+  const { usuarioId } = useSession();
   const isMobile = useIsMobile();
 
   const [producto, setProducto] = useState(null);
   const [variantes, setVariantes] = useState([]);
   const [itemsPOS, setItemsPOS] = useState([]);
   const [fichaTecnica, setFichaTecnica] = useState([]);
+  const [productoImagenes, setProductoImagenes] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [marcas, setMarcas] = useState([]);
+  const [proveedores, setProveedores] = useState([]);
   const [tabActiva, setTabActiva] = useState(TAB_OPERATIVO);
   const [loading, setLoading] = useState(true);
+  const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
+  const [mensaje, setMensaje] = useState("");
+  const [productoForm, setProductoForm] = useState(null);
+  const [variantesForm, setVariantesForm] = useState({});
+  const [imagenForm, setImagenForm] = useState({});
+  const [productoImagenArchivo, setProductoImagenArchivo] = useState(null);
+  const [productoImagenPreview, setProductoImagenPreview] = useState("");
 
   useEffect(() => {
     cargar();
   }, [productoId]);
+
+  useEffect(() => {
+    if (!productoImagenArchivo) {
+      setProductoImagenPreview("");
+      return undefined;
+    }
+
+    const previewUrl = URL.createObjectURL(productoImagenArchivo);
+    setProductoImagenPreview(previewUrl);
+
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [productoImagenArchivo]);
 
   async function cargar() {
     try {
       setLoading(true);
       setError("");
 
-      const [productoData, variantesData, fichaData, categoriasData, marcasData] = await Promise.all([
+      const [productoData, variantesData, fichaData, categoriasData, marcasData, proveedoresData, imagenesProductoData] = await Promise.all([
         obtenerProducto(productoId),
         listarVariantes(),
         obtenerFichaTecnicaProducto(productoId),
         listarCategorias(),
         listarMarcas(),
+        listarProveedores({ solo_activos: true }),
+        listarImagenesProducto(productoId),
       ]);
 
       const variantesFiltradas = (variantesData || []).filter(
@@ -98,8 +131,37 @@ export default function CatalogoProductoDetallePage() {
       setProducto(productoData);
       setVariantes(variantesFiltradas);
       setFichaTecnica(fichaData || []);
+      setProductoImagenes(imagenesProductoData || []);
       setCategorias(categoriasData || []);
       setMarcas(marcasData || []);
+      setProveedores(proveedoresData || []);
+      setProductoForm({
+        nombre: productoData?.nombre || "",
+        rubro: productoData?.rubro || "REPUESTOS",
+        id_categoria: productoData?.id_categoria || "",
+        id_marca: productoData?.id_marca || "",
+        rodado: productoData?.rodado || "",
+        tipo_bicicleta: productoData?.tipo_bicicleta || "",
+        material_cuadro: productoData?.material_cuadro || "",
+      });
+      setVariantesForm(
+        Object.fromEntries(
+          variantesFiltradas.map((v) => [
+            v.id,
+            {
+              nombre_variante: v.nombre_variante || "",
+              codigo_proveedor: v.codigo_proveedor || "",
+              proveedor_preferido_id: v.proveedor_preferido_id || "",
+              talle: v.talle || "",
+              color: v.color || "",
+              precio_minorista: v.precio_minorista ?? "0",
+              precio_mayorista: v.precio_mayorista ?? "0",
+            },
+          ])
+        )
+      );
+      setImagenForm({});
+      setProductoImagenArchivo(null);
 
       const posData = await listarCatalogoPOS({
         id_sucursal: ID_SUCURSAL_DEFAULT,
@@ -114,6 +176,144 @@ export default function CatalogoProductoDetallePage() {
       setError(err.message || "No se pudo cargar el producto");
     } finally {
       setLoading(false);
+    }
+  }
+
+  function setProductoCampo(campo, valor) {
+    setProductoForm((prev) => ({ ...prev, [campo]: valor }));
+  }
+
+  function setVarianteCampo(varianteId, campo, valor) {
+    setVariantesForm((prev) => ({
+      ...prev,
+      [varianteId]: {
+        ...(prev[varianteId] || {}),
+        [campo]: valor,
+      },
+    }));
+  }
+
+  async function guardarProducto(e) {
+    e.preventDefault();
+
+    try {
+      setGuardando(true);
+      setError("");
+      setMensaje("");
+
+      await editarProducto(producto.id, {
+        nombre: productoForm.nombre,
+        rubro: productoForm.rubro || "REPUESTOS",
+        id_categoria: Number(productoForm.id_categoria),
+        id_marca: productoForm.id_marca ? Number(productoForm.id_marca) : null,
+        rodado: productoForm.rodado || null,
+        tipo_bicicleta: productoForm.tipo_bicicleta || null,
+        material_cuadro: productoForm.material_cuadro || null,
+      });
+
+      setMensaje("Producto actualizado.");
+      await cargar();
+    } catch (err) {
+      setError(err.message || "No se pudo actualizar el producto");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  async function guardarImagenProducto() {
+    if (!productoImagenArchivo) return;
+
+    try {
+      setGuardando(true);
+      setError("");
+      setMensaje("");
+
+      await subirImagenCatalogo({
+        archivo: productoImagenArchivo,
+        id_producto: producto.id,
+        es_principal: true,
+        orden: 0,
+      });
+
+      setMensaje("Imagen principal actualizada.");
+      await cargar();
+    } catch (err) {
+      setError(err.message || "No se pudo actualizar la imagen principal");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  async function eliminarImagenPrincipalProducto() {
+    if (!imagenProductoPrincipal) return;
+
+    const confirmar = window.confirm("¿Eliminar la imagen principal de este producto?");
+    if (!confirmar) return;
+
+    try {
+      setGuardando(true);
+      setError("");
+      setMensaje("");
+
+      await eliminarImagenCatalogo(imagenProductoPrincipal.id);
+
+      setMensaje("Imagen principal eliminada.");
+      await cargar();
+    } catch (err) {
+      setError(err.message || "No se pudo eliminar la imagen principal");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  async function guardarVariante(variante) {
+    const form = variantesForm[variante.id] || {};
+
+    try {
+      setGuardando(true);
+      setError("");
+      setMensaje("");
+
+      await editarVariante(variante.id, {
+        nombre_variante: form.nombre_variante,
+        codigo_proveedor: form.codigo_proveedor || null,
+        proveedor_preferido_id: form.proveedor_preferido_id ? Number(form.proveedor_preferido_id) : null,
+        talle: form.talle || null,
+        color: form.color || null,
+      });
+
+      const precioCambio =
+        Number(form.precio_minorista || 0) !== Number(variante.precio_minorista || 0) ||
+        Number(form.precio_mayorista || 0) !== Number(variante.precio_mayorista || 0);
+
+      if (precioCambio) {
+        await actualizarPrecioVariante(variante.id, {
+          precio_minorista: form.precio_minorista || "0",
+          precio_mayorista: form.precio_mayorista || "0",
+          motivo: "Corrección operativa desde catálogo",
+          id_usuario: usuarioId,
+          tipo_movimiento: "actualizacion_manual",
+          origen_tipo: "catalogo",
+          origen_id: producto.id,
+        });
+      }
+
+      const archivo = imagenForm[variante.id];
+      if (archivo) {
+        await subirImagenCatalogo({
+          archivo,
+          id_variante: variante.id,
+          es_principal: true,
+          orden: 0,
+        });
+      }
+
+      setMensaje("Variante actualizada.");
+      await cargar();
+    } catch (err) {
+      setError(err.message || "No se pudo actualizar la variante");
+    } finally {
+      setGuardando(false);
     }
   }
 
@@ -137,11 +337,19 @@ export default function CatalogoProductoDetallePage() {
     return esBicicleta(producto, categoriaNombre);
   }, [producto, categoriaNombre]);
 
+  const imagenProductoPrincipal = useMemo(() => {
+    return (
+      productoImagenes.find((imagen) => imagen.es_principal && imagen.activo !== false) ||
+      productoImagenes.find((imagen) => imagen.activo !== false) ||
+      null
+    );
+  }, [productoImagenes]);
+
   const imagenPrincipal = useMemo(() => {
     const itemConImagen = itemsPOS.find((item) => item.imagen_principal);
     const varianteConImagen = variantes.find((v) => v.imagen_principal);
-    return itemConImagen?.imagen_principal || varianteConImagen?.imagen_principal || null;
-  }, [itemsPOS, variantes]);
+    return imagenProductoPrincipal?.url || itemConImagen?.imagen_principal || varianteConImagen?.imagen_principal || null;
+  }, [imagenProductoPrincipal, itemsPOS, variantes]);
 
   const resumenOperativo = useMemo(() => {
     const base = {
@@ -228,9 +436,12 @@ export default function CatalogoProductoDetallePage() {
         </div>
 
         <div style={{ ...styles.headerActions, ...(isMobile ? styles.headerActionsMobile : {}) }}>
+          <button type="button" onClick={() => setTabActiva(TAB_OPERATIVO)} style={styles.primaryButton}>Editar producto</button>
           <button type="button" onClick={cargar} style={styles.secondaryButton}>Refrescar</button>
         </div>
       </header>
+
+      {mensaje && <div style={styles.successBox}>{mensaje}</div>}
 
       <section style={{ ...styles.topGrid, ...(isMobile ? styles.topGridMobile : {}) }}>
         <article style={{ ...styles.imageCard, ...(isMobile ? styles.imageCardMobile : {}) }}>
@@ -283,8 +494,106 @@ export default function CatalogoProductoDetallePage() {
             </div>
           </div>
 
+          <form onSubmit={guardarProducto} style={styles.editForm}>
+            <label style={styles.field}>
+              <span>Nombre del producto</span>
+              <input style={styles.input} value={productoForm?.nombre || ""} onChange={(e) => setProductoCampo("nombre", e.target.value)} />
+            </label>
+            <label style={styles.field}>
+              <span>Rubro</span>
+              <select style={styles.input} value={productoForm?.rubro || "REPUESTOS"} onChange={(e) => setProductoCampo("rubro", e.target.value)}>
+                {RUBROS_PRODUCTO.map((rubro) => <option key={rubro} value={rubro}>{rubro}</option>)}
+              </select>
+            </label>
+            <label style={styles.field}>
+              <span>Categoría</span>
+              <select style={styles.input} value={productoForm?.id_categoria || ""} onChange={(e) => setProductoCampo("id_categoria", e.target.value)}>
+                <option value="">Seleccionar...</option>
+                {categorias.map((categoria) => <option key={categoria.id} value={categoria.id}>{categoria.nombre}</option>)}
+              </select>
+            </label>
+            <label style={styles.field}>
+              <span>Marca</span>
+              <select style={styles.input} value={productoForm?.id_marca || ""} onChange={(e) => setProductoCampo("id_marca", e.target.value)}>
+                <option value="">Sin marca</option>
+                {marcas.map((marca) => <option key={marca.id} value={marca.id}>{marca.nombre}</option>)}
+              </select>
+            </label>
+            {esProductoBicicleta && (
+              <>
+                <label style={styles.field}><span>Rodado</span><input style={styles.input} value={productoForm?.rodado || ""} onChange={(e) => setProductoCampo("rodado", e.target.value)} /></label>
+                <label style={styles.field}><span>Tipo bicicleta</span><input style={styles.input} value={productoForm?.tipo_bicicleta || ""} onChange={(e) => setProductoCampo("tipo_bicicleta", e.target.value)} /></label>
+                <label style={styles.field}><span>Material cuadro</span><input style={styles.input} value={productoForm?.material_cuadro || ""} onChange={(e) => setProductoCampo("material_cuadro", e.target.value)} /></label>
+              </>
+            )}
+            <div style={styles.formActions}>
+              <button type="submit" disabled={guardando} style={styles.primaryButton}>{guardando ? "Guardando..." : "Guardar producto"}</button>
+            </div>
+          </form>
+
+          <div style={styles.imageManager}>
+            <div>
+              <h3 style={styles.imageManagerTitle}>Imagen principal</h3>
+              <p style={styles.muted}>Sirve para catalogo, ventas, PDFs y consulta rapida.</p>
+            </div>
+
+            <div style={{ ...styles.imageManagerGrid, ...(isMobile ? styles.imageManagerGridMobile : {}) }}>
+              <div style={styles.imagePreviewBox}>
+                <span style={styles.previewLabel}>Actual</span>
+                {imagenProductoPrincipal?.url ? (
+                  <img src={getImageUrl(imagenProductoPrincipal.url)} alt={producto.nombre} style={styles.imagePreview} />
+                ) : (
+                  <div style={styles.imagePreviewEmpty}>Sin imagen principal</div>
+                )}
+              </div>
+
+              <div style={styles.imagePreviewBox}>
+                <span style={styles.previewLabel}>Nueva imagen</span>
+                {productoImagenPreview ? (
+                  <img src={productoImagenPreview} alt="Preview nueva imagen" style={styles.imagePreview} />
+                ) : (
+                  <div style={styles.imagePreviewEmpty}>Selecciona un archivo para previsualizar</div>
+                )}
+              </div>
+
+              <div style={styles.imageActionsBox}>
+                <label style={styles.field}>
+                  <span>{imagenProductoPrincipal?.url ? "Reemplazar imagen" : "Agregar imagen"}</span>
+                  <input
+                    style={styles.input}
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => setProductoImagenArchivo(e.target.files?.[0] || null)}
+                  />
+                </label>
+
+                <div style={styles.formActions}>
+                  <button
+                    type="button"
+                    disabled={guardando || !productoImagenArchivo}
+                    onClick={guardarImagenProducto}
+                    style={styles.primaryButton}
+                  >
+                    {guardando ? "Guardando..." : imagenProductoPrincipal?.url ? "Guardar reemplazo" : "Guardar imagen"}
+                  </button>
+                  {imagenProductoPrincipal?.url && (
+                    <button
+                      type="button"
+                      disabled={guardando}
+                      onClick={eliminarImagenPrincipalProducto}
+                      style={styles.dangerButton}
+                    >
+                      Eliminar imagen
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div style={{ ...styles.infoGrid, ...(isMobile ? styles.infoGridMobile : {}) }}>
             <Info label="Nombre" value={producto.nombre} />
+            <Info label="Rubro" value={producto.rubro} />
             <Info label="Categoría" value={categoriaNombre} />
             <Info label="Marca" value={marcaNombre} />
             <Info label="Tipo item" value={producto.tipo_item} />
@@ -335,6 +644,32 @@ export default function CatalogoProductoDetallePage() {
                       <Info label="Código proveedor" value={variante.codigo_proveedor} />
                       {esProductoBicicleta && <Info label="Talle" value={variante.talle} />}
                       <Info label={esProductoBicicleta ? "Color" : "Color / presentación"} value={variante.color} />
+                    </div>
+
+                    <div style={styles.variantEditBox}>
+                      <h3 style={styles.variantEditTitle}>Editar variante</h3>
+                      <div style={styles.editForm}>
+                        <label style={styles.field}>
+                          <span>Nombre variante</span>
+                          <input style={styles.input} value={variantesForm[variante.id]?.nombre_variante || ""} onChange={(e) => setVarianteCampo(variante.id, "nombre_variante", e.target.value)} />
+                        </label>
+                        <label style={styles.field}>
+                          <span>Proveedor preferido</span>
+                          <select style={styles.input} value={variantesForm[variante.id]?.proveedor_preferido_id || ""} onChange={(e) => setVarianteCampo(variante.id, "proveedor_preferido_id", e.target.value)}>
+                            <option value="">Sin proveedor</option>
+                            {proveedores.map((proveedor) => <option key={proveedor.id} value={proveedor.id}>#{proveedor.id} - {proveedor.nombre}</option>)}
+                          </select>
+                        </label>
+                        <label style={styles.field}><span>Código proveedor</span><input style={styles.input} value={variantesForm[variante.id]?.codigo_proveedor || ""} onChange={(e) => setVarianteCampo(variante.id, "codigo_proveedor", e.target.value)} /></label>
+                        <label style={styles.field}><span>Talle</span><input style={styles.input} value={variantesForm[variante.id]?.talle || ""} onChange={(e) => setVarianteCampo(variante.id, "talle", e.target.value)} /></label>
+                        <label style={styles.field}><span>Color / presentación</span><input style={styles.input} value={variantesForm[variante.id]?.color || ""} onChange={(e) => setVarianteCampo(variante.id, "color", e.target.value)} /></label>
+                        <label style={styles.field}><span>Precio minorista</span><input style={styles.input} type="number" value={variantesForm[variante.id]?.precio_minorista || ""} onChange={(e) => setVarianteCampo(variante.id, "precio_minorista", e.target.value)} /></label>
+                        <label style={styles.field}><span>Precio mayorista</span><input style={styles.input} type="number" value={variantesForm[variante.id]?.precio_mayorista || ""} onChange={(e) => setVarianteCampo(variante.id, "precio_mayorista", e.target.value)} /></label>
+                        <label style={styles.field}><span>Imagen principal</span><input style={styles.input} type="file" accept="image/*" onChange={(e) => setImagenForm((prev) => ({ ...prev, [variante.id]: e.target.files?.[0] || null }))} /></label>
+                      </div>
+                      <div style={styles.formActions}>
+                        <button type="button" disabled={guardando} onClick={() => guardarVariante(variante)} style={styles.primaryButton}>{guardando ? "Guardando..." : "Guardar variante"}</button>
+                      </div>
                     </div>
                   </article>
                 );
@@ -614,6 +949,111 @@ const styles = {
     gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
     gap: 10,
   },
+  editForm: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+    gap: 12,
+    marginBottom: 14,
+  },
+  field: {
+    display: "grid",
+    gap: 6,
+    color: "#334155",
+    fontSize: 13,
+    fontWeight: 900,
+  },
+  input: {
+    width: "100%",
+    border: "1px solid #cbd5e1",
+    borderRadius: 12,
+    padding: "10px 11px",
+    fontWeight: 800,
+    color: "#0f172a",
+    background: "white",
+    boxSizing: "border-box",
+  },
+  formActions: {
+    display: "flex",
+    gap: 10,
+    alignItems: "end",
+    flexWrap: "wrap",
+  },
+  successBox: {
+    border: "1px solid #86efac",
+    background: "#ecfdf5",
+    color: "#047857",
+    borderRadius: 14,
+    padding: 12,
+    fontWeight: 900,
+  },
+  imageManager: {
+    border: "1px solid #dbeafe",
+    borderRadius: 16,
+    background: "#f8fbff",
+    padding: 14,
+    marginBottom: 14,
+    display: "grid",
+    gap: 12,
+  },
+  imageManagerTitle: {
+    margin: 0,
+    fontSize: 17,
+  },
+  imageManagerGrid: {
+    display: "grid",
+    gridTemplateColumns: "170px 170px minmax(240px, 1fr)",
+    gap: 12,
+    alignItems: "stretch",
+  },
+  imagePreviewBox: {
+    border: "1px solid #dbeafe",
+    borderRadius: 14,
+    background: "white",
+    padding: 10,
+    display: "grid",
+    gap: 7,
+    minHeight: 150,
+  },
+  previewLabel: {
+    color: "#2563eb",
+    fontSize: 12,
+    fontWeight: 1000,
+    textTransform: "uppercase",
+  },
+  imagePreview: {
+    width: "100%",
+    height: 112,
+    objectFit: "contain",
+    borderRadius: 10,
+    background: "#f8fafc",
+  },
+  imagePreviewEmpty: {
+    minHeight: 112,
+    border: "1px dashed #cbd5e1",
+    borderRadius: 10,
+    display: "grid",
+    placeItems: "center",
+    textAlign: "center",
+    padding: 10,
+    color: "#64748b",
+    fontWeight: 900,
+    fontSize: 13,
+  },
+  imageActionsBox: {
+    display: "grid",
+    alignContent: "center",
+    gap: 12,
+    minWidth: 0,
+  },
+  dangerButton: {
+    border: "1px solid #fecaca",
+    background: "#fff1f2",
+    color: "#b91c1c",
+    borderRadius: 13,
+    padding: "11px 14px",
+    fontWeight: 1000,
+    cursor: "pointer",
+  },
   infoBox: {
     border: "1px solid #e2e8f0",
     borderRadius: 14,
@@ -648,6 +1088,16 @@ const styles = {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
     gap: 10,
+  },
+  variantEditBox: {
+    borderTop: "1px solid #e2e8f0",
+    paddingTop: 12,
+    display: "grid",
+    gap: 10,
+  },
+  variantEditTitle: {
+    margin: 0,
+    fontSize: 16,
   },
   smallText: {
     color: "#64748b",
@@ -760,6 +1210,9 @@ const styles = {
   infoGridMobile: {
     gridTemplateColumns: "1fr",
     gap: 8,
+  },
+  imageManagerGridMobile: {
+    gridTemplateColumns: "1fr",
   },
   variantesGridMobile: {
     gap: 10,

@@ -94,6 +94,53 @@ def test_rentabilidad_mensual_devuelve_estructura(client, seed_venta_basica):
     assert len(data["distribuciones_sugeridas"]) == 3
 
 
+def test_rentabilidad_mensual_usa_total_final_de_ventas(client, db_conn, seed_venta_basica):
+    crear = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 1,
+                }
+            ],
+        },
+    )
+    assert crear.status_code == 200, crear.text
+    venta_id = crear.json()["venta_id"]
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE ventas
+            SET fecha = '2026-06-10',
+                estado = 'pagada_total',
+                descuento_total = 2440,
+                recargo_total = 0,
+                total_final = 22000,
+                saldo_pendiente = 0
+            WHERE id = %s
+            """,
+            (venta_id,),
+        )
+    db_conn.commit()
+
+    response = client.get(
+        "/rentabilidad/mensual",
+        params={"periodo_mes": "2026-06-01"},
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+
+    assert _dec(data["ventas_netas"]) == Decimal("22000.00")
+    assert _dec(data["cmv_neto"]) == Decimal("10000.00")
+    assert _dec(data["margen_bruto"]) == Decimal("12000.00")
+
+
 def test_cierre_rentabilidad_guarda_snapshot_y_no_permite_duplicado(client, seed_venta_basica):
     ale = _crear_participante(client, "Ale cierre")
     angel = _crear_participante(client, "Ángel cierre")

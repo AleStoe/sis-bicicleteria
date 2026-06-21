@@ -18,7 +18,7 @@ export default function StockDrawer({
   ReadOnlyField,
   TextInput,
 }) {
-  const costoUnitarioIngreso = calcularCostoUnitarioIngreso(ingresoForm);
+  const resumenIngreso = calcularResumenIngreso(ingresoForm);
 
   return (
     <aside className="erp-responsive-drawer-overlay" style={styles.overlay} onClick={cerrarPanel}>
@@ -101,6 +101,23 @@ export default function StockDrawer({
             <ReadOnlyField label="Variante" value={`#${seleccionado.variante_id}`} />
 
             <label style={styles.field}>
+              <span style={styles.label}>Modo de carga</span>
+              <select
+                value={ingresoForm.modo_costo || "unitario"}
+                onChange={(e) =>
+                  setIngresoForm((p) => ({
+                    ...p,
+                    modo_costo: e.target.value,
+                  }))
+                }
+                style={styles.input}
+              >
+                <option value="unitario">Por costo unitario</option>
+                <option value="total">Por costo total</option>
+              </select>
+            </label>
+
+            <label style={styles.field}>
               <span style={styles.label}>Proveedor</span>
               <select
                 value={ingresoForm.id_proveedor}
@@ -133,17 +150,31 @@ export default function StockDrawer({
               }
             />
 
-            <TextInput
-              label="Costo productos total"
-              type="number"
-              value={ingresoForm.costo_productos}
-              onChange={(v) =>
-                setIngresoForm((p) => ({
-                  ...p,
-                  costo_productos: v,
-                }))
-              }
-            />
+            {(ingresoForm.modo_costo || "unitario") === "unitario" ? (
+              <TextInput
+                label="Costo unitario"
+                type="number"
+                value={ingresoForm.costo_unitario}
+                onChange={(v) =>
+                  setIngresoForm((p) => ({
+                    ...p,
+                    costo_unitario: v,
+                  }))
+                }
+              />
+            ) : (
+              <TextInput
+                label="Costo productos total"
+                type="number"
+                value={ingresoForm.costo_productos}
+                onChange={(v) =>
+                  setIngresoForm((p) => ({
+                    ...p,
+                    costo_productos: v,
+                  }))
+                }
+              />
+            )}
 
             <TextInput
               label="Gastos adicionales"
@@ -158,8 +189,13 @@ export default function StockDrawer({
             />
 
             <div style={styles.previewBox}>
+              <span>Costo productos total</span>
+              <strong>{formatMoney(resumenIngreso.costoProductosTotal)}</strong>
+            </div>
+
+            <div style={styles.previewBox}>
               <span>Costo final estimado por unidad</span>
-              <strong>{formatMoney(costoUnitarioIngreso)}</strong>
+              <strong>{formatMoney(resumenIngreso.costoFinalUnitario)}</strong>
             </div>
 
             <label style={styles.field}>
@@ -230,11 +266,23 @@ export default function StockDrawer({
   );
 }
 
-function calcularCostoUnitarioIngreso(form) {
+function calcularResumenIngreso(form) {
   const cantidad = Number(form.cantidad_ingresada || 0);
-  const costoProductos = Number(form.costo_productos || 0);
+  const costoProductos =
+    (form.modo_costo || "unitario") === "unitario"
+      ? cantidad * Number(form.costo_unitario || 0)
+      : Number(form.costo_productos || 0);
   const gastos = Number(form.gastos_adicionales || 0);
 
-  if (cantidad <= 0) return 0;
-  return (costoProductos + gastos) / cantidad;
+  if (cantidad <= 0) {
+    return {
+      costoProductosTotal: costoProductos,
+      costoFinalUnitario: 0,
+    };
+  }
+
+  return {
+    costoProductosTotal: costoProductos,
+    costoFinalUnitario: (costoProductos + gastos) / cantidad,
+  };
 }

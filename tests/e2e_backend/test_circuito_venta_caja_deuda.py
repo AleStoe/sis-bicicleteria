@@ -138,7 +138,7 @@ def test_circuito_venta_parcial_entrega_deuda_pago_deuda_caja_stock_auditoria(
     # 9. La venta queda histórica: entregada, no se reescribe como pagada_total
     venta_final = get_venta(db_conn, venta_id)
     assert venta_final["estado"] == "entregada"
-    assert _dec(venta_final["saldo_pendiente"]) == Decimal("14440")
+    assert _dec(venta_final["saldo_pendiente"]) == Decimal("0")
 
     # 10. Caja debe tener ingreso por pago de venta y por pago de deuda
     movimientos_caja = get_caja_movimientos(db_conn, caja_id)

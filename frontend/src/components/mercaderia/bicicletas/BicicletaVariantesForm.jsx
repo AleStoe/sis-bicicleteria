@@ -5,6 +5,7 @@ export default function BicicletaVariantesForm({
   onAdd,
   onChange,
   onRemove,
+  porcentajeDescuentoContado,
 }) {
   return (
     <section style={styles.section}>
@@ -30,6 +31,7 @@ export default function BicicletaVariantesForm({
             puedeEliminar={variantes.length > 1}
             onChange={onChange}
             onRemove={onRemove}
+            porcentajeDescuentoContado={porcentajeDescuentoContado}
           />
         ))}
       </div>

@@ -117,7 +117,19 @@ export default function ConfiguracionNegocioPage() {
               <Field label="Dirección">
                 <input value={form.direccion || ""} onChange={(e) => cambiar("direccion", e.target.value)} style={styles.input} />
               </Field>
+              <Field label="Descuento contado calculadora precios (%)">
+                <input
+                  type="number"
+                  min="0"
+                  max="99"
+                  step="0.1"
+                  value={form.porcentaje_descuento_contado_calculadora_precios ?? 10}
+                  onChange={(e) => cambiar("porcentaje_descuento_contado_calculadora_precios", e.target.value)}
+                  style={styles.input}
+                />
+              </Field>
             </div>
+            <p style={styles.note}>Solo afecta la calculadora de carga de mercaderÃ­a. No modifica checkout ni reglas comerciales.</p>
           </section>
 
           <section style={styles.section}>
@@ -185,6 +197,7 @@ const styles = {
   grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 },
   field: { display: "grid", gap: 6, color: "#334155", fontWeight: 900 },
   input: { border: "1px solid #cbd5e1", borderRadius: 12, padding: "11px 12px", fontWeight: 750 },
+  note: { margin: 0, color: "#64748b", fontWeight: 750, fontSize: 13 },
   textAreas: { display: "grid", gap: 12 },
   textarea: { minHeight: 125, border: "1px solid #cbd5e1", borderRadius: 12, padding: 12, fontWeight: 700, resize: "vertical", fontFamily: "inherit" },
   check: { display: "flex", alignItems: "center", gap: 8, fontWeight: 850 },

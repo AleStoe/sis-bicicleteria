@@ -12,6 +12,7 @@ def upsert_configuracion_negocio(conn, data: dict):
         "horarios_retiro",
         "whatsapp_cierre",
         "texto_beneficio_pago",
+        "porcentaje_descuento_contado_calculadora_precios",
         "whatsapp_retiro_mostrar_total",
         "whatsapp_retiro_mostrar_trabajos",
         "plantilla_turno_confirmacion",

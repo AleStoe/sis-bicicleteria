@@ -1,4 +1,5 @@
 import { formatMoney, formatPercent, formatDate } from "../../utils/formatters";
+import HerramientasPrecioPanel from "./HerramientasPrecioPanel";
 
 export default function PrecioManualPanel({
   buscarRef,
@@ -21,6 +22,7 @@ export default function PrecioManualPanel({
   usarSugerencia,
   sugerencia,
   historial,
+  porcentajeDescuentoContado,
   styles,
   InfoBox,
 }) {
@@ -101,6 +103,18 @@ export default function PrecioManualPanel({
               <InfoBox label="Margen minorista" value={formatPercent(margenMinorista)} />
               <InfoBox label="Margen mayorista" value={formatPercent(margenMayorista)} />
             </div>
+
+            <HerramientasPrecioPanel
+              costo={varianteSeleccionada.costo_promedio_vigente}
+              porcentajeDescuentoContado={porcentajeDescuentoContado}
+              styles={styles}
+              onAplicarMinorista={(precio) =>
+                setFormPrecio((p) => ({ ...p, precio_minorista: precio }))
+              }
+              onAplicarMayorista={(precio) =>
+                setFormPrecio((p) => ({ ...p, precio_mayorista: precio }))
+              }
+            />
 
             <form onSubmit={guardarPrecioManual} style={styles.form}>
               <label style={styles.label}>

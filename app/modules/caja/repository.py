@@ -489,11 +489,16 @@ def get_resumen_pagos_caja(conn, caja_id: int | None, *, fecha, id_sucursal: int
 
 
 def get_resumen_rentabilidad_dia(conn, *, fecha, id_sucursal: int | None = None):
-    params = [fecha]
     sucursal_sql = ""
+    estados_operativos = ["pagada_parcial", "pagada_total", "entregada"]
+    rentabilidad_params = [fecha, estados_operativos]
     if id_sucursal is not None:
         sucursal_sql = "AND v.id_sucursal = %s"
-        params.append(id_sucursal)
+        rentabilidad_params.append(id_sucursal)
+
+    rentabilidad_params.extend([fecha, estados_operativos])
+    if id_sucursal is not None:
+        rentabilidad_params.append(id_sucursal)
 
     gastos_params = [fecha]
     gastos_sucursal_sql = ""
@@ -510,7 +515,7 @@ def get_resumen_rentabilidad_dia(conn, *, fecha, id_sucursal: int | None = None)
                     SELECT SUM(v2.total_final)
                     FROM ventas v2
                     WHERE v2.fecha::date = %s
-                      AND v2.estado NOT IN ('anulada', 'devuelta')
+                      AND v2.estado = ANY(%s)
                       {sucursal_sql.replace('v.', 'v2.')}
                 ), 0)::numeric(14,2) AS ventas_total,
                 COALESCE(SUM(vi.subtotal), 0)::numeric(14,2) AS ventas_items_total,
@@ -522,10 +527,10 @@ def get_resumen_rentabilidad_dia(conn, *, fecha, id_sucursal: int | None = None)
             FROM ventas v
             LEFT JOIN venta_items vi ON vi.id_venta = v.id
             WHERE v.fecha::date = %s
-              AND v.estado NOT IN ('anulada', 'devuelta')
+              AND v.estado = ANY(%s)
               {sucursal_sql}
             """,
-            [*params, *params],
+            rentabilidad_params,
         )
         ventas = cur.fetchone()
 
@@ -551,6 +556,7 @@ def get_resumen_rentabilidad_dia(conn, *, fecha, id_sucursal: int | None = None)
 def get_documentos_disponibles_dia(conn, *, fecha, id_sucursal: int | None = None):
     ventas_params = [fecha]
     sucursal_sql = ""
+    estados_operativos = ["pagada_parcial", "pagada_total", "entregada"]
     if id_sucursal is not None:
         sucursal_sql = "AND id_sucursal = %s"
         ventas_params.append(id_sucursal)
@@ -567,10 +573,10 @@ def get_documentos_disponibles_dia(conn, *, fecha, id_sucursal: int | None = Non
             SELECT COUNT(*)::int AS total
             FROM ventas
             WHERE fecha::date = %s
-              AND estado NOT IN ('anulada', 'devuelta')
+              AND estado = ANY(%s)
               {sucursal_sql}
             """,
-            ventas_params,
+            [fecha, estados_operativos, *ventas_params[1:]],
         )
         comprobantes_x = cur.fetchone()["total"]
 

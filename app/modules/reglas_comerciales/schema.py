@@ -109,6 +109,24 @@ class ReglaComercialUpdateInput(BaseModel):
     activa: bool | None = None
 
 
+class ReglaComercialCreateInput(BaseModel):
+    nombre: str = Field(min_length=3, max_length=120)
+    tipo: TipoReglaComercial
+    medio_pago: MedioPagoRegla | None = None
+    porcentaje: Decimal | None = Field(default=None, ge=0)
+    monto_fijo: Decimal | None = Field(default=None, ge=0)
+    requiere_pago_total: bool = False
+    combinable: bool = False
+    prioridad: int = Field(default=100, ge=0)
+    activa: bool = True
+
+    @model_validator(mode="after")
+    def validar_valor(self):
+        if self.porcentaje is None and self.monto_fijo is None:
+            raise ValueError("Debe informar porcentaje o monto fijo")
+        return self
+
+
 class TarjetaPlanOutput(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

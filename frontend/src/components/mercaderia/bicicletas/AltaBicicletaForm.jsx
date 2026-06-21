@@ -8,6 +8,7 @@ export default function AltaBicicletaForm() {
     categorias,
     marcas,
     proveedores,
+    configuracionNegocio,
     form,
     procesando,
     error,
@@ -67,6 +68,9 @@ export default function AltaBicicletaForm() {
           onAdd={agregarVariante}
           onChange={setVariante}
           onRemove={quitarVariante}
+          porcentajeDescuentoContado={
+            configuracionNegocio.porcentaje_descuento_contado_calculadora_precios
+          }
         />
       </section>
 

@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from fastapi import HTTPException
+from psycopg.errors import UniqueViolation
 
 from app.db.connection import get_connection
 from app.shared.money import redondear_monto
@@ -8,6 +9,7 @@ from app.shared.money import redondear_monto
 from .repository import (
     get_reglas_comerciales,
     get_reglas_activas_por_medios,
+    insert_regla_comercial,
     get_tarjeta_plan_activo,
     update_regla_comercial,
     get_tarjeta_planes,
@@ -347,6 +349,29 @@ def editar_regla_comercial(regla_id: int, data):
             raise HTTPException(
                 status_code=404,
                 detail="Regla comercial no encontrada",
+            )
+
+        conn.commit()
+        return regla
+
+    finally:
+        conn.close()
+
+
+def crear_regla_comercial(data):
+    conn = get_connection()
+
+    try:
+        try:
+            regla = insert_regla_comercial(
+                conn,
+                data.model_dump(),
+            )
+        except UniqueViolation:
+            conn.rollback()
+            raise HTTPException(
+                status_code=400,
+                detail="Ya existe una regla comercial activa con esos datos",
             )
 
         conn.commit()

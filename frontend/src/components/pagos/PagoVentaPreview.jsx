@@ -7,40 +7,65 @@ export default function PagoVentaPreview({ preview, simulando }) {
 
   if (!preview) return null;
 
+  const descuento = Number(preview.descuento_aplicado || 0);
+  const recargo = Number(preview.recargo_aplicado || 0);
+  const hayDescuento = descuento > 0;
+  const hayRecargo = recargo > 0;
+  const boxStyle = hayRecargo
+    ? styles.boxWarning
+    : hayDescuento
+      ? styles.boxSuccess
+      : styles.boxNeutral;
+
   return (
-    <div style={styles.box}>
-      <div style={styles.main}>
-        <span style={styles.mainLabel}>Cobrado real</span>
-        <strong style={styles.mainAmount}>
-          {formatMoney(preview.monto_total_cobrado)}
-        </strong>
+    <div style={styles.wrapper}>
+      <div style={styles.operatorHint}>
+        <span style={styles.operatorHintLabel}>
+          {hayRecargo ? "Total a financiar ahora" : "Total a cobrar ahora"}
+        </span>
+        <strong>{formatMoney(preview.monto_total_cobrado)}</strong>
+        <small>
+          Cubre {formatMoney(preview.monto_base_aplicado)} de la venta.
+          {hayDescuento && ` Descuento aplicado: ${formatMoney(descuento)}.`}
+          {hayRecargo && ` Recargo aplicado: ${formatMoney(recargo)}.`}
+          {` Queda pendiente: ${formatMoney(preview.saldo_restante_estimado)}.`}
+        </small>
       </div>
 
-      <div style={styles.grid}>
-        <Mini label="Base" value={formatMoney(preview.monto_base_aplicado)} />
-        <Mini
-          label="Descuento"
-          value={`- ${formatMoney(preview.descuento_aplicado)}`}
-          tone="success"
-        />
-        <Mini
-          label="Recargo"
-          value={`+ ${formatMoney(preview.recargo_aplicado)}`}
-          tone="warning"
-        />
-        <Mini
-          label="Saldo restante"
-          value={formatMoney(preview.saldo_restante_estimado)}
-        />
+      <div style={boxStyle}>
+        <div style={styles.previewTitle}>
+          {hayRecargo
+            ? "Financiacion aplicada"
+            : hayDescuento
+              ? "Beneficio aplicado"
+              : "Resumen del cobro"}
+        </div>
+
+        <Row label="Cubre saldo" value={formatMoney(preview.monto_base_aplicado)} />
+
+        {hayDescuento && (
+          <Row label="Descuento" value={`- ${formatMoney(descuento)}`} tone="success" />
+        )}
+
+        {hayRecargo && (
+          <Row label="Recargo" value={`+ ${formatMoney(recargo)}`} tone="warning" />
+        )}
+
+        <Row label="Saldo pendiente luego" value={formatMoney(preview.saldo_restante_estimado)} />
+
+        <div style={styles.previewTotalRow}>
+          <span>{hayRecargo ? "Total a financiar ahora" : "Total a cobrar ahora"}</span>
+          <strong>{formatMoney(preview.monto_total_cobrado)}</strong>
+        </div>
       </div>
     </div>
   );
 }
 
-function Mini({ label, value, tone }) {
+function Row({ label, value, tone }) {
   return (
-    <div style={styles.mini}>
-      <span style={styles.label}>{label}</span>
+    <div style={styles.previewRow}>
+      <span>{label}</span>
       <strong
         style={{
           color:
@@ -64,53 +89,82 @@ const styles = {
     margin: "8px 0 12px",
   },
 
-  box: {
+  wrapper: {
     display: "grid",
-    gap: 10,
+    gap: 12,
     marginBottom: 12,
   },
 
-  main: {
-    border: "1px solid #abefc6",
+  operatorHint: {
     borderRadius: 14,
-    padding: 14,
-    background: "#ecfdf3",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 12,
-  },
-
-  mainLabel: {
-    color: "#067647",
-    fontSize: 14,
-    fontWeight: 900,
-  },
-
-  mainAmount: {
-    color: "#067647",
-    fontSize: 24,
-    whiteSpace: "nowrap",
-  },
-
-  grid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
-    gap: 8,
-  },
-
-  mini: {
-    border: "1px solid #eaecf0",
-    borderRadius: 12,
-    padding: 10,
-    background: "#f9fafb",
+    padding: 12,
+    background: "#eff6ff",
+    border: "1px solid #bfdbfe",
+    color: "#1e3a8a",
     display: "grid",
     gap: 4,
   },
 
-  label: {
-    color: "#667085",
+  operatorHintLabel: {
+    fontSize: 11,
+    fontWeight: 1000,
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    color: "#2563eb",
+  },
+
+  boxNeutral: {
+    borderRadius: 14,
+    padding: 12,
+    background: "#f8fafc",
+    border: "1px solid #e2e8f0",
+    display: "grid",
+    gap: 8,
+  },
+
+  boxSuccess: {
+    borderRadius: 14,
+    padding: 12,
+    background: "#f8fafc",
+    border: "1px solid #cbd5e1",
+    display: "grid",
+    gap: 8,
+  },
+
+  boxWarning: {
+    borderRadius: 14,
+    padding: 12,
+    background: "#fff7ed",
+    border: "1px solid #fdba74",
+    display: "grid",
+    gap: 8,
+  },
+
+  previewTitle: {
     fontSize: 12,
-    fontWeight: 700,
+    fontWeight: 1000,
+    textTransform: "uppercase",
+    letterSpacing: "0.06em",
+    color: "#475569",
+  },
+
+  previewRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 10,
+    fontSize: 13,
+    fontWeight: 800,
+    color: "#334155",
+  },
+
+  previewTotalRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 10,
+    paddingTop: 8,
+    borderTop: "1px solid rgba(15, 23, 42, 0.12)",
+    fontSize: 18,
+    fontWeight: 1000,
+    color: "#0f172a",
   },
 };

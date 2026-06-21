@@ -34,6 +34,53 @@ def test_lista_reglas_comerciales_activas(client, db_conn):
     assert len(reglas_db) >= 2
 
 
+def test_crea_regla_comercial(client, db_conn):
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            DELETE FROM reglas_comerciales
+            WHERE nombre LIKE 'Recargo test alta%'
+            """
+        )
+    db_conn.commit()
+
+    response = client.post(
+        "/reglas-comerciales",
+        json={
+            "nombre": "Recargo test alta",
+            "tipo": "recargo",
+            "medio_pago": "mercadopago",
+            "porcentaje": "5",
+            "requiere_pago_total": False,
+            "combinable": False,
+            "prioridad": 25,
+            "activa": False,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+
+    data = response.json()
+    assert data["nombre"] == "Recargo test alta"
+    assert data["tipo"] == "recargo"
+    assert data["medio_pago"] == "mercadopago"
+    assert _dec(data["porcentaje"]) == Decimal("5")
+    assert data["activa"] is False
+
+
+def test_crear_regla_comercial_requiere_porcentaje_o_monto(client):
+    response = client.post(
+        "/reglas-comerciales",
+        json={
+            "nombre": "Regla sin valor",
+            "tipo": "descuento",
+            "medio_pago": "efectivo",
+        },
+    )
+
+    assert response.status_code == 422
+
+
 def test_simula_descuento_efectivo_sobre_monto_pagado(client):
     response = client.post(
         "/reglas-comerciales/simular",

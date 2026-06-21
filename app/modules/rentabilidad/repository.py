@@ -149,33 +149,56 @@ def get_ventas_rentabilidad(conn, fecha_desde, fecha_hasta, id_sucursal=None):
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             f"""
-            WITH items AS (
+            WITH ventas_filtradas AS (
+                SELECT
+                    v.id,
+                    v.total_final
+                FROM ventas v
+                WHERE v.fecha::date >= %s
+                  AND v.fecha::date <= %s
+                  AND v.estado = ANY(%s)
+                  {sucursal_sql}
+            ),
+            items AS (
                 SELECT
                     vi.id,
-                    v.id AS id_venta,
-                    v.estado,
+                    vf.id AS id_venta,
                     vi.cantidad,
                     vi.subtotal,
                     vi.costo_unitario_aplicado,
                     COALESCE(SUM(vid.cantidad_devuelta), 0) AS cantidad_devuelta,
                     COALESCE(SUM(vid.monto_credito_generado), 0) AS monto_devuelto
-                FROM ventas v
-                INNER JOIN venta_items vi ON vi.id_venta = v.id
+                FROM ventas_filtradas vf
+                INNER JOIN venta_items vi ON vi.id_venta = vf.id
                 LEFT JOIN venta_item_devoluciones vid ON vid.id_venta_item = vi.id
-                WHERE v.fecha::date >= %s
-                  AND v.fecha::date <= %s
-                  AND v.estado = ANY(%s)
-                  {sucursal_sql}
-                GROUP BY vi.id, v.id, v.estado, vi.cantidad, vi.subtotal, vi.costo_unitario_aplicado
+                GROUP BY vi.id, vf.id, vi.cantidad, vi.subtotal, vi.costo_unitario_aplicado
+            ),
+            ventas AS (
+                SELECT
+                    COALESCE(SUM(total_final), 0)::numeric(14,2) AS ventas_total_final
+                FROM ventas_filtradas
+            ),
+            devoluciones AS (
+                SELECT
+                    COALESCE(SUM(monto_devuelto), 0)::numeric(14,2) AS devoluciones_total
+                FROM items
+            ),
+            costos AS (
+                SELECT
+                    COALESCE(SUM(costo_unitario_aplicado * cantidad), 0)::numeric(14,2) AS cmv_bruto,
+                    COALESCE(SUM(costo_unitario_aplicado * cantidad_devuelta), 0)::numeric(14,2) AS cmv_devoluciones
+                FROM items
             )
             SELECT
-                COALESCE(SUM(subtotal), 0)::numeric(14,2) AS ventas_brutas,
-                COALESCE(SUM(monto_devuelto), 0)::numeric(14,2) AS devoluciones_total,
-                (COALESCE(SUM(subtotal), 0) - COALESCE(SUM(monto_devuelto), 0))::numeric(14,2) AS ventas_netas,
-                COALESCE(SUM(costo_unitario_aplicado * cantidad), 0)::numeric(14,2) AS cmv_bruto,
-                COALESCE(SUM(costo_unitario_aplicado * cantidad_devuelta), 0)::numeric(14,2) AS cmv_devoluciones,
-                (COALESCE(SUM(costo_unitario_aplicado * cantidad), 0) - COALESCE(SUM(costo_unitario_aplicado * cantidad_devuelta), 0))::numeric(14,2) AS cmv_neto
-            FROM items
+                ventas.ventas_total_final AS ventas_brutas,
+                devoluciones.devoluciones_total,
+                (ventas.ventas_total_final - devoluciones.devoluciones_total)::numeric(14,2) AS ventas_netas,
+                costos.cmv_bruto,
+                costos.cmv_devoluciones,
+                (costos.cmv_bruto - costos.cmv_devoluciones)::numeric(14,2) AS cmv_neto
+            FROM ventas
+            CROSS JOIN devoluciones
+            CROSS JOIN costos
             """,
             (*params[:2], list(VENTAS_ESTADOS_RENTABILIDAD), *params[2:]),
         )

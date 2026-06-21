@@ -27,6 +27,7 @@ import BicicletasSerializadasPage from "./pages/BicicletasSerializadasPage";
 import ProveedoresPage from "./pages/ProveedoresPage";
 import PreciosPage from "./pages/PreciosPage";
 import CatalogoPage from "./pages/CatalogoPage";
+import CategoriasCatalogoPage from "./pages/CategoriasCatalogoPage";
 import AltaMercaderiaPage from "./pages/AltaMercaderiaPage";
 import VentaCobroPage from "./pages/VentaCobroPage";
 import ClienteBicicletaDetallePage from "./pages/ClienteBicicletaDetallePage";
@@ -344,6 +345,14 @@ export default function App() {
             }
           />
           <Route
+            path="/catalogo/categorias"
+            element={
+              <ProtectedRoute rolesPermitidos={ADMIN_ENCARGADO}>
+                <CategoriasCatalogoPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/catalogo/productos/:productoId"
             element={
               <ProtectedRoute rolesPermitidos={ADMIN_ENCARGADO}>
@@ -387,7 +396,15 @@ export default function App() {
           <Route
             path="/dashboard"
             element={
-              <ProtectedRoute rolesPermitidos={ADMIN_ENCARGADO}>
+              <ProtectedRoute rolesPermitidos={ADMIN}>
+                <DashboardPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/dashboard"
+            element={
+              <ProtectedRoute rolesPermitidos={ADMIN}>
                 <DashboardPage />
               </ProtectedRoute>
             }

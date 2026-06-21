@@ -13,6 +13,8 @@ from .schema import (
     PreciosDesfasadosResponse,
     RecalculoProveedorInput,
     RecalculoProveedorOutput,
+    AjusteProveedorInput,
+    AjusteProveedorOutput,
     FamiliaPrecioOut,
 )
 from .service import (
@@ -25,6 +27,7 @@ from .service import (
     sugerir_precio_variante,
     listar_precios_desfasados,
     recalcular_precios_por_proveedor,
+    ajustar_precios_por_proveedor,
     listar_familias_precio,
 )
 
@@ -101,6 +104,15 @@ def sugerir_precio_variante_route(
 )
 def recalcular_precios_por_proveedor_route(data: RecalculoProveedorInput):
     return recalcular_precios_por_proveedor(data)
+
+
+@router.post(
+    "/ajuste-proveedor",
+    response_model=AjusteProveedorOutput,
+)
+def ajustar_precios_por_proveedor_route(data: AjusteProveedorInput):
+    return ajustar_precios_por_proveedor(data)
+
 
 @router.get("/familias", response_model=List[FamiliaPrecioOut])
 def familias_precio_route():

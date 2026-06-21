@@ -2,9 +2,13 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from fastapi.responses import Response
 
 from .service import (
     listar_categorias,
+    crear_categoria,
+    editar_categoria,
+    cambiar_estado_categoria,
     listar_productos,
     listar_variantes,
     crear_imagen,
@@ -26,11 +30,16 @@ from .service import (
     buscar_catalogo_pos_por_codigo,
     obtener_ficha_tecnica_producto,
     reemplazar_ficha_tecnica_producto_service,
+    generar_catalogo_mayorista_pdf_service,
+    generar_catalogo_bicicletas_pdf_service,
    
 )
 
 from .schema import (
     CategoriaOut,
+    CategoriaCreate,
+    CategoriaUpdate,
+    CategoriaEstadoUpdate,
     ProductoOut,
     VarianteOut,
     CatalogoImagenCreate,
@@ -56,8 +65,23 @@ router = APIRouter()
 
 
 @router.get("/categorias", response_model=list[CategoriaOut])
-def categorias():
-    return listar_categorias()
+def categorias(incluir_inactivas: bool = False):
+    return listar_categorias(incluir_inactivas=incluir_inactivas)
+
+
+@router.post("/categorias", response_model=CategoriaOut)
+def crear_categoria_route(data: CategoriaCreate):
+    return crear_categoria(data)
+
+
+@router.put("/categorias/{categoria_id}", response_model=CategoriaOut)
+def editar_categoria_route(categoria_id: int, data: CategoriaUpdate):
+    return editar_categoria(categoria_id, data)
+
+
+@router.patch("/categorias/{categoria_id}/estado", response_model=CategoriaOut)
+def cambiar_estado_categoria_route(categoria_id: int, data: CategoriaEstadoUpdate):
+    return cambiar_estado_categoria(categoria_id, data)
 
 
 @router.get("/productos", response_model=list[ProductoOut])
@@ -98,6 +122,7 @@ def catalogo_pos(
     id_sucursal: int,
     query: str | None = None,
     categoria_id: int | None = None,
+    marca_id: int | None = None,
     limit: int = 50,
     offset: int = 0,
 ):
@@ -105,9 +130,52 @@ def catalogo_pos(
         id_sucursal=id_sucursal,
         query=query,
         categoria_id=categoria_id,
+        marca_id=marca_id,
         limit=limit,
         offset=offset,
     )
+
+
+@router.get("/pdf/mayorista")
+def catalogo_mayorista_pdf(
+    id_sucursal: int,
+    categoria_id: int | None = None,
+    marca_id: int | None = None,
+):
+    pdf_bytes = generar_catalogo_mayorista_pdf_service(
+        id_sucursal=id_sucursal,
+        categoria_id=categoria_id,
+        marca_id=marca_id,
+    )
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": 'attachment; filename="catalogo-mayorista.pdf"'
+        },
+    )
+
+
+@router.get("/pdf/bicicletas")
+def catalogo_bicicletas_pdf(
+    id_sucursal: int,
+    marca_id: int | None = None,
+):
+    pdf_bytes = generar_catalogo_bicicletas_pdf_service(
+        id_sucursal=id_sucursal,
+        marca_id=marca_id,
+    )
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": 'attachment; filename="catalogo-bicicletas.pdf"'
+        },
+    )
+
+
 @router.post("/productos", response_model=ProductoCreateOut)
 def crear_producto_route(data: ProductoCreate):
     return crear_producto(data)

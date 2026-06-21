@@ -10,6 +10,8 @@ import {
 } from "../../../../services/catalogoService";
 import { listarProveedores } from "../../../../services/proveedoresService";
 import { crearIngresoStock } from "../../../../services/stockService";
+import { obtenerConfiguracionNegocio } from "../../../../services/configuracionNegocioService";
+import { DEFAULT_CONFIGURACION_NEGOCIO } from "../../../../config/defaultConfiguracionNegocio";
 import { normalizeTextUpper } from "../../../../utils/textNormalization";
 import {
   generarNombreBicicleta,
@@ -70,6 +72,7 @@ export default function useAltaBicicleta() {
   const [categorias, setCategorias] = useState([]);
   const [marcas, setMarcas] = useState([]);
   const [proveedores, setProveedores] = useState([]);
+  const [configuracionNegocio, setConfiguracionNegocio] = useState(DEFAULT_CONFIGURACION_NEGOCIO);
 
   const [form, setForm] = useState(initialForm);
   const [procesando, setProcesando] = useState(false);
@@ -101,15 +104,20 @@ export default function useAltaBicicleta() {
 
   async function cargarDatos() {
     try {
-      const [cats, marcasData, provs] = await Promise.all([
+      const [cats, marcasData, provs, config] = await Promise.all([
         listarCategorias(),
         listarMarcas(),
         listarProveedores({ solo_activos: true }),
+        obtenerConfiguracionNegocio().catch(() => DEFAULT_CONFIGURACION_NEGOCIO),
       ]);
 
       setCategorias(cats || []);
       setMarcas(marcasData || []);
       setProveedores(provs || []);
+      setConfiguracionNegocio({
+        ...DEFAULT_CONFIGURACION_NEGOCIO,
+        ...(config || {}),
+      });
     } catch (err) {
       setError(err.message || "No se pudieron cargar datos iniciales");
     }
@@ -248,6 +256,7 @@ export default function useAltaBicicleta() {
         id_categoria: Number(form.id_categoria),
         id_marca: Number(form.id_marca),
         nombre: nombreProducto,
+        rubro: "BICICLETAS",
         tipo_item: "producto",
         stockeable: true,
         serializable: true,
@@ -337,6 +346,7 @@ export default function useAltaBicicleta() {
     categorias,
     marcas,
     proveedores,
+    configuracionNegocio,
     form,
     procesando,
     error,

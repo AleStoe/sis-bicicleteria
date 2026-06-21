@@ -184,7 +184,7 @@ def generar_recibo_pago_pdf(data: dict) -> bytes:
     descuento = pago.get("monto_descuento_aplicado")
     recargo = pago.get("monto_recargo_aplicado")
 
-    y = _row(c, y, width, margin_x, "Base aplicada", _money(monto_base))
+    y = _row(c, y, width, margin_x, "Importe cubierto", _money(monto_base))
     y = _row(c, y, width, margin_x, "Descuento aplicado", f"- {_money(descuento)}")
     y = _row(c, y, width, margin_x, "Recargo aplicado", f"+ {_money(recargo)}")
 
@@ -203,7 +203,7 @@ def generar_recibo_pago_pdf(data: dict) -> bytes:
         y,
         width,
         margin_x,
-        "Cobrado real",
+        "Importe abonado",
         _money(pago.get("monto_total_cobrado")),
         bold=True,
     )
@@ -216,7 +216,7 @@ def generar_recibo_pago_pdf(data: dict) -> bytes:
 
     y = _box_title(c, margin_x, y, "Estado de la venta")
 
-    y = _row(c, y, width, margin_x, "Total venta", _money(pago.get("total_final")))
+    y = _row(c, y, width, margin_x, "Total operación", _money(pago.get("total_final")))
     y = _row(c, y, width, margin_x, "Pagado acumulado", _money(pago.get("pagado_acumulado")))
     y = _row(c, y, width, margin_x, "Saldo restante", _money(pago.get("saldo_pendiente")), bold=True)
 

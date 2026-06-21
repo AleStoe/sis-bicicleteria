@@ -1,0 +1,7 @@
+ALTER TABLE productos
+ADD COLUMN IF NOT EXISTS rubro VARCHAR(30) DEFAULT 'REPUESTOS';
+
+UPDATE productos
+SET rubro = 'REPUESTOS'
+WHERE rubro IS NULL OR BTRIM(rubro) = '';
+

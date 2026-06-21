@@ -31,7 +31,6 @@ export default function PagoVentaPanel({
   const [mensaje, setMensaje] = useState("");
   const { usuarioId } = useSession();
   const [form, setForm] = useState({
-    modo: "base",
     medio_pago: "efectivo",
     monto: "",
     cuotas: 3,
@@ -109,7 +108,7 @@ export default function PagoVentaPanel({
     }, 300);
 
     return () => clearTimeout(timeout);
-  }, [form.modo, form.medio_pago, form.monto, form.cuotas, form.entidad, ventaId, saldoPendiente]);
+  }, [form.medio_pago, form.monto, form.cuotas, form.entidad, ventaId, saldoPendiente]);
 
   async function cargarPagos() {
     try {
@@ -155,14 +154,7 @@ export default function PagoVentaPanel({
     if (saldar) {
       return {
         ...base,
-        monto_cobrado_objetivo: String(saldo),
-      };
-    }
-
-    if (form.modo === "cobrado") {
-      return {
-        ...base,
-        monto_cobrado_objetivo: String(monto),
+        monto_base: String(saldo),
       };
     }
 
@@ -210,8 +202,7 @@ export default function PagoVentaPanel({
       setPreview(data);
       setForm((actual) => ({
         ...actual,
-        modo: "cobrado",
-        monto: String(Number(data.monto_total_cobrado || 0).toFixed(2)),
+        monto: String(normalizarMontoPago(data.monto_base_aplicado || saldo || 0)),
       }));
 
       setTimeout(() => montoRef.current?.focus(), 50);
@@ -227,8 +218,7 @@ export default function PagoVentaPanel({
 
     setForm((actual) => ({
       ...actual,
-      modo: "cobrado",
-      monto: String(Number(saldo / 2).toFixed(2)),
+      monto: String(normalizarMontoPago(saldo / 2)),
     }));
 
     setTimeout(() => montoRef.current?.focus(), 50);
@@ -416,6 +406,12 @@ function formatMoney(value) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+}
+
+function normalizarMontoPago(value) {
+  const numero = Number(value || 0);
+  if (!Number.isFinite(numero)) return 0;
+  return Math.round(numero);
 }
 
 function formatDate(value) {

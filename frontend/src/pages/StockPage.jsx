@@ -47,7 +47,9 @@ export default function StockPage() {
     id_sucursal: sucursalId,
     id_variante: "",
     id_proveedor: "",
+    modo_costo: "unitario",
     cantidad_ingresada: "",
+    costo_unitario: "",
     costo_productos: "",
     gastos_adicionales: "0",
     origen_ingreso: "manual",
@@ -307,6 +309,7 @@ export default function StockPage() {
       setIngresoForm((p) => ({
         ...p,
         cantidad_ingresada: "",
+        costo_unitario: "",
         costo_productos: "",
         gastos_adicionales: "0",
         observacion: "",

@@ -26,7 +26,21 @@ export default function CheckoutAgregarPago({
   const esTarjeta = medioPago === "tarjeta";
   const medioActivo = MEDIOS_PAGO.find((medio) => medio.value === medioPago);
 
-  const montoManual = Number(monto || 0);
+  const normalizarMontoPago = (valor) => {
+    const numero = Number(valor || 0);
+    if (!Number.isFinite(numero)) return 0;
+    return Math.round(numero);
+  };
+
+  const formatearMontoInput = (valor) => {
+    const numero = normalizarMontoPago(valor);
+    if (numero <= 0 && !String(valor || "").trim()) return "";
+    return numero.toLocaleString("es-AR", {
+      maximumFractionDigits: 0,
+    });
+  };
+
+  const montoManual = normalizarMontoPago(monto);
   const hayMontoManual = Number.isFinite(montoManual) && montoManual > 0;
 
   const tramoMontoActual = previewMontoActual?.tramos_pago?.at?.(-1);
@@ -42,7 +56,7 @@ export default function CheckoutAgregarPago({
         0
     );
   const montoSugeridoCobrado =
-    Number(tramoPreview?.monto_total_cobrado ?? previewSaldar?.monto_sugerido_para_saldar ?? montoManual ?? 0);
+    normalizarMontoPago(tramoPreview?.monto_total_cobrado ?? previewSaldar?.monto_sugerido_para_saldar ?? montoManual ?? 0);
 
   const descuentoPreview = Number(tramoPreview?.descuento_aplicado || 0);
   const recargoPreview = Number(tramoPreview?.recargo_aplicado || 0);
@@ -107,7 +121,9 @@ export default function CheckoutAgregarPago({
 
       {mostrarInstruccion && (
         <div style={styles.operatorHint}>
-          <span style={styles.operatorHintLabel}>Total a cobrar ahora</span>
+          <span style={styles.operatorHintLabel}>
+            {esTarjeta ? "Total a financiar ahora" : "Total a cobrar ahora"}
+          </span>
           <strong>{formatMoney(montoACobrarAhora)}</strong>
           {mostrarPreview ? (
             <small>
@@ -136,7 +152,7 @@ export default function CheckoutAgregarPago({
         >
           <div style={styles.previewTitle}>
             {hayRecargo
-              ? "Recargo aplicado"
+              ? "Financiacion aplicada"
               : hayDescuento
                 ? "Beneficio aplicado"
                 : "Resumen del cobro"}
@@ -174,7 +190,7 @@ export default function CheckoutAgregarPago({
           </div>
 
           <div style={styles.previewTotalRow}>
-            <span>Total a cobrar ahora</span>
+            <span>{esTarjeta ? "Total a financiar ahora" : "Total a cobrar ahora"}</span>
             <strong>{formatMoney(montoSugeridoCobrado)}</strong>
           </div>
         </div>
@@ -182,7 +198,7 @@ export default function CheckoutAgregarPago({
 
       <div style={styles.amountHeader}>
         <div style={styles.amountLabel}>
-          {esTarjeta ? "Cliente paga / financia" : "Cliente paga"}
+          {esTarjeta ? "Cliente financia total" : "Cliente paga"}
         </div>
 
         <button
@@ -198,10 +214,10 @@ export default function CheckoutAgregarPago({
       <div style={styles.amountRow}>
         <input
           type="text"
-          inputMode="decimal"
-          value={monto}
+          inputMode="numeric"
+          value={formatearMontoInput(monto)}
           onChange={(e) => {
-            const value = e.target.value.replace(",", ".").replace(/[^0-9.]/g, "");
+            const value = e.target.value.replace(/[^0-9]/g, "");
             setMonto(value);
           }}
           placeholder="$ 0"

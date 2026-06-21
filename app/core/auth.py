@@ -130,7 +130,10 @@ def _obtener_usuario_request(request: Request) -> dict[str, Any]:
     if authorization:
         return obtener_usuario_token_desde_header(authorization)
 
-    if request.url.path.startswith("/documentos/"):
+    if (
+        request.url.path.startswith("/documentos/")
+        or request.url.path in {"/catalogo/pdf/mayorista", "/catalogo/pdf/bicicletas"}
+    ):
         token = request.query_params.get("access_token")
         if token:
             return verificar_token_usuario(token)

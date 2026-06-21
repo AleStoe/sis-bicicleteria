@@ -111,9 +111,9 @@ export default function DashboardPage() {
     <div style={{ padding: isMobile ? 12 : 24, display: "grid", gap: isMobile ? 12 : 18, minWidth: 0 }}>
       <header style={{ display: isMobile ? "grid" : "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, minWidth: 0 }}>
         <div style={{ minWidth: 0 }}>
-          <h1 style={{ margin: 0, color: "#101828", fontSize: isMobile ? 26 : 32, lineHeight: 1.1 }}>Dashboard</h1>
+          <h1 style={{ margin: 0, color: "#101828", fontSize: isMobile ? 26 : 32, lineHeight: 1.1 }}>Dashboard Administrativo</h1>
           <p style={{ margin: "6px 0 0", color: "#667085" }}>
-            Tablero operativo: ventas, caja, clientes, repuestos, stock inmovilizado y taller.
+            Métricas sensibles de negocio: ventas, caja, margen, stock, deudas y taller.
           </p>
         </div>
         <button style={{ ...secondaryButton, width: isMobile ? "100%" : undefined, justifyContent: "center" }} onClick={cargarDashboard} disabled={loading}>

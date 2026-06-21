@@ -3,6 +3,7 @@ from typing import List
 
 from .schema import (
     ReglaComercialOutput,
+    ReglaComercialCreateInput,
     SimularReglasInput,
     SimularReglasOutput,
     ReglaComercialUpdateInput,
@@ -12,6 +13,7 @@ from .schema import (
 )
 from .service import (
     listar_reglas_comerciales,
+    crear_regla_comercial,
     simular_reglas_comerciales,
     editar_regla_comercial,
     listar_tarjeta_planes,
@@ -25,6 +27,11 @@ router = APIRouter()
 @router.get("", response_model=List[ReglaComercialOutput])
 def reglas_comerciales_route(solo_activas: bool = True):
     return listar_reglas_comerciales(solo_activas=solo_activas)
+
+
+@router.post("", response_model=ReglaComercialOutput)
+def crear_regla_comercial_route(data: ReglaComercialCreateInput):
+    return crear_regla_comercial(data)
 
 
 @router.post("/simular", response_model=SimularReglasOutput)

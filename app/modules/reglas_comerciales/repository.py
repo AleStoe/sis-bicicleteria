@@ -146,6 +146,53 @@ def update_regla_comercial(conn, regla_id: int, data: dict):
         return cur.fetchone()
 
 
+def insert_regla_comercial(conn, data: dict):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            INSERT INTO reglas_comerciales (
+                nombre,
+                tipo,
+                medio_pago,
+                porcentaje,
+                monto_fijo,
+                requiere_pago_total,
+                combinable,
+                prioridad,
+                activa
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING
+                id,
+                nombre,
+                tipo,
+                medio_pago,
+                porcentaje,
+                monto_fijo,
+                requiere_pago_total,
+                combinable,
+                prioridad,
+                activa,
+                fecha_desde,
+                fecha_hasta,
+                created_at,
+                updated_at
+            """,
+            (
+                data["nombre"],
+                data["tipo"],
+                data.get("medio_pago"),
+                data.get("porcentaje"),
+                data.get("monto_fijo"),
+                data["requiere_pago_total"],
+                data["combinable"],
+                data["prioridad"],
+                data["activa"],
+            ),
+        )
+        return cur.fetchone()
+
+
 def get_tarjeta_planes(conn, solo_activos: bool = False):
     with conn.cursor(row_factory=dict_row) as cur:
         where_sql = "WHERE activa = TRUE" if solo_activos else ""

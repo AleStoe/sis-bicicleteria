@@ -4,6 +4,13 @@ export function listarReglasComerciales(soloActivas = false) {
   return apiRequest(`/reglas-comerciales?solo_activas=${soloActivas}`);
 }
 
+export function crearReglaComercial(data) {
+  return apiRequest("/reglas-comerciales", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
 export function editarReglaComercial(reglaId, data) {
   return apiRequest(`/reglas-comerciales/${reglaId}`, {
     method: "PATCH",

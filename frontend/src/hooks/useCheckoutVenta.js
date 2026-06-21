@@ -25,8 +25,14 @@ function toMoneyNumber(value) {
   return Number(number.toFixed(2));
 }
 
+function normalizarMontoPago(monto) {
+  const numero = Number(monto || 0);
+  if (!Number.isFinite(numero)) return 0;
+  return Math.round(numero);
+}
+
 function casiIgualMonto(a, b) {
-  return Math.abs(toMoneyNumber(a) - toMoneyNumber(b)) < 0.01;
+  return Math.abs(normalizarMontoPago(a) - normalizarMontoPago(b)) < 1;
 }
 
 const MEDIO_PAGO_DEFAULT = "efectivo";
@@ -54,7 +60,7 @@ export default function useCheckoutVenta({
   const [medioPago, setMedioPago] = useState(
     initialCheckoutDraft?.medioPago || MEDIO_PAGO_DEFAULT
   );
-  const [monto, setMonto] = useState(initialCheckoutDraft?.monto || "");
+  const [monto, setMontoState] = useState(initialCheckoutDraft?.monto || "");
   const [entregarAhora, setEntregarAhora] = useState(
     Boolean(initialCheckoutDraft?.entregarAhora)
   );
@@ -76,6 +82,12 @@ export default function useCheckoutVenta({
     initialCheckoutDraft?.montoCreditoAAplicar || ""
   );
   const simulacionSeqRef = useRef(0);
+  const montoEditadoManualRef = useRef(Boolean(initialCheckoutDraft?.monto));
+
+  const setMontoManual = useCallback((value) => {
+    montoEditadoManualRef.current = true;
+    setMontoState(value);
+  }, []);
 
   const cantidadItems = useMemo(() => {
     return items.reduce((acc, item) => acc + Number(item.cantidad || 0), 0);
@@ -210,7 +222,8 @@ export default function useCheckoutVenta({
       return;
     }
 
-    setMonto(String(toMoneyNumber(montoSugeridoCobrado).toFixed(2)));
+    montoEditadoManualRef.current = false;
+    setMontoState(String(normalizarMontoPago(montoSugeridoCobrado)));
     setErrorLocal("");
   }, [
     getDatosFinancierosPago,
@@ -223,7 +236,7 @@ export default function useCheckoutVenta({
 
   const calcularBaseParaMontoCobrado = useCallback(
     async (montoCobradoObjetivo) => {
-      const objetivo = toMoneyNumber(montoCobradoObjetivo);
+      const objetivo = normalizarMontoPago(montoCobradoObjetivo);
 
       if (objetivo <= 0) return null;
 
@@ -243,7 +256,7 @@ export default function useCheckoutVenta({
       const baseParaSaldar = toMoneyNumber(
         previewSaldarActual?.monto_base_sugerido_para_saldar ?? saldoBasePendiente
       );
-      const cobradoParaSaldar = toMoneyNumber(
+      const cobradoParaSaldar = normalizarMontoPago(
         previewSaldarActual?.monto_sugerido_para_saldar ?? baseParaSaldar
       );
 
@@ -317,7 +330,7 @@ export default function useCheckoutVenta({
       return;
     }
 
-    const montoCobradoInput = Number(monto);
+    const montoCobradoInput = normalizarMontoPago(monto);
     const montoBaseInput = await calcularBaseParaMontoCobrado(montoCobradoInput);
 
     if (!montoBaseInput || montoBaseInput <= 0) {
@@ -348,7 +361,7 @@ export default function useCheckoutVenta({
 
       return {
         ...pago,
-        monto_total_cobrado: tramoNuevo.monto_total_cobrado,
+        monto_total_cobrado: normalizarMontoPago(tramoNuevo.monto_total_cobrado),
         descuento_aplicado: tramoNuevo.descuento_aplicado,
         recargo_aplicado: tramoNuevo.recargo_aplicado,
       };
@@ -360,7 +373,8 @@ export default function useCheckoutVenta({
     setSimulacion(nuevaSimulacion);
     setPreviewSaldar(null);
     setPreviewMontoActual(null);
-    setMonto("");
+    montoEditadoManualRef.current = false;
+    setMontoState("");
 
     // Caso mixto: efectivo parcial + tarjeta 3 cuotas para completar saldo.
     // Si la venta queda cubierta, el formulario debe quedar limpio para no
@@ -445,7 +459,8 @@ export default function useCheckoutVenta({
 
   useEffect(() => {
     setPagosDraft([]);
-    setMonto(initialCheckoutDraft?.monto || "");
+    montoEditadoManualRef.current = Boolean(initialCheckoutDraft?.monto);
+    setMontoState(initialCheckoutDraft?.monto || "");
     setErrorLocal("");
     setSimulacion(null);
     setPreviewSaldar(null);
@@ -511,13 +526,18 @@ export default function useCheckoutVenta({
       if (saldoPendientePreview <= 0) {
         setPreviewSaldar(null);
         setPreviewMontoActual(null);
-        setMonto("");
+        montoEditadoManualRef.current = false;
+        setMontoState("");
         return;
       }
 
       setPreviewSaldar(data);
-      if (data.monto_sugerido_para_saldar != null && !String(monto || "").trim()) {
-        setMonto(String(toMoneyNumber(data.monto_sugerido_para_saldar).toFixed(2)));
+      if (data.monto_sugerido_para_saldar != null && !montoEditadoManualRef.current) {
+        const montoSugerido = String(normalizarMontoPago(data.monto_sugerido_para_saldar));
+
+        if (String(monto || "") !== montoSugerido) {
+          setMontoState(montoSugerido);
+        }
       }
     }
 
@@ -532,7 +552,7 @@ export default function useCheckoutVenta({
   useEffect(() => {
     let cancelado = false;
     const montoTexto = String(monto || "").trim();
-    const montoCobradoInput = Number(montoTexto);
+    const montoCobradoInput = normalizarMontoPago(montoTexto);
 
     async function simularMontoActual() {
       if (!montoTexto || !Number.isFinite(montoCobradoInput) || montoCobradoInput <= 0) {
@@ -642,7 +662,7 @@ export default function useCheckoutVenta({
     medioPago,
     setMedioPago,
     monto,
-    setMonto,
+    setMonto: setMontoManual,
     entregarAhora,
     setEntregarAhora,
     errorLocal,

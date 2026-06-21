@@ -1,3 +1,5 @@
+import CalculadoraPrecioPagoPreview from "../../precios/CalculadoraPrecioPagoPreview";
+
 function money(value) {
   const numero = Number(value || 0);
   return numero.toLocaleString("es-AR", {
@@ -13,6 +15,7 @@ export default function BicicletaVarianteCard({
   puedeEliminar,
   onChange,
   onRemove,
+  porcentajeDescuentoContado,
 }) {
   function cambiarArchivo(e) {
     const archivo = e.target.files?.[0] || null;
@@ -123,6 +126,12 @@ export default function BicicletaVarianteCard({
           />
         </label>
       </div>
+
+      <CalculadoraPrecioPagoPreview
+        porcentajeDescuentoContado={porcentajeDescuentoContado}
+        onAplicarMinorista={(monto) => onChange(index, "precio_minorista", monto)}
+        onAplicarMayorista={(monto) => onChange(index, "precio_mayorista", monto)}
+      />
 
       <div style={styles.bottomGrid}>
         <div style={styles.summaryBox}>

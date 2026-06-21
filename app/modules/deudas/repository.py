@@ -207,6 +207,21 @@ def update_deuda_saldo_y_estado(conn, deuda_id: int, saldo_actual, estado: str):
             (saldo_actual, estado, deuda_id),
         )
         return cur.fetchone()
+
+
+def update_venta_saldo_desde_deuda(conn, venta_id: int, saldo_pendiente):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            UPDATE ventas
+            SET saldo_pendiente = %s,
+                updated_at = NOW()
+            WHERE id = %s
+            RETURNING id, estado, total_final, saldo_pendiente
+            """,
+            (saldo_pendiente, venta_id),
+        )
+        return cur.fetchone()
     
 def get_deudas_filtradas(
     conn,

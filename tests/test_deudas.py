@@ -178,6 +178,7 @@ def test_rechaza_crear_deuda_duplicada_para_misma_venta(client, db_conn, seed_ve
 
 def test_registrar_pago_parcial_de_deuda(client, db_conn, seed_venta_basica):
     contexto = _crear_deuda_automatica_por_entrega(client, db_conn, seed_venta_basica)
+    venta_id = contexto["venta_id"]
     deuda_id = contexto["deuda_id"]
     caja_id = contexto["caja_id"]
 
@@ -206,6 +207,10 @@ def test_registrar_pago_parcial_de_deuda(client, db_conn, seed_venta_basica):
     deuda = get_deuda(db_conn, deuda_id)
     assert _to_decimal(deuda["saldo_actual"]) == saldo_esperado
     assert deuda["estado"] == "abierta"
+
+    venta = get_venta(db_conn, venta_id)
+    assert venta["estado"] == "entregada"
+    assert _to_decimal(venta["saldo_pendiente"]) == saldo_esperado
 
     movimientos = get_deuda_movimientos(db_conn, deuda_id)
     tipos = [m["tipo_movimiento"] for m in movimientos]
@@ -241,6 +246,7 @@ def test_registrar_pago_total_de_deuda_la_cierra(client, db_conn, seed_venta_bas
         seed_venta_basica,
         pago_previo=Decimal("17440"),
     )
+    venta_id = contexto["venta_id"]
     deuda_id = contexto["deuda_id"]
 
     deuda_inicial = get_deuda(db_conn, deuda_id)
@@ -267,6 +273,10 @@ def test_registrar_pago_total_de_deuda_la_cierra(client, db_conn, seed_venta_bas
     deuda = get_deuda(db_conn, deuda_id)
     assert _to_decimal(deuda["saldo_actual"]) == Decimal("0")
     assert deuda["estado"] == "cerrada"
+
+    venta = get_venta(db_conn, venta_id)
+    assert venta["estado"] == "entregada"
+    assert _to_decimal(venta["saldo_pendiente"]) == Decimal("0")
 
     movimientos = get_deuda_movimientos(db_conn, deuda_id)
     tipos = [m["tipo_movimiento"] for m in movimientos]
@@ -389,10 +399,12 @@ def test_flujo_real_venta_parcial_entrega_con_deuda_y_pago_deuda(
 
     venta_final = get_venta(db_conn, venta_id)
     assert venta_final["estado"] == "entregada"
+    assert _to_decimal(venta_final["saldo_pendiente"]) == Decimal("0.00")
 
     response = client.get(f"/ventas/{venta_id}")
     assert response.status_code == 200
     assert response.json()["venta"]["estado"] == "entregada"
+    assert _to_decimal(response.json()["venta"]["saldo_pendiente"]) == Decimal("0.00")
 
 
 def test_pago_parcial_reversion_y_entrega_generan_saldo_correcto(
@@ -445,6 +457,7 @@ def test_pago_parcial_reversion_y_entrega_generan_saldo_correcto(
 
 def test_pago_parcial_de_deuda_no_cierra_deuda(client, db_conn, seed_venta_basica):
     contexto = _crear_deuda_automatica_por_entrega(client, db_conn, seed_venta_basica)
+    venta_id = contexto["venta_id"]
     deuda = contexto["deuda"]
 
     total = Decimal(str(deuda["saldo_actual"]))
@@ -463,3 +476,7 @@ def test_pago_parcial_de_deuda_no_cierra_deuda(client, db_conn, seed_venta_basic
     deuda_final = get_deuda(db_conn, deuda["id"])
     assert deuda_final["estado"] == "abierta"
     assert Decimal(str(deuda_final["saldo_actual"])) == total / 2
+
+    venta = get_venta(db_conn, venta_id)
+    assert venta["estado"] == "entregada"
+    assert Decimal(str(venta["saldo_pendiente"])) == total / 2

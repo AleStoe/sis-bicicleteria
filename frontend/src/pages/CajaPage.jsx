@@ -554,7 +554,7 @@ function CajaResumenDiario({ resumen, formatCurrency, isMobile }) {
 
   const caja = resumen.caja || {};
   const pagos = resumen.pagos || {};
-  const rentabilidad = resumen.rentabilidad || {};
+  const operacion = resumen.rentabilidad || {};
   const documentos = resumen.documentos || {};
   const diferencia =
     caja.diferencia ?? calcularDiferencia(caja.monto_cierre_real, caja.efectivo_teorico);
@@ -569,7 +569,7 @@ function CajaResumenDiario({ resumen, formatCurrency, isMobile }) {
         <div>
           <h2 style={styles.resumenDiarioTitle}>Cierre operativo del dia</h2>
           <p style={styles.resumenDiarioSubtitle}>
-            Caja, cobros, egresos, ganancia y documentos disponibles para {resumen.fecha}.
+            Caja, cobros, egresos y documentos disponibles para {resumen.fecha}.
           </p>
         </div>
         <span
@@ -624,15 +624,33 @@ function CajaResumenDiario({ resumen, formatCurrency, isMobile }) {
           tone="danger"
         />
         <ResumenDiarioMetric
-          label="Ganancia del dia"
-          value={formatCurrency(rentabilidad.ganancia_dia)}
-          detail={`Margen ${formatCurrency(rentabilidad.margen_bruto)} - gastos ${formatCurrency(rentabilidad.gastos_operativos)}`}
-          tone="primary"
+          label="Efectivo"
+          value={formatCurrency(pagos.efectivo)}
+          detail="Neto cobrado"
+          tone="success"
+        />
+        <ResumenDiarioMetric
+          label="Transferencia"
+          value={formatCurrency(pagos.transferencia)}
+          detail="Neto cobrado"
+          tone="success"
+        />
+        <ResumenDiarioMetric
+          label="Mercado Pago"
+          value={formatCurrency(pagos.mercadopago)}
+          detail="Neto cobrado"
+          tone="success"
+        />
+        <ResumenDiarioMetric
+          label="Tarjeta"
+          value={formatCurrency(pagos.tarjeta)}
+          detail="Neto cobrado"
+          tone="success"
         />
         <ResumenDiarioMetric
           label="Ventas"
-          value={formatCurrency(rentabilidad.ventas_total)}
-          detail={`${rentabilidad.cantidad_ventas || 0} operaciones`}
+          value={formatCurrency(operacion.ventas_total)}
+          detail={`${operacion.cantidad_ventas || 0} operaciones`}
         />
         <ResumenDiarioMetric
           label="Documentos"

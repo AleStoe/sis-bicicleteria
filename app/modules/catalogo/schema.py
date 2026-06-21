@@ -7,11 +7,25 @@ from typing import Literal
 class CategoriaOut(BaseModel):
     id: int
     nombre: str
+    activo: bool
+
+
+class CategoriaCreate(BaseModel):
+    nombre: str = Field(min_length=2, max_length=100)
+
+
+class CategoriaUpdate(BaseModel):
+    nombre: str = Field(min_length=2, max_length=100)
+
+
+class CategoriaEstadoUpdate(BaseModel):
+    activo: bool
 
 
 class ProductoOut(BaseModel):
     id: int
     nombre: str
+    rubro: str | None = None
     tipo_item: str
     stockeable: bool
     serializable: bool
@@ -83,6 +97,7 @@ class CatalogoPOSItemOut(BaseModel):
     id_producto: int
     producto_nombre: str
     nombre_variante: str
+    rubro: str | None = None
     categoria_id: int
     categoria_nombre: str
     tipo_item: str
@@ -114,6 +129,7 @@ class CatalogoPOSItemOut(BaseModel):
     color: str | None = None
 
 TipoItemCatalogo = Literal["producto", "servicio"]
+RubroProducto = Literal["BICICLETAS", "REPUESTOS", "ACCESORIOS", "INDUMENTARIA", "SERVICIOS"]
 
 class CatalogoPOSPaginatedOut(BaseModel):
     total: int
@@ -125,6 +141,7 @@ class ProductoCreate(BaseModel):
     id_categoria: int = Field(gt=0)
     id_marca: int | None = Field(default=None, gt=0)
     nombre: str = Field(min_length=2, max_length=150)
+    rubro: RubroProducto = "REPUESTOS"
     tipo_item: TipoItemCatalogo = "producto"
     stockeable: bool = True
     serializable: bool = False
@@ -138,6 +155,7 @@ class ProductoCreateOut(BaseModel):
     id_categoria: int
     id_marca: int | None = None
     nombre: str
+    rubro: str | None = None
     tipo_item: str
     stockeable: bool
     serializable: bool
@@ -200,6 +218,7 @@ class ProductoUpdate(BaseModel):
     id_categoria: int | None = Field(default=None, gt=0)
     id_marca: int | None = Field(default=None, gt=0)
     nombre: str | None = Field(default=None, min_length=2, max_length=150)
+    rubro: RubroProducto | None = None
     tipo_item: TipoItemCatalogo | None = None
     stockeable: bool | None = None
     serializable: bool | None = None

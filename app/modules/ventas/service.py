@@ -19,6 +19,7 @@ from app.modules.auditoria import service as auditoria_service
 from app.modules.pagos.repository import (
     get_total_pagado_confirmado_por_venta,
     get_pagos_confirmados_por_venta,
+    sincronizar_venta_financiera_desde_pagos,
     update_pago_estado,
 )
 from app.modules.serializadas.repository import (
@@ -729,7 +730,7 @@ def crear_venta(data):
                     "descuento_total": descuento_total,
                     "recargo_total": recargo_total,
                     "total_final": total_final,
-                    "saldo_pendiente": total_final,
+                    "saldo_pendiente": subtotal_total if pagos else total_final,
                     "id_usuario_creador": data.id_usuario,
                     "observaciones": getattr(data, "observaciones", None),
                     "id_reserva_origen": None,
@@ -910,6 +911,7 @@ def crear_venta(data):
                     "origen_id": venta_id,
                     "medio_pago": tramo["medio_pago"],
                     "monto": monto_total_cobrado,
+                    "monto_base": monto_base_aplicado,
                     "cuotas": tramo.get("cuotas"),
                     "entidad": tramo.get("entidad"),
                     "nota": getattr(pago, "nota", None),
@@ -920,7 +922,6 @@ def crear_venta(data):
                     payload_pago.update(
                         {
                             "id_tarjeta_plan": tramo.get("id_tarjeta_plan"),
-                            "monto_base": monto_base_aplicado,
                             "monto_recargo_financiero": recargo_aplicado,
                             "porcentaje_recargo_aplicado": tramo.get("porcentaje_recargo_aplicado"),
                             "monto_neto_liquidado": monto_total_cobrado,
@@ -930,51 +931,32 @@ def crear_venta(data):
                 pagos_service.registrar_pago(conn, payload_pago)
 
 
-            total_pagado_confirmado = redondear_monto(
-                get_total_pagado_confirmado_por_venta(conn, venta_id)
-            )
-
-            saldo_pendiente = redondear_monto(
-                total_final - total_pagado_confirmado - credito_aplicado
-            )
-
-            if saldo_pendiente < Decimal("0"):
-                saldo_pendiente = Decimal("0")
-
-            if saldo_pendiente == Decimal("0"):
-                estado_venta = "pagada_total"
-            elif saldo_pendiente < total_final:
-                estado_venta = "pagada_parcial"
+            if pagos:
+                venta_actualizada = sincronizar_venta_financiera_desde_pagos(conn, venta_id)
+                saldo_pendiente = redondear_monto(
+                    venta_actualizada["saldo_pendiente"]
+                )
+                estado_venta = venta_actualizada["estado"]
+                total_final = redondear_monto(venta_actualizada["total_final"])
             else:
-                estado_venta = "creada"
+                saldo_pendiente = redondear_monto(total_final - credito_aplicado)
 
-            update_venta_saldo_y_estado(
-                conn,
-                venta_id,
-                saldo_pendiente,
-                estado_venta,
-            )
+                if saldo_pendiente < Decimal("0"):
+                    saldo_pendiente = Decimal("0")
 
-            saldo_pendiente = redondear_monto(
-                total_final - total_pagado_confirmado - credito_aplicado
-            )
+                if saldo_pendiente == Decimal("0"):
+                    estado_venta = "pagada_total"
+                elif saldo_pendiente < total_final:
+                    estado_venta = "pagada_parcial"
+                else:
+                    estado_venta = "creada"
 
-            if saldo_pendiente < Decimal("0"):
-                saldo_pendiente = Decimal("0")
-
-            if saldo_pendiente == Decimal("0"):
-                estado_venta = "pagada_total"
-            elif saldo_pendiente < total_final:
-                estado_venta = "pagada_parcial"
-            else:
-                estado_venta = "creada"
-
-            update_venta_saldo_y_estado(
-                conn,
-                venta_id,
-                saldo_pendiente,
-                estado_venta,
-            )
+                update_venta_saldo_y_estado(
+                    conn,
+                    venta_id,
+                    saldo_pendiente,
+                    estado_venta,
+                )
 
             auditoria_service.registrar_evento(
                 conn,

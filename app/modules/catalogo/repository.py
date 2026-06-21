@@ -1,18 +1,80 @@
 from app.db.connection import get_connection
 
 
-def get_categorias(conn):
+def get_categorias(conn, incluir_inactivas: bool = False):
 
     with conn.cursor() as cur:
-        cur.execute("""
-            SELECT id, nombre
-            FROM categorias
-            WHERE activo = TRUE
-            ORDER BY nombre
-        """)
+        if incluir_inactivas:
+            cur.execute("""
+                SELECT id, nombre, activo
+                FROM categorias
+                ORDER BY activo DESC, nombre
+            """)
+        else:
+            cur.execute("""
+                SELECT id, nombre, activo
+                FROM categorias
+                WHERE activo = TRUE
+                ORDER BY nombre
+            """)
         result = cur.fetchall()
 
     return result
+
+
+def get_categoria_by_nombre(conn, nombre: str):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id, nombre, activo
+            FROM categorias
+            WHERE UPPER(nombre) = UPPER(%s)
+            LIMIT 1
+            """,
+            (nombre,),
+        )
+        return cur.fetchone()
+
+
+def insert_categoria(conn, nombre: str):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO categorias (nombre, activo)
+            VALUES (%s, TRUE)
+            RETURNING id, nombre, activo
+            """,
+            (nombre,),
+        )
+        return cur.fetchone()
+
+
+def update_categoria(conn, categoria_id: int, nombre: str):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE categorias
+            SET nombre = %s
+            WHERE id = %s
+            RETURNING id, nombre, activo
+            """,
+            (nombre, categoria_id),
+        )
+        return cur.fetchone()
+
+
+def update_categoria_estado(conn, categoria_id: int, activo: bool):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE categorias
+            SET activo = %s
+            WHERE id = %s
+            RETURNING id, nombre, activo
+            """,
+            (activo, categoria_id),
+        )
+        return cur.fetchone()
 
 
 def get_productos(conn):
@@ -21,6 +83,7 @@ def get_productos(conn):
             SELECT
                 p.id,
                 p.nombre,
+                p.rubro,
                 p.tipo_item,
                 p.stockeable,
                 p.serializable,
@@ -245,6 +308,7 @@ def get_catalogo_pos(
     id_sucursal: int,
     query: str | None = None,
     categoria_id: int | None = None,
+    marca_id: int | None = None,
     limit: int = 50,
     offset: int = 0,
 ):
@@ -264,6 +328,10 @@ def get_catalogo_pos(
     if categoria_id is not None:
         filtros.append("c.id = %(categoria_id)s")
         params["categoria_id"] = categoria_id
+
+    if marca_id is not None:
+        filtros.append("m.id = %(marca_id)s")
+        params["marca_id"] = marca_id
 
     if query:
         filtros.append("""
@@ -430,6 +498,196 @@ def get_catalogo_pos(
         "items": items,
     }
 
+
+def get_catalogo_mayorista_pdf_items(
+    conn,
+    id_sucursal: int,
+    categoria_id: int | None = None,
+    marca_id: int | None = None,
+):
+    filtros = [
+        "v.activo = TRUE",
+        "p.activo = TRUE",
+        "c.activo = TRUE",
+        "p.tipo_item = 'producto'",
+        "COALESCE(v.precio_mayorista, 0) > 0",
+        """
+        GREATEST(
+            COALESCE(ss.stock_fisico, 0)
+            - COALESCE(ss.stock_reservado, 0)
+            - COALESCE(ss.stock_vendido_pendiente_entrega, 0),
+            0
+        ) > 0
+        """,
+    ]
+    params = {"id_sucursal": id_sucursal}
+
+    if categoria_id is not None:
+        filtros.append("c.id = %(categoria_id)s")
+        params["categoria_id"] = categoria_id
+
+    if marca_id is not None:
+        filtros.append("m.id = %(marca_id)s")
+        params["marca_id"] = marca_id
+
+    where_sql = " AND ".join(filtros)
+
+    with conn.cursor() as cur:
+        cur.execute(f"""
+            SELECT
+                v.id AS id_variante,
+                v.id_producto,
+                p.nombre AS producto_nombre,
+                p.rubro,
+                v.nombre_variante,
+                c.id AS categoria_id,
+                c.nombre AS categoria_nombre,
+                m.id AS id_marca,
+                m.nombre AS marca_nombre,
+                v.precio_mayorista,
+                v.sku,
+                v.codigo_proveedor,
+                COALESCE(img_var.url, img_prod.url) AS imagen_principal,
+                GREATEST(
+                    COALESCE(ss.stock_fisico, 0)
+                    - COALESCE(ss.stock_reservado, 0)
+                    - COALESCE(ss.stock_vendido_pendiente_entrega, 0),
+                    0
+                ) AS stock_disponible
+            FROM variantes v
+            INNER JOIN productos p
+                ON p.id = v.id_producto
+            INNER JOIN categorias c
+                ON c.id = p.id_categoria
+            LEFT JOIN marcas m
+                ON m.id = p.id_marca
+            LEFT JOIN stock_sucursal ss
+                ON ss.id_variante = v.id
+               AND ss.id_sucursal = %(id_sucursal)s
+            LEFT JOIN LATERAL (
+                SELECT ci.url
+                FROM catalogo_imagenes ci
+                WHERE ci.id_variante = v.id
+                  AND ci.activo = TRUE
+                ORDER BY ci.es_principal DESC, ci.orden ASC, ci.id ASC
+                LIMIT 1
+            ) img_var ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT ci.url
+                FROM catalogo_imagenes ci
+                WHERE ci.id_producto = p.id
+                  AND ci.activo = TRUE
+                ORDER BY ci.es_principal DESC, ci.orden ASC, ci.id ASC
+                LIMIT 1
+            ) img_prod ON TRUE
+            WHERE {where_sql}
+            ORDER BY
+                c.nombre,
+                m.nombre NULLS LAST,
+                p.nombre,
+                v.nombre_variante
+        """, params)
+
+        return cur.fetchall()
+
+
+def get_catalogo_bicicletas_pdf_items(
+    conn,
+    id_sucursal: int,
+    marca_id: int | None = None,
+):
+    filtros = [
+        "v.activo = TRUE",
+        "p.activo = TRUE",
+        "c.activo = TRUE",
+        "p.tipo_item = 'producto'",
+        "COALESCE(v.precio_minorista, 0) > 0",
+        """
+        (
+            c.nombre ILIKE '%%bicicleta%%'
+            OR p.tipo_bicicleta IS NOT NULL
+            OR p.rodado IS NOT NULL
+        )
+        """,
+        """
+        GREATEST(
+            COALESCE(ss.stock_fisico, 0)
+            - COALESCE(ss.stock_reservado, 0)
+            - COALESCE(ss.stock_vendido_pendiente_entrega, 0),
+            0
+        ) > 0
+        """,
+    ]
+    params = {"id_sucursal": id_sucursal}
+
+    if marca_id is not None:
+        filtros.append("m.id = %(marca_id)s")
+        params["marca_id"] = marca_id
+
+    where_sql = " AND ".join(filtros)
+
+    with conn.cursor() as cur:
+        cur.execute(f"""
+            SELECT
+                v.id AS id_variante,
+                v.id_producto,
+                p.nombre AS producto_nombre,
+                p.rubro,
+                v.nombre_variante,
+                p.rodado,
+                p.tipo_bicicleta,
+                p.material_cuadro,
+                v.talle,
+                v.color,
+                c.nombre AS categoria_nombre,
+                m.id AS id_marca,
+                m.nombre AS marca_nombre,
+                v.precio_minorista,
+                v.sku,
+                v.codigo_proveedor,
+                COALESCE(img_var.url, img_prod.url) AS imagen_principal,
+                GREATEST(
+                    COALESCE(ss.stock_fisico, 0)
+                    - COALESCE(ss.stock_reservado, 0)
+                    - COALESCE(ss.stock_vendido_pendiente_entrega, 0),
+                    0
+                ) AS stock_disponible
+            FROM variantes v
+            INNER JOIN productos p
+                ON p.id = v.id_producto
+            INNER JOIN categorias c
+                ON c.id = p.id_categoria
+            LEFT JOIN marcas m
+                ON m.id = p.id_marca
+            LEFT JOIN stock_sucursal ss
+                ON ss.id_variante = v.id
+               AND ss.id_sucursal = %(id_sucursal)s
+            LEFT JOIN LATERAL (
+                SELECT ci.url
+                FROM catalogo_imagenes ci
+                WHERE ci.id_variante = v.id
+                  AND ci.activo = TRUE
+                ORDER BY ci.es_principal DESC, ci.orden ASC, ci.id ASC
+                LIMIT 1
+            ) img_var ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT ci.url
+                FROM catalogo_imagenes ci
+                WHERE ci.id_producto = p.id
+                  AND ci.activo = TRUE
+                ORDER BY ci.es_principal DESC, ci.orden ASC, ci.id ASC
+                LIMIT 1
+            ) img_prod ON TRUE
+            WHERE {where_sql}
+            ORDER BY
+                m.nombre NULLS LAST,
+                p.nombre,
+                p.rodado NULLS LAST,
+                v.nombre_variante
+        """, params)
+
+        return cur.fetchall()
+
 def get_catalogo_pos_por_codigo(
     conn,
     id_sucursal: int,
@@ -445,6 +703,7 @@ def get_catalogo_pos_por_codigo(
                 v.talle,
                 v.color,  
                 p.nombre AS producto_nombre,
+                p.rubro,
                 v.nombre_variante,
                 c.id AS categoria_id,
                 c.nombre AS categoria_nombre,
@@ -610,6 +869,7 @@ def get_producto_by_id(conn, producto_id: int):
                 p.id_marca,
                 m.nombre AS marca_nombre,
                 p.nombre,
+                p.rubro,
                 p.tipo_item,
                 p.stockeable,
                 p.serializable,
@@ -638,6 +898,7 @@ def crear_producto_catalogo(conn, data: dict):
                 id_categoria,
                 id_marca,
                 nombre,
+                rubro,
                 tipo_item,
                 stockeable,
                 serializable,
@@ -646,12 +907,13 @@ def crear_producto_catalogo(conn, data: dict):
                 material_cuadro,
                 activo
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE)
             RETURNING
                 id,
                 id_categoria,
                 id_marca,
                 nombre,
+                rubro,
                 tipo_item,
                 stockeable,
                 serializable,
@@ -664,6 +926,7 @@ def crear_producto_catalogo(conn, data: dict):
                 data["id_categoria"],
                 data.get("id_marca"),
                 data["nombre"],
+                data["rubro"],
                 data["tipo_item"],
                 data["stockeable"],
                 data["serializable"],
@@ -766,6 +1029,7 @@ def update_producto_catalogo(conn, producto_id: int, data: dict):
         "id_categoria",
         "id_marca",
         "nombre",
+        "rubro",
         "tipo_item",
         "stockeable",
         "serializable",
@@ -791,6 +1055,7 @@ def update_producto_catalogo(conn, producto_id: int, data: dict):
                 id_categoria,
                 id_marca,
                 nombre,
+                rubro,
                 tipo_item,
                 stockeable,
                 serializable,
@@ -815,6 +1080,7 @@ def update_producto_estado(conn, producto_id: int, activo: bool):
                 id_categoria,
                 id_marca,
                 nombre,
+                rubro,
                 tipo_item,
                 stockeable,
                 serializable,

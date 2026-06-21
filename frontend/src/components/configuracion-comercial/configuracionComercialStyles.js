@@ -100,6 +100,15 @@ export const styles = {
     background: "white",
   },
 
+  inlineForm: {
+    display: "grid",
+    gridTemplateColumns: "minmax(180px, 2fr) repeat(5, minmax(110px, 1fr))",
+    gap: 10,
+    padding: 16,
+    borderBottom: "1px solid #eaecf0",
+    alignItems: "center",
+  },
+
   actionsCell: {
     display: "flex",
     alignItems: "center",

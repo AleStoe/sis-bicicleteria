@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from fastapi import HTTPException
 
@@ -20,6 +20,7 @@ from .repository import (
     buscar_regla_precio_aplicable,
     get_variantes_contexto_precio,
     get_variantes_contexto_precio_by_proveedor,
+    get_variantes_ajuste_rapido_proveedor,
     get_proveedor_by_id,
     get_familia_precio_by_id,
     get_familias_precio,
@@ -28,6 +29,10 @@ from .repository import (
 
 def _dec(value) -> Decimal:
     return Decimal(str(value))
+
+
+def _redondear_pesos(valor: Decimal) -> Decimal:
+    return valor.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
 
 
 def obtener_precio_variante(id_variante: int):
@@ -614,6 +619,167 @@ def recalcular_precios_por_proveedor(data):
                 "aplicado": data.aplicar,
                 "id_proveedor": data.id_proveedor,
                 "tipo_cliente": data.tipo_cliente,
+                "total_detectados": len(items),
+                "total_aplicados": total_aplicados,
+                "items": items,
+            }
+
+    finally:
+        conn.close()
+
+
+def _calcular_ajuste_precio(actual: Decimal, tipo_ajuste: str, valor: Decimal) -> Decimal:
+    if tipo_ajuste == "porcentaje":
+        return _redondear_pesos(actual * (Decimal("1") + (valor / Decimal("100"))))
+
+    return _redondear_pesos(actual + valor)
+
+
+def _precios_ajustados_variante(variante: dict, data):
+    precio_minorista_actual = _dec(variante["precio_minorista"])
+    precio_mayorista_actual = _dec(variante["precio_mayorista"])
+    valor = _dec(data.valor)
+
+    precio_minorista_nuevo = precio_minorista_actual
+    precio_mayorista_nuevo = precio_mayorista_actual
+
+    if data.aplicar_sobre in {"minorista", "ambos"}:
+        precio_minorista_nuevo = _calcular_ajuste_precio(
+            precio_minorista_actual,
+            data.tipo_ajuste,
+            valor,
+        )
+
+    if data.aplicar_sobre in {"mayorista", "ambos"}:
+        precio_mayorista_nuevo = _calcular_ajuste_precio(
+            precio_mayorista_actual,
+            data.tipo_ajuste,
+            valor,
+        )
+
+    return {
+        "precio_minorista_actual": precio_minorista_actual,
+        "precio_mayorista_actual": precio_mayorista_actual,
+        "precio_minorista_nuevo": precio_minorista_nuevo,
+        "precio_mayorista_nuevo": precio_mayorista_nuevo,
+        "diferencia_minorista": precio_minorista_nuevo - precio_minorista_actual,
+        "diferencia_mayorista": precio_mayorista_nuevo - precio_mayorista_actual,
+    }
+
+
+def ajustar_precios_por_proveedor(data):
+    conn = get_connection()
+
+    try:
+        with conn.transaction():
+            proveedor = get_proveedor_by_id(conn, data.id_proveedor)
+
+            if proveedor is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No existe el proveedor {data.id_proveedor}",
+                )
+
+            if not proveedor["activo"]:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"El proveedor {data.id_proveedor} estÃ¡ inactivo",
+                )
+
+            if data.aplicar and data.id_usuario is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="id_usuario es obligatorio cuando aplicar=true",
+                )
+
+            if data.aplicar and not (data.motivo or "").strip():
+                raise HTTPException(
+                    status_code=400,
+                    detail="El motivo es obligatorio cuando aplicar=true",
+                )
+
+            variantes = get_variantes_ajuste_rapido_proveedor(
+                conn,
+                {
+                    "id_proveedor": data.id_proveedor,
+                    "solo_productos_activos": data.solo_productos_activos,
+                    "solo_variantes_activas": data.solo_variantes_activas,
+                    "solo_con_stock": data.solo_con_stock,
+                },
+            )
+
+            items = []
+            total_aplicados = 0
+
+            for variante in variantes:
+                calculo = _precios_ajustados_variante(variante, data)
+
+                if (
+                    calculo["precio_minorista_actual"] == calculo["precio_minorista_nuevo"]
+                    and calculo["precio_mayorista_actual"] == calculo["precio_mayorista_nuevo"]
+                ):
+                    continue
+
+                movimiento_id = None
+                aplicado = False
+
+                if data.aplicar:
+                    movimiento_id = insert_precio_movimiento(
+                        conn,
+                        {
+                            "id_variante": variante["id_variante"],
+                            "precio_minorista_anterior": calculo["precio_minorista_actual"],
+                            "precio_minorista_nuevo": calculo["precio_minorista_nuevo"],
+                            "precio_mayorista_anterior": calculo["precio_mayorista_actual"],
+                            "precio_mayorista_nuevo": calculo["precio_mayorista_nuevo"],
+                            "costo_anterior": _dec(variante["costo_promedio_vigente"] or 0),
+                            "costo_nuevo": _dec(variante["costo_promedio_vigente"] or 0),
+                            "tipo_movimiento": "actualizacion_por_lista_proveedor",
+                            "motivo": data.motivo.strip(),
+                            "origen_tipo": "proveedor",
+                            "origen_id": data.id_proveedor,
+                            "id_usuario": data.id_usuario,
+                        },
+                    )
+
+                    update_variante_precios(
+                        conn,
+                        variante["id_variante"],
+                        {
+                            "precio_minorista": calculo["precio_minorista_nuevo"],
+                            "precio_mayorista": calculo["precio_mayorista_nuevo"],
+                        },
+                    )
+
+                    aplicado = True
+                    total_aplicados += 1
+
+                items.append(
+                    {
+                        "id_variante": variante["id_variante"],
+                        "id_producto": variante["id_producto"],
+                        "producto_nombre": variante["producto_nombre"],
+                        "nombre_variante": variante["nombre_variante"],
+                        "sku": variante["sku"],
+                        "codigo_proveedor": variante["codigo_proveedor"],
+                        "precio_minorista_actual": calculo["precio_minorista_actual"],
+                        "precio_mayorista_actual": calculo["precio_mayorista_actual"],
+                        "precio_minorista_nuevo": calculo["precio_minorista_nuevo"],
+                        "precio_mayorista_nuevo": calculo["precio_mayorista_nuevo"],
+                        "diferencia_minorista": calculo["diferencia_minorista"],
+                        "diferencia_mayorista": calculo["diferencia_mayorista"],
+                        "aplicado": aplicado,
+                        "movimiento_id": movimiento_id,
+                    }
+                )
+
+            return {
+                "ok": True,
+                "aplicado": data.aplicar,
+                "id_proveedor": data.id_proveedor,
+                "aplicar_sobre": data.aplicar_sobre,
+                "tipo_ajuste": data.tipo_ajuste,
+                "valor": data.valor,
                 "total_detectados": len(items),
                 "total_aplicados": total_aplicados,
                 "items": items,

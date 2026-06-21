@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  getCatalogoBicicletasPdfUrl,
+  getCatalogoMayoristaPdfUrl,
   listarCatalogoPOS,
   listarCategorias,
+  listarMarcas,
 } from "../services/catalogoService";
 import ProductImage from "../components/catalogo/ProductImage";
 import EstadoBadge from "../components/catalogo/EstadoBadge";
@@ -126,8 +129,10 @@ export default function CatalogoPage() {
 
   const [items, setItems] = useState([]);
   const [categorias, setCategorias] = useState([]);
+  const [marcas, setMarcas] = useState([]);
   const [query, setQuery] = useState("");
   const [categoriaId, setCategoriaId] = useState("");
+  const [marcaId, setMarcaId] = useState("");
   const [offset, setOffset] = useState(0);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -139,11 +144,12 @@ export default function CatalogoPage() {
 
   useEffect(() => {
     cargarCategorias();
+    cargarMarcas();
   }, []);
 
   useEffect(() => {
     cargarCatalogo();
-  }, [offset, categoriaId]);
+  }, [offset, categoriaId, marcaId]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -190,6 +196,7 @@ export default function CatalogoPage() {
         id_sucursal: ID_SUCURSAL_DEFAULT,
         query: query.trim() || undefined,
         categoria_id: categoriaId || undefined,
+        marca_id: marcaId || undefined,
         limit: LIMIT,
         offset: nextOffset,
       });
@@ -200,6 +207,15 @@ export default function CatalogoPage() {
       setError(err.message || "No se pudo cargar el catálogo");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function cargarMarcas() {
+    try {
+      const data = await listarMarcas();
+      setMarcas(data || []);
+    } catch (err) {
+      setError(err.message || "No se pudieron cargar las marcas");
     }
   }
 
@@ -245,6 +261,35 @@ export default function CatalogoPage() {
   function irSiguiente() {
     if (!puedeSiguiente) return;
     setOffset(offset + LIMIT);
+  }
+
+  function descargarCatalogoMayoristaPdf() {
+    const url = getCatalogoMayoristaPdfUrl({
+      id_sucursal: ID_SUCURSAL_DEFAULT,
+      categoria_id: categoriaId || undefined,
+      marca_id: marcaId || undefined,
+    });
+
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "catalogo-mayorista.pdf";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
+  function descargarCatalogoBicicletasPdf() {
+    const url = getCatalogoBicicletasPdfUrl({
+      id_sucursal: ID_SUCURSAL_DEFAULT,
+      marca_id: marcaId || undefined,
+    });
+
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "catalogo-bicicletas.pdf";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   }
 
   return (
@@ -317,6 +362,30 @@ export default function CatalogoPage() {
             </option>
           ))}
         </select>
+
+        <select
+          value={marcaId}
+          onChange={(e) => {
+            setMarcaId(e.target.value);
+            setOffset(0);
+          }}
+          style={styles.select}
+        >
+          <option value="">Todas las marcas</option>
+          {marcas.map((marca) => (
+            <option key={marca.id} value={marca.id}>
+              {marca.nombre}
+            </option>
+          ))}
+        </select>
+
+        <button type="button" onClick={descargarCatalogoMayoristaPdf} style={styles.pdfButton}>
+          Generar catálogo mayorista PDF
+        </button>
+
+        <button type="button" onClick={descargarCatalogoBicicletasPdf} style={styles.pdfClientButton}>
+          Catálogo bicicletas clientes
+        </button>
       </section>
 
       <main style={{ ...styles.layout, ...(isMobile ? styles.layoutMobile : {}) }}>
@@ -743,7 +812,7 @@ const styles = {
   },
   filtersCard: {
     display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) 260px",
+    gridTemplateColumns: "minmax(0, 1fr) 200px 200px auto auto",
     gap: 12,
     background: "white",
     border: "1px solid #e2e8f0",
@@ -787,6 +856,26 @@ const styles = {
     padding: "12px 13px",
     fontWeight: 800,
     color: "#0f172a",
+  },
+  pdfButton: {
+    border: "1px solid #0f172a",
+    background: "#0f172a",
+    color: "white",
+    borderRadius: 14,
+    padding: "12px 14px",
+    fontWeight: 1000,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  },
+  pdfClientButton: {
+    border: "1px solid #047857",
+    background: "#047857",
+    color: "white",
+    borderRadius: 14,
+    padding: "12px 14px",
+    fontWeight: 1000,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
   },
   layout: {
     display: "grid",

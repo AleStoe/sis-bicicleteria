@@ -578,3 +578,67 @@ def get_familias_precio(conn):
             """
         )
         return cur.fetchall()
+
+
+def get_variantes_ajuste_rapido_proveedor(conn, filtros: dict):
+    where = ["v.proveedor_preferido_id = %(id_proveedor)s"]
+    params = {"id_proveedor": filtros["id_proveedor"]}
+
+    if filtros.get("solo_productos_activos", True):
+        where.append("p.activo = TRUE")
+
+    if filtros.get("solo_variantes_activas", True):
+        where.append("v.activo = TRUE")
+
+    if filtros.get("solo_con_stock"):
+        where.append("""
+            GREATEST(
+                COALESCE(ss.stock_fisico, 0)
+                - COALESCE(ss.stock_reservado, 0)
+                - COALESCE(ss.stock_vendido_pendiente_entrega, 0),
+                0
+            ) > 0
+        """)
+
+    where_sql = " AND ".join(where)
+
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            f"""
+            SELECT
+                v.id AS id_variante,
+                v.id_producto,
+                p.nombre AS producto_nombre,
+                v.nombre_variante,
+                v.sku,
+                v.codigo_proveedor,
+                v.precio_minorista,
+                v.precio_mayorista,
+                v.costo_promedio_vigente,
+                v.activo AS variante_activa,
+                p.activo AS producto_activo,
+                COALESCE(ss.stock_fisico, 0) AS stock_fisico,
+                GREATEST(
+                    COALESCE(ss.stock_fisico, 0)
+                    - COALESCE(ss.stock_reservado, 0)
+                    - COALESCE(ss.stock_vendido_pendiente_entrega, 0),
+                    0
+                ) AS stock_disponible
+            FROM variantes v
+            INNER JOIN productos p
+                ON p.id = v.id_producto
+            LEFT JOIN LATERAL (
+                SELECT
+                    SUM(stock_fisico) AS stock_fisico,
+                    SUM(stock_reservado) AS stock_reservado,
+                    SUM(stock_vendido_pendiente_entrega) AS stock_vendido_pendiente_entrega
+                FROM stock_sucursal
+                WHERE id_variante = v.id
+            ) ss ON TRUE
+            WHERE {where_sql}
+            ORDER BY p.nombre, v.nombre_variante, v.id
+            """,
+            params,
+        )
+
+        return cur.fetchall()

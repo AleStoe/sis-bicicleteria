@@ -75,7 +75,7 @@ export default function ProductoPOSCard({ producto, tipoPrecio, onAgregarItem })
 
 const productRowStyle = {
   display: "grid",
-  gridTemplateColumns: "82px 1fr 130px",
+  gridTemplateColumns: "96px 1fr 130px",
   gap: "12px",
   alignItems: "center",
   border: "1px solid #eaecf0",
@@ -86,7 +86,7 @@ const productRowStyle = {
 };
 
 const productRowMobileStyle = {
-  gridTemplateColumns: "56px minmax(0, 1fr)",
+  gridTemplateColumns: "66px minmax(0, 1fr)",
   alignItems: "start",
   gap: "10px",
   padding: "9px",
@@ -99,25 +99,31 @@ const productRowBlockedStyle = {
 };
 
 const imageBoxStyle = {
-  width: "82px",
-  height: "72px",
+  width: "96px",
+  height: "76px",
   borderRadius: "10px",
-  background: "#f2f4f7",
+  background: "#ffffff",
+  border: "1px solid #eef2f7",
   display: "grid",
   placeItems: "center",
   overflow: "hidden",
+  padding: "6px",
+  boxSizing: "border-box",
 };
 
 const imageBoxMobileStyle = {
-  width: 56,
-  height: 54,
+  width: 66,
+  height: 58,
   borderRadius: 9,
+  padding: 5,
 };
 
 const imageStyle = {
   width: "100%",
   height: "100%",
-  objectFit: "cover",
+  objectFit: "contain",
+  objectPosition: "center",
+  display: "block",
 };
 
 const productInfoStyle = { minWidth: 0, display: "grid", gap: "4px" };

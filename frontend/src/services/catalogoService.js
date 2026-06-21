@@ -1,4 +1,6 @@
 import { apiRequest } from "./api";
+import { API_BASE_URL } from "../config/appConfig";
+import { getStoredAuthToken } from "./sessionStore";
 
 function buildQuery(params = {}) {
   const searchParams = new URLSearchParams();
@@ -13,8 +15,37 @@ function buildQuery(params = {}) {
   return qs ? `?${qs}` : "";
 }
 
-export function listarCategorias() {
-  return apiRequest("/catalogo/categorias");
+function withAccessToken(url) {
+  const token = getStoredAuthToken();
+  if (!token) return url;
+
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}access_token=${encodeURIComponent(token)}`;
+}
+
+export function listarCategorias(params = {}) {
+  return apiRequest(`/catalogo/categorias${buildQuery(params)}`);
+}
+
+export function crearCategoria(data) {
+  return apiRequest("/catalogo/categorias", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function editarCategoria(categoriaId, data) {
+  return apiRequest(`/catalogo/categorias/${categoriaId}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export function cambiarEstadoCategoria(categoriaId, data) {
+  return apiRequest(`/catalogo/categorias/${categoriaId}/estado`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
 }
 
 export function listarMarcas() {
@@ -88,6 +119,14 @@ export function cambiarEstadoVariante(varianteId, data) {
 
 export function listarCatalogoPOS(params = {}) {
   return apiRequest(`/catalogo/pos${buildQuery(params)}`);
+}
+
+export function getCatalogoMayoristaPdfUrl(params = {}) {
+  return withAccessToken(`${API_BASE_URL}/catalogo/pdf/mayorista${buildQuery(params)}`);
+}
+
+export function getCatalogoBicicletasPdfUrl(params = {}) {
+  return withAccessToken(`${API_BASE_URL}/catalogo/pdf/bicicletas${buildQuery(params)}`);
 }
 
 export function crearImagenCatalogo(data) {

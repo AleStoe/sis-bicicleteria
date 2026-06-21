@@ -830,7 +830,7 @@ def test_rechaza_pago_directo_a_venta_entregada_con_deuda(client, db_conn, seed_
     assert movimientos_caja_despues == movimientos_caja_antes
     assert auditoria_despues == auditoria_antes
 
-def test_pago_de_deuda_no_modifica_saldo_de_venta(client, db_conn, seed_venta_basica):
+def test_pago_de_deuda_sincroniza_saldo_de_venta(client, db_conn, seed_venta_basica):
     # crear venta
     crear = client.post(
         "/ventas/",
@@ -898,7 +898,10 @@ def test_pago_de_deuda_no_modifica_saldo_de_venta(client, db_conn, seed_venta_ba
     venta_despues = get_venta(db_conn, venta_id)
 
     # 🔴 ESTA ES LA VALIDACIÓN IMPORTANTE
-    assert venta_antes["saldo_pendiente"] == venta_despues["saldo_pendiente"]
+    assert Decimal(str(venta_despues["saldo_pendiente"])) == (
+        Decimal(str(venta_antes["saldo_pendiente"])) - Decimal("2000")
+    )
+    assert venta_despues["estado"] == "entregada"
 
 
 def _crear_usuario_sin_permiso(db_conn, username: str = "operador_sin_permiso_pago"):
@@ -1467,6 +1470,213 @@ def test_venta_con_tarjeta_6_cuotas_persiste_recargo(
     assert detalle["cuotas"] == 6
     assert detalle["entidad"] == "Mastercard"
 
+
+def test_crear_venta_con_pago_efectivo_embebido_persiste_base_y_descuento(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE variantes
+            SET precio_minorista = 22222
+            WHERE id = %s
+            """,
+            (seed_venta_basica["variante_id"],),
+        )
+    db_conn.commit()
+
+    abrir = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+    assert abrir.status_code == 200
+
+    response = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 1,
+                }
+            ],
+            "pagos": [
+                {
+                    "medio_pago": "efectivo",
+                    "monto_base": "22222",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    venta_id = response.json()["venta_id"]
+
+    venta = get_venta(db_conn, venta_id)
+    pagos = get_pagos_by_venta(db_conn, venta_id)
+
+    assert len(pagos) == 1
+    pago = pagos[0]
+
+    assert Decimal(str(venta["subtotal_base"])) == Decimal("22222.00")
+    assert Decimal(str(venta["descuento_total"])) == Decimal("2222.20")
+    assert Decimal(str(venta["recargo_total"])) == Decimal("0.00")
+    assert Decimal(str(venta["total_final"])) == Decimal("19999.80")
+    assert Decimal(str(venta["saldo_pendiente"])) == Decimal("0.00")
+    assert venta["estado"] == "pagada_total"
+
+    assert Decimal(str(pago["monto_base_aplicado"])) == Decimal("22222.00")
+    assert Decimal(str(pago["monto_descuento_aplicado"])) == Decimal("2222.20")
+    assert Decimal(str(pago["monto_recargo_aplicado"])) == Decimal("0.00")
+    assert Decimal(str(pago["monto_total_cobrado"])) == Decimal("19999.80")
+
+
+def test_crear_venta_con_pago_transferencia_embebido_persiste_base_y_descuento(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE variantes
+            SET precio_minorista = 22222
+            WHERE id = %s
+            """,
+            (seed_venta_basica["variante_id"],),
+        )
+    db_conn.commit()
+
+    abrir = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+    assert abrir.status_code == 200
+
+    response = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 1,
+                }
+            ],
+            "pagos": [
+                {
+                    "medio_pago": "transferencia",
+                    "monto_base": "22222",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    venta_id = response.json()["venta_id"]
+
+    venta = get_venta(db_conn, venta_id)
+    pagos = get_pagos_by_venta(db_conn, venta_id)
+
+    assert len(pagos) == 1
+    pago = pagos[0]
+
+    assert Decimal(str(venta["subtotal_base"])) == Decimal("22222.00")
+    assert Decimal(str(venta["descuento_total"])) == Decimal("2222.20")
+    assert Decimal(str(venta["recargo_total"])) == Decimal("0.00")
+    assert Decimal(str(venta["total_final"])) == Decimal("19999.80")
+    assert Decimal(str(venta["saldo_pendiente"])) == Decimal("0.00")
+    assert venta["estado"] == "pagada_total"
+
+    assert Decimal(str(pago["monto_base_aplicado"])) == Decimal("22222.00")
+    assert Decimal(str(pago["monto_descuento_aplicado"])) == Decimal("2222.20")
+    assert Decimal(str(pago["monto_recargo_aplicado"])) == Decimal("0.00")
+    assert Decimal(str(pago["monto_total_cobrado"])) == Decimal("19999.80")
+
+
+def test_crear_venta_con_pago_tarjeta_embebido_deja_venta_y_pago_consistentes(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    abrir = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+    assert abrir.status_code == 200
+
+    response = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 1,
+                }
+            ],
+            "pagos": [
+                {
+                    "medio_pago": "tarjeta",
+                    "monto_base": seed_venta_basica["precio_venta"],
+                    "cuotas": 3,
+                    "entidad": None,
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    venta_id = response.json()["venta_id"]
+
+    venta = get_venta(db_conn, venta_id)
+    pagos = get_pagos_by_venta(db_conn, venta_id)
+
+    assert len(pagos) == 1
+    pago = pagos[0]
+
+    assert Decimal(str(venta["recargo_total"])) > Decimal("0.00")
+    assert Decimal(str(pago["monto_recargo_aplicado"])) > Decimal("0.00")
+    assert Decimal(str(venta["total_final"])) == Decimal(
+        str(pago["monto_total_cobrado"])
+    )
+    assert Decimal(str(venta["saldo_pendiente"])) == Decimal("0.00")
+    assert venta["estado"] == "pagada_total"
+
+
+def test_crear_venta_sin_pagos_queda_creada_con_saldo_correcto(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    venta_id = crear_venta_base(client, seed_venta_basica)
+    venta = get_venta(db_conn, venta_id)
+    pagos = get_pagos_by_venta(db_conn, venta_id)
+
+    assert pagos == []
+    assert venta["estado"] == "creada"
+    assert Decimal(str(venta["subtotal_base"])) == Decimal(
+        str(seed_venta_basica["precio_venta"])
+    )
+    assert Decimal(str(venta["total_final"])) == Decimal(
+        str(seed_venta_basica["precio_venta"])
+    )
+    assert Decimal(str(venta["saldo_pendiente"])) == Decimal(
+        str(seed_venta_basica["precio_venta"])
+    )
+
 def test_pago_efectivo_con_descuento_cubre_saldo_por_base(
     client,
     db_conn,
@@ -1513,6 +1723,15 @@ def test_pago_efectivo_con_descuento_cubre_saldo_por_base(
     assert Decimal(str(pago["monto_base_aplicado"])) == total
     assert Decimal(str(pago["monto_descuento_aplicado"])) > Decimal("0.00")
     assert Decimal(str(pago["monto_total_cobrado"])) < total
+    assert Decimal(str(venta_final["descuento_total"])) == Decimal(
+        str(pago["monto_descuento_aplicado"])
+    )
+    assert Decimal(str(venta_final["recargo_total"])) == Decimal(
+        str(pago["monto_recargo_aplicado"])
+    )
+    assert Decimal(str(venta_final["total_final"])) == Decimal(
+        str(pago["monto_total_cobrado"])
+    )
 
 
 def test_pago_parcial_efectivo_con_descuento_descuenta_saldo_por_base(
@@ -1546,8 +1765,9 @@ def test_pago_parcial_efectivo_con_descuento_descuenta_saldo_por_base(
     venta = get_venta(db_conn, venta_id)
 
     assert venta["estado"] == "pagada_parcial"
+    assert Decimal(str(venta["descuento_total"])) > Decimal("0.00")
     assert Decimal(str(venta["saldo_pendiente"])) == (
-        Decimal(str(venta["total_final"])) - Decimal("10000.00")
+        Decimal(str(venta["subtotal_base"])) - Decimal("10000.00")
     )
 
 
@@ -1582,7 +1802,7 @@ def test_reversion_pago_efectivo_con_descuento_restaura_saldo_base(
 
     venta = get_venta(db_conn, venta_id)
     assert Decimal(str(venta["saldo_pendiente"])) == (
-        Decimal(str(venta["total_final"])) - Decimal("10000.00")
+        Decimal(str(venta["subtotal_base"])) - Decimal("10000.00")
     )
 
     reversion = client.post(

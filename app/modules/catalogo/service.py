@@ -1,9 +1,18 @@
 from app.db.connection import get_connection
 from app.core.text_normalization import clean_text, normalize_text_upper
 from fastapi import HTTPException
+from decimal import Decimal
 from psycopg.errors import UniqueViolation, CheckViolation, ForeignKeyViolation
+from app.modules.reglas_comerciales.repository import (
+    get_reglas_activas_por_medios,
+    get_tarjeta_planes,
+)
 from .repository import (
     get_categorias,
+    get_categoria_by_nombre,
+    insert_categoria,
+    update_categoria,
+    update_categoria_estado,
     get_productos,
     get_variantes,
     crear_imagen_catalogo,
@@ -31,15 +40,118 @@ from .repository import (
     listar_ficha_tecnica_producto,
     reemplazar_ficha_tecnica_producto,
     get_variante_activa_by_codigo_proveedor,
+    get_catalogo_mayorista_pdf_items,
+    get_catalogo_bicicletas_pdf_items,
 )
+from app.modules.documentos.pdf_catalogo_mayorista import generar_catalogo_mayorista_pdf
+from app.modules.documentos.pdf_catalogo_bicicletas import generar_catalogo_bicicletas_pdf
 
 
-def listar_categorias():
+def _dec(value) -> Decimal:
+    return Decimal(str(value or 0))
+
+
+def _opciones_pago_catalogo_bicicletas(conn):
+    reglas = get_reglas_activas_por_medios(conn, ["efectivo", "transferencia"])
+    planes = get_tarjeta_planes(conn, solo_activos=True)
+
+    opciones_contado = []
+    for medio in ["efectivo", "transferencia"]:
+        descuento = sum(
+            _dec(regla.get("porcentaje"))
+            for regla in reglas
+            if regla.get("tipo") == "descuento"
+            and regla.get("porcentaje") is not None
+            and regla.get("medio_pago") in {None, medio}
+        )
+
+        if descuento > 0:
+            opciones_contado.append(
+                {
+                    "medio_pago": medio,
+                    "label": "Efectivo" if medio == "efectivo" else "Transferencia",
+                    "porcentaje_descuento": descuento,
+                }
+            )
+
+    opciones_tarjeta = [
+        {
+            "label": plan["nombre"],
+            "cuotas": int(plan["cuotas"]),
+            "porcentaje_recargo": _dec(plan["porcentaje_recargo_cliente"]),
+        }
+        for plan in planes
+        if plan.get("medio_pago") == "tarjeta"
+    ]
+
+    return {
+        "contado": opciones_contado,
+        "tarjeta": opciones_tarjeta,
+    }
+
+
+def _validar_nombre_categoria(conn, nombre: str, categoria_id: int | None = None) -> str:
+    nombre_normalizado = normalize_text_upper(nombre)
+
+    if not nombre_normalizado:
+        raise HTTPException(status_code=400, detail="El nombre de la categoría es obligatorio")
+
+    existente = get_categoria_by_nombre(conn, nombre_normalizado)
+
+    if existente is not None and int(existente["id"]) != int(categoria_id or 0):
+        raise HTTPException(status_code=400, detail="Ya existe una categoría con ese nombre")
+
+    return nombre_normalizado
+
+
+def listar_categorias(incluir_inactivas: bool = False):
     conn = get_connection()
 
     try:
-        return get_categorias(conn)
+        return get_categorias(conn, incluir_inactivas=incluir_inactivas)
 
+    finally:
+        conn.close()
+
+
+def crear_categoria(data):
+    conn = get_connection()
+
+    try:
+        with conn.transaction():
+            nombre = _validar_nombre_categoria(conn, data.nombre)
+            return insert_categoria(conn, nombre)
+    finally:
+        conn.close()
+
+
+def editar_categoria(categoria_id: int, data):
+    conn = get_connection()
+
+    try:
+        with conn.transaction():
+            categoria = get_categoria_by_id(conn, categoria_id)
+
+            if categoria is None:
+                raise HTTPException(status_code=404, detail="Categoría no encontrada")
+
+            nombre = _validar_nombre_categoria(conn, data.nombre, categoria_id=categoria_id)
+            return update_categoria(conn, categoria_id, nombre)
+    finally:
+        conn.close()
+
+
+def cambiar_estado_categoria(categoria_id: int, data):
+    conn = get_connection()
+
+    try:
+        with conn.transaction():
+            categoria = get_categoria_by_id(conn, categoria_id)
+
+            if categoria is None:
+                raise HTTPException(status_code=404, detail="Categoría no encontrada")
+
+            return update_categoria_estado(conn, categoria_id, data.activo)
     finally:
         conn.close()
 
@@ -169,6 +281,7 @@ def listar_catalogo_pos(
     id_sucursal: int,
     query: str | None = None,
     categoria_id: int | None = None,
+    marca_id: int | None = None,
     limit: int = 50,
     offset: int = 0,
 ):
@@ -188,8 +301,51 @@ def listar_catalogo_pos(
             id_sucursal=id_sucursal,
             query=query,
             categoria_id=categoria_id,
+            marca_id=marca_id,
             limit=limit,
             offset=offset,
+        )
+    finally:
+        conn.close()
+
+
+def generar_catalogo_mayorista_pdf_service(
+    id_sucursal: int,
+    categoria_id: int | None = None,
+    marca_id: int | None = None,
+) -> bytes:
+    conn = get_connection()
+    try:
+        items = get_catalogo_mayorista_pdf_items(
+            conn,
+            id_sucursal=id_sucursal,
+            categoria_id=categoria_id,
+            marca_id=marca_id,
+        )
+
+        return generar_catalogo_mayorista_pdf({"items": items})
+    finally:
+        conn.close()
+
+
+def generar_catalogo_bicicletas_pdf_service(
+    id_sucursal: int,
+    marca_id: int | None = None,
+) -> bytes:
+    conn = get_connection()
+    try:
+        items = get_catalogo_bicicletas_pdf_items(
+            conn,
+            id_sucursal=id_sucursal,
+            marca_id=marca_id,
+        )
+        opciones_pago = _opciones_pago_catalogo_bicicletas(conn)
+
+        return generar_catalogo_bicicletas_pdf(
+            {
+                "items": items,
+                "opciones_pago": opciones_pago,
+            }
         )
     finally:
         conn.close()
@@ -289,6 +445,7 @@ def crear_producto(data):
                         "id_categoria": data.id_categoria,
                         "id_marca": data.id_marca,
                         "nombre": normalize_text_upper(data.nombre),
+                        "rubro": normalize_text_upper(data.rubro),
                         "tipo_item": data.tipo_item,
                         "stockeable": data.stockeable,
                         "serializable": data.serializable,
@@ -466,6 +623,9 @@ def editar_producto(producto_id: int, data):
 
             if "nombre" in payload and payload["nombre"] is not None:
                 payload["nombre"] = normalize_text_upper(payload["nombre"])
+
+            if "rubro" in payload and payload["rubro"] is not None:
+                payload["rubro"] = normalize_text_upper(payload["rubro"])
 
             for campo in ["tipo_bicicleta", "material_cuadro"]:
                 if campo in payload and payload[campo] is not None:

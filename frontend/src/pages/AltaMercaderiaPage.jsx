@@ -11,20 +11,24 @@ import {
 } from "../services/catalogoService";
 import { listarProveedores } from "../services/proveedoresService";
 import { crearIngresoStock } from "../services/stockService";
+import { obtenerConfiguracionNegocio } from "../services/configuracionNegocioService";
 import AltaMercaderiaProveedorSelect from "../components/mercaderia/alta/AltaMercaderiaProveedorSelect";
 import AltaMercaderiaIngresoFields from "../components/mercaderia/alta/AltaMercaderiaIngresoFields";
 import AltaMercaderiaImagenUpload from "../components/mercaderia/alta/AltaMercaderiaImagenUpload";
-import CalculadoraPrecioPagoPreview from "../components/precios/CalculadoraPrecioPagoPreview";
+import HerramientasPrecioPanel from "../components/precios/HerramientasPrecioPanel";
+import { ConfirmModal } from "../components/ui/ConfirmModal";
 import { formatMoney, formatNumber } from "../utils/formatters";
 import { useSession } from "../context/SessionContext";
 import useMediaQuery from "../hooks/useMediaQuery";
 import { normalizeTextUpper } from "../utils/textNormalization";
+import { DEFAULT_CONFIGURACION_NEGOCIO } from "../config/defaultConfiguracionNegocio";
 
 const ID_SUCURSAL_DEFAULT = 1;
 
 const MARGEN_MINORISTA = 1.2;
 const MARGEN_MAYORISTA = 0.55;
 const UPPER_FIELDS = new Set(["nombre_producto", "nombre_variante", "codigo_proveedor"]);
+const RUBROS_MERCADERIA = ["REPUESTOS", "ACCESORIOS", "INDUMENTARIA"];
 
 export default function AltaMercaderiaPage() {
   const { usuarioId } = useSession();
@@ -36,6 +40,7 @@ export default function AltaMercaderiaPage() {
   const [categorias, setCategorias] = useState([]);
   const [marcas, setMarcas] = useState([]);
   const [proveedores, setProveedores] = useState([]);
+  const [configuracionNegocio, setConfiguracionNegocio] = useState(DEFAULT_CONFIGURACION_NEGOCIO);
 
   const [busqueda, setBusqueda] = useState("");
   const [resultados, setResultados] = useState([]);
@@ -47,10 +52,12 @@ export default function AltaMercaderiaPage() {
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
   const [mostrarCambioProveedor, setMostrarCambioProveedor] = useState(false);
+  const [confirmacionIngreso, setConfirmacionIngreso] = useState(null);
 
   const [marcaNueva, setMarcaNueva] = useState("");
 
   const [form, setForm] = useState({
+    rubro: "REPUESTOS",
     id_categoria: "",
     id_marca: "",
     nombre_producto: "",
@@ -83,23 +90,26 @@ export default function AltaMercaderiaPage() {
 
   async function cargarDatos() {
     try {
-      const [cats, marcasData, provs] = await Promise.all([
+      const [cats, marcasData, provs, config] = await Promise.all([
         listarCategorias(),
         listarMarcas(),
         listarProveedores({ solo_activos: true }),
+        obtenerConfiguracionNegocio().catch(() => DEFAULT_CONFIGURACION_NEGOCIO),
       ]);
 
       setCategorias(cats || []);
       setMarcas(marcasData || []);
       setProveedores(provs || []);
+      setConfiguracionNegocio({
+        ...DEFAULT_CONFIGURACION_NEGOCIO,
+        ...(config || {}),
+      });
     } catch (err) {
       setError(err.message || "No se pudieron cargar datos iniciales");
     }
   }
  const categoriasPermitidas = useMemo(() => {
-    return categorias.filter((c) =>
-      ["Accesorios", "Repuestos"].includes(c.nombre)
-    );
+    return categorias.filter((c) => c.activo !== false);
   }, [categorias]);
 
   const categoriaSeleccionada = useMemo(() => {
@@ -246,6 +256,40 @@ export default function AltaMercaderiaPage() {
     }
   }
 
+  function validarIngresoComun() {
+    if (!form.id_proveedor) {
+      return "Seleccioná proveedor";
+    }
+
+    if (!form.cantidad || Number(form.cantidad) <= 0) {
+      return "La cantidad debe ser mayor a 0";
+    }
+
+    if (!form.costo_unitario || Number(form.costo_unitario) < 0) {
+      return "El costo unitario debe ser válido";
+    }
+
+    return "";
+  }
+
+  function armarMensajeConfirmacion({ tipo, productoNombre, varianteNombre }) {
+    return [
+      tipo === "crear"
+        ? "Vas a crear un producto nuevo e ingresar stock."
+        : "Vas a registrar ingreso de mercadería.",
+      "",
+      `Producto: ${productoNombre || form.nombre_producto || "-"}`,
+      `Variante: ${varianteNombre || (form.tiene_variantes ? form.nombre_variante || "Única" : "Única")}`,
+      `Cantidad: ${formatNumber(form.cantidad || 0)}`,
+      `Costo unitario: ${formatMoney(form.costo_unitario || 0)}`,
+      `Costo productos total: ${formatMoney(totalProductos)}`,
+      `Gastos adicionales: ${formatMoney(form.gastos_adicionales || 0)}`,
+      `Costo final estimado por unidad: ${formatMoney(costoUnitarioConGastos)}`,
+      "",
+      "Confirmá para guardar. Enter solo abre esta revisión, no registra directo.",
+    ].join("\n");
+  }
+
   async function registrarIngresoExistente(e) {
     e.preventDefault();
 
@@ -254,10 +298,26 @@ export default function AltaMercaderiaPage() {
       return;
     }
 
-    await registrarIngreso({
-      id_variante: seleccionado.id_variante,
-      producto_nombre: seleccionado.producto_nombre,
-      nombre_variante: seleccionado.nombre_variante,
+    const errorIngreso = validarIngresoComun();
+    if (errorIngreso) {
+      setError(errorIngreso);
+      return;
+    }
+
+    setError("");
+    setConfirmacionIngreso({
+      tipo: "existente",
+      title: "Confirmar ingreso",
+      message: armarMensajeConfirmacion({
+        tipo: "existente",
+        productoNombre: seleccionado.producto_nombre,
+        varianteNombre: seleccionado.nombre_variante,
+      }),
+      item: {
+        id_variante: seleccionado.id_variante,
+        producto_nombre: seleccionado.producto_nombre,
+        nombre_variante: seleccionado.nombre_variante,
+      },
     });
   }
 
@@ -284,6 +344,25 @@ export default function AltaMercaderiaPage() {
       return;
     }
 
+    const errorIngreso = validarIngresoComun();
+    if (errorIngreso) {
+      setError(errorIngreso);
+      return;
+    }
+
+    setError("");
+    setConfirmacionIngreso({
+      tipo: "crear",
+      title: "Confirmar alta e ingreso",
+      message: armarMensajeConfirmacion({
+        tipo: "crear",
+        productoNombre: form.nombre_producto,
+        varianteNombre: form.tiene_variantes ? form.nombre_variante || "Única" : "Única",
+      }),
+    });
+  }
+
+  async function ejecutarCrearProductoEIngresar() {
     try {
       setProcesando(true);
       setError("");
@@ -293,6 +372,7 @@ export default function AltaMercaderiaPage() {
         id_categoria: Number(form.id_categoria),
         id_marca: form.id_marca ? Number(form.id_marca) : null,
         nombre: form.nombre_producto.trim(),
+        rubro: form.rubro || "REPUESTOS",
         tipo_item: "producto",
         stockeable: true,
         serializable: Boolean(form.controlar_numero_cuadro),
@@ -337,6 +417,22 @@ export default function AltaMercaderiaPage() {
     } finally {
       setProcesando(false);
     }
+  }
+
+  async function ejecutarConfirmacionIngreso() {
+    if (procesando) return;
+
+    const confirmacion = confirmacionIngreso;
+    if (!confirmacion) return;
+
+    setConfirmacionIngreso(null);
+
+    if (confirmacion.tipo === "existente") {
+      await registrarIngreso(confirmacion.item);
+      return;
+    }
+
+    await ejecutarCrearProductoEIngresar();
   }
 
   async function registrarIngreso(item) {
@@ -395,6 +491,7 @@ export default function AltaMercaderiaPage() {
 
     setForm((p) => ({
       ...p,
+      rubro: "REPUESTOS",
       id_categoria: "",
       id_marca: "",
       nombre_producto: "",
@@ -417,6 +514,17 @@ export default function AltaMercaderiaPage() {
 
   return (
     <div style={{ ...styles.page, ...(isMobile ? styles.pageMobile : {}) }}>
+      <ConfirmModal
+        open={Boolean(confirmacionIngreso)}
+        title={confirmacionIngreso?.title || "Confirmar ingreso"}
+        message={confirmacionIngreso?.message || ""}
+        confirmText={procesando ? "Guardando..." : "Confirmar y guardar"}
+        cancelText="Revisar datos"
+        variant="warning"
+        onConfirm={ejecutarConfirmacionIngreso}
+        onCancel={() => setConfirmacionIngreso(null)}
+      />
+
       <header style={styles.header}>
         <div>
           <p style={styles.eyebrow}>Stock / Ingreso manual</p>
@@ -426,7 +534,7 @@ export default function AltaMercaderiaPage() {
             lo creás rápido.
           </p>
         </div>
-        <Link to="/servicios" style={styles.serviceLink}>
+        <Link to="/servicios-taller" style={styles.serviceLink}>
           Dar de alta servicio
         </Link>
       </header>
@@ -608,6 +716,21 @@ export default function AltaMercaderiaPage() {
 
                   <div style={isMobile ? styles.oneCol : styles.twoCols}>
                     <label style={styles.label}>
+                      Rubro *
+                      <select
+                        style={styles.input}
+                        value={form.rubro}
+                        onChange={(e) => setCampo("rubro", e.target.value)}
+                      >
+                        {RUBROS_MERCADERIA.map((rubro) => (
+                          <option key={rubro} value={rubro}>
+                            {rubro}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label style={styles.label}>
                       Categoría *
                       <select
                         style={styles.input}
@@ -756,11 +879,15 @@ export default function AltaMercaderiaPage() {
                     </div>
                   </div>
 
-                  <CalculadoraPrecioPagoPreview
-                    onUsarComoMinorista={(monto) =>
+                  <HerramientasPrecioPanel
+                    costo={costoUnitarioConGastos}
+                    porcentajeDescuentoContado={
+                      configuracionNegocio.porcentaje_descuento_contado_calculadora_precios
+                    }
+                    onAplicarMinorista={(monto) =>
                       setCampo("precio_minorista", monto)
                     }
-                    onUsarComoMayorista={(monto) =>
+                    onAplicarMayorista={(monto) =>
                       setCampo("precio_mayorista", monto)
                     }
                   />

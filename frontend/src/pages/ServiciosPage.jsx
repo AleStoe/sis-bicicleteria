@@ -9,6 +9,9 @@ import {
 import { formatMoney } from "../utils/formatters";
 import useMediaQuery from "../hooks/useMediaQuery";
 import { normalizeTextUpper } from "../utils/textNormalization";
+import CalculadoraPrecioPagoPreview from "../components/precios/CalculadoraPrecioPagoPreview";
+import { obtenerConfiguracionNegocio } from "../services/configuracionNegocioService";
+import { DEFAULT_CONFIGURACION_NEGOCIO } from "../config/defaultConfiguracionNegocio";
 
 const FORM_INICIAL = {
   nombre: "",
@@ -25,6 +28,7 @@ export default function ServiciosPage() {
   const [busqueda, setBusqueda] = useState("");
   const [incluirInactivos, setIncluirInactivos] = useState(false);
   const [form, setForm] = useState(FORM_INICIAL);
+  const [configuracionNegocio, setConfiguracionNegocio] = useState(DEFAULT_CONFIGURACION_NEGOCIO);
   const [editandoId, setEditandoId] = useState(null);
   const [cargando, setCargando] = useState(false);
   const [guardando, setGuardando] = useState(false);
@@ -34,6 +38,22 @@ export default function ServiciosPage() {
   useEffect(() => {
     cargarServicios();
   }, [incluirInactivos]);
+
+  useEffect(() => {
+    cargarConfiguracion();
+  }, []);
+
+  async function cargarConfiguracion() {
+    try {
+      const data = await obtenerConfiguracionNegocio();
+      setConfiguracionNegocio({
+        ...DEFAULT_CONFIGURACION_NEGOCIO,
+        ...(data || {}),
+      });
+    } catch {
+      setConfiguracionNegocio(DEFAULT_CONFIGURACION_NEGOCIO);
+    }
+  }
 
   async function cargarServicios() {
     try {
@@ -237,6 +257,16 @@ export default function ServiciosPage() {
                 />
               </label>
             </div>
+
+            <CalculadoraPrecioPagoPreview
+              porcentajeDescuentoContado={
+                configuracionNegocio.porcentaje_descuento_contado_calculadora_precios
+              }
+              mostrarMayorista={false}
+              minoristaLabel="Quiero recibir por este servicio en efectivo/transferencia"
+              minoristaButtonLabel="Usar como precio sugerido/lista"
+              onAplicarMinorista={(monto) => actualizarCampo("precio_sugerido", monto)}
+            />
 
             {editandoId && (
               <label style={styles.checkboxLabel}>

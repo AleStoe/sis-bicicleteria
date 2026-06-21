@@ -204,6 +204,22 @@ def test_resumen_diario_consolida_caja_pagos_rentabilidad_y_documentos(
     assert data["documentos"]["total_disponibles"] >= 3
 
 
+def test_resumen_diario_no_cuenta_venta_creada_sin_pagos(client, seed_venta_basica):
+    _crear_venta_base(client, seed_venta_basica)
+
+    response = client.get(
+        "/cajas/resumen-diario",
+        params={"id_sucursal": seed_venta_basica["sucursal_id"]},
+    )
+    assert response.status_code == 200, response.text
+
+    data = response.json()
+    assert data["rentabilidad"]["cantidad_ventas"] == 0
+    assert float(data["rentabilidad"]["ventas_total"]) == 0.0
+    assert float(data["rentabilidad"]["ganancia_dia"]) == 0.0
+    assert data["documentos"]["comprobantes_x"] == 0
+
+
 def test_registra_egreso_en_caja_abierta(client, db_conn, seed_venta_basica):
     abrir = client.post(
         "/cajas/abrir",

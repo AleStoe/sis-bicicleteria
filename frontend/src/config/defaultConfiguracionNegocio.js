@@ -2,6 +2,7 @@ export const DEFAULT_CONFIGURACION_NEGOCIO = {
   nombre_negocio: "Emprendimiento Agus",
   direccion: "",
   telefono: "",
+  porcentaje_descuento_contado_calculadora_precios: 10,
   horarios_retiro: "Lunes a viernes\n09:00 a 12:00\n16:30 a 20:00\n\nSábados\n09:00 a 12:00\n17:00 a 19:00",
   whatsapp_cierre: "Gracias por confiar en nosotros.\n¡Te esperamos!",
   texto_beneficio_pago: "Abonando en efectivo o transferencia tenés 10% de descuento sobre los trabajos presupuestados.",

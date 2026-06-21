@@ -76,6 +76,8 @@ class PrecioHistorialOutput(BaseModel):
 
 
 TipoClientePrecio = Literal["minorista", "mayorista"]
+AplicarSobrePrecio = Literal["minorista", "mayorista", "ambos"]
+TipoAjusteProveedor = Literal["porcentaje", "monto_fijo"]
 
 
 class ReglaPrecioCreateInput(BaseModel):
@@ -191,6 +193,48 @@ class RecalculoProveedorOutput(BaseModel):
     total_detectados: int
     total_aplicados: int
     items: List[RecalculoProveedorItemOutput]
+
+
+class AjusteProveedorInput(BaseModel):
+    id_proveedor: int = Field(gt=0)
+    aplicar_sobre: AplicarSobrePrecio = "ambos"
+    tipo_ajuste: TipoAjusteProveedor = "porcentaje"
+    valor: Decimal = Field(gt=0)
+    aplicar: bool = False
+    id_usuario: Optional[int] = Field(default=None, gt=0)
+    motivo: Optional[str] = Field(default=None, max_length=500)
+    solo_productos_activos: bool = True
+    solo_variantes_activas: bool = True
+    solo_con_stock: bool = False
+
+
+class AjusteProveedorItemOutput(BaseModel):
+    id_variante: int
+    id_producto: int
+    producto_nombre: str
+    nombre_variante: str
+    sku: Optional[str] = None
+    codigo_proveedor: Optional[str] = None
+    precio_minorista_actual: Decimal
+    precio_mayorista_actual: Decimal
+    precio_minorista_nuevo: Decimal
+    precio_mayorista_nuevo: Decimal
+    diferencia_minorista: Decimal
+    diferencia_mayorista: Decimal
+    aplicado: bool
+    movimiento_id: Optional[int] = None
+
+
+class AjusteProveedorOutput(BaseModel):
+    ok: bool
+    aplicado: bool
+    id_proveedor: int
+    aplicar_sobre: str
+    tipo_ajuste: str
+    valor: Decimal
+    total_detectados: int
+    total_aplicados: int
+    items: List[AjusteProveedorItemOutput]
 
 class FamiliaPrecioOut(BaseModel):
     id: int

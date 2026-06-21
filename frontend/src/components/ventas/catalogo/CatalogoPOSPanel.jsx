@@ -38,25 +38,20 @@ export default function CatalogoPOSPanel({
         </button>
       </div>
 
-      <div style={categoryRowStyle}>
-        <button
-          type="button"
-          onClick={() => onCategoriaChange("")}
-          style={!categoriaId ? activeCategoryStyle : categoryStyle}
+      <div style={categoryFilterStyle}>
+        <label style={categoryLabelStyle}>Categoría</label>
+        <select
+          value={categoriaId || ""}
+          onChange={(e) => onCategoriaChange(e.target.value)}
+          style={categorySelectStyle}
         >
-          Todos
-        </button>
-
-        {categoriasVisibles.map((categoria) => (
-          <button
-            key={categoria.id}
-            type="button"
-            onClick={() => onCategoriaChange(String(categoria.id))}
-            style={String(categoriaId) === String(categoria.id) ? activeCategoryStyle : categoryStyle}
-          >
-            {categoria.nombre}
-          </button>
-        ))}
+          <option value="">Todas las categorías</option>
+          {categoriasVisibles.map((categoria) => (
+            <option key={categoria.id} value={String(categoria.id)}>
+              {categoria.nombre}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div style={{ ...catalogListStyle, ...(isMobile ? mobileCatalogListStyle : {}) }}>
@@ -160,4 +155,29 @@ const mobileCatalogListStyle = {
   maxHeight: "none",
   overflowY: "visible",
   paddingRight: 0,
+};
+
+const categoryFilterStyle = {
+  display: "grid",
+  gap: "6px",
+  marginBottom: "10px",
+};
+
+const categoryLabelStyle = {
+  fontSize: "12px",
+  fontWeight: 800,
+  color: "#475467",
+  textTransform: "uppercase",
+  letterSpacing: ".04em",
+};
+
+const categorySelectStyle = {
+  width: "100%",
+  border: "1px solid #d0d5dd",
+  borderRadius: "10px",
+  padding: "10px 12px",
+  background: "white",
+  color: "#111827",
+  fontWeight: 700,
+  boxSizing: "border-box",
 };

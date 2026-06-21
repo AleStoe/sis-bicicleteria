@@ -400,6 +400,11 @@ def registrar_pago_deuda(deuda_id: int, data):
                 saldo_actual=nuevo_saldo,
                 estado=nuevo_estado,
             )
+            venta_actualizada = repository.update_venta_saldo_desde_deuda(
+                conn,
+                venta["id"],
+                nuevo_saldo,
+            )
 
             auditoria_service.registrar_evento(
                 conn,
@@ -430,6 +435,11 @@ def registrar_pago_deuda(deuda_id: int, data):
                     "saldo_anterior": str(saldo_anterior),
                     "saldo_nuevo": str(nuevo_saldo),
                     "estado_nuevo": nuevo_estado,
+                    "venta_saldo_pendiente": str(
+                        venta_actualizada["saldo_pendiente"]
+                        if venta_actualizada
+                        else nuevo_saldo
+                    ),
                 },
                 origen_tipo="deuda",
                 origen_id=deuda_id,
