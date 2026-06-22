@@ -801,6 +801,28 @@ def get_venta_generada_por_orden_taller(conn, orden_id: int):
         )
         return cur.fetchone()
 
+def get_venta_generada_con_deuda_por_id(conn, venta_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT
+                v.id,
+                v.estado,
+                v.total_final,
+                v.saldo_pendiente,
+                EXISTS (
+                    SELECT 1
+                    FROM deudas_cliente d
+                    WHERE d.origen_tipo = 'venta'
+                      AND d.origen_id = v.id
+                ) AS tiene_deuda_formal
+            FROM ventas v
+            WHERE v.id = %s
+            """,
+            (venta_id,),
+        )
+        return cur.fetchone()
+
 def get_nombre_cliente_item_taller(
     conn,
     id_variante: int | None,

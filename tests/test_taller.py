@@ -1075,6 +1075,19 @@ def test_no_permite_revertir_ejecucion_en_orden_retirada(
         },
     )
     assert generar.status_code == 200, generar.text
+    venta_id = generar.json()["venta_id"]
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE ventas
+            SET estado = 'pagada_total',
+                saldo_pendiente = 0
+            WHERE id = %s
+            """,
+            (venta_id,),
+        )
+    db_conn.commit()
 
     for estado in [
         "lista_para_retirar",
@@ -1165,6 +1178,66 @@ def _crear_orden_taller_test(client, seed_taller_basico, problema="Service test"
     )
     assert response.status_code == 201
     return response.json()
+
+def _crear_ot_facturada_con_venta(client, seed_taller_basico):
+    servicio = _crear_servicio_taller_test(
+        client,
+        nombre="Service facturable para retiro",
+        precio=18000,
+    )
+    orden = _crear_orden_taller_test(
+        client,
+        seed_taller_basico,
+        problema="Service para validar retiro",
+    )
+
+    item_response = client.post(
+        f"/ordenes_taller/{orden['id']}/items",
+        json={
+            "tipo_item": "servicio",
+            "id_servicio_taller": servicio["id"],
+            "cantidad": 1,
+            "precio_unitario": 18000,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert item_response.status_code == 201, item_response.text
+    item_id = item_response.json()["id"]
+
+    aprobar = client.post(
+        f"/ordenes_taller/{orden['id']}/items/{item_id}/aprobacion",
+        json={
+            "aprobado": True,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert aprobar.status_code == 200, aprobar.text
+
+    ejecutar = client.post(
+        f"/ordenes_taller/{orden['id']}/items/{item_id}/ejecutar",
+        params={"id_usuario": seed_taller_basico["usuario_id"]},
+    )
+    assert ejecutar.status_code == 200, ejecutar.text
+
+    for estado in ["presupuestada", "en_reparacion", "terminada"]:
+        response = client.post(
+            f"/ordenes_taller/{orden['id']}/estado",
+            json={
+                "nuevo_estado": estado,
+                "id_usuario": seed_taller_basico["usuario_id"],
+            },
+        )
+        assert response.status_code == 200, response.text
+
+    generar = client.post(
+        f"/ordenes_taller/{orden['id']}/generar-venta",
+        json={
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert generar.status_code == 200, generar.text
+
+    return orden["id"], generar.json()["venta_id"]
 
 
 def test_agregar_item_servicio_taller_desde_servicios_taller(client, seed_taller_basico):
@@ -1526,6 +1599,183 @@ def test_generar_venta_desde_taller_con_servicio_taller(
     orden_actualizada = client.get(f"/ordenes_taller/{orden['id']}").json()
     assert orden_actualizada["estado"] == "facturada"
     assert orden_actualizada["id_venta_generada"] == venta_id
+
+def test_ot_facturada_con_venta_pagada_total_permite_lista_para_retirar(
+    client,
+    db_conn,
+    seed_taller_basico,
+):
+    orden_id, venta_id = _crear_ot_facturada_con_venta(client, seed_taller_basico)
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE ventas
+            SET estado = 'pagada_total',
+                saldo_pendiente = 0
+            WHERE id = %s
+            """,
+            (venta_id,),
+        )
+    db_conn.commit()
+
+    response = client.post(
+        f"/ordenes_taller/{orden_id}/estado",
+        json={
+            "nuevo_estado": "lista_para_retirar",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["estado"] == "lista_para_retirar"
+
+
+def test_ot_facturada_con_venta_creada_bloquea_lista_para_retirar(
+    client,
+    seed_taller_basico,
+):
+    orden_id, _venta_id = _crear_ot_facturada_con_venta(client, seed_taller_basico)
+
+    response = client.post(
+        f"/ordenes_taller/{orden_id}/estado",
+        json={
+            "nuevo_estado": "lista_para_retirar",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+
+    assert response.status_code == 400
+    assert "no está pagada ni entregada con deuda formal" in response.json()["detail"]
+
+
+def test_ot_facturada_con_venta_pagada_parcial_bloquea_lista_para_retirar(
+    client,
+    db_conn,
+    seed_taller_basico,
+):
+    orden_id, venta_id = _crear_ot_facturada_con_venta(client, seed_taller_basico)
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE ventas
+            SET estado = 'pagada_parcial',
+                saldo_pendiente = 500
+            WHERE id = %s
+            """,
+            (venta_id,),
+        )
+    db_conn.commit()
+
+    response = client.post(
+        f"/ordenes_taller/{orden_id}/estado",
+        json={
+            "nuevo_estado": "lista_para_retirar",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+
+    assert response.status_code == 400
+    assert "no está pagada ni entregada con deuda formal" in response.json()["detail"]
+
+
+def test_ot_facturada_con_venta_entregada_y_deuda_formal_permite_lista_para_retirar(
+    client,
+    db_conn,
+    seed_taller_basico,
+):
+    orden_id, venta_id = _crear_ot_facturada_con_venta(client, seed_taller_basico)
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE ventas
+            SET estado = 'entregada',
+                saldo_pendiente = 500
+            WHERE id = %s
+            """,
+            (venta_id,),
+        )
+        cur.execute(
+            """
+            INSERT INTO deudas_cliente (
+                id_cliente,
+                origen_tipo,
+                origen_id,
+                saldo_actual,
+                genera_recargo,
+                estado,
+                observacion
+            )
+            VALUES (%s, 'venta', %s, 500, FALSE, 'abierta', 'Deuda formal test taller')
+            """,
+            (seed_taller_basico["cliente_id"], venta_id),
+        )
+    db_conn.commit()
+
+    response = client.post(
+        f"/ordenes_taller/{orden_id}/estado",
+        json={
+            "nuevo_estado": "lista_para_retirar",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["estado"] == "lista_para_retirar"
+
+
+def test_ot_normal_retirada_vuelve_a_validar_venta_habilitada(
+    client,
+    db_conn,
+    seed_taller_basico,
+):
+    orden_id, venta_id = _crear_ot_facturada_con_venta(client, seed_taller_basico)
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE ventas
+            SET estado = 'pagada_total',
+                saldo_pendiente = 0
+            WHERE id = %s
+            """,
+            (venta_id,),
+        )
+    db_conn.commit()
+
+    lista = client.post(
+        f"/ordenes_taller/{orden_id}/estado",
+        json={
+            "nuevo_estado": "lista_para_retirar",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert lista.status_code == 200, lista.text
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE ventas
+            SET estado = 'pagada_parcial',
+                saldo_pendiente = 500
+            WHERE id = %s
+            """,
+            (venta_id,),
+        )
+    db_conn.commit()
+
+    retirada = client.post(
+        f"/ordenes_taller/{orden_id}/estado",
+        json={
+            "nuevo_estado": "retirada",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+
+    assert retirada.status_code == 400
+    assert "no está pagada ni entregada con deuda formal" in retirada.json()["detail"]
 
 def test_service_postventa_no_permite_duplicar_orden_abierta(
     client,

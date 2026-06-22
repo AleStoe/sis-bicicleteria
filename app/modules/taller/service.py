@@ -75,6 +75,7 @@ from .repository import (
     update_orden_taller_item_cancelado,
     update_orden_taller_venta_generada,
     get_venta_generada_por_orden_taller,
+    get_venta_generada_con_deuda_por_id,
     update_orden_taller_operativo,
     marcar_aviso_retiro_enviado,
     get_nombre_cliente_item_taller,
@@ -83,6 +84,41 @@ from .repository import (
 from app.modules.servicios_taller.repository import get_servicio_taller_by_id
 from app.modules.configuracion_negocio.service import obtener_configuracion_negocio
 from app.modules.configuracion_negocio.template import render_template
+
+def _validar_venta_taller_habilitada_para_retiro(conn, orden: dict) -> None:
+    venta_id = orden.get("id_venta_generada")
+
+    if not venta_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Primero generá la venta antes de marcar la orden como lista para retirar",
+        )
+
+    venta = get_venta_generada_con_deuda_por_id(conn, venta_id)
+    if venta is None:
+        raise HTTPException(
+            status_code=400,
+            detail="No se puede marcar lista para retirar: la venta generada no existe.",
+        )
+
+    saldo_pendiente = Decimal(str(venta.get("saldo_pendiente") or 0))
+    venta_pagada = venta.get("estado") == "pagada_total" and saldo_pendiente == 0
+    venta_entregada_con_deuda = (
+        venta.get("estado") == "entregada"
+        and saldo_pendiente > 0
+        and venta.get("tiene_deuda_formal") is True
+    )
+
+    if venta_pagada or venta_entregada_con_deuda:
+        return
+
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            "No se puede marcar lista para retirar: la venta generada no está "
+            "pagada ni entregada con deuda formal."
+        ),
+    )
 
 def _build_descripcion_snapshot(variante: dict) -> str:
     producto_nombre = (variante.get("producto_nombre") or "").strip()
@@ -254,15 +290,17 @@ def cambiar_estado_orden_taller(orden_id: int, data):
                     )
 
             if (
-                orden["estado"] == "terminada"
-                and data.nuevo_estado == "lista_para_retirar"
+                data.nuevo_estado == "lista_para_retirar"
                 and not es_service_postventa
             ):
-                if not orden.get("id_venta_generada"):
-                    raise HTTPException(
-                        status_code=400,
-                        detail="Primero generá la venta antes de marcar la orden como lista para retirar",
-                    )
+                _validar_venta_taller_habilitada_para_retiro(conn, orden)
+
+            if (
+                orden["estado"] == "lista_para_retirar"
+                and data.nuevo_estado == "retirada"
+                and not es_service_postventa
+            ):
+                _validar_venta_taller_habilitada_para_retiro(conn, orden)
 
             update_orden_taller_estado(conn, orden_id, data.nuevo_estado)
 
