@@ -21,6 +21,8 @@ export default function PagoVentaPanel({
 }) {
   const panelRef = useRef(null);
   const montoRef = useRef(null);
+  const preservarPreviewSaldarRef = useRef(false);
+  const autocompletarSaldoSeqRef = useRef(0);
   const [planesTarjeta, setPlanesTarjeta] = useState([]);
   const [pagos, setPagos] = useState([]);
   const [mostrarRevertidos, setMostrarRevertidos] = useState(false);
@@ -104,11 +106,29 @@ export default function PagoVentaPanel({
 
   useEffect(() => {
     const timeout = setTimeout(() => {
+      autocompletarSaldoSegunMedio();
+    }, 150);
+
+    return () => clearTimeout(timeout);
+  }, [form.medio_pago, form.cuotas, form.entidad, ventaId, saldoPendiente]);
+
+  useEffect(() => {
+    if (
+      preservarPreviewSaldarRef.current &&
+      previewCoincideConFormulario(preview, form)
+    ) {
+      preservarPreviewSaldarRef.current = false;
+      return undefined;
+    }
+
+    preservarPreviewSaldarRef.current = false;
+
+    const timeout = setTimeout(() => {
       simularTramoActual();
     }, 300);
 
     return () => clearTimeout(timeout);
-  }, [form.medio_pago, form.monto, form.cuotas, form.entidad, ventaId, saldoPendiente]);
+  }, [form.monto, ventaId, saldoPendiente]);
 
   async function cargarPagos() {
     try {
@@ -137,6 +157,7 @@ export default function PagoVentaPanel({
       ...actual,
       ...patch,
     }));
+    setPreview(null);
     setMensaje("");
     setError("");
   }
@@ -160,7 +181,7 @@ export default function PagoVentaPanel({
 
     return {
       ...base,
-      monto_base: String(monto),
+      monto_cobrado_objetivo: String(monto),
     };
   }
 
@@ -187,30 +208,56 @@ export default function PagoVentaPanel({
     }
   }
 
-  async function saldar() {
+  function aplicarPreviewSaldar(data) {
+    const montoSugerido = normalizarMontoPago(data.monto_total_cobrado || 0);
+
+    preservarPreviewSaldarRef.current = true;
+    setForm((actual) => ({
+      ...actual,
+      monto: String(montoSugerido),
+    }));
+    setPreview({
+      ...data,
+      monto_input_sugerido: String(montoSugerido),
+    });
+  }
+
+  async function autocompletarSaldoSegunMedio({ enfocar = false } = {}) {
     if (!puedePagar) return;
+
+    const seq = autocompletarSaldoSeqRef.current + 1;
+    autocompletarSaldoSeqRef.current = seq;
 
     try {
       setSimulando(true);
       setError("");
-      setMensaje("");
+      if (enfocar) setMensaje("");
 
       const data = await simularTramoPagoVenta(
         buildPayloadSimulacion({ saldar: true })
       );
 
-      setPreview(data);
-      setForm((actual) => ({
-        ...actual,
-        monto: String(normalizarMontoPago(data.monto_base_aplicado || saldo || 0)),
-      }));
+      if (autocompletarSaldoSeqRef.current !== seq) return;
 
-      setTimeout(() => montoRef.current?.focus(), 50);
+      aplicarPreviewSaldar(data);
+
+      if (enfocar) {
+        setTimeout(() => montoRef.current?.focus(), 50);
+      }
     } catch (err) {
-      setError(err.message || "No se pudo calcular el monto para saldar");
+      if (autocompletarSaldoSeqRef.current === seq) {
+        setPreview(null);
+        setError(err.message || "No se pudo calcular el monto para saldar");
+      }
     } finally {
-      setSimulando(false);
+      if (autocompletarSaldoSeqRef.current === seq) {
+        setSimulando(false);
+      }
     }
+  }
+
+  async function saldar() {
+    await autocompletarSaldoSegunMedio({ enfocar: true });
   }
 
   function mitad() {
@@ -242,6 +289,11 @@ export default function PagoVentaPanel({
       return;
     }
 
+    if (!usuarioId) {
+      setError("Sesión requerida. Volvé a iniciar sesión para registrar el pago.");
+      return;
+    }
+
     const monto = Number(form.monto || 0);
 
     if (!Number.isFinite(monto) || monto <= 0) {
@@ -254,7 +306,9 @@ export default function PagoVentaPanel({
       setError("");
       setMensaje("");
 
-      const simulacion = preview || (await simularTramoActual());
+      const simulacion = previewCoincideConFormulario(preview, form)
+        ? preview
+        : await simularTramoActual();
 
       if (!simulacion) {
         setError("No se pudo simular el tramo de pago");
@@ -296,6 +350,11 @@ export default function PagoVentaPanel({
   }
 
   async function handleRevertirPago(pago) {
+    if (!usuarioId) {
+      setError("Sesión requerida. Volvé a iniciar sesión para revertir el pago.");
+      return;
+    }
+
     const motivo = window.prompt("Motivo de reversión del pago:");
     if (!motivo || motivo.trim().length < 3) return;
 
@@ -412,6 +471,28 @@ function normalizarMontoPago(value) {
   const numero = Number(value || 0);
   if (!Number.isFinite(numero)) return 0;
   return Math.round(numero);
+}
+
+function previewCoincideConFormulario(preview, form) {
+  if (!preview) return false;
+
+  const montoPreview =
+    preview.monto_input_sugerido ??
+    String(normalizarMontoPago(preview.monto_total_cobrado || 0));
+
+  if (String(montoPreview) !== String(form.monto || "")) return false;
+  if (preview.medio_pago !== form.medio_pago) return false;
+
+  if (form.medio_pago === "tarjeta") {
+    const cuotasPreview = Number(preview.cuotas || 1);
+    const cuotasForm = Number(form.cuotas || 1);
+    const entidadPreview = preview.entidad || "";
+    const entidadForm = form.entidad || "";
+
+    return cuotasPreview === cuotasForm && entidadPreview === entidadForm;
+  }
+
+  return true;
 }
 
 function formatDate(value) {

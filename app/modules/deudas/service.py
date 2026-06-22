@@ -256,6 +256,8 @@ def _calcular_tramo_pago_deuda(conn, data, *, saldo_actual):
     else:
         # Compatibilidad legacy: monto era el dinero cobrado real.
         # No se aplican reglas comerciales para no cambiar comportamiento histórico.
+        # Deprecated beta: la UI operativa debe usar monto_cobrado_objetivo
+        # para preview y confirmar luego con monto_base calculado.
         monto = redondear_monto(data.monto)
         tramo = {
             "medio_pago": data.medio_pago,

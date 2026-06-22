@@ -25,6 +25,52 @@ def _contar_item(client, inventario, item, seed_venta_basica, stock_contado):
     )
 
 
+def _set_stock_fisico(db_conn, seed_venta_basica, id_variante, stock_fisico):
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE stock_sucursal
+            SET stock_fisico = %s
+            WHERE id_sucursal = %s
+              AND id_variante = %s
+            """,
+            (
+                stock_fisico,
+                seed_venta_basica["sucursal_id"],
+                id_variante,
+            ),
+        )
+    db_conn.commit()
+
+
+def _get_stock_fisico(db_conn, seed_venta_basica, id_variante):
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT stock_fisico
+            FROM stock_sucursal
+            WHERE id_sucursal = %s
+              AND id_variante = %s
+            """,
+            (seed_venta_basica["sucursal_id"], id_variante),
+        )
+        return cur.fetchone()["stock_fisico"]
+
+
+def _count_movimientos_inventario(db_conn, inventario_id):
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT COUNT(*) AS total
+            FROM movimientos_stock
+            WHERE origen_tipo = 'inventario_fisico'
+              AND origen_id = %s
+            """,
+            (inventario_id,),
+        )
+        return cur.fetchone()["total"]
+
+
 def test_inventario_fisico_cierra_y_aplica_diferencia(client, db_conn, seed_venta_basica):
     inventario = _crear_inventario(client, seed_venta_basica)
     assert inventario["estado"] == "abierto"
@@ -79,6 +125,70 @@ def test_inventario_fisico_cierra_y_aplica_diferencia(client, db_conn, seed_vent
     assert data[0]["categoria_nombre"] == "Lubricantes"
     assert data[0]["tipo_operativo"] == "producto"
     assert Decimal(data[0]["diferencia"]) == Decimal("-2.000")
+
+
+def test_inventario_fisico_no_sobreajusta_si_hubo_movimientos_durante_conteo(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    _set_stock_fisico(
+        db_conn,
+        seed_venta_basica,
+        seed_venta_basica["variante_id"],
+        10,
+    )
+
+    inventario = _crear_inventario(client, seed_venta_basica, "Movimiento durante conteo")
+    item = inventario["items"][0]
+    assert Decimal(item["stock_sistema"]) == Decimal("10.000")
+
+    _set_stock_fisico(db_conn, seed_venta_basica, item["id_variante"], 8)
+
+    conteo = _contar_item(client, inventario, item, seed_venta_basica, "8")
+    assert conteo.status_code == 200, conteo.text
+    assert Decimal(conteo.json()["diferencia"]) == Decimal("-2.000")
+
+    cerrar = client.post(
+        f"/inventarios-fisicos/{inventario['id']}/cerrar",
+        json={"id_usuario": seed_venta_basica["usuario_id"]},
+    )
+
+    assert cerrar.status_code == 200, cerrar.text
+    assert _get_stock_fisico(db_conn, seed_venta_basica, item["id_variante"]) == Decimal("8.000")
+    assert _count_movimientos_inventario(db_conn, inventario["id"]) == 0
+
+
+def test_inventario_fisico_ajusta_solo_diferencia_real_con_stock_actual(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    _set_stock_fisico(
+        db_conn,
+        seed_venta_basica,
+        seed_venta_basica["variante_id"],
+        10,
+    )
+
+    inventario = _crear_inventario(client, seed_venta_basica, "Ajuste contra stock actual")
+    item = inventario["items"][0]
+    assert Decimal(item["stock_sistema"]) == Decimal("10.000")
+
+    _set_stock_fisico(db_conn, seed_venta_basica, item["id_variante"], 8)
+
+    conteo = _contar_item(client, inventario, item, seed_venta_basica, "7")
+    assert conteo.status_code == 200, conteo.text
+    assert Decimal(conteo.json()["diferencia"]) == Decimal("-3.000")
+
+    cerrar = client.post(
+        f"/inventarios-fisicos/{inventario['id']}/cerrar",
+        json={"id_usuario": seed_venta_basica["usuario_id"]},
+    )
+
+    assert cerrar.status_code == 200, cerrar.text
+    assert _get_stock_fisico(db_conn, seed_venta_basica, item["id_variante"]) == Decimal("7.000")
+    assert _count_movimientos_inventario(db_conn, inventario["id"]) == 1
 
 
 def test_inventario_fisico_cancelar_abierto_no_genera_movimientos_y_audita(

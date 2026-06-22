@@ -5,18 +5,26 @@ export async function apiRequest(path, options = {}) {
   const isFormData = options.body instanceof FormData;
   const token = getStoredAuthToken();
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(isFormData
-        ? {}
-        : {
-            "Content-Type": "application/json",
-          }),
-      ...(options.headers || {}),
-    },
-    ...options,
-  });
+  let response;
+
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(isFormData
+          ? {}
+          : {
+              "Content-Type": "application/json",
+            }),
+        ...(options.headers || {}),
+      },
+    });
+  } catch (err) {
+    throw new Error(
+      "No se pudo conectar con el servidor. Verificá que el backend esté abierto y que la URL interna sea correcta."
+    );
+  }
 
   const contentType = response.headers.get("content-type") || "";
 
@@ -36,7 +44,11 @@ export async function apiRequest(path, options = {}) {
       throw new Error(detail.map((e) => e.msg).join(" | "));
     }
 
-    throw new Error(detail || data?.message || "Error en la API");
+    throw new Error(
+      detail ||
+        data?.message ||
+        `Error del servidor (${response.status}). Probá refrescar y revisar el backend.`
+    );
   }
 
   return data;

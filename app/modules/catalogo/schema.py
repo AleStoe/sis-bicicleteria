@@ -119,6 +119,7 @@ class CatalogoPOSItemOut(BaseModel):
     stock_reservado: Decimal = Decimal("0")
     stock_vendido_pendiente_entrega: Decimal = Decimal("0")
     stock_disponible: Decimal = Decimal("0")
+    serializadas_disponibles: int = 0
 
     disponible_para_venta: bool
     motivo_no_disponible: str | None = None

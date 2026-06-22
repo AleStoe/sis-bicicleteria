@@ -607,9 +607,9 @@ function CajaResumenDiario({ resumen, formatCurrency, isMobile }) {
           tone={Number(diferencia || 0) === 0 ? "neutral" : "warning"}
         />
         <ResumenDiarioMetric
-          label="Cobrado"
+          label="Cobrado caja"
           value={formatCurrency(pagos.total_cobrado)}
-          detail={`${pagos.cantidad_pagos || 0} pagos`}
+          detail={`Ingreso operativo - ${pagos.cantidad_pagos || 0} pagos`}
           tone="success"
         />
         <ResumenDiarioMetric
@@ -626,27 +626,35 @@ function CajaResumenDiario({ resumen, formatCurrency, isMobile }) {
         <ResumenDiarioMetric
           label="Efectivo"
           value={formatCurrency(pagos.efectivo)}
-          detail="Neto cobrado"
+          detail="Ingreso operativo"
           tone="success"
         />
         <ResumenDiarioMetric
           label="Transferencia"
           value={formatCurrency(pagos.transferencia)}
-          detail="Neto cobrado"
+          detail="Ingreso operativo"
           tone="success"
         />
         <ResumenDiarioMetric
           label="Mercado Pago"
           value={formatCurrency(pagos.mercadopago)}
-          detail="Neto cobrado"
+          detail="Ingreso operativo"
           tone="success"
         />
         <ResumenDiarioMetric
           label="Tarjeta"
           value={formatCurrency(pagos.tarjeta)}
-          detail="Neto cobrado"
+          detail="Ingreso operativo"
           tone="success"
         />
+        {Number(pagos.total_financiado_tarjeta || 0) > 0 ? (
+          <ResumenDiarioMetric
+            label="Financiado tarjeta"
+            value={formatCurrency(pagos.total_financiado_tarjeta)}
+            detail="Total cliente"
+            tone="neutral"
+          />
+        ) : null}
         <ResumenDiarioMetric
           label="Ventas"
           value={formatCurrency(operacion.ventas_total)}

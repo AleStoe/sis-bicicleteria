@@ -220,8 +220,14 @@ def sincronizar_venta_financiera_desde_pagos(conn, venta_id: int):
                     COALESCE(SUM(COALESCE(p.monto_recargo_aplicado, 0)), 0)::numeric(14,2) AS recargo_total
                 FROM ventas v
                 LEFT JOIN pagos p
-                    ON p.origen_tipo = 'venta'
-                   AND p.origen_id = v.id
+                    ON (
+                        (p.origen_tipo = 'venta' AND p.origen_id = v.id)
+                        OR (
+                            p.origen_tipo = 'reserva'
+                            AND v.id_reserva_origen IS NOT NULL
+                            AND p.origen_id = v.id_reserva_origen
+                        )
+                    )
                    AND p.estado = 'confirmado'
                 WHERE v.id = %s
                 GROUP BY v.id, v.subtotal_base

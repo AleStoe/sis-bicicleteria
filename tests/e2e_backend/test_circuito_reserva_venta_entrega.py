@@ -58,8 +58,7 @@ def test_circuito_reserva_senia_conversion_venta_entrega_stock_caja(
     reserva = get_reserva(db_conn, reserva_id)
     assert reserva["estado"] == "activa"
     assert _dec(reserva["sena_total"]) == Decimal("5000")
-    print(reserva.keys())
-    print(reserva)
+
     # 3. La reserva bloquea stock reservado, no stock físico
     stock_post_reserva = get_stock_row(
         db_conn,
@@ -116,7 +115,7 @@ def test_circuito_reserva_senia_conversion_venta_entrega_stock_caja(
                 "origen_tipo": "venta",
                 "origen_id": venta_id,
                 "medio_pago": "efectivo",
-                "monto": str(saldo),
+                "monto_base": str(saldo),
                 "id_usuario": seed_venta_basica["usuario_id"],
                 "nota": "Completa saldo de venta convertida desde reserva",
             },
@@ -126,6 +125,8 @@ def test_circuito_reserva_senia_conversion_venta_entrega_stock_caja(
     venta_pagada = get_venta(db_conn, venta_id)
     assert venta_pagada["estado"] == "pagada_total"
     assert _dec(venta_pagada["saldo_pendiente"]) == Decimal("0")
+    assert _dec(venta_pagada["descuento_total"]) == Decimal("2444.00")
+    assert _dec(venta_pagada["total_final"]) == Decimal("21996.00")
 
     # 8. Entregar venta
     entrega_response = client.post(
@@ -164,4 +165,4 @@ def test_circuito_reserva_senia_conversion_venta_entrega_stock_caja(
     ]
 
     montos = sorted(_dec(m["monto"]) for m in ingresos_finales)
-    assert montos == [Decimal("4500.00"), Decimal("19440")]
+    assert montos == [Decimal("4500.00"), Decimal("17496.00")]

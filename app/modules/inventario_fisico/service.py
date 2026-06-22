@@ -182,15 +182,29 @@ def cerrar_y_ajustar_inventario(inventario_id: int, data):
 
             movimientos = []
             for item in items:
-                diferencia = to_decimal(item["diferencia"])
-                if diferencia == Decimal("0"):
+                stock_actual = stock_repository.obtener_stock_disponible_variante(
+                    conn,
+                    id_sucursal=inventario["id_sucursal"],
+                    id_variante=item["id_variante"],
+                )
+                if stock_actual is None:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"No existe stock para la variante {item['id_variante']}",
+                    )
+
+                ajuste_a_aplicar = (
+                    to_decimal(item["stock_contado"])
+                    - to_decimal(stock_actual["stock_fisico"])
+                )
+                if ajuste_a_aplicar == Decimal("0"):
                     continue
 
                 resultado = stock_repository.registrar_ajuste_manual_stock(
                     conn,
                     id_sucursal=inventario["id_sucursal"],
                     id_variante=item["id_variante"],
-                    cantidad=diferencia,
+                    cantidad=ajuste_a_aplicar,
                     id_usuario=data.id_usuario,
                     origen_tipo="inventario_fisico",
                     origen_id=inventario_id,

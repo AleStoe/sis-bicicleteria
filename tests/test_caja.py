@@ -151,6 +151,18 @@ def test_resumen_diario_consolida_caja_pagos_rentabilidad_y_documentos(
         )
         cur.execute(
             """
+            UPDATE ventas
+            SET descuento_total = 100,
+                recargo_total = 0,
+                total_final = 24340,
+                saldo_pendiente = 0,
+                estado = 'pagada_total'
+            WHERE id = %s
+            """,
+            (venta_id,),
+        )
+        cur.execute(
+            """
             INSERT INTO gastos_operativos (
                 fecha,
                 id_sucursal,
@@ -192,16 +204,93 @@ def test_resumen_diario_consolida_caja_pagos_rentabilidad_y_documentos(
     assert float(data["pagos"]["efectivo"]) == 24440.0
 
     assert data["rentabilidad"]["cantidad_ventas"] == 1
+    assert float(data["rentabilidad"]["ventas_total"]) == 24340.0
     assert float(data["rentabilidad"]["ventas_items_total"]) == 24440.0
     assert float(data["rentabilidad"]["costo_mercaderia_vendida"]) == 10000.0
-    assert float(data["rentabilidad"]["margen_bruto"]) == 14440.0
+    assert float(data["rentabilidad"]["margen_bruto"]) == 14340.0
     assert float(data["rentabilidad"]["gastos_operativos"]) == 500.0
-    assert float(data["rentabilidad"]["ganancia_dia"]) == 13940.0
+    assert float(data["rentabilidad"]["ganancia_dia"]) == 13840.0
 
     assert data["documentos"]["comprobantes_x"] == 1
     assert data["documentos"]["recibos_pago"] == 1
     assert data["documentos"]["resumenes_cobro"] == 1
     assert data["documentos"]["total_disponibles"] >= 3
+
+
+def test_resumen_diario_tarjeta_muestra_movimiento_operativo_no_total_financiado(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    venta_id = _crear_venta_base(client, seed_venta_basica)
+
+    abrir = client.post(
+        "/cajas/abrir",
+        json=_abrir_caja_payload(seed_venta_basica, monto_apertura=0),
+    )
+    assert abrir.status_code == 200, abrir.text
+    caja_id = abrir.json()["caja_id"]
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO pagos (
+                id_cliente,
+                origen_tipo,
+                origen_id,
+                medio_pago,
+                monto_total_cobrado,
+                monto_base_aplicado,
+                monto_descuento_aplicado,
+                monto_recargo_aplicado,
+                estado,
+                nota,
+                id_usuario
+            )
+            VALUES (%s, 'venta', %s, 'tarjeta', 311666.66, 183333.33, 0, 128333.33,
+                    'confirmado', 'Pago tarjeta con recargo financiero', %s)
+            RETURNING id
+            """,
+            (
+                seed_venta_basica["cliente_id"],
+                venta_id,
+                seed_venta_basica["usuario_id"],
+            ),
+        )
+        pago_id = cur.fetchone()["id"]
+
+        cur.execute(
+            """
+            INSERT INTO caja_movimientos (
+                id_caja,
+                tipo_movimiento,
+                submedio,
+                monto,
+                origen_tipo,
+                origen_id,
+                nota,
+                id_usuario
+            )
+            VALUES (%s, 'ingreso', 'tarjeta', 183333.33, 'pago', %s,
+                    'tarjeta neto_caja=183333.33 recargo_financiero=128333.33 total_cliente=311666.66',
+                    %s)
+            """,
+            (caja_id, pago_id, seed_venta_basica["usuario_id"]),
+        )
+    db_conn.commit()
+
+    response = client.get(
+        "/cajas/resumen-diario",
+        params={"id_sucursal": seed_venta_basica["sucursal_id"]},
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+
+    assert data["pagos"]["cantidad_pagos"] == 1
+    assert float(data["pagos"]["tarjeta"]) == 183333.33
+    assert float(data["pagos"]["total_cobrado"]) == 183333.33
+    assert float(data["pagos"]["total_financiado_tarjeta"]) == 311666.66
+    assert float(data["pagos"]["recargos_aplicados"]) == 128333.33
 
 
 def test_resumen_diario_no_cuenta_venta_creada_sin_pagos(client, seed_venta_basica):

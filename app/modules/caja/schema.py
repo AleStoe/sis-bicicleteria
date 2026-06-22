@@ -150,6 +150,7 @@ class CajaResumenDiarioPagosOutput(BaseModel):
     transferencia: Decimal = Decimal("0")
     mercadopago: Decimal = Decimal("0")
     tarjeta: Decimal = Decimal("0")
+    total_financiado_tarjeta: Decimal = Decimal("0")
 
 
 class CajaResumenDiarioRentabilidadOutput(BaseModel):

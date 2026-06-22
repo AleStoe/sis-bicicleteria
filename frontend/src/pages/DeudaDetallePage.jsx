@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import {
@@ -15,7 +15,7 @@ import { useSession } from "../context/SessionContext";
 const MOBILE_BREAKPOINT = 760;
 
 const PAGO_FORM_INICIAL = {
-  monto_base: "",
+  monto_cliente: "",
   medio_pago: "efectivo",
   cuotas: "1",
   entidad: "",
@@ -58,10 +58,27 @@ function normalizarMonto(value) {
 }
 
 function buildPagoPayload(pagoForm, usuarioId) {
-  const montoBase = normalizarMonto(pagoForm.monto_base);
+  const montoCliente = normalizarMonto(pagoForm.monto_cliente);
 
   return {
-    monto_base: montoBase,
+    monto_cobrado_objetivo: montoCliente,
+    medio_pago: pagoForm.medio_pago,
+    cuotas:
+      pagoForm.medio_pago === "tarjeta"
+        ? Number(pagoForm.cuotas || 1)
+        : null,
+    entidad:
+      pagoForm.medio_pago === "tarjeta" && pagoForm.entidad.trim()
+        ? pagoForm.entidad.trim()
+        : null,
+    nota: pagoForm.nota.trim() || null,
+    id_usuario: usuarioId,
+  };
+}
+
+function buildPagoRegistroPayload(pagoForm, usuarioId, previewPago) {
+  return {
+    monto_base: normalizarMonto(previewPago?.monto_base_aplicado),
     medio_pago: pagoForm.medio_pago,
     cuotas:
       pagoForm.medio_pago === "tarjeta"
@@ -87,6 +104,7 @@ export default function DeudaDetallePage() {
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
   const [previewPago, setPreviewPago] = useState(null);
+  const preservarPreviewRef = useRef(false);
   const { usuarioId } = useSession();
   const [pagoForm, setPagoForm] = useState(PAGO_FORM_INICIAL);
 
@@ -95,10 +113,16 @@ export default function DeudaDetallePage() {
   }, [deudaId]);
 
   useEffect(() => {
+    if (preservarPreviewRef.current) {
+      preservarPreviewRef.current = false;
+      setMensaje("");
+      return;
+    }
+
     setPreviewPago(null);
     setMensaje("");
   }, [
-    pagoForm.monto_base,
+    pagoForm.monto_cliente,
     pagoForm.medio_pago,
     pagoForm.cuotas,
     pagoForm.entidad,
@@ -119,15 +143,10 @@ export default function DeudaDetallePage() {
   }
 
   function validarPagoLocal() {
-    const montoBase = normalizarMonto(pagoForm.monto_base);
-    const saldo = normalizarMonto(detalle?.deuda?.saldo_actual) || 0;
+    const montoCliente = normalizarMonto(pagoForm.monto_cliente);
 
-    if (!montoBase || montoBase <= 0) {
-      return "El monto base debe ser mayor a cero";
-    }
-
-    if (montoBase > saldo) {
-      return "El monto base no puede superar el saldo actual de la deuda";
+    if (!montoCliente || montoCliente <= 0) {
+      return "El importe que paga el cliente debe ser mayor a cero";
     }
 
     if (pagoForm.medio_pago === "tarjeta" && Number(pagoForm.cuotas || 0) <= 0) {
@@ -163,6 +182,45 @@ export default function DeudaDetallePage() {
     }
   }
 
+  async function completarSaldo() {
+    const saldo = normalizarMonto(detalle?.deuda?.saldo_actual);
+
+    if (!saldo || saldo <= 0) {
+      setError("La deuda no tiene saldo pendiente");
+      return;
+    }
+
+    if (pagoForm.medio_pago === "tarjeta" && Number(pagoForm.cuotas || 0) <= 0) {
+      setError("Las cuotas deben ser mayores a cero");
+      return;
+    }
+
+    try {
+      setSimulando(true);
+      setError("");
+      setMensaje("");
+
+      const payload = {
+        ...buildPagoPayload({ ...pagoForm, monto_cliente: String(saldo) }, usuarioId),
+        monto_cobrado_objetivo: undefined,
+        monto_base: saldo,
+      };
+      const preview = await simularPagoDeuda(deudaId, payload);
+
+      preservarPreviewRef.current = true;
+      setPagoForm((prev) => ({
+        ...prev,
+        monto_cliente: String(Math.round(Number(preview.monto_total_cobrado || 0))),
+      }));
+      setPreviewPago(preview);
+    } catch (err) {
+      setPreviewPago(null);
+      setError(err.message || "No se pudo calcular el importe para saldar");
+    } finally {
+      setSimulando(false);
+    }
+  }
+
   async function registrarPago(e) {
     e.preventDefault();
 
@@ -183,7 +241,7 @@ export default function DeudaDetallePage() {
       setError("");
       setMensaje("");
 
-      const payload = buildPagoPayload(pagoForm, usuarioId);
+      const payload = buildPagoRegistroPayload(pagoForm, usuarioId, previewPago);
 
       await registrarPagoDeuda(deudaId, payload);
 
@@ -227,6 +285,7 @@ export default function DeudaDetallePage() {
           setPagoForm={setPagoForm}
           previewPago={previewPago}
           previsualizarPago={previsualizarPago}
+          completarSaldo={completarSaldo}
           registrarPago={registrarPago}
           guardando={guardando}
           simulando={simulando}

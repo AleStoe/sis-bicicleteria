@@ -839,12 +839,6 @@ def simular_pago_venta(data):
 def _resolver_base_para_cobrado_objetivo(conn, data, saldo_pendiente):
     objetivo = redondear_monto(data.monto_cobrado_objetivo)
 
-    if objetivo > saldo_pendiente:
-        raise HTTPException(
-            status_code=400,
-            detail="El cobrado objetivo supera el saldo pendiente",
-        )
-
     # Primero simulamos con base = objetivo solo para conocer
     # el factor financiero del medio.
     tramo_referencia = _calcular_tramo_pago_venta(
@@ -875,6 +869,12 @@ def _resolver_base_para_cobrado_objetivo(conn, data, saldo_pendiente):
         )
 
     base_calculada = redondear_monto(objetivo / factor)
+
+    if base_calculada > saldo_pendiente:
+        raise HTTPException(
+            status_code=400,
+            detail="El importe ingresado cubre más que el saldo pendiente",
+        )
 
     tramo = _calcular_tramo_pago_venta(
         conn,

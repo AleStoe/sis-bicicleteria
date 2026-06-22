@@ -14,19 +14,22 @@ export default function DeudaPagoPanel({
   setPagoForm,
   previewPago,
   previsualizarPago,
+  completarSaldo,
   registrarPago,
   guardando,
   simulando,
 }) {
   const deudaAbierta = deuda.estado === "abierta";
-  const montoBase = Number(pagoForm.monto_base || 0);
-  const puedePrevisualizar = deudaAbierta && !guardando && !simulando && montoBase > 0;
+  const montoCliente = Number(pagoForm.monto_cliente || 0);
+  const puedePrevisualizar = deudaAbierta && !guardando && !simulando && montoCliente > 0;
   const puedeRegistrar = deudaAbierta && !guardando && !simulando && previewPago;
+  const labelMonto =
+    pagoForm.medio_pago === "tarjeta" ? "Cliente paga / financia" : "Cliente paga";
 
   return (
     <Card
       title="Registrar pago"
-      subtitle="El backend calcula descuentos, recargos y monto cobrado"
+      subtitle="Cargá lo que paga el cliente. El backend calcula la base que baja la deuda."
     >
       {!deudaAbierta ? (
         <div style={noteStyle}>
@@ -35,15 +38,15 @@ export default function DeudaPagoPanel({
       ) : (
         <form onSubmit={registrarPago} style={{ display: "grid", gap: "12px" }}>
           <Input
-            label="Monto base a cubrir"
+            label={labelMonto}
             type="number"
             min="0.01"
             step="0.01"
-            value={pagoForm.monto_base}
+            value={pagoForm.monto_cliente}
             onChange={(e) =>
               setPagoForm((prev) => ({
                 ...prev,
-                monto_base: e.target.value,
+                monto_cliente: e.target.value,
               }))
             }
           />
@@ -52,14 +55,9 @@ export default function DeudaPagoPanel({
             type="button"
             variant="outline"
             disabled={guardando || simulando}
-            onClick={() =>
-              setPagoForm((prev) => ({
-                ...prev,
-                monto_base: String(deuda.saldo_actual),
-              }))
-            }
+            onClick={completarSaldo}
           >
-            Cubrir saldo total
+            Completar saldo
           </Button>
 
           <Select
@@ -142,8 +140,8 @@ export default function DeudaPagoPanel({
           </Button>
 
           <div style={noteStyle}>
-            No se calculan descuentos ni recargos en la pantalla. El preview y
-            el registro salen del backend.
+            La base cubierta, descuentos y recargos salen del backend. Al confirmar
+            se registra la base calculada, no el flujo legacy.
           </div>
         </form>
       )}
@@ -183,7 +181,7 @@ function PreviewPagoDeuda({ preview }) {
       )}
 
       <PreviewRow
-        label="Cliente paga"
+        label={preview.medio_pago === "tarjeta" ? "Cliente financia" : "Cliente paga"}
         value={formatMoney(preview.monto_total_cobrado)}
         strong
       />

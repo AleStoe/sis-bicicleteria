@@ -24,7 +24,7 @@ export default function PagoVentaFormulario({
         <div>
           <div style={styles.sectionTitle}>Nuevo tramo de pago</div>
           <div style={styles.sectionHint}>
-            Ingresa la base comercial. El sistema calcula descuento, recargo y cobrado real.
+            Cargá cuánto paga o financia el cliente. El sistema calcula la base que cubre.
           </div>
         </div>
       </div>
@@ -98,7 +98,9 @@ export default function PagoVentaFormulario({
 
       <div style={styles.mainRow}>
         <label style={styles.field}>
-          <span style={styles.label}>Monto base</span>
+          <span style={styles.label}>
+            {form.medio_pago === "tarjeta" ? "Cliente paga / financia" : "Cliente paga"}
+          </span>
 
           <input
             ref={montoRef}
@@ -117,8 +119,11 @@ export default function PagoVentaFormulario({
             }}
             style={styles.amountInput}
             disabled={!puedePagar || guardando}
-            placeholder=""
+            placeholder="Ej: 20000"
           />
+          <small style={styles.inputHelp}>
+            La base cubierta se calcula automáticamente y se muestra en el detalle.
+          </small>
         </label>
 
         <label style={styles.field}>
@@ -286,6 +291,13 @@ const styles = {
     fontWeight: 800,
     fontSize: 13,
     color: "#344054",
+  },
+
+  inputHelp: {
+    color: "#64748b",
+    fontSize: 12,
+    fontWeight: 700,
+    lineHeight: 1.35,
   },
 
   input: {

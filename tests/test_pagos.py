@@ -48,6 +48,81 @@ def crear_venta_base(client, seed_venta_basica):
     return response.json()["venta_id"]
 
 
+def test_simular_cobro_objetivo_efectivo_calcula_base_cubierta(
+    client,
+    seed_venta_basica,
+):
+    venta_id = crear_venta_base(client, seed_venta_basica)
+
+    referencia = client.post(
+        "/pagos/ventas/simular-tramo",
+        json={
+            "venta_id": venta_id,
+            "medio_pago": "efectivo",
+            "monto_base": str(seed_venta_basica["precio_venta"]),
+        },
+    )
+    assert referencia.status_code == 200, referencia.text
+    total_cliente = referencia.json()["monto_total_cobrado"]
+
+    response = client.post(
+        "/pagos/ventas/simular-tramo",
+        json={
+            "venta_id": venta_id,
+            "medio_pago": "efectivo",
+            "monto_cobrado_objetivo": total_cliente,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert Decimal(str(data["monto_base_aplicado"])) == Decimal(
+        str(seed_venta_basica["precio_venta"])
+    )
+    assert Decimal(str(data["monto_total_cobrado"])) == Decimal(str(total_cliente))
+    assert Decimal(str(data["descuento_aplicado"])) > Decimal("0")
+    assert Decimal(str(data["saldo_restante_estimado"])) == Decimal("0.00")
+
+
+def test_simular_cobro_objetivo_tarjeta_permite_total_financiado_mayor_al_saldo_base(
+    client,
+    seed_venta_basica,
+):
+    venta_id = crear_venta_base(client, seed_venta_basica)
+
+    referencia = client.post(
+        "/pagos/ventas/simular-tramo",
+        json={
+            "venta_id": venta_id,
+            "medio_pago": "tarjeta",
+            "monto_base": str(seed_venta_basica["precio_venta"]),
+            "cuotas": 6,
+        },
+    )
+    assert referencia.status_code == 200, referencia.text
+    total_financiado = referencia.json()["monto_total_cobrado"]
+    assert Decimal(str(total_financiado)) > Decimal(str(seed_venta_basica["precio_venta"]))
+
+    response = client.post(
+        "/pagos/ventas/simular-tramo",
+        json={
+            "venta_id": venta_id,
+            "medio_pago": "tarjeta",
+            "monto_cobrado_objetivo": total_financiado,
+            "cuotas": 6,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert Decimal(str(data["monto_base_aplicado"])) == Decimal(
+        str(seed_venta_basica["precio_venta"])
+    )
+    assert Decimal(str(data["monto_total_cobrado"])) == Decimal(str(total_financiado))
+    assert Decimal(str(data["recargo_aplicado"])) > Decimal("0")
+    assert Decimal(str(data["saldo_restante_estimado"])) == Decimal("0.00")
+
+
 def test_registra_pago_total_efectivo(client, db_conn, seed_venta_basica):
     venta_id = crear_venta_base(client, seed_venta_basica)
 

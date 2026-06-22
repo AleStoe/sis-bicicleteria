@@ -100,6 +100,70 @@ def _crear_variante(
     return response.json()
 
 
+def _upsert_stock_sucursal(
+    db_conn,
+    *,
+    id_sucursal: int,
+    id_variante: int,
+    stock_fisico=0,
+    stock_reservado=0,
+    stock_vendido_pendiente_entrega=0,
+):
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO stock_sucursal (
+                id_sucursal,
+                id_variante,
+                stock_fisico,
+                stock_reservado,
+                stock_vendido_pendiente_entrega
+            )
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (id_sucursal, id_variante)
+            DO UPDATE SET
+                stock_fisico = EXCLUDED.stock_fisico,
+                stock_reservado = EXCLUDED.stock_reservado,
+                stock_vendido_pendiente_entrega = EXCLUDED.stock_vendido_pendiente_entrega
+            """,
+            (
+                id_sucursal,
+                id_variante,
+                stock_fisico,
+                stock_reservado,
+                stock_vendido_pendiente_entrega,
+            ),
+        )
+    db_conn.commit()
+
+
+def _crear_bicicleta_serializada_catalogo(
+    db_conn,
+    *,
+    id_variante: int,
+    id_sucursal: int,
+    numero_cuadro: str,
+    estado: str = "disponible",
+):
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO bicicletas_serializadas (
+                id_variante,
+                id_sucursal_actual,
+                numero_cuadro,
+                estado
+            )
+            VALUES (%s, %s, %s, %s)
+            RETURNING id
+            """,
+            (id_variante, id_sucursal, numero_cuadro, estado),
+        )
+        bicicleta_id = cur.fetchone()["id"]
+    db_conn.commit()
+    return bicicleta_id
+
+
 def test_listar_categorias(client):
     response = client.get("/catalogo/categorias")
 
@@ -827,7 +891,112 @@ def test_catalogo_pos_busqueda_exacta_por_codigo(
     assert data["id_variante"] == variante["id"]
     assert data["producto_nombre"] == "PRODUCTO CODIGO EXACTO POS"
     assert data["codigo_barras"] == codigo_barras
+    assert data["serializadas_disponibles"] == 0
+    assert data["disponible_para_venta"] is False
     assert data["motivo_no_disponible"] == "sin_stock"
+
+
+def test_catalogo_pos_serializable_con_stock_fisico_cero_y_serie_disponible_es_vendible(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    categoria = _get_first_categoria(client)
+    producto = _crear_producto(
+        client,
+        categoria_id=categoria["id"],
+        nombre="Bicicleta Serializada POS Disponible",
+        serializable=True,
+    )
+    variante = _crear_variante(
+        client,
+        producto_id=producto["id"],
+        nombre_variante="Rodado Test",
+        sku=f"SKU-SER-POS-{uuid.uuid4().hex[:8].upper()}",
+        codigo_barras=None,
+        precio_minorista=150000,
+        precio_mayorista=120000,
+    )
+
+    _upsert_stock_sucursal(
+        db_conn,
+        id_sucursal=seed_venta_basica["sucursal_id"],
+        id_variante=variante["id"],
+        stock_fisico=0,
+    )
+    _crear_bicicleta_serializada_catalogo(
+        db_conn,
+        id_variante=variante["id"],
+        id_sucursal=seed_venta_basica["sucursal_id"],
+        numero_cuadro=f"CUADRO-POS-{uuid.uuid4().hex[:8].upper()}",
+    )
+
+    response = client.get(
+        f"/catalogo/pos?id_sucursal={seed_venta_basica['sucursal_id']}&query=Bicicleta Serializada POS Disponible&limit=50&offset=0"
+    )
+
+    assert response.status_code == 200, response.text
+    item = next(i for i in response.json()["items"] if i["id_variante"] == variante["id"])
+    assert item["stock_fisico"] == "0.000"
+    assert item["stock_disponible"] == "0.000"
+    assert item["serializadas_disponibles"] == 1
+    assert item["disponible_para_venta"] is True
+    assert item["motivo_no_disponible"] is None
+
+
+def test_catalogo_pos_y_busqueda_exacta_son_consistentes_para_serializables(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    categoria = _get_first_categoria(client)
+    producto = _crear_producto(
+        client,
+        categoria_id=categoria["id"],
+        nombre="Bicicleta Serializada Consistente",
+        serializable=True,
+    )
+    codigo_barras_input = f"779{uuid.uuid4().int % 10_000_000_000:010d}"
+    variante = _crear_variante(
+        client,
+        producto_id=producto["id"],
+        nombre_variante="Unica",
+        sku=f"SKU-SER-CONS-{uuid.uuid4().hex[:8].upper()}",
+        codigo_barras=codigo_barras_input,
+        precio_minorista=180000,
+        precio_mayorista=140000,
+    )
+    codigo_barras = variante["codigo_barras"]
+
+    _upsert_stock_sucursal(
+        db_conn,
+        id_sucursal=seed_venta_basica["sucursal_id"],
+        id_variante=variante["id"],
+        stock_fisico=0,
+    )
+    _crear_bicicleta_serializada_catalogo(
+        db_conn,
+        id_variante=variante["id"],
+        id_sucursal=seed_venta_basica["sucursal_id"],
+        numero_cuadro=f"CUADRO-CONS-{uuid.uuid4().hex[:8].upper()}",
+    )
+
+    pos = client.get(
+        f"/catalogo/pos?id_sucursal={seed_venta_basica['sucursal_id']}&query={codigo_barras}&limit=50&offset=0"
+    )
+    exacta = client.get(
+        f"/catalogo/pos/buscar-exacto?id_sucursal={seed_venta_basica['sucursal_id']}&codigo={codigo_barras}"
+    )
+
+    assert pos.status_code == 200, pos.text
+    assert exacta.status_code == 200, exacta.text
+
+    item_pos = next(i for i in pos.json()["items"] if i["id_variante"] == variante["id"])
+    item_exacto = exacta.json()
+
+    assert item_pos["disponible_para_venta"] == item_exacto["disponible_para_venta"]
+    assert item_pos["motivo_no_disponible"] == item_exacto["motivo_no_disponible"]
+    assert item_pos["serializadas_disponibles"] == item_exacto["serializadas_disponibles"] == 1
 
 
 def test_catalogo_pos_busqueda_exacta_inexistente_devuelve_404(

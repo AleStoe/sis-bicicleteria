@@ -429,14 +429,15 @@ def get_resumen_pagos_caja(conn, caja_id: int | None, *, fecha, id_sucursal: int
                 """
                 SELECT
                     COUNT(DISTINCT p.id)::int AS cantidad_pagos,
-                    COALESCE(SUM(p.monto_total_cobrado), 0)::numeric(14,2) AS total_cobrado,
+                    COALESCE(SUM(cm.monto), 0)::numeric(14,2) AS total_cobrado,
                     COALESCE(SUM(p.monto_base_aplicado), 0)::numeric(14,2) AS base_aplicada,
                     COALESCE(SUM(p.monto_descuento_aplicado), 0)::numeric(14,2) AS descuentos_aplicados,
                     COALESCE(SUM(p.monto_recargo_aplicado), 0)::numeric(14,2) AS recargos_aplicados,
-                    COALESCE(SUM(p.monto_total_cobrado) FILTER (WHERE p.medio_pago = 'efectivo'), 0)::numeric(14,2) AS efectivo,
-                    COALESCE(SUM(p.monto_total_cobrado) FILTER (WHERE p.medio_pago = 'transferencia'), 0)::numeric(14,2) AS transferencia,
-                    COALESCE(SUM(p.monto_total_cobrado) FILTER (WHERE p.medio_pago = 'mercadopago'), 0)::numeric(14,2) AS mercadopago,
-                    COALESCE(SUM(p.monto_total_cobrado) FILTER (WHERE p.medio_pago = 'tarjeta'), 0)::numeric(14,2) AS tarjeta
+                    COALESCE(SUM(cm.monto) FILTER (WHERE cm.submedio = 'efectivo'), 0)::numeric(14,2) AS efectivo,
+                    COALESCE(SUM(cm.monto) FILTER (WHERE cm.submedio = 'transferencia'), 0)::numeric(14,2) AS transferencia,
+                    COALESCE(SUM(cm.monto) FILTER (WHERE cm.submedio = 'mercadopago'), 0)::numeric(14,2) AS mercadopago,
+                    COALESCE(SUM(cm.monto) FILTER (WHERE cm.submedio = 'tarjeta'), 0)::numeric(14,2) AS tarjeta,
+                    COALESCE(SUM(p.monto_total_cobrado) FILTER (WHERE p.medio_pago = 'tarjeta'), 0)::numeric(14,2) AS total_financiado_tarjeta
                 FROM caja_movimientos cm
                 INNER JOIN pagos p
                     ON p.id = cm.origen_id
@@ -452,7 +453,7 @@ def get_resumen_pagos_caja(conn, caja_id: int | None, *, fecha, id_sucursal: int
     sucursal_sql = ""
     if id_sucursal is not None:
         sucursal_sql = """
-          AND COALESCE(v.id_sucursal, r.id_sucursal, ot.id_sucursal) = %s
+          AND c.id_sucursal = %s
         """
         params.append(id_sucursal)
 
@@ -461,15 +462,21 @@ def get_resumen_pagos_caja(conn, caja_id: int | None, *, fecha, id_sucursal: int
             f"""
             SELECT
                 COUNT(DISTINCT p.id)::int AS cantidad_pagos,
-                COALESCE(SUM(p.monto_total_cobrado), 0)::numeric(14,2) AS total_cobrado,
+                COALESCE(SUM(cm.monto), 0)::numeric(14,2) AS total_cobrado,
                 COALESCE(SUM(p.monto_base_aplicado), 0)::numeric(14,2) AS base_aplicada,
                 COALESCE(SUM(p.monto_descuento_aplicado), 0)::numeric(14,2) AS descuentos_aplicados,
                 COALESCE(SUM(p.monto_recargo_aplicado), 0)::numeric(14,2) AS recargos_aplicados,
-                COALESCE(SUM(p.monto_total_cobrado) FILTER (WHERE p.medio_pago = 'efectivo'), 0)::numeric(14,2) AS efectivo,
-                COALESCE(SUM(p.monto_total_cobrado) FILTER (WHERE p.medio_pago = 'transferencia'), 0)::numeric(14,2) AS transferencia,
-                COALESCE(SUM(p.monto_total_cobrado) FILTER (WHERE p.medio_pago = 'mercadopago'), 0)::numeric(14,2) AS mercadopago,
-                COALESCE(SUM(p.monto_total_cobrado) FILTER (WHERE p.medio_pago = 'tarjeta'), 0)::numeric(14,2) AS tarjeta
-            FROM pagos p
+                COALESCE(SUM(cm.monto) FILTER (WHERE cm.submedio = 'efectivo'), 0)::numeric(14,2) AS efectivo,
+                COALESCE(SUM(cm.monto) FILTER (WHERE cm.submedio = 'transferencia'), 0)::numeric(14,2) AS transferencia,
+                COALESCE(SUM(cm.monto) FILTER (WHERE cm.submedio = 'mercadopago'), 0)::numeric(14,2) AS mercadopago,
+                COALESCE(SUM(cm.monto) FILTER (WHERE cm.submedio = 'tarjeta'), 0)::numeric(14,2) AS tarjeta,
+                COALESCE(SUM(p.monto_total_cobrado) FILTER (WHERE p.medio_pago = 'tarjeta'), 0)::numeric(14,2) AS total_financiado_tarjeta
+            FROM caja_movimientos cm
+            INNER JOIN pagos p
+                ON p.id = cm.origen_id
+               AND cm.origen_tipo = 'pago'
+            INNER JOIN cajas c
+                ON c.id = cm.id_caja
             LEFT JOIN ventas v
                 ON p.origen_tipo = 'venta'
                AND v.id = p.origen_id
@@ -479,7 +486,7 @@ def get_resumen_pagos_caja(conn, caja_id: int | None, *, fecha, id_sucursal: int
             LEFT JOIN ordenes_taller ot
                 ON p.origen_tipo = 'orden_taller'
                AND ot.id = p.origen_id
-            WHERE p.fecha::date = %s
+            WHERE cm.fecha::date = %s
               AND p.estado = 'confirmado'
               {sucursal_sql}
             """,
@@ -490,15 +497,25 @@ def get_resumen_pagos_caja(conn, caja_id: int | None, *, fecha, id_sucursal: int
 
 def get_resumen_rentabilidad_dia(conn, *, fecha, id_sucursal: int | None = None):
     sucursal_sql = ""
-    estados_operativos = ["pagada_parcial", "pagada_total", "entregada"]
-    rentabilidad_params = [fecha, estados_operativos]
+    estados_operativos = [
+        "pagada_parcial",
+        "pagada_total",
+        "entregada",
+        "devuelta_parcial",
+        "devuelta",
+    ]
     if id_sucursal is not None:
         sucursal_sql = "AND v.id_sucursal = %s"
-        rentabilidad_params.append(id_sucursal)
 
-    rentabilidad_params.extend([fecha, estados_operativos])
+    bloque_ventas_params = [fecha, estados_operativos]
     if id_sucursal is not None:
-        rentabilidad_params.append(id_sucursal)
+        bloque_ventas_params.append(id_sucursal)
+
+    rentabilidad_params = [
+        *bloque_ventas_params,
+        *bloque_ventas_params,
+        *bloque_ventas_params,
+    ]
 
     gastos_params = [fecha]
     gastos_sucursal_sql = ""
@@ -521,7 +538,13 @@ def get_resumen_rentabilidad_dia(conn, *, fecha, id_sucursal: int | None = None)
                 COALESCE(SUM(vi.subtotal), 0)::numeric(14,2) AS ventas_items_total,
                 COALESCE(SUM(vi.costo_unitario_aplicado * vi.cantidad), 0)::numeric(14,2) AS costo_mercaderia_vendida,
                 (
-                    COALESCE(SUM(vi.subtotal), 0)
+                    COALESCE((
+                        SELECT SUM(v2.total_final)
+                        FROM ventas v2
+                        WHERE v2.fecha::date = %s
+                          AND v2.estado = ANY(%s)
+                          {sucursal_sql.replace('v.', 'v2.')}
+                    ), 0)
                     - COALESCE(SUM(vi.costo_unitario_aplicado * vi.cantidad), 0)
                 )::numeric(14,2) AS margen_bruto
             FROM ventas v

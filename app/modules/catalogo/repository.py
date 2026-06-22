@@ -406,9 +406,16 @@ def get_catalogo_pos(
                     - COALESCE(ss.stock_vendido_pendiente_entrega, 0),
                     0
                 ) AS stock_disponible,
+                COALESCE(serializadas.serializadas_disponibles, 0) AS serializadas_disponibles,
 
                 CASE
-                    WHEN p.stockeable = TRUE AND (
+                    WHEN p.stockeable = TRUE
+                         AND p.serializable = TRUE
+                         AND COALESCE(serializadas.serializadas_disponibles, 0) <= 0 THEN FALSE
+
+                    WHEN p.stockeable = TRUE
+                         AND p.serializable = FALSE
+                         AND (
                         COALESCE(ss.stock_fisico, 0)
                         - COALESCE(ss.stock_reservado, 0)
                         - COALESCE(ss.stock_vendido_pendiente_entrega, 0)
@@ -421,7 +428,13 @@ def get_catalogo_pos(
                 END AS disponible_para_venta,
 
                 CASE
-                    WHEN p.stockeable = TRUE AND (
+                    WHEN p.stockeable = TRUE
+                         AND p.serializable = TRUE
+                         AND COALESCE(serializadas.serializadas_disponibles, 0) <= 0 THEN 'sin_stock'
+
+                    WHEN p.stockeable = TRUE
+                         AND p.serializable = FALSE
+                         AND (
                         COALESCE(ss.stock_fisico, 0)
                         - COALESCE(ss.stock_reservado, 0)
                         - COALESCE(ss.stock_vendido_pendiente_entrega, 0)
@@ -446,6 +459,14 @@ def get_catalogo_pos(
             LEFT JOIN stock_sucursal ss
                 ON ss.id_variante = v.id
                AND ss.id_sucursal = %(id_sucursal)s
+
+            LEFT JOIN LATERAL (
+                SELECT COUNT(*)::int AS serializadas_disponibles
+                FROM bicicletas_serializadas bs
+                WHERE bs.id_variante = v.id
+                  AND bs.id_sucursal_actual = %(id_sucursal)s
+                  AND bs.estado = 'disponible'
+            ) serializadas ON TRUE
 
             LEFT JOIN LATERAL (
                 SELECT ci.url
@@ -735,8 +756,13 @@ def get_catalogo_pos_por_codigo(
                     - COALESCE(ss.stock_vendido_pendiente_entrega, 0),
                     0
                 ) AS stock_disponible,
+                COALESCE(serializadas.serializadas_disponibles, 0) AS serializadas_disponibles,
 
                 CASE
+                    WHEN p.stockeable = TRUE
+                         AND p.serializable = TRUE
+                         AND COALESCE(serializadas.serializadas_disponibles, 0) <= 0 THEN FALSE
+
                     WHEN p.stockeable = TRUE
                          AND p.serializable = FALSE
                          AND (
@@ -752,6 +778,10 @@ def get_catalogo_pos_por_codigo(
                 END AS disponible_para_venta,
 
                 CASE
+                    WHEN p.stockeable = TRUE
+                         AND p.serializable = TRUE
+                         AND COALESCE(serializadas.serializadas_disponibles, 0) <= 0 THEN 'sin_stock'
+
                     WHEN p.stockeable = TRUE
                          AND p.serializable = FALSE
                          AND (
@@ -774,6 +804,14 @@ def get_catalogo_pos_por_codigo(
             LEFT JOIN stock_sucursal ss
                 ON ss.id_variante = v.id
                AND ss.id_sucursal = %(id_sucursal)s
+
+            LEFT JOIN LATERAL (
+                SELECT COUNT(*)::int AS serializadas_disponibles
+                FROM bicicletas_serializadas bs
+                WHERE bs.id_variante = v.id
+                  AND bs.id_sucursal_actual = %(id_sucursal)s
+                  AND bs.estado = 'disponible'
+            ) serializadas ON TRUE
 
             LEFT JOIN LATERAL (
                 SELECT ci.url
