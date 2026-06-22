@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from tests.conftest import (
+    asignar_rol_usuario,
     get_caja,
     get_caja_movimientos,
     get_auditoria_by_entidad,
@@ -37,6 +38,23 @@ def _ajuste_payload(seed_venta_basica, monto, direccion, nota="ajuste test"):
         "nota": nota,
         "id_usuario": seed_venta_basica["usuario_id"],
     }
+
+
+def _crear_usuario_sin_permiso(db_conn, username: str):
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO usuarios (nombre, username, password_hash, activo)
+            VALUES (%s, %s, %s, TRUE)
+            RETURNING id
+            """,
+            ("Operador Caja Test", username, "hash_dummy"),
+        )
+        usuario_id = cur.fetchone()["id"]
+
+    asignar_rol_usuario(db_conn, usuario_id, "operador")
+    db_conn.commit()
+    return usuario_id
 
 
 def _crear_venta_base(client, seed_venta_basica):
@@ -452,6 +470,61 @@ def test_no_permite_cerrar_caja_ya_cerrada(client, seed_venta_basica):
 
     assert cerrar_2.status_code == 400
     assert "ya está cerrada" in cerrar_2.json()["detail"].lower()
+
+
+def test_cerrar_caja_sin_permiso_devuelve_403(client, db_conn, seed_venta_basica):
+    abrir = client.post(
+        "/cajas/abrir",
+        json=_abrir_caja_payload(seed_venta_basica, monto_apertura=1000),
+    )
+    assert abrir.status_code == 200
+    caja_id = abrir.json()["caja_id"]
+
+    usuario_sin_permiso = _crear_usuario_sin_permiso(
+        db_conn,
+        "operador_caja_cierre_sin_permiso",
+    )
+
+    response = client.post(
+        f"/cajas/{caja_id}/cerrar",
+        json={
+            "id_usuario": usuario_sin_permiso,
+            "monto_cierre_real": 1000,
+        },
+    )
+
+    assert response.status_code == 403, response.text
+    caja = get_caja(db_conn, caja_id)
+    assert caja["estado"] == "abierta"
+
+
+def test_ajustar_caja_sin_permiso_devuelve_403(client, db_conn, seed_venta_basica):
+    abrir = client.post(
+        "/cajas/abrir",
+        json=_abrir_caja_payload(seed_venta_basica, monto_apertura=1000),
+    )
+    assert abrir.status_code == 200
+    caja_id = abrir.json()["caja_id"]
+
+    usuario_sin_permiso = _crear_usuario_sin_permiso(
+        db_conn,
+        "operador_caja_ajuste_sin_permiso",
+    )
+
+    movimientos_antes = get_caja_movimientos(db_conn, caja_id)
+
+    response = client.post(
+        f"/cajas/{caja_id}/ajustes",
+        json={
+            "id_usuario": usuario_sin_permiso,
+            "monto": 100,
+            "direccion": "positivo",
+            "nota": "Intento sin permiso",
+        },
+    )
+
+    assert response.status_code == 403, response.text
+    assert get_caja_movimientos(db_conn, caja_id) == movimientos_antes
 
 
 def test_egreso_crea_auditoria(client, db_conn, seed_venta_basica):

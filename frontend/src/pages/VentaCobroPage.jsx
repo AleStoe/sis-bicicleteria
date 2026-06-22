@@ -12,6 +12,7 @@ import {
   MetricCard,
   PageHeader,
 } from "../components/ui";
+import { puedeCobrarVenta } from "../rules/ventaDetalleActionRules";
 
 export default function VentaCobroPage() {
   const { ventaId } = useParams();
@@ -65,10 +66,7 @@ export default function VentaCobroPage() {
   const saldoPendiente = Number(venta.saldo_pendiente || 0);
 
   const cobroDirectoBloqueadoPorDeuda = Boolean(tieneDeuda && deuda);
-  const puedeCobrarDirecto =
-    saldoPendiente > 0 &&
-    !cobroDirectoBloqueadoPorDeuda &&
-    !["anulada", "devuelta"].includes(venta.estado);
+  const puedeCobrarDirecto = puedeCobrarVenta(venta, situacion_financiera);
 
   return (
     <div style={pageStyle}>

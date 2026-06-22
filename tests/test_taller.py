@@ -1631,6 +1631,57 @@ def test_ot_facturada_con_venta_pagada_total_permite_lista_para_retirar(
     assert response.json()["estado"] == "lista_para_retirar"
 
 
+def test_generar_venta_desde_ot_no_duplica_por_doble_request(
+    client,
+    seed_taller_basico,
+):
+    orden_id, venta_id = _crear_ot_facturada_con_venta(client, seed_taller_basico)
+
+    segunda = client.post(
+        f"/ordenes_taller/{orden_id}/generar-venta",
+        json={
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+
+    assert segunda.status_code == 400, segunda.text
+    assert f"#{venta_id}" in segunda.json()["detail"]
+
+
+def test_generar_venta_desde_ot_recupera_venta_huerfana_y_bloquea_duplicado(
+    client,
+    db_conn,
+    seed_taller_basico,
+):
+    orden_id, venta_id = _crear_ot_facturada_con_venta(client, seed_taller_basico)
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE ordenes_taller
+            SET estado = 'terminada',
+                id_venta_generada = NULL
+            WHERE id = %s
+            """,
+            (orden_id,),
+        )
+    db_conn.commit()
+
+    segunda = client.post(
+        f"/ordenes_taller/{orden_id}/generar-venta",
+        json={
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+
+    assert segunda.status_code == 400, segunda.text
+    assert f"#{venta_id}" in segunda.json()["detail"]
+
+    orden_actualizada = client.get(f"/ordenes_taller/{orden_id}").json()
+    assert orden_actualizada["estado"] == "facturada"
+    assert orden_actualizada["id_venta_generada"] == venta_id
+
+
 def test_ot_facturada_con_venta_creada_bloquea_lista_para_retirar(
     client,
     seed_taller_basico,

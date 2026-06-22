@@ -8,13 +8,14 @@ import { OperationalStatusBadge } from "../components/ui";
 
 import { useSession } from "../context/SessionContext";
 import useMediaQuery from "../hooks/useMediaQuery";
+import { puedeRevertirPago } from "../rules/ventaDetalleActionRules";
 
 const ESTADOS = ["todos", "confirmado", "revertido", "devuelto_externo"];
 const ORIGENES = ["todos", "venta", "deuda_cliente"];
 const MEDIOS = ["todos", "efectivo", "transferencia", "mercadopago", "tarjeta"];
 
 export default function PagosPage() {
-  const { usuarioId } = useSession();
+  const { usuarioId, usuarioActual } = useSession();
   const isMobile = useMediaQuery("(max-width: 760px)");
   const isNarrow = useMediaQuery("(max-width: 1120px)");
   const [pagos, setPagos] = useState([]);
@@ -132,6 +133,11 @@ export default function PagosPage() {
   }, [pagosFiltrados]);
 
   async function handleRevertirPago(pago) {
+    if (!puedeRevertirPago(pago, usuarioActual)) {
+      setError("No tenés permiso para revertir este pago o el pago no está confirmado.");
+      return;
+    }
+
     const motivo = await pedirPrompt({
       title: "Revertir pago",
       message: `Vas a revertir el pago #${pago.id}. Esta acción debe quedar justificada.`,
@@ -271,6 +277,7 @@ export default function PagosPage() {
                     guardando={guardando}
                     onSelect={() => setPagoSeleccionado(pago)}
                     onRevertir={() => handleRevertirPago(pago)}
+                    canRevertirPago={() => puedeRevertirPago(pago, usuarioActual)}
                   />
                 ))}
               </div>
@@ -282,7 +289,12 @@ export default function PagosPage() {
           <section style={styles.card}>
             <h2 style={styles.sideTitle}>Detalle del pago</h2>
             {detalle ? (
-              <PagoDetalle pago={detalle} guardando={guardando} onRevertir={() => handleRevertirPago(detalle)} />
+              <PagoDetalle
+                pago={detalle}
+                guardando={guardando}
+                onRevertir={() => handleRevertirPago(detalle)}
+                canRevertirPago={() => puedeRevertirPago(detalle, usuarioActual)}
+              />
             ) : (
               <div style={styles.emptySmall}>Seleccioná un pago para ver el detalle.</div>
             )}
@@ -325,8 +337,9 @@ export default function PagosPage() {
   );
 }
 
-function PagoCard({ pago, selected, guardando, onSelect, onRevertir }) {
+function PagoCard({ pago, selected, guardando, onSelect, onRevertir, canRevertirPago }) {
   const confirmado = pago.estado === "confirmado";
+  const puedeRevertir = canRevertirPago?.() ?? false;
   const montoReal = Number(pago.monto_total_cobrado || 0);
   const montoBase = Number(pago.monto_base_aplicado || 0);
   const diferencia = Math.max(montoBase - montoReal, 0);
@@ -358,7 +371,7 @@ function PagoCard({ pago, selected, guardando, onSelect, onRevertir }) {
       <div style={styles.paymentBottom}>
         <span style={styles.noteText}>{pago.nota || "Sin nota"}</span>
 
-        {confirmado && pago.origen_tipo === "venta" ? (
+        {confirmado && pago.origen_tipo === "venta" && puedeRevertir ? (
           <div style={styles.inlineActions}>
             <button
               type="button"
@@ -399,7 +412,8 @@ function PagoCard({ pago, selected, guardando, onSelect, onRevertir }) {
   );
 }
 
-function PagoDetalle({ pago, guardando, onRevertir }) {
+function PagoDetalle({ pago, guardando, onRevertir, canRevertirPago }) {
+  const puedeRevertir = canRevertirPago?.() ?? false;
   const montoReal = Number(pago.monto_total_cobrado || 0);
   const montoBase = Number(pago.monto_base_aplicado || 0);
   const recargo = Number(pago.monto_recargo_aplicado || 0);
@@ -438,7 +452,7 @@ function PagoDetalle({ pago, guardando, onRevertir }) {
         </div>
       )}
 
-      {pago.estado === "confirmado" && pago.origen_tipo === "venta" ? (
+      {pago.estado === "confirmado" && pago.origen_tipo === "venta" && puedeRevertir ? (
         <div style={styles.actionStack}>
           <button type="button" onClick={() => window.open(getReciboPagoUrl(pago.id), "_blank", "noopener,noreferrer")} style={styles.secondaryButtonFull}>
             Ver recibo PDF

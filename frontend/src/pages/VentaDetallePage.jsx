@@ -27,6 +27,7 @@ import {
   alertStyle,
   successStyle,
 } from "../styles/pages/ventaDetallePageStyles";
+import { obtenerAccionesVentaDetalle } from "../rules/ventaDetalleActionRules";
 
 export default function VentaDetallePage() {
   const params = useParams();
@@ -500,12 +501,6 @@ async function handleDevolverSerializada(item) {
     situacion_financiera?.monto_cubierto_sin_pago_real ?? 0
   );
 
-const estadosFinales = ["anulada", "devuelta"];
-const estadosAnulables = ["creada", "pagada_parcial", "pagada_total"];
-const estadosEntregables = ["creada", "pagada_parcial", "pagada_total"];
-const estadosCobrables = ["creada", "pagada_parcial", "pagada_total"];
-const estadosDevolvibles = ["entregada", "devuelta_parcial"];
-
 const tieneDeuda = situacion_financiera?.tiene_deuda;
 const deuda = situacion_financiera?.deuda_abierta;
 const resumenFinanciero = situacion_financiera?.resumen || {};
@@ -526,19 +521,13 @@ const creditoGeneradoDevolucion = Number(
 const coberturaNoCobrada = Number(
   resumenFinanciero.cobertura_no_cobrada ?? cubiertoNoPago
 );
-const puedeAnular = estadosAnulables.includes(venta.estado);
-
-const puedeEntregar = estadosEntregables.includes(venta.estado);
-
-const puedeDevolver = estadosDevolvibles.includes(venta.estado);
-
-const puedeCobrar =
-  saldoPendiente > 0 &&
-  !tieneDeuda &&
-  estadosCobrables.includes(venta.estado);
-
-const estaCerradaOperativamente =
-  saldoPendiente <= 0 && venta.estado === "entregada";
+const {
+  puedeCobrar,
+  puedeEntregar,
+  puedeAnular,
+  puedeDevolver,
+  estaCerradaOperativamente,
+} = obtenerAccionesVentaDetalle(venta, situacion_financiera);
 
   return (
     <div style={pageStyle}>

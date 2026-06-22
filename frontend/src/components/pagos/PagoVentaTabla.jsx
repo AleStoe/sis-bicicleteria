@@ -5,6 +5,7 @@ export default function PagoVentaTabla({
   pagos,
   guardando,
   onRevertir,
+  canRevertirPago = () => false,
   vacio,
   soloHistorial = false,
 }) {
@@ -54,7 +55,7 @@ export default function PagoVentaTabla({
                   {formatMoney(pago.monto_total_cobrado)}
                 </div>
 
-                {!soloHistorial && pago.estado === "confirmado" ? (
+                {!soloHistorial && canRevertirPago(pago) ? (
                   <button
                     type="button"
                     disabled={guardando}

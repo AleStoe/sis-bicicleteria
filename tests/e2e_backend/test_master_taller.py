@@ -66,7 +66,7 @@ def test_master_taller_flujo_completo(
     stock = get_stock_row(db_conn, sucursal_id, variante_id)
     assert _dec(stock["stock_fisico"]) == Decimal("5")
 
-    # 6. cobrar
+    # 6. cobrar directo una OT queda bloqueado: debe generar venta y cobrar esa venta.
     pago = client.post(
         "/pagos/",
         json={
@@ -80,4 +80,5 @@ def test_master_taller_flujo_completo(
         },
     )
 
-    assert pago.status_code == 200
+    assert pago.status_code == 400
+    assert "venta de la OT" in pago.json()["detail"]

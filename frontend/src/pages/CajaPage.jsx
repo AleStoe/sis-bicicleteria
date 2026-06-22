@@ -21,6 +21,11 @@ import CajaCierreCard from "../components/caja/CajaCierreCard";
 import CajaMovimientosTable from "../components/caja/CajaMovimientosTable";
 import { useSession } from "../context/SessionContext";
 import { ConfirmModal } from "../components/ui/ConfirmModal";
+import {
+  puedeAbrirCaja as puedeAbrirCajaRule,
+  puedeCerrarCaja as puedeCerrarCajaRule,
+  puedeRegistrarMovimientoCaja,
+} from "../rules/cajaActionRules";
 
 export default function CajaPage() {
   const [loading, setLoading] = useState(true);
@@ -267,6 +272,10 @@ export default function CajaPage() {
     e.preventDefault();
 
     if (!detalle?.caja?.id) return;
+    if (!puedeCerrarCajaRule({ procesando, caja: detalle.caja, montoReal })) {
+      setError("No se puede cerrar caja: verificá que esté abierta y que el monto contado sea válido.");
+      return;
+    }
 
     setError("");
     setMensaje("");
@@ -335,21 +344,31 @@ export default function CajaPage() {
     [detalle]
   );
 
-  const puedeRegistrarEgreso =
-    !procesando &&
-    Number(egreso.monto || 0) > 0 &&
-    egreso.nota.trim().length >= 3;
+  const puedeRegistrarEgreso = puedeRegistrarMovimientoCaja({
+    procesando,
+    caja: detalle?.caja,
+    monto: egreso.monto,
+    nota: egreso.nota,
+  });
 
-  const puedeRegistrarAjuste =
-    !procesando &&
-    Number(ajuste.monto || 0) > 0 &&
-    ajuste.nota.trim().length >= 3;
+  const puedeRegistrarAjuste = puedeRegistrarMovimientoCaja({
+    procesando,
+    caja: detalle?.caja,
+    monto: ajuste.monto,
+    nota: ajuste.nota,
+  });
 
-  const puedeAbrirCaja =
-    !procesando && montoApertura !== "" && Number(montoApertura) >= 0;
+  const puedeAbrirCaja = puedeAbrirCajaRule({
+    procesando,
+    montoApertura,
+    cajaActual: detalle?.caja,
+  });
 
-  const puedeCerrarCaja =
-    !procesando && montoReal !== "" && Number(montoReal) >= 0;
+  const puedeCerrarCaja = puedeCerrarCajaRule({
+    procesando,
+    caja: detalle?.caja,
+    montoReal,
+  });
 
   if (loading) {
     return <div style={{ padding: "24px" }}>Cargando caja...</div>;

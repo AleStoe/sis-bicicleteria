@@ -29,6 +29,7 @@ from .repository import (
 from app.shared.constants import (
     MEDIOS_PAGO_VALIDOS,
     ORIGENES_PAGO_VALIDOS,
+    ORIGEN_ORDEN_TALLER,
     ORIGEN_VENTA,
     VENTA_ESTADO_ANULADA,
     VENTA_ESTADO_ENTREGADA,
@@ -260,6 +261,15 @@ def registrar_pago(conn, data: dict):
         raise HTTPException(
             status_code=400,
             detail=f"Origen de pago inválido: {origen_tipo}",
+        )
+
+    if origen_tipo == ORIGEN_ORDEN_TALLER:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Las órdenes de taller no se cobran directo desde pagos. "
+                "Generá la venta de la OT y cobrá esa venta."
+            ),
         )
 
     # =====================================================

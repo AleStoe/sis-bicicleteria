@@ -22,7 +22,7 @@ def _get_pagos_orden_taller(conn, orden_id: int):
         return cur.fetchall()
 
 
-def test_circuito_taller_ejecutar_repuesto_cobrar_y_mover_caja(
+def test_circuito_taller_ejecutar_repuesto_bloquea_pago_directo_ot(
     client,
     db_conn,
     seed_taller_basico,
@@ -98,7 +98,8 @@ def test_circuito_taller_ejecutar_repuesto_cobrar_y_mover_caja(
     stock_post_ejecucion = get_stock_row(db_conn, sucursal_id, variante_id)
     assert _dec(stock_post_ejecucion["stock_fisico"]) == Decimal("5")
 
-    # 6. Cobrar orden de taller
+    # 6. Intentar cobrar directo la orden de taller: debe bloquearse.
+    # La OT se cobra generando una venta y pagando esa venta.
     pago_response = client.post(
         "/pagos/",
         json={
@@ -112,20 +113,14 @@ def test_circuito_taller_ejecutar_repuesto_cobrar_y_mover_caja(
             "nota": "Pago orden taller circuito e2e",
         },
     )
-    assert pago_response.status_code == 200, pago_response.text
+    assert pago_response.status_code == 400, pago_response.text
+    assert "venta de la OT" in pago_response.json()["detail"]
 
-    # 7. Validar pago registrado contra orden
+    # 7. Validar que no se registró pago directo contra orden
     pagos = _get_pagos_orden_taller(db_conn, orden_id)
-    assert len(pagos) == 1
+    assert len(pagos) == 0
 
-    pago = pagos[0]
-    assert pago["origen_tipo"] == "orden_taller"
-    assert pago["origen_id"] == orden_id
-    assert pago["medio_pago"] == "efectivo"
-    assert pago["estado"] == "confirmado"
-    assert _dec(pago["monto_total_cobrado"]) == Decimal("1000")
-
-    # 8. Validar caja
+    # 8. Validar que caja no recibió un ingreso por el intento bloqueado
     movimientos_caja = get_caja_movimientos(db_conn, caja_id)
 
     ingresos = [
@@ -135,10 +130,8 @@ def test_circuito_taller_ejecutar_repuesto_cobrar_y_mover_caja(
         and m["origen_tipo"] == "pago"
     ]
 
-    assert len(ingresos) == 1
-    assert _dec(ingresos[0]["monto"]) == Decimal("1000")
-    assert ingresos[0]["origen_id"] == pago["id"]
+    assert len(ingresos) == 0
 
-    # 9. Stock no debe moverse por cobrar
+    # 9. Stock no debe moverse por intentar cobrar
     stock_final = get_stock_row(db_conn, sucursal_id, variante_id)
     assert _dec(stock_final["stock_fisico"]) == Decimal("5")

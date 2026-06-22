@@ -11,6 +11,7 @@ import PagoVentaResumen from "./PagoVentaResumen";
 import PagoVentaFormulario from "./PagoVentaFormulario";
 import PagoVentaPreview from "./PagoVentaPreview";
 import PagoVentaTabla from "./PagoVentaTabla";
+import { puedeRevertirPago } from "../../rules/ventaDetalleActionRules";
 
 export default function PagoVentaPanel({
   ventaId,
@@ -31,7 +32,7 @@ export default function PagoVentaPanel({
   const [simulando, setSimulando] = useState(false);
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
-  const { usuarioId } = useSession();
+  const { usuarioId, usuarioActual } = useSession();
   const [form, setForm] = useState({
     medio_pago: "efectivo",
     monto: "",
@@ -350,6 +351,11 @@ export default function PagoVentaPanel({
   }
 
   async function handleRevertirPago(pago) {
+    if (!puedeRevertirPago(pago, usuarioActual)) {
+      setError("No tenés permiso para revertir este pago o el pago no está confirmado.");
+      return;
+    }
+
     if (!usuarioId) {
       setError("Sesión requerida. Volvé a iniciar sesión para revertir el pago.");
       return;
@@ -427,6 +433,7 @@ export default function PagoVentaPanel({
         pagos={pagosConfirmados}
         guardando={guardando}
         onRevertir={handleRevertirPago}
+        canRevertirPago={(pago) => puedeRevertirPago(pago, usuarioActual)}
         vacio="No hay pagos confirmados para esta venta."
       />
 
@@ -448,6 +455,7 @@ export default function PagoVentaPanel({
               pagos={pagosRevertidos}
               guardando={guardando}
               onRevertir={handleRevertirPago}
+              canRevertirPago={(pago) => puedeRevertirPago(pago, usuarioActual)}
               vacio="No hay pagos revertidos."
               soloHistorial
             />

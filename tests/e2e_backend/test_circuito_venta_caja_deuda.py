@@ -68,7 +68,7 @@ def test_circuito_venta_parcial_entrega_deuda_pago_deuda_caja_stock_auditoria(
             "origen_tipo": "venta",
             "origen_id": venta_id,
             "medio_pago": "efectivo",
-            "monto": 10000,
+            "monto_base": 10000,
             "id_usuario": seed_venta_basica["usuario_id"],
             "nota": "Pago parcial circuito e2e",
         },
@@ -121,7 +121,7 @@ def test_circuito_venta_parcial_entrega_deuda_pago_deuda_caja_stock_auditoria(
     pago_deuda_response = client.post(
         f"/deudas/{deuda['id']}/pagos",
         json={
-            "monto": 14440,
+            "monto_base": 14440,
             "medio_pago": "efectivo",
             "nota": "Cancela deuda circuito e2e",
             "id_usuario": seed_venta_basica["usuario_id"],
@@ -152,7 +152,7 @@ def test_circuito_venta_parcial_entrega_deuda_pago_deuda_caja_stock_auditoria(
     assert len(ingresos_efectivo) == 2
 
     montos = sorted(_dec(m["monto"]) for m in ingresos_efectivo)
-    assert montos == [Decimal("10000"), Decimal("14440")]
+    assert montos == [Decimal("9000.00"), Decimal("12996.00")]
 
     # 11. Auditoría mínima de venta
     auditorias = get_auditoria_by_entidad(

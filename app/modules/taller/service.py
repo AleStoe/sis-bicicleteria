@@ -742,6 +742,7 @@ def generar_venta_desde_orden_taller(orden_id: int, data):
     ventas no vuelva a reservar/descontar stock al cobrar/entregar.
     """
     conn = get_connection()
+    venta_existente_recuperada_id = None
     try:
         with conn.transaction():
             try:
@@ -762,65 +763,78 @@ def generar_venta_desde_orden_taller(orden_id: int, data):
             venta_existente = get_venta_generada_por_orden_taller(conn, orden_id)
             if venta_existente:
                 update_orden_taller_venta_generada(conn, orden_id, venta_existente["id"])
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"La orden ya tiene una venta generada: #{venta_existente['id']}",
+                venta_existente_recuperada_id = venta_existente["id"]
+                insert_orden_taller_evento(
+                    conn,
+                    id_orden_taller=orden_id,
+                    tipo_evento="venta_generada",
+                    detalle=(
+                        f"Venta #{venta_existente_recuperada_id} ya existía para la orden "
+                        f"de taller #{orden_id}; se re-vinculó para evitar duplicado"
+                    ),
+                    id_usuario=data.id_usuario,
                 )
+            else:
+                if orden["estado"] != "terminada":
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Solo se puede generar venta desde una orden terminada",
+                    )
 
-            if orden["estado"] != "terminada":
-                raise HTTPException(
-                    status_code=400,
-                    detail="Solo se puede generar venta desde una orden terminada",
-                )
+                items = get_items_orden_taller(conn, orden_id)
+                items_ejecutados = [
+                    item for item in items
+                    if item["etapa"] == "ejecutado" and item.get("aprobado") is True
+                ]
 
-            items = get_items_orden_taller(conn, orden_id)
-            items_ejecutados = [
-                item for item in items
-                if item["etapa"] == "ejecutado" and item.get("aprobado") is True
-            ]
+                if not items_ejecutados:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="La orden no tiene items ejecutados para facturar",
+                    )
 
-            if not items_ejecutados:
-                raise HTTPException(
-                    status_code=400,
-                    detail="La orden no tiene items ejecutados para facturar",
-                )
+                payload_items = []
+                for item in items_ejecutados:
+                    if item.get("tipo_item") == "servicio":
+                        payload_items.append({
+                            "tipo_item": "servicio_taller",
+                            "id_servicio_taller": item["id_servicio_taller"],
+                            "descripcion_snapshot": item["descripcion_snapshot"],
+                            "cantidad": item["cantidad"],
+                            "precio_unitario_manual": item["precio_unitario"],
+                            "motivo_precio_manual": f"Precio de taller OT #{orden_id}",
+                            "id_orden_taller_item": item["id"],
+                        })
+                        continue
 
-            payload_items = []
-            for item in items_ejecutados:
-                if item.get("tipo_item") == "servicio":
                     payload_items.append({
-                        "tipo_item": "servicio_taller",
-                        "id_servicio_taller": item["id_servicio_taller"],
-                        "descripcion_snapshot": item["descripcion_snapshot"],
+                        "tipo_item": "producto",
+                        "id_variante": item["id_variante"],
                         "cantidad": item["cantidad"],
                         "precio_unitario_manual": item["precio_unitario"],
                         "motivo_precio_manual": f"Precio de taller OT #{orden_id}",
                         "id_orden_taller_item": item["id"],
                     })
-                    continue
 
-                payload_items.append({
-                    "tipo_item": "producto",
-                    "id_variante": item["id_variante"],
-                    "cantidad": item["cantidad"],
-                    "precio_unitario_manual": item["precio_unitario"],
-                    "motivo_precio_manual": f"Precio de taller OT #{orden_id}",
-                    "id_orden_taller_item": item["id"],
-                })
+                try:
+                    venta_payload = VentaCreateInput.model_validate({
+                        "id_cliente": orden["id_cliente"],
+                        "id_sucursal": orden["id_sucursal"],
+                        "id_usuario": data.id_usuario,
+                        "tipo_precio": "minorista",
+                        "items": payload_items,
+                        "pagos": [],
+                        "observaciones": f"Generada desde orden de taller #{orden_id}",
+                        "id_orden_taller": orden_id,
+                    })
+                except ValidationError as e:
+                    raise HTTPException(status_code=400, detail=str(e))
 
-            try:
-                venta_payload = VentaCreateInput.model_validate({
-                    "id_cliente": orden["id_cliente"],
-                    "id_sucursal": orden["id_sucursal"],
-                    "id_usuario": data.id_usuario,
-                    "tipo_precio": "minorista",
-                    "items": payload_items,
-                    "pagos": [],
-                    "observaciones": f"Generada desde orden de taller #{orden_id}",
-                    "id_orden_taller": orden_id,
-                })
-            except ValidationError as e:
-                raise HTTPException(status_code=400, detail=str(e))
+        if venta_existente_recuperada_id:
+            raise HTTPException(
+                status_code=400,
+                detail=f"La orden ya tiene una venta generada: #{venta_existente_recuperada_id}",
+            )
 
         # crear_venta maneja su propia transacción/conexión. No la llamamos dentro
         # de la transacción anterior para evitar transacciones anidadas entre conexiones.
