@@ -4,7 +4,7 @@ export default function EstadoBadge({ item }) {
   }
 
   if (item.motivo_no_disponible === "sin_stock") {
-    return <span style={styles.danger}>Sin stock</span>;
+    return <span style={styles.warning}>Pendiente armado</span>;
   }
 
   if (item.motivo_no_disponible === "precio_no_definido") {

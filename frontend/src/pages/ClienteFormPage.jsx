@@ -9,6 +9,8 @@ import { normalizeTextUpper } from "../utils/textNormalization";
 
 const FORM_INICIAL = {
   nombre: "",
+  nombre_persona: "",
+  apellido: "",
   telefono: "",
   dni: "",
   direccion: "",
@@ -44,6 +46,8 @@ export default function ClienteFormPage() {
 
       setForm({
         nombre: c.nombre || "",
+        nombre_persona: c.nombre_persona || "",
+        apellido: c.apellido || "",
         telefono: c.telefono || "",
         dni: c.dni || "",
         direccion: c.direccion || "",
@@ -81,7 +85,13 @@ export default function ClienteFormPage() {
       setError("");
 
       const payload = {
-        nombre: form.nombre.trim(),
+        nombre:
+          [form.nombre_persona, form.apellido]
+            .map((parte) => parte.trim())
+            .filter(Boolean)
+            .join(" ") || form.nombre.trim(),
+        nombre_persona: limpiarOpcional(form.nombre_persona),
+        apellido: limpiarOpcional(form.apellido),
         telefono: form.telefono.trim(),
         dni: limpiarOpcional(form.dni),
         direccion: limpiarOpcional(form.direccion),
@@ -134,14 +144,41 @@ export default function ClienteFormPage() {
           <h2 style={sectionTitleStyle}>Datos básicos</h2>
 
           <div style={gridStyle}>
-            <Field label="Nombre *">
+            <Field label="Nombre">
+              <input
+                name="nombre_persona"
+                value={form.nombre_persona}
+                onChange={handleChange}
+                style={inputStyle}
+              />
+            </Field>
+
+            <Field label="Apellido">
+              <input
+                name="apellido"
+                value={form.apellido}
+                onChange={handleChange}
+                style={inputStyle}
+              />
+            </Field>
+
+            <Field label="Nombre visible actual *">
               <input
                 name="nombre"
                 value={form.nombre}
                 onChange={handleChange}
-                required
+                required={!form.nombre_persona.trim() && !form.apellido.trim()}
                 style={inputStyle}
               />
+              {esEdicion && !form.nombre_persona && !form.apellido ? (
+                <small style={hintStyle}>
+                  Cliente legacy: completá nombre y apellido cuando puedas. Mientras tanto se conserva este nombre visible.
+                </small>
+              ) : (
+                <small style={hintStyle}>
+                  Si cargás nombre/apellido, el sistema actualiza este valor compatible automáticamente.
+                </small>
+              )}
             </Field>
 
             <Field label="Teléfono *">
@@ -370,4 +407,11 @@ const alertStyle = {
   marginBottom: "14px",
 };
 
-const UPPER_FIELDS = new Set(["nombre", "razon_social"]);
+const hintStyle = {
+  color: "#667085",
+  fontWeight: 600,
+  fontSize: "12px",
+  lineHeight: 1.35,
+};
+
+const UPPER_FIELDS = new Set(["nombre", "nombre_persona", "apellido", "razon_social"]);

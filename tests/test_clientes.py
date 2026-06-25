@@ -29,6 +29,183 @@ def test_crear_cliente_con_datos_fiscales(client, db_conn, clean_db):
     assert cliente["razon_social"] == "BICICLETERIA FISCAL TEST SRL"
 
 
+def test_crear_cliente_legacy_con_nombre_sigue_funcionando(client, clean_db):
+    response = client.post(
+        "/clientes/",
+        json={
+            "nombre": "Cliente Legacy Nombre",
+            "telefono": "2915557001",
+            "tipo_cliente": "minorista",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    detalle = client.get(f"/clientes/{response.json()['cliente_id']}").json()["cliente"]
+
+    assert detalle["nombre"] == "CLIENTE LEGACY NOMBRE"
+    assert detalle["nombre_persona"] is None
+    assert detalle["apellido"] is None
+
+
+def test_crear_cliente_con_nombre_persona_apellido_genera_nombre(client, clean_db):
+    response = client.post(
+        "/clientes/",
+        json={
+            "nombre_persona": "Ana",
+            "apellido": "Gomez",
+            "telefono": "2915557002",
+            "tipo_cliente": "minorista",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    detalle = client.get(f"/clientes/{response.json()['cliente_id']}").json()["cliente"]
+
+    assert detalle["nombre_persona"] == "ANA"
+    assert detalle["apellido"] == "GOMEZ"
+    assert detalle["nombre"] == "ANA GOMEZ"
+
+
+def test_editar_nombre_persona_apellido_actualiza_nombre_display(client, clean_db):
+    crear = client.post(
+        "/clientes/",
+        json={
+            "nombre": "Cliente Para Editar",
+            "telefono": "2915557003",
+            "tipo_cliente": "minorista",
+        },
+    )
+    assert crear.status_code == 200, crear.text
+    cliente_id = crear.json()["cliente_id"]
+
+    actualizar = client.put(
+        f"/clientes/{cliente_id}",
+        json={
+            "nombre": "Cliente Para Editar",
+            "nombre_persona": "Marina",
+            "apellido": "Lopez",
+            "telefono": "2915557003",
+            "dni": None,
+            "direccion": None,
+            "tipo_cliente": "minorista",
+            "condicion_iva": "consumidor_final",
+            "cuit": None,
+            "razon_social": None,
+            "notas": None,
+            "activo": True,
+        },
+    )
+
+    assert actualizar.status_code == 200, actualizar.text
+    detalle = client.get(f"/clientes/{cliente_id}").json()["cliente"]
+
+    assert detalle["nombre_persona"] == "MARINA"
+    assert detalle["apellido"] == "LOPEZ"
+    assert detalle["nombre"] == "MARINA LOPEZ"
+
+
+def test_buscar_cliente_por_apellido_y_nombre_completo_generado(client, clean_db):
+    crear = client.post(
+        "/clientes/",
+        json={
+            "nombre_persona": "Lucia",
+            "apellido": "Fernandez",
+            "telefono": "2915557004",
+            "tipo_cliente": "minorista",
+        },
+    )
+    assert crear.status_code == 200, crear.text
+    cliente_id = crear.json()["cliente_id"]
+
+    por_apellido = client.get("/clientes/?q=Fernandez")
+    assert por_apellido.status_code == 200, por_apellido.text
+    assert any(cliente["id"] == cliente_id for cliente in por_apellido.json())
+
+    por_completo = client.get("/clientes/?q=Lucia Fernandez")
+    assert por_completo.status_code == 200, por_completo.text
+    assert any(cliente["id"] == cliente_id for cliente in por_completo.json())
+
+
+def test_ventas_taller_reservas_siguen_devolviendo_cliente_nombre(
+    client,
+    seed_venta_basica,
+):
+    crear_cliente = client.post(
+        "/clientes/",
+        json={
+            "nombre_persona": "Martin",
+            "apellido": "Ruiz",
+            "telefono": "2915557005",
+            "tipo_cliente": "minorista",
+        },
+    )
+    assert crear_cliente.status_code == 200, crear_cliente.text
+    cliente_id = crear_cliente.json()["cliente_id"]
+
+    venta = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": cliente_id,
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 1,
+                }
+            ],
+        },
+    )
+    assert venta.status_code == 200, venta.text
+    venta_detalle = client.get(f"/ventas/{venta.json()['venta_id']}")
+    assert venta_detalle.status_code == 200, venta_detalle.text
+    assert venta_detalle.json()["venta"]["cliente_nombre"] == "MARTIN RUIZ"
+
+    reserva = client.post(
+        "/reservas/",
+        json={
+            "id_cliente": cliente_id,
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 1,
+                    "precio_estimado": seed_venta_basica["precio_venta"],
+                }
+            ],
+        },
+    )
+    assert reserva.status_code == 200, reserva.text
+    reserva_detalle = client.get(f"/reservas/{reserva.json()['reserva_id']}")
+    assert reserva_detalle.status_code == 200, reserva_detalle.text
+    assert reserva_detalle.json()["reserva"]["cliente_nombre"] == "MARTIN RUIZ"
+
+    bici = client.post(
+        f"/clientes/{cliente_id}/bicicletas",
+        json={
+            "marca": "Raleigh",
+            "modelo": "R29",
+        },
+    )
+    assert bici.status_code == 201, bici.text
+
+    orden = client.post(
+        "/ordenes_taller/",
+        json={
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_cliente": cliente_id,
+            "id_bicicleta_cliente": bici.json()["id"],
+            "problema_reportado": "Control nombre cliente",
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert orden.status_code == 201, orden.text
+    orden_detalle = client.get(f"/ordenes_taller/{orden.json()['id']}")
+    assert orden_detalle.status_code == 200, orden_detalle.text
+    assert orden_detalle.json()["cliente_nombre"] == "MARTIN RUIZ"
+
+
 def test_actualizar_cliente_cambia_datos_fiscales(client, db_conn, clean_db):
     crear = client.post(
         "/clientes/",
@@ -101,6 +278,111 @@ def test_buscar_cliente_por_cuit_y_razon_social(client, clean_db):
         c["razon_social"] == "RAZON SOCIAL BUSCABLE SA"
         for c in por_razon_social.json()
     )
+
+
+def test_no_permite_crear_dos_clientes_con_mismo_telefono_normalizado(client, clean_db):
+    primero = client.post(
+        "/clientes/",
+        json={
+            "nombre": "Cliente Telefono Uno",
+            "telefono": "291-555-0000",
+            "tipo_cliente": "minorista",
+        },
+    )
+    assert primero.status_code == 200, primero.text
+
+    duplicado = client.post(
+        "/clientes/",
+        json={
+            "nombre": "Cliente Telefono Dos",
+            "telefono": "(291) 555 0000",
+            "tipo_cliente": "minorista",
+        },
+    )
+
+    assert duplicado.status_code == 400
+    assert "duplicado" in duplicado.json()["detail"].lower()
+    assert "tel" in duplicado.json()["detail"].lower()
+
+
+def test_no_permite_crear_dos_clientes_con_mismo_dni_o_cuit(client, clean_db):
+    primero = client.post(
+        "/clientes/",
+        json={
+            "nombre": "Cliente Documento Uno",
+            "telefono": "2915550101",
+            "dni": "30.111.222",
+            "cuit": "20-11111111-1",
+            "tipo_cliente": "minorista",
+        },
+    )
+    assert primero.status_code == 200, primero.text
+
+    duplicado_dni = client.post(
+        "/clientes/",
+        json={
+            "nombre": "Cliente Documento Dos",
+            "telefono": "2915550102",
+            "dni": "30111222",
+            "tipo_cliente": "minorista",
+        },
+    )
+    assert duplicado_dni.status_code == 400
+    assert "dni" in duplicado_dni.json()["detail"].lower()
+
+    duplicado_cuit = client.post(
+        "/clientes/",
+        json={
+            "nombre": "Cliente Documento Tres",
+            "telefono": "2915550103",
+            "cuit": "20111111111",
+            "tipo_cliente": "minorista",
+        },
+    )
+    assert duplicado_cuit.status_code == 400
+    assert "cuit" in duplicado_cuit.json()["detail"].lower()
+
+
+def test_permite_nombres_parecidos_si_no_coinciden_datos_fuertes(client, clean_db):
+    primero = client.post(
+        "/clientes/",
+        json={
+            "nombre": "Juan Perez",
+            "telefono": "2915550201",
+            "dni": "40111222",
+            "tipo_cliente": "minorista",
+        },
+    )
+    assert primero.status_code == 200, primero.text
+
+    segundo = client.post(
+        "/clientes/",
+        json={
+            "nombre": "Juan Pérez",
+            "telefono": "2915550202",
+            "dni": "40111223",
+            "tipo_cliente": "minorista",
+        },
+    )
+    assert segundo.status_code == 200, segundo.text
+
+
+def test_resumen_duplicados_clientes_cuenta_existentes_sin_merge(client, db_conn, clean_db):
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO clientes (nombre, telefono, dni, tipo_cliente, activo)
+            VALUES
+                ('DUP UNO', '291-555-0300', '50111222', 'minorista', TRUE),
+                ('DUP DOS', '(291) 555 0300', '50111223', 'minorista', TRUE)
+            """
+        )
+    db_conn.commit()
+
+    response = client.get("/clientes/duplicados/resumen")
+
+    assert response.status_code == 200, response.text
+    assert response.json()["telefono"] == 1
 
 
 def test_crear_bicicleta_cliente_permite_datos_minimos(client, clean_db):

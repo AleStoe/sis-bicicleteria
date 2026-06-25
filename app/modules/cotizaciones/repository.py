@@ -7,6 +7,9 @@ def _cotizacion_select_sql():
             c.*,
             s.nombre AS sucursal_nombre,
             cli.nombre AS cliente_nombre,
+            cli.nombre_persona AS cliente_nombre_persona,
+            cli.apellido AS cliente_apellido,
+            cli.telefono AS cliente_telefono,
             COUNT(ci.id)::int AS items_count
         FROM cotizaciones c
         INNER JOIN sucursales s ON s.id = c.id_sucursal
@@ -71,7 +74,7 @@ def listar_cotizaciones(conn, *, tipo: str | None = None, estado: str | None = N
     sql = f"""
         {_cotizacion_select_sql()}
         WHERE {" AND ".join(where)}
-        GROUP BY c.id, s.nombre, cli.nombre
+        GROUP BY c.id, s.nombre, cli.nombre, cli.nombre_persona, cli.apellido, cli.telefono
         ORDER BY c.fecha DESC, c.id DESC
     """
 
@@ -86,7 +89,7 @@ def get_cotizacion_by_id(conn, cotizacion_id: int):
             f"""
             {_cotizacion_select_sql()}
             WHERE c.id = %s
-            GROUP BY c.id, s.nombre, cli.nombre
+            GROUP BY c.id, s.nombre, cli.nombre, cli.nombre_persona, cli.apellido, cli.telefono
             """,
             (cotizacion_id,),
         )

@@ -14,6 +14,7 @@ from .service import (
     obtener_historial_bicicleta_cliente_service,
     autorizar_service_vencido_bicicleta_cliente_service,
     crear_orden_service_postventa_bicicleta_cliente_service,
+    obtener_duplicados_clientes_service,
     )
 
 router = APIRouter()
@@ -25,6 +26,11 @@ def listar_clientes(
     solo_activos: bool = Query(default=False),
 ):
     return listar_clientes_service(q=q, solo_activos=solo_activos)
+
+
+@router.get("/duplicados/resumen")
+def obtener_duplicados_clientes():
+    return obtener_duplicados_clientes_service()
 
 
 @router.get("/{cliente_id}")

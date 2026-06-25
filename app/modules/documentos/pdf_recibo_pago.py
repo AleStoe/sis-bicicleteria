@@ -2,6 +2,7 @@ from io import BytesIO
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
+from decimal import Decimal
 
 from .pdf import (
     LOGO_HORIZONTAL,
@@ -175,24 +176,63 @@ def generar_recibo_pago_pdf(data: dict) -> bytes:
     y -= 12 * mm
 
     # =====================================================
-    # DETALLE FINANCIERO
+    # DETALLE DEL PAGO
     # =====================================================
 
-    y = _box_title(c, margin_x, y, "Detalle financiero")
+    y = _box_title(c, margin_x, y, "Detalle del pago")
 
-    monto_base = pago.get("monto_base_aplicado")
-    descuento = pago.get("monto_descuento_aplicado")
-    recargo = pago.get("monto_recargo_aplicado")
+    monto_base = Decimal(str(pago.get("monto_base_aplicado") or 0))
+    descuento = Decimal(str(pago.get("monto_descuento_aplicado") or 0))
+    recargo = Decimal(str(pago.get("monto_recargo_aplicado") or 0))
 
-    y = _row(c, y, width, margin_x, "Importe cubierto", _money(monto_base))
-    y = _row(c, y, width, margin_x, "Descuento aplicado", f"- {_money(descuento)}")
-    y = _row(c, y, width, margin_x, "Recargo aplicado", f"+ {_money(recargo)}")
+    y = _row(
+        c,
+        y,
+        width,
+        margin_x,
+        "Valor de referencia",
+        _money(monto_base),
+    )
+
+    if descuento > 0:
+        y = _row(
+            c,
+            y,
+            width,
+            margin_x,
+            "Bonificación aplicada",
+            f"- {_money(descuento)}",
+        )
+
+    if recargo > 0:
+        y = _row(
+            c,
+            y,
+            width,
+            margin_x,
+            "Financiación",
+            f"+ {_money(recargo)}",
+        )
 
     if pago.get("cuotas"):
-        y = _row(c, y, width, margin_x, "Cuotas tarjeta", f"{pago.get('cuotas')} cuota(s)")
+        y = _row(
+            c,
+            y,
+            width,
+            margin_x,
+            "Plan",
+            f"{pago.get('cuotas')} cuota(s)",
+        )
 
     if pago.get("entidad"):
-        y = _row(c, y, width, margin_x, "Entidad", _text(pago.get("entidad")))
+        y = _row(
+            c,
+            y,
+            width,
+            margin_x,
+            "Entidad",
+            _text(pago.get("entidad")),
+        )
 
     y -= 2 * mm
     c.line(margin_x, y, width - margin_x, y)

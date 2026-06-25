@@ -4,6 +4,7 @@ from io import BytesIO
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
+from reportlab.pdfbase.pdfmetrics import stringWidth
 
 from .pdf import (
     LOGO_HORIZONTAL,
@@ -110,6 +111,20 @@ def _draw_datos_venta(c, venta, y, width, margin_x):
 
     return y - 6 * mm
 
+def _fit_text(text, font_name, font_size, max_width):
+    text = _text(text)
+
+    if stringWidth(text, font_name, font_size) <= max_width:
+        return text
+
+    suffix = "..."
+    available = max_width - stringWidth(suffix, font_name, font_size)
+
+    result = text
+    while result and stringWidth(result, font_name, font_size) > available:
+        result = result[:-1]
+
+    return result.rstrip() + suffix
 
 def _draw_items_preview(c, items, y, width, margin_x):
     if not items:
@@ -145,10 +160,12 @@ def _draw_items_preview(c, items, y, width, margin_x):
 
         c.setFillColorRGB(0, 0, 0)
         c.setFont("Helvetica-Bold", 9)
-        desc = _text(item.get("descripcion_snapshot"))
-        if len(desc) > 72:
-            desc = desc[:69] + "..."
-
+        desc = _fit_text(
+            item.get("descripcion_snapshot"),
+            "Helvetica-Bold",
+            9,
+            width - margin_x * 2 - 28 * mm,
+        )
         c.drawString(x + 23 * mm, y - 5 * mm, desc)
 
         c.setFont("Helvetica", 8)
@@ -297,15 +314,6 @@ def generar_resumen_cobros_pdf(data: dict) -> bytes:
 
     y -= 4 * mm
 
-    c.setFont("Helvetica", 7)
-    c.drawRightString(
-        width - margin_x,
-        y,
-        (
-            "Nota: la base comercial puede diferir del "
-            "cobrado real por descuentos o recargos aplicados."
-        ),
-    )
 
     c.setFont("Helvetica", 8)
     c.drawCentredString(
@@ -313,7 +321,6 @@ def generar_resumen_cobros_pdf(data: dict) -> bytes:
         12 * mm,
         "Resumen interno de cobros no fiscal. No válido como factura.",
     )
-
     c.save()
 
     pdf = buffer.getvalue()

@@ -170,7 +170,7 @@ def generar_mensaje_whatsapp_cotizacion(cotizacion_id: int):
         config = obtener_configuracion_negocio()
         cotizacion = obtener_cotizacion(cotizacion_id, conn=conn)
         items = cotizacion["items"]
-        cliente = cotizacion.get("cliente_nombre_snapshot") or cotizacion.get("cliente_nombre") or "cliente"
+        cliente = _resolver_nombre_visible_cliente(cotizacion)
 
         consulta_bloque = ""
         if cotizacion.get("problema_reportado"):
@@ -204,6 +204,7 @@ def generar_mensaje_whatsapp_cotizacion(cotizacion_id: int):
         )
         telefono = _normalizar_telefono_whatsapp(
             cotizacion.get("cliente_telefono_snapshot")
+            or cotizacion.get("cliente_telefono")
         )
         whatsapp_url = (
             f"https://api.whatsapp.com/send?phone={telefono}&text={quote_plus(mensaje)}"
@@ -330,6 +331,28 @@ def _limpiar_texto(value):
     return value or None
 
 
+def _resolver_nombre_visible_cliente(data) -> str:
+    nombre = (
+        data.get("cliente_nombre_snapshot")
+        or data.get("cliente_nombre")
+        or data.get("nombre")
+        or ""
+    ).strip()
+    if nombre:
+        return nombre
+
+    nombre_partes = " ".join(
+        parte.strip()
+        for parte in [
+            data.get("nombre_persona") or data.get("cliente_nombre_persona"),
+            data.get("apellido") or data.get("cliente_apellido"),
+        ]
+        if parte and str(parte).strip()
+    )
+
+    return nombre_partes or "cliente"
+
+
 def _normalizar_telefono_whatsapp(telefono: str | None) -> str | None:
     if not telefono:
         return None
@@ -341,7 +364,16 @@ def _normalizar_telefono_whatsapp(telefono: str | None) -> str | None:
     if digits.startswith("549"):
         return digits
     if digits.startswith("54"):
-        return f"549{digits[2:]}"
+        digits = digits[2:]
+        if digits.startswith("9"):
+            digits = digits[1:]
     if digits.startswith("0"):
         digits = digits[1:]
+    if digits.startswith("15"):
+        digits = digits[2:]
+    else:
+        for idx in range(2, min(5, len(digits) - 1)):
+            if digits[idx:idx + 2] == "15" and len(digits) > 10:
+                digits = digits[:idx] + digits[idx + 2:]
+                break
     return f"549{digits}"

@@ -87,9 +87,10 @@ function AccionesRapidasTaller({
 }) {
   const tieneItemsPresupuesto = items.some((item) => item.etapa !== "cancelado");
   const puedeWhatsApp =
+    orden.estado === "terminada" ||
+    orden.estado === "facturada" ||
     orden.estado === "lista_para_retirar" ||
-    puedeMarcarListaParaRetirar ||
-    puedeGenerarVenta;
+    puedeMarcarListaParaRetirar;
 
   return (
     <section style={styles.quickActionsCard}>
@@ -762,12 +763,6 @@ export default function TallerDetallePage() {
       setGuardando(true);
       setError("");
       setMensaje("");
-      if (orden.estado !== "lista_para_retirar" && puedeMarcarListaParaRetirar) {
-        await cambiarEstadoOrdenTaller(ordenId, {
-          nuevo_estado: "lista_para_retirar",
-          id_usuario: usuarioId,
-        });
-      }
 
       const data = await generarMensajeListaRetiroOrdenTaller(ordenId);
 

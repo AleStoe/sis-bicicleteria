@@ -1,6 +1,11 @@
 from fastapi import HTTPException
+from decimal import Decimal
 
 from app.db.connection import get_connection
+from app.modules.reglas_comerciales.repository import (
+    get_reglas_activas_por_medios,
+    get_tarjeta_planes,
+)
 
 from .repository import (
     get_venta_comprobante_by_id,
@@ -23,6 +28,48 @@ from .repository_etiquetas import (
     get_bicicleta_etiqueta_by_id,
     get_variante_etiqueta_by_id,
 )
+
+
+def _dec(value) -> Decimal:
+    return Decimal(str(value or 0))
+
+
+def _opciones_pago_etiquetas(conn):
+    reglas = get_reglas_activas_por_medios(conn, ["efectivo", "transferencia"])
+    planes = get_tarjeta_planes(conn, solo_activos=True)
+
+    opciones_contado = []
+    for medio in ["efectivo", "transferencia"]:
+        descuento = sum(
+            _dec(regla.get("porcentaje"))
+            for regla in reglas
+            if regla.get("tipo") == "descuento"
+            and regla.get("porcentaje") is not None
+            and regla.get("medio_pago") in {None, medio}
+        )
+
+        opciones_contado.append(
+            {
+                "medio_pago": medio,
+                "label": "Efectivo" if medio == "efectivo" else "Transferencia",
+                "porcentaje_descuento": descuento,
+            }
+        )
+
+    opciones_tarjeta = [
+        {
+            "label": plan["nombre"],
+            "cuotas": int(plan["cuotas"]),
+            "porcentaje_recargo": _dec(plan["porcentaje_recargo_cliente"]),
+        }
+        for plan in planes
+        if plan.get("medio_pago") == "tarjeta"
+    ]
+
+    return {
+        "contado": opciones_contado,
+        "tarjeta": opciones_tarjeta,
+    }
 
 
 def obtener_datos_comprobante_x_venta(venta_id: int):
@@ -171,6 +218,7 @@ def obtener_datos_etiqueta_variante(variante_id: int):
         return {
             "tipo": "variante",
             "item": item,
+            "opciones_pago": _opciones_pago_etiquetas(conn),
         }
 
     finally:
@@ -192,6 +240,7 @@ def obtener_datos_etiqueta_bicicleta(bicicleta_id: int):
         return {
             "tipo": "bicicleta",
             "item": item,
+            "opciones_pago": _opciones_pago_etiquetas(conn),
         }
 
     finally:

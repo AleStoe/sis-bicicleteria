@@ -1,5 +1,23 @@
 from decimal import Decimal
 
+from app.modules.cotizaciones.service import (
+    _normalizar_telefono_whatsapp,
+    _resolver_nombre_visible_cliente,
+)
+
+
+def test_whatsapp_cotizacion_resuelve_nombre_y_telefono_compatibles():
+    data = {
+        "cliente_nombre_snapshot": None,
+        "cliente_nombre": None,
+        "cliente_nombre_persona": "Ana",
+        "cliente_apellido": "Gomez",
+    }
+
+    assert _resolver_nombre_visible_cliente(data) == "Ana Gomez"
+    assert _resolver_nombre_visible_cliente({}) == "cliente"
+    assert _normalizar_telefono_whatsapp("(0291) 15 555 0000") == "5492915550000"
+
 
 def _get_stock(conn, sucursal_id, variante_id):
     with conn.cursor() as cur:

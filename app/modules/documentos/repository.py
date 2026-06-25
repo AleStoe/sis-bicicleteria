@@ -47,7 +47,13 @@ def get_venta_items_comprobante_by_venta_id(conn, venta_id: int):
                 vi.id_servicio_taller,
                 vi.descripcion_snapshot,
                 vi.cantidad,
+                vi.precio_lista,
                 vi.precio_final,
+                vi.precio_unitario_original,
+                vi.precio_unitario_final,
+                vi.bonificado,
+                vi.motivo_bonificacion,
+                vi.motivo_precio_manual,
                 vi.subtotal,
 
                 COALESCE(img_var.url, img_prod.url) AS imagen_principal

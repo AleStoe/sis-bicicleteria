@@ -46,34 +46,28 @@ def _decimal(value) -> Decimal:
 
 def _detalle_pago_financiero(pago: dict) -> str:
     medio = _text(pago.get("medio_pago")).lower()
-    base = pago.get("monto_base_aplicado")
-    descuento = _decimal(pago.get("monto_descuento_aplicado"))
-    recargo = _decimal(pago.get("monto_recargo_aplicado"))
-    cobrado = pago.get("monto_total_cobrado")
 
-    parts = []
+    monto = _money(pago.get("monto_total_cobrado"))
 
-    if base is not None:
-        parts.append(f"Base aplicada: {_money(base)}")
+    if medio == "efectivo":
+        descuento = _decimal(pago.get("monto_descuento_aplicado"))
 
-    if descuento > 0:
-        parts.append(f"Descuento: - {_money(descuento)}")
+        if descuento > 0:
+            return (
+                f"Monto abonado: {monto} - "
+                f"Bonificación aplicada: {_money(descuento)}"
+            )
 
-    if recargo > 0:
-        parts.append(f"Recargo: + {_money(recargo)}")
+        return f"Monto abonado: {monto}"
 
     if medio == "tarjeta":
         cuotas = pago.get("cuotas") or 1
-        parts.append(f"{cuotas} cuota(s)")
+        return f"Plan: {cuotas} cuota(s) - Monto abonado: {monto}"
 
-        recargo_financiero = _decimal(pago.get("monto_recargo_financiero"))
-        if recargo_financiero > 0:
-            parts.append(f"Recargo tarjeta: + {_money(recargo_financiero)}")
+    if medio == "transferencia":
+        return f"Monto abonado: {monto}"
 
-    if cobrado is not None:
-        parts.append(f"Cobrado real: {_money(cobrado)}")
-
-    return " - ".join(parts) if parts else "Cobrado real"
+    return f"Monto abonado: {monto}"
 
 
 def _resolver_imagen_local(url: str | None) -> Path | None:
@@ -187,14 +181,35 @@ def _draw_table_header(c, y, width, margin_x):
 
     c.drawString(margin_x, y, "Producto")
     c.drawString(margin_x + 24 * mm, y, "Descripción")
-    c.drawRightString(width - margin_x - 46 * mm, y, "Cant.")
-    c.drawRightString(width - margin_x - 22 * mm, y, "Unitario")
+    c.drawRightString(width - margin_x - 62 * mm, y, "Cant.")
+    c.drawRightString(width - margin_x - 42 * mm, y, "Unitario")
+    c.drawRightString(width - margin_x - 20 * mm, y, "Bonif.")
     c.drawRightString(width - margin_x, y, "Subtotal")
 
     y -= 3 * mm
     c.line(margin_x, y, width - margin_x, y)
 
     return y - 5 * mm
+
+
+def _precio_unitario_visible(item: dict) -> Decimal:
+    return _decimal(
+        item.get("precio_lista")
+        or item.get("precio_unitario_original")
+        or item.get("precio_final")
+    )
+
+
+def _bonificacion_item(item: dict) -> Decimal:
+    if not item.get("bonificado"):
+        return Decimal("0")
+
+    cantidad = _decimal(item.get("cantidad") or 1)
+    subtotal_lista = _precio_unitario_visible(item) * cantidad
+    subtotal_final = _decimal(item.get("subtotal"))
+
+    bonificacion = subtotal_lista - subtotal_final
+    return bonificacion if bonificacion > 0 else Decimal("0")
 
 
 def generar_comprobante_x_pdf(data: dict) -> bytes:
@@ -263,22 +278,43 @@ def generar_comprobante_x_pdf(data: dict) -> bytes:
             )
 
         descripcion = _text(item.get("descripcion_snapshot"))
-        if len(descripcion) > 52:
-            descripcion = descripcion[:49] + "..."
+        if len(descripcion) > 45:
+            descripcion = descripcion[:42] + "..."
+
+        precio_unitario = _precio_unitario_visible(item)
+        bonificacion_item = _bonificacion_item(item)
 
         c.setFont("Helvetica-Bold", 8)
         c.drawString(margin_x + 24 * mm, row_top - 4 * mm, descripcion)
 
-        c.setFont("Helvetica", 8)
+        if item.get("bonificado") and item.get("motivo_bonificacion"):
+            c.setFont("Helvetica", 6.5)
+            c.drawString(
+                margin_x + 24 * mm,
+                row_top - 8 * mm,
+                f"Bonificado: {_text(item.get('motivo_bonificacion'))[:38]}",
+            )
+
+        c.setFont("Helvetica", 7.5)
         c.drawRightString(
-            width - margin_x - 46 * mm,
+            width - margin_x - 62 * mm,
             row_top - 8 * mm,
             _text(item.get("cantidad")),
         )
         c.drawRightString(
-            width - margin_x - 22 * mm,
+            width - margin_x - 42 * mm,
             row_top - 8 * mm,
-            _money(item.get("precio_final")),
+            _money(precio_unitario),
+        )
+        if bonificacion_item > 0:
+            texto_bonif = _money(bonificacion_item)
+        else:
+            texto_bonif = "-"
+
+        c.drawRightString(
+            width - margin_x - 20 * mm,
+            row_top - 8 * mm,
+            texto_bonif,
         )
         c.drawRightString(
             width - margin_x,
@@ -296,11 +332,22 @@ def generar_comprobante_x_pdf(data: dict) -> bytes:
     c.drawRightString(width - margin_x, y, _money(venta.get("subtotal_base")))
 
     y -= 6 * mm
-    c.drawRightString(width - margin_x - 35 * mm, y, "Descuento")
+    c.drawRightString(width - margin_x - 35 * mm, y, "Bonificación global")
     c.drawRightString(width - margin_x, y, f"- {_money(venta.get('descuento_total'))}")
 
     y -= 6 * mm
-    c.drawRightString(width - margin_x - 35 * mm, y, "Recargo")
+    if _decimal(venta.get("recargo_total")) > 0:
+        c.drawRightString(
+            width - margin_x - 35 * mm,
+            y,
+            "Financiación",
+        )
+    else:
+        c.drawRightString(
+            width - margin_x - 35 * mm,
+            y,
+            "Financiación",
+        )
     c.drawRightString(width - margin_x, y, f"+ {_money(venta.get('recargo_total'))}")
 
     y -= 7 * mm

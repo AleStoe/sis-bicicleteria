@@ -935,13 +935,36 @@ def _normalizar_telefono_whatsapp(telefono: str | None) -> str | None:
     if digitos.startswith("549"):
         return digitos
     if digitos.startswith("54"):
-        return "549" + digitos[2:]
+        digitos = digitos[2:]
+        if digitos.startswith("9"):
+            digitos = digitos[1:]
     if digitos.startswith("0"):
         digitos = digitos[1:]
     if digitos.startswith("15"):
         digitos = digitos[2:]
+    else:
+        for idx in range(2, min(5, len(digitos) - 1)):
+            if digitos[idx:idx + 2] == "15" and len(digitos) > 10:
+                digitos = digitos[:idx] + digitos[idx + 2:]
+                break
 
     return "549" + digitos
+
+def _resolver_nombre_visible_cliente(data) -> str:
+    nombre = (data.get("cliente_nombre") or data.get("nombre") or "").strip()
+    if nombre:
+        return nombre
+
+    nombre_partes = " ".join(
+        parte.strip()
+        for parte in [
+            data.get("nombre_persona") or data.get("cliente_nombre_persona"),
+            data.get("apellido") or data.get("cliente_apellido"),
+        ]
+        if parte and str(parte).strip()
+    )
+
+    return nombre_partes or "cliente"
 
 def _limpiar_descripcion_item_mensaje(descripcion: str | None) -> str:
     texto = (descripcion or "").strip()
@@ -976,7 +999,7 @@ def _format_money_mensaje(value) -> str:
 
 def _build_mensaje_lista_retiro(orden, conn, items):
     config = obtener_configuracion_negocio()
-    cliente = (orden.get("cliente_nombre") or "cliente").strip()
+    cliente = _resolver_nombre_visible_cliente(orden)
     bicicleta = _format_bicicleta_mensaje(orden)
 
     items_ejecutados = [
@@ -1100,7 +1123,7 @@ def generar_mensaje_lista_retiro_orden_taller(orden_id: int):
 
         return {
             "orden_id": orden_id,
-            "cliente_nombre": orden.get("cliente_nombre"),
+            "cliente_nombre": _resolver_nombre_visible_cliente(orden),
             "cliente_telefono": orden.get("cliente_telefono"),
             "bicicleta_descripcion": _format_bicicleta_mensaje(orden),
             "mensaje": mensaje,

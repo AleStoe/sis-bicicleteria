@@ -15,6 +15,8 @@ from app.modules.taller.repository import (
 from .repository import (
     get_clientes,
     get_cliente_by_id,
+    find_cliente_duplicado_fuerte,
+    get_clientes_duplicados_resumen,
     insert_cliente,
     update_cliente,
     desactivar_cliente,
@@ -37,7 +39,10 @@ TIPOS_CLIENTE_VALIDOS = {"consumidor_final", "minorista", "mayorista"}
 
 
 def _normalizar_create_input(data):
+    data.nombre_persona = normalize_text_upper(data.nombre_persona)
+    data.apellido = normalize_text_upper(data.apellido)
     data.nombre = normalize_text_upper(data.nombre)
+    data.nombre = _resolver_nombre_display(data)
     data.telefono = clean_text(data.telefono)
     data.dni = clean_text(data.dni)
     data.direccion = clean_text(data.direccion)
@@ -48,7 +53,10 @@ def _normalizar_create_input(data):
 
 
 def _normalizar_update_input(data):
+    data.nombre_persona = normalize_text_upper(data.nombre_persona)
+    data.apellido = normalize_text_upper(data.apellido)
     data.nombre = normalize_text_upper(data.nombre)
+    data.nombre = _resolver_nombre_display(data)
     data.telefono = clean_text(data.telefono)
     data.dni = clean_text(data.dni)
     data.direccion = clean_text(data.direccion)
@@ -64,6 +72,16 @@ def _validar_tipo_cliente(tipo_cliente: str):
             status_code=400,
             detail=f"Tipo de cliente inválido: {tipo_cliente}",
         )
+
+
+def _resolver_nombre_display(data):
+    partes = [
+        data.nombre_persona,
+        data.apellido,
+    ]
+    nombre_desde_partes = " ".join(parte for parte in partes if parte)
+
+    return normalize_text_upper(nombre_desde_partes or data.nombre)
 
 
 def _validar_campos_cliente(data):
@@ -118,6 +136,41 @@ def _validar_no_crear_otro_consumidor_final(data):
         )
 
 
+def _validar_cliente_sin_duplicado_fuerte(conn, data, cliente_id_actual: int | None = None):
+    duplicado = find_cliente_duplicado_fuerte(
+        conn,
+        data,
+        cliente_id_actual=cliente_id_actual,
+    )
+
+    if duplicado is None:
+        return
+
+    if data.cuit and _solo_digitos(data.cuit) == _solo_digitos(duplicado.get("cuit")):
+        campo = "CUIT"
+        valor = data.cuit
+    elif data.dni and _solo_digitos(data.dni) == _solo_digitos(duplicado.get("dni")):
+        campo = "DNI"
+        valor = data.dni
+    else:
+        campo = "teléfono"
+        valor = data.telefono
+
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            f"Posible cliente duplicado: ya existe el cliente "
+            f"#{duplicado['id']} ({duplicado['nombre']}) con el mismo {campo} {valor}."
+        ),
+    )
+
+
+def _solo_digitos(value: str | None):
+    if not value:
+        return None
+    return "".join(ch for ch in str(value) if ch.isdigit()) or None
+
+
 def _normalizar_bicicleta_cliente_input(data):
     data.marca = normalize_text_upper(data.marca)
     data.modelo = normalize_text_upper(data.modelo)
@@ -162,6 +215,7 @@ def crear_cliente_service(data):
             data = _normalizar_create_input(data)
             _validar_campos_cliente(data)
             _validar_no_crear_otro_consumidor_final(data)
+            _validar_cliente_sin_duplicado_fuerte(conn, data)
 
             cliente_id = insert_cliente(conn, data)
 
@@ -189,6 +243,12 @@ def actualizar_cliente_service(cliente_id: int, data):
                     status_code=400,
                     detail="No se puede cambiar un cliente manual a tipo consumidor_final",
                 )
+
+            _validar_cliente_sin_duplicado_fuerte(
+                conn,
+                data,
+                cliente_id_actual=cliente_id,
+            )
 
             update_cliente(conn, cliente_id, data)
 
@@ -274,6 +334,15 @@ def crear_bicicleta_cliente_service(cliente_id: int, data):
                 raise HTTPException(status_code=400, detail="La marca es obligatoria")
 
             return insert_bicicleta_cliente(conn, cliente_id, data)
+    finally:
+        conn.close()
+
+
+def obtener_duplicados_clientes_service():
+    conn = get_connection()
+
+    try:
+        return get_clientes_duplicados_resumen(conn)
     finally:
         conn.close()
 

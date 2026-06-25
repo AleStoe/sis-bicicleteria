@@ -11,7 +11,9 @@ CondicionIva = Literal[
 ]
 
 class ClienteCreateInput(BaseModel):
-    nombre: str = Field(min_length=2, max_length=150)
+    nombre: Optional[str] = Field(default=None, max_length=150)
+    nombre_persona: Optional[str] = Field(default=None, max_length=100)
+    apellido: Optional[str] = Field(default=None, max_length=100)
     telefono: str = Field(min_length=3, max_length=50)
     dni: Optional[str] = Field(default=None, max_length=30)
     direccion: Optional[str] = Field(default=None, max_length=200)
@@ -23,7 +25,9 @@ class ClienteCreateInput(BaseModel):
 
 
 class ClienteUpdateInput(BaseModel):
-    nombre: str = Field(min_length=2, max_length=150)
+    nombre: Optional[str] = Field(default=None, max_length=150)
+    nombre_persona: Optional[str] = Field(default=None, max_length=100)
+    apellido: Optional[str] = Field(default=None, max_length=100)
     telefono: str = Field(min_length=3, max_length=50)
     dni: Optional[str] = Field(default=None, max_length=30)
     direccion: Optional[str] = Field(default=None, max_length=200)

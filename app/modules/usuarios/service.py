@@ -8,6 +8,7 @@ from .repository import (
     get_usuario_by_id,
     get_usuario_by_username,
     get_usuario_by_email,
+    get_usuarios_duplicados_resumen,
     get_rol_by_nombre,
     insert_usuario,
     update_usuario,
@@ -118,6 +119,15 @@ def obtener_usuario_service(usuario_id: int):
 
     try:
         return _obtener_usuario_o_404(conn, usuario_id)
+    finally:
+        conn.close()
+
+
+def obtener_duplicados_usuarios_service():
+    conn = get_connection()
+
+    try:
+        return get_usuarios_duplicados_resumen(conn)
     finally:
         conn.close()
 

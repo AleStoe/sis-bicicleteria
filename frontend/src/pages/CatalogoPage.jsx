@@ -42,7 +42,7 @@ function getTituloItem(item) {
 
 function getMotivoTexto(item) {
   if (item.disponible_para_venta) return "Listo para vender";
-  if (item.motivo_no_disponible === "sin_stock") return "Sin stock disponible";
+  if (item.motivo_no_disponible === "sin_stock") return "Sin exhibición";
   if (item.motivo_no_disponible === "precio_no_definido") return "Falta definir precio";
   return "Revisar antes de vender";
 }

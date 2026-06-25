@@ -9,6 +9,7 @@ from .schema import (
 from .service import (
     listar_usuarios_service,
     obtener_usuario_service,
+    obtener_duplicados_usuarios_service,
     crear_usuario_service,
     actualizar_usuario_service,
     activar_usuario_service,
@@ -27,6 +28,11 @@ def listar_usuarios(
     solo_activos: bool = Query(default=False),
 ):
     return listar_usuarios_service(q=q, solo_activos=solo_activos)
+
+
+@router.get("/duplicados/resumen")
+def obtener_duplicados_usuarios():
+    return obtener_duplicados_usuarios_service()
 
 
 @router.get("/{usuario_id}")

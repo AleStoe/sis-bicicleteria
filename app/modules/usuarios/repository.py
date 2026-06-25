@@ -82,6 +82,50 @@ def get_usuario_by_email(conn, email: str):
         return cur.fetchone()
 
 
+def get_usuarios_duplicados_resumen(conn):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            r"""
+            WITH username AS (
+                SELECT COUNT(*)::int AS grupos
+                FROM (
+                    SELECT lower(username) AS username_norm
+                    FROM usuarios
+                    WHERE COALESCE(username, '') <> ''
+                    GROUP BY username_norm
+                    HAVING COUNT(*) > 1
+                ) d
+            ),
+            email AS (
+                SELECT COUNT(*)::int AS grupos
+                FROM (
+                    SELECT lower(email) AS email_norm
+                    FROM usuarios
+                    WHERE COALESCE(email, '') <> ''
+                    GROUP BY email_norm
+                    HAVING COUNT(*) > 1
+                ) d
+            ),
+            nombre AS (
+                SELECT COUNT(*)::int AS grupos
+                FROM (
+                    SELECT upper(trim(regexp_replace(nombre, '\s+', ' ', 'g'))) AS nombre_norm
+                    FROM usuarios
+                    WHERE COALESCE(nombre, '') <> ''
+                    GROUP BY nombre_norm
+                    HAVING COUNT(*) > 1
+                ) d
+            )
+            SELECT
+                username.grupos AS username,
+                email.grupos AS email,
+                nombre.grupos AS nombre_normalizado
+            FROM username, email, nombre
+            """
+        )
+        return cur.fetchone()
+
+
 def get_rol_by_nombre(conn, rol: str):
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(

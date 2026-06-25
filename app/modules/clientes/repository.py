@@ -3,6 +3,8 @@ def get_clientes(conn, q=None, solo_activos=False):
         SELECT
             id,
             nombre,
+            nombre_persona,
+            apellido,
             telefono,
             dni,
             direccion,
@@ -26,12 +28,24 @@ def get_clientes(conn, q=None, solo_activos=False):
             AND (
                 nombre ILIKE %s
                 OR telefono ILIKE %s
+                OR COALESCE(nombre_persona, '') ILIKE %s
+                OR COALESCE(apellido, '') ILIKE %s
+                OR CONCAT_WS(' ', nombre_persona, apellido) ILIKE %s
                 OR COALESCE(dni, '') ILIKE %s
                 OR COALESCE(cuit, '') ILIKE %s
                 OR COALESCE(razon_social, '') ILIKE %s
             )
         """
-        params.extend([q_like, q_like, q_like, q_like, q_like])
+        params.extend([
+            q_like,
+            q_like,
+            q_like,
+            q_like,
+            q_like,
+            q_like,
+            q_like,
+            q_like,
+        ])
 
     sql += " ORDER BY activo DESC, nombre ASC, id ASC"
 
@@ -47,6 +61,8 @@ def get_cliente_by_id(conn, cliente_id: int):
             SELECT
                 id,
                 nombre,
+                nombre_persona,
+                apellido,
                 telefono,
                 dni,
                 direccion,
@@ -64,12 +80,134 @@ def get_cliente_by_id(conn, cliente_id: int):
         return cur.fetchone()
 
 
+def find_cliente_duplicado_fuerte(conn, data, cliente_id_actual: int | None = None):
+    condiciones = []
+    params = []
+
+    if data.telefono:
+        condiciones.append(
+            "regexp_replace(COALESCE(telefono, ''), '\\D', '', 'g') = %s"
+        )
+        params.append(_solo_digitos(data.telefono))
+
+    if data.dni:
+        condiciones.append(
+            "regexp_replace(COALESCE(dni, ''), '\\D', '', 'g') = %s"
+        )
+        params.append(_solo_digitos(data.dni))
+
+    if data.cuit:
+        condiciones.append(
+            "regexp_replace(COALESCE(cuit, ''), '\\D', '', 'g') = %s"
+        )
+        params.append(_solo_digitos(data.cuit))
+
+    condiciones = [
+        condicion
+        for condicion, valor in zip(condiciones, params)
+        if valor
+    ]
+    params = [valor for valor in params if valor]
+
+    if not condiciones:
+        return None
+
+    sql = f"""
+        SELECT id, nombre, telefono, dni, cuit, activo
+        FROM clientes
+        WHERE ({' OR '.join(condiciones)})
+    """
+
+    if cliente_id_actual is not None:
+        sql += " AND id <> %s"
+        params.append(cliente_id_actual)
+
+    sql += " ORDER BY activo DESC, id ASC LIMIT 1"
+
+    with conn.cursor() as cur:
+        cur.execute(sql, params)
+        return cur.fetchone()
+
+
+def get_clientes_duplicados_resumen(conn):
+    with conn.cursor() as cur:
+        cur.execute(
+            r"""
+            WITH base AS (
+                SELECT
+                    id,
+                    nombre,
+                    regexp_replace(COALESCE(telefono, ''), '\D', '', 'g') AS telefono_norm,
+                    regexp_replace(COALESCE(dni, ''), '\D', '', 'g') AS dni_norm,
+                    regexp_replace(COALESCE(cuit, ''), '\D', '', 'g') AS cuit_norm
+                FROM clientes
+                WHERE id <> 1
+            ),
+            telefono AS (
+                SELECT COUNT(*)::int AS grupos
+                FROM (
+                    SELECT telefono_norm
+                    FROM base
+                    WHERE telefono_norm <> ''
+                    GROUP BY telefono_norm
+                    HAVING COUNT(*) > 1
+                ) d
+            ),
+            dni AS (
+                SELECT COUNT(*)::int AS grupos
+                FROM (
+                    SELECT dni_norm
+                    FROM base
+                    WHERE dni_norm <> ''
+                    GROUP BY dni_norm
+                    HAVING COUNT(*) > 1
+                ) d
+            ),
+            cuit AS (
+                SELECT COUNT(*)::int AS grupos
+                FROM (
+                    SELECT cuit_norm
+                    FROM base
+                    WHERE cuit_norm <> ''
+                    GROUP BY cuit_norm
+                    HAVING COUNT(*) > 1
+                ) d
+            ),
+            nombre AS (
+                SELECT COUNT(*)::int AS grupos
+                FROM (
+                    SELECT upper(trim(regexp_replace(nombre, '\s+', ' ', 'g'))) AS nombre_norm
+                    FROM base
+                    WHERE COALESCE(nombre, '') <> ''
+                    GROUP BY nombre_norm
+                    HAVING COUNT(*) > 1
+                ) d
+            )
+            SELECT
+                telefono.grupos AS telefono,
+                dni.grupos AS dni,
+                cuit.grupos AS cuit,
+                nombre.grupos AS nombre_normalizado
+            FROM telefono, dni, cuit, nombre
+            """
+        )
+        return cur.fetchone()
+
+
+def _solo_digitos(value: str | None):
+    if not value:
+        return None
+    return "".join(ch for ch in str(value) if ch.isdigit()) or None
+
+
 def insert_cliente(conn, data):
     with conn.cursor() as cur:
         cur.execute(
             """
             INSERT INTO clientes (
                 nombre,
+                nombre_persona,
+                apellido,
                 telefono,
                 dni,
                 direccion,
@@ -80,11 +218,13 @@ def insert_cliente(conn, data):
                 notas,
                 activo
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, true)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, true)
             RETURNING id
             """,
             (
                 data.nombre,
+                data.nombre_persona,
+                data.apellido,
                 data.telefono,
                 data.dni,
                 data.direccion,
@@ -106,6 +246,8 @@ def update_cliente(conn, cliente_id: int, data):
             UPDATE clientes
             SET
                 nombre = %s,
+                nombre_persona = %s,
+                apellido = %s,
                 telefono = %s,
                 dni = %s,
                 direccion = %s,
@@ -120,6 +262,8 @@ def update_cliente(conn, cliente_id: int, data):
             """,
             (
                 data.nombre,
+                data.nombre_persona,
+                data.apellido,
                 data.telefono,
                 data.dni,
                 data.direccion,

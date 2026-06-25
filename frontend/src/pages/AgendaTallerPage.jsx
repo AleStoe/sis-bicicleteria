@@ -1327,11 +1327,29 @@ function normalizarTelefonoWhatsapp(value) {
     digits = digits.slice(2);
   }
 
-  if (!digits.startsWith("54")) {
-    digits = `54${digits}`;
+  if (digits.startsWith("549")) {
+    return digits;
   }
 
-  return digits;
+  if (digits.startsWith("54")) {
+    digits = digits.slice(2);
+    if (digits.startsWith("9")) {
+      digits = digits.slice(1);
+    }
+  }
+
+  if (digits.startsWith("15")) {
+    digits = digits.slice(2);
+  } else {
+    for (let idx = 2; idx < Math.min(5, digits.length - 1); idx += 1) {
+      if (digits.slice(idx, idx + 2) === "15" && digits.length > 10) {
+        digits = `${digits.slice(0, idx)}${digits.slice(idx + 2)}`;
+        break;
+      }
+    }
+  }
+
+  return `549${digits}`;
 }
 
 function buildMensajeConfirmacion(turno, config) {
@@ -1354,12 +1372,21 @@ function variablesTurno(turno, config) {
 
   return {
     ...config,
-    cliente_nombre: turno.cliente_nombre || "cliente",
+    cliente_nombre: resolverNombreVisibleCliente(turno),
     fecha_turno: formatFecha(turno.fecha),
     momento_turno: momento,
     tipo_servicio: turno.tipo_servicio || "-",
     fecha_prometida_bloque: fechaPrometidaBloque,
   };
+}
+
+function resolverNombreVisibleCliente(data = {}) {
+  const nombre =
+    data.cliente_nombre ||
+    data.nombre ||
+    [data.nombre_persona, data.apellido].filter(Boolean).join(" ");
+
+  return String(nombre || "").trim() || "cliente";
 }
 
 function formatFecha(fecha) {

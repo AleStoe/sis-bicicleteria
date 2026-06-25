@@ -5,6 +5,24 @@ from app.shared.constants import (
     ORDEN_TALLER_EVENTO_CREADA,
     ORDEN_TALLER_EVENTO_CAMBIO_ESTADO,
 )
+from app.modules.taller.service import (
+    _normalizar_telefono_whatsapp,
+    _resolver_nombre_visible_cliente,
+)
+
+
+def test_whatsapp_taller_resuelve_nombre_y_telefono_compatibles():
+    orden = {
+        "cliente_nombre": None,
+        "cliente_nombre_persona": "Martin",
+        "cliente_apellido": "Ruiz",
+    }
+
+    assert _resolver_nombre_visible_cliente(orden) == "Martin Ruiz"
+    assert _resolver_nombre_visible_cliente({}) == "cliente"
+    assert _normalizar_telefono_whatsapp("291-555-0000") == "5492915550000"
+
+
 def _to_decimal(value) -> Decimal:
     return Decimal(str(value))
 
