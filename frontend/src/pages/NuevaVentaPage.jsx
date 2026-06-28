@@ -6,6 +6,7 @@ import {
   buscarCatalogoPOSExacto,
 } from "../services/catalogoService";
 import { listarClientes } from "../services/clientesService";
+import { listarDeudas } from "../services/deudasService";
 import { crearVenta, entregarVenta } from "../services/ventasService";
 import { listarSerializadasDisponibles } from "../services/serializadasService";
 import CarritoVentaPanel from "../components/ventas/CarritoVentaPanel";
@@ -28,6 +29,10 @@ import {
   guardarVentaDraft,
   leerVentaDraftGuardado,
 } from "../services/ventaDraftStore";
+import {
+  calcularDeudaAbiertaCliente,
+  esConsumidorFinal,
+} from "../helpers/ventaPreventiveWarnings";
 import {
   pageStyle,
   topBarStyle,
@@ -126,6 +131,7 @@ export default function NuevaVentaPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const searchRef = useRef(null);
+  const consumidorFinalAvisadoRef = useRef(false);
   const { usuarioId, sucursalId, usuarioActual } = useSession();
   const [catalogo, setCatalogo] = useState([]);
   const [categorias, setCategorias] = useState([]);
@@ -154,6 +160,9 @@ export default function NuevaVentaPage() {
   const [carritoRestaurado, setCarritoRestaurado] = useState(false);
   const [mostrarRecuperacionDraft, setMostrarRecuperacionDraft] = useState(false);
   const [draftPendiente, setDraftPendiente] = useState(null);
+  const [confirmConfig, setConfirmConfig] = useState(null);
+  const [deudaCliente, setDeudaCliente] = useState({ tieneDeuda: false, saldo: 0 });
+  const [mostrarAvisoConsumidorFinal, setMostrarAvisoConsumidorFinal] = useState(false);
   const isMobile = useIsMobile();
 
   const total = useMemo(() => {
@@ -229,6 +238,39 @@ export default function NuevaVentaPage() {
   }, [clienteQuery]);
 
   useEffect(() => {
+    let cancelado = false;
+
+    async function cargarDeudaCliente() {
+      if (!clienteId || esConsumidorFinal(clienteId)) {
+        setDeudaCliente({ tieneDeuda: false, saldo: 0 });
+        return;
+      }
+
+      try {
+        const deudas = await listarDeudas({ id_cliente: clienteId, estado: "abierta" });
+        if (cancelado) return;
+
+        const resumen = calcularDeudaAbiertaCliente(deudas, clienteId);
+        setDeudaCliente(resumen);
+
+        if (resumen.tieneDeuda) {
+          setMensaje(`Este cliente tiene deuda pendiente: ${formatMoneyPOS(resumen.saldo)}.`);
+        }
+      } catch (err) {
+        if (!cancelado) {
+          setDeudaCliente({ tieneDeuda: false, saldo: 0 });
+        }
+      }
+    }
+
+    cargarDeudaCliente();
+
+    return () => {
+      cancelado = true;
+    };
+  }, [clienteId]);
+
+  useEffect(() => {
     function onKeyDown(e) {
       if (e.key === "F2") {
         e.preventDefault();
@@ -251,6 +293,22 @@ export default function NuevaVentaPage() {
     setTimeout(() => {
       setMensajePOS("");
     }, 2500);
+  }
+
+  function pedirConfirmacion(config) {
+    return new Promise((resolve) => {
+      setConfirmConfig({
+        ...config,
+        onConfirm: () => {
+          setConfirmConfig(null);
+          resolve(true);
+        },
+        onCancel: () => {
+          setConfirmConfig(null);
+          resolve(false);
+        },
+      });
+    });
   }
 
   async function cargarInicial() {
@@ -482,6 +540,11 @@ async function handleBuscarEnter(e) {
     setError("");
     setMensaje("");
 
+    if (esConsumidorFinal(clienteId, getClienteSeleccionado()) && !consumidorFinalAvisadoRef.current) {
+      consumidorFinalAvisadoRef.current = true;
+      setMostrarAvisoConsumidorFinal(true);
+    }
+
     if (producto.serializable) {
       setItems((actual) => [
         ...actual,
@@ -657,6 +720,9 @@ async function handleBuscarEnter(e) {
     setClienteQuery(consumidorFinal ? formatearClienteParaBusqueda(consumidorFinal) : "");
     setError("");
     setMensaje("");
+    consumidorFinalAvisadoRef.current = false;
+    setMostrarAvisoConsumidorFinal(false);
+    setDeudaCliente({ tieneDeuda: false, saldo: 0 });
     borrarVentaDraftGuardado({ sucursalId, usuarioId });
   }
 
@@ -712,6 +778,9 @@ async function handleBuscarEnter(e) {
     setMostrarRecuperacionDraft(false);
     setDraftPendiente(null);
     setMensaje("Venta pendiente descartada.");
+    consumidorFinalAvisadoRef.current = false;
+    setMostrarAvisoConsumidorFinal(false);
+    setDeudaCliente({ tieneDeuda: false, saldo: 0 });
   }
 
   function validarVentaAntesDeFinalizar() {
@@ -770,7 +839,9 @@ async function handleBuscarEnter(e) {
       }
 
       borrarVentaDraftGuardado({ sucursalId, usuarioId });
-      navigate(`/ventas/${resultado.venta_id}`);
+      navigate(`/ventas/${resultado.venta_id}`, {
+        state: { scrollToTop: true, ventaFinalizadaDesdeCheckout: true },
+      });
     } catch (err) {
       setError(err.message || "No se pudo finalizar la venta");
     } finally {
@@ -778,8 +849,23 @@ async function handleBuscarEnter(e) {
     }
   }
 
-  function irACobrar() {
+  async function irACobrar() {
     if (!validarVentaAntesDeFinalizar()) return;
+
+    let consumidorFinalConfirmado = false;
+    if (esConsumidorFinal(clienteId, getClienteSeleccionado())) {
+      const continuar = await pedirConfirmacion({
+        title: "Venta a Consumidor Final",
+        message:
+          "Esta venta quedará registrada a Consumidor Final.\nDespués puede ser más difícil encontrarla por historial, garantía o reclamo.\n\n¿Querés continuar?",
+        confirmText: "Continuar",
+        cancelText: "Volver y cargar cliente",
+        variant: "warning",
+      });
+
+      if (!continuar) return;
+      consumidorFinalConfirmado = true;
+    }
 
     setCarritoMobileAbierto(false);
     const ventaDraft = {
@@ -792,6 +878,9 @@ async function handleBuscarEnter(e) {
       usarCredito,
       idUsuario: usuarioId,
       idSucursal: sucursalId,
+      advertencias: {
+        consumidorFinalConfirmado,
+      },
     };
 
     guardarVentaDraft({
@@ -805,6 +894,42 @@ async function handleBuscarEnter(e) {
         ventaDraft,
       },
     });
+  }
+
+  async function handleCambiarTipoPrecio(nuevoTipoPrecio) {
+    if (nuevoTipoPrecio === tipoPrecio) return;
+
+    if (items.length > 0) {
+      const continuar = await pedirConfirmacion({
+        title: "Cambiar lista de precios",
+        message:
+          "Al cambiar la lista de precios se recalcularán los importes del carrito.\n\n¿Querés continuar?",
+        confirmText: "Cambiar lista",
+        cancelText: "Cancelar",
+        variant: "warning",
+      });
+
+      if (!continuar) return;
+    }
+
+    setTipoPrecio(nuevoTipoPrecio);
+    setItems((actual) =>
+      actual.map((item) => {
+        if (item.precio_unitario_manual || item.bonificado) return item;
+
+        const nuevoPrecio =
+          nuevoTipoPrecio === "mayorista"
+            ? Number(item.precio_mayorista || item.precio_lista || 0)
+            : Number(item.precio_minorista || item.precio_lista || 0);
+
+        return {
+          ...item,
+          precio_lista: nuevoPrecio,
+          precio_final: nuevoPrecio,
+          tipo_precio_aplicado: nuevoTipoPrecio,
+        };
+      })
+    );
   }
 
   if (loading) {
@@ -831,7 +956,7 @@ async function handleBuscarEnter(e) {
       cargandoSerializadas={cargandoSerializadas}
       onCambiarCliente={handleCambiarCliente}
       onClienteQueryChange={setClienteQuery}
-      onCambiarTipoPrecio={setTipoPrecio}
+      onCambiarTipoPrecio={handleCambiarTipoPrecio}
       onCargarSerializadas={cargarSerializadasDisponibles}
       onSeleccionarSerializada={seleccionarSerializada}
       onCambiarCantidad={cambiarCantidad}
@@ -855,6 +980,16 @@ async function handleBuscarEnter(e) {
         variant="info"
         onConfirm={recuperarVentaPendiente}
         onCancel={descartarVentaPendiente}
+      />
+      <ConfirmModal
+        open={Boolean(confirmConfig)}
+        title={confirmConfig?.title}
+        message={confirmConfig?.message}
+        confirmText={confirmConfig?.confirmText}
+        cancelText={confirmConfig?.cancelText}
+        variant={confirmConfig?.variant}
+        onConfirm={confirmConfig?.onConfirm}
+        onCancel={confirmConfig?.onCancel}
       />
 
       <header style={{ ...topBarStyle, ...(isMobile ? posMobileStyles.topBar : {}) }}>
@@ -889,6 +1024,34 @@ async function handleBuscarEnter(e) {
 
       {error && <div style={alertStyle}>Error: {error}</div>}
       {mensaje && <div style={successStyle}>{mensaje}</div>}
+      {mostrarAvisoConsumidorFinal && (
+        <div style={posMobileStyles.consumerWarning}>
+          <button
+            type="button"
+            aria-label="Cerrar aviso Consumidor Final"
+            onClick={() => setMostrarAvisoConsumidorFinal(false)}
+            style={posMobileStyles.consumerWarningClose}
+          >
+            ×
+          </button>
+          <strong>Estás cargando esta venta a Consumidor Final.</strong>
+          <span>
+            Si el cliente necesita garantía, historial o deuda asociada, conviene cargar sus datos antes de vender.
+          </span>
+          <button
+            type="button"
+            onClick={() => setMostrarAvisoConsumidorFinal(false)}
+            style={posMobileStyles.consumerWarningButton}
+          >
+            Entendido
+          </button>
+        </div>
+      )}
+      {deudaCliente.tieneDeuda && (
+        <div style={alertStyle}>
+          Atención: este cliente tiene deuda pendiente: {formatMoneyPOS(deudaCliente.saldo)}.
+        </div>
+      )}
       {mensajePOS && (
         <div style={posMessageStyle}>
           {mensajePOS}
@@ -999,6 +1162,39 @@ const posMobileStyles = {
   topRight: {
     justifyContent: "flex-start",
     width: "100%",
+  },
+  consumerWarning: {
+    position: "relative",
+    border: "1px solid #fdba74",
+    background: "#fff7ed",
+    color: "#9a3412",
+    borderRadius: 14,
+    padding: "12px 44px 12px 14px",
+    marginBottom: 10,
+    display: "grid",
+    gap: 6,
+    fontWeight: 800,
+  },
+  consumerWarningClose: {
+    position: "absolute",
+    right: 10,
+    top: 8,
+    border: "none",
+    background: "transparent",
+    color: "#9a3412",
+    fontSize: 20,
+    fontWeight: 1000,
+    cursor: "pointer",
+  },
+  consumerWarningButton: {
+    justifySelf: "start",
+    border: "1px solid #fdba74",
+    background: "white",
+    color: "#9a3412",
+    borderRadius: 10,
+    padding: "6px 10px",
+    fontWeight: 900,
+    cursor: "pointer",
   },
   layout: {
     display: "grid",

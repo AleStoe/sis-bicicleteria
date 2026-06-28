@@ -314,7 +314,7 @@ export default function ReservaDetallePage() {
           <div style={sectionHeaderStyle}>
             <div>
               <h2 style={cardTitleStyle}>Pagos / señas</h2>
-              <p style={mutedStyle}>Base aplicada y cobrado real pueden diferir por descuentos o recargos.</p>
+              <p style={mutedStyle}>La base cubierta y el dinero cobrado pueden diferir por descuentos o financiacion.</p>
             </div>
           </div>
 
@@ -413,14 +413,14 @@ function PagoCard({ pago }) {
 
       {tieneDetalleFinanciero ? (
         <div style={paymentGridStyle}>
-          <MiniMoney label="Base aplicada" value={base} />
+          <MiniMoney label="Cubre reserva" value={base} />
           <MiniMoney label="Descuento" value={descuento} />
-          <MiniMoney label="Recargo" value={recargo} />
+          <MiniMoney label="Financiacion" value={recargo} />
           <MiniMoney label="Cobrado real" value={cobrado} strong />
         </div>
       ) : (
         <div style={noteStyle}>
-          Este pago no trae detalle financiero desde el backend. Mostrando solo el total cobrado.
+          Este pago no trae detalle financiero. Mostrando solo el total cobrado.
         </div>
       )}
 

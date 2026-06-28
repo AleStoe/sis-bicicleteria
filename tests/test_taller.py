@@ -1618,6 +1618,134 @@ def test_generar_venta_desde_taller_con_servicio_taller(
     assert orden_actualizada["estado"] == "facturada"
     assert orden_actualizada["id_venta_generada"] == venta_id
 
+
+def test_anular_venta_de_taller_no_devuelve_stock_consumido_y_reabre_ot(
+    client,
+    db_conn,
+    seed_taller_basico,
+    seed_venta_basica,
+):
+    orden = _crear_orden_taller_test(
+        client,
+        seed_taller_basico,
+        problema="Repuesto ejecutado para anular factura",
+    )
+    orden_id = orden["id"]
+    variante_id = seed_venta_basica["variante_id"]
+    sucursal_id = seed_taller_basico["sucursal_id"]
+    usuario_id = seed_taller_basico["usuario_id"]
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO stock_sucursal (
+                id_sucursal,
+                id_variante,
+                stock_fisico,
+                stock_reservado,
+                stock_vendido_pendiente_entrega
+            )
+            VALUES (%s, %s, 6, 0, 0)
+            ON CONFLICT (id_sucursal, id_variante)
+            DO UPDATE SET
+                stock_fisico = 6,
+                stock_reservado = 0,
+                stock_vendido_pendiente_entrega = 0
+            """,
+            (sucursal_id, variante_id),
+        )
+    db_conn.commit()
+
+    item = client.post(
+        f"/ordenes_taller/{orden_id}/items",
+        json={
+            "tipo_item": "repuesto",
+            "id_variante": variante_id,
+            "cantidad": 1,
+            "precio_unitario": 10000,
+            "id_usuario": usuario_id,
+        },
+    )
+    assert item.status_code == 201, item.text
+    item_id = item.json()["id"]
+
+    presupuestar = client.post(
+        f"/ordenes_taller/{orden_id}/estado",
+        json={"nuevo_estado": "presupuestada", "id_usuario": usuario_id},
+    )
+    assert presupuestar.status_code == 200, presupuestar.text
+
+    aprobar = client.post(
+        f"/ordenes_taller/{orden_id}/items/{item_id}/aprobacion",
+        json={"aprobado": True, "id_usuario": usuario_id},
+    )
+    assert aprobar.status_code == 200, aprobar.text
+
+    reparar = client.post(
+        f"/ordenes_taller/{orden_id}/estado",
+        json={"nuevo_estado": "en_reparacion", "id_usuario": usuario_id},
+    )
+    assert reparar.status_code == 200, reparar.text
+
+    ejecutar = client.post(
+        f"/ordenes_taller/{orden_id}/items/{item_id}/ejecutar",
+        params={"id_usuario": usuario_id},
+    )
+    assert ejecutar.status_code == 200, ejecutar.text
+
+    terminar = client.post(
+        f"/ordenes_taller/{orden_id}/estado",
+        json={"nuevo_estado": "terminada", "id_usuario": usuario_id},
+    )
+    assert terminar.status_code == 200, terminar.text
+
+    generar = client.post(
+        f"/ordenes_taller/{orden_id}/generar-venta",
+        json={"id_usuario": usuario_id},
+    )
+    assert generar.status_code == 200, generar.text
+    venta_id = generar.json()["venta_id"]
+
+    stock_antes = db_conn.execute(
+        """
+        SELECT stock_fisico, stock_vendido_pendiente_entrega
+        FROM stock_sucursal
+        WHERE id_sucursal = %s AND id_variante = %s
+        """,
+        (sucursal_id, variante_id),
+    ).fetchone()
+    assert _to_decimal(stock_antes["stock_fisico"]) == Decimal("5")
+    assert _to_decimal(stock_antes["stock_vendido_pendiente_entrega"]) == Decimal("0")
+
+    anular = client.post(
+        f"/ventas/{venta_id}/anular",
+        json={"motivo": "Corregir factura de taller", "id_usuario": usuario_id},
+    )
+    assert anular.status_code == 200, anular.text
+    assert anular.json()["estado"] == "anulada"
+
+    stock_despues = db_conn.execute(
+        """
+        SELECT stock_fisico, stock_vendido_pendiente_entrega
+        FROM stock_sucursal
+        WHERE id_sucursal = %s AND id_variante = %s
+        """,
+        (sucursal_id, variante_id),
+    ).fetchone()
+    assert _to_decimal(stock_despues["stock_fisico"]) == Decimal("5")
+    assert _to_decimal(stock_despues["stock_vendido_pendiente_entrega"]) == Decimal("0")
+
+    orden_reabierta = client.get(f"/ordenes_taller/{orden_id}").json()
+    assert orden_reabierta["estado"] == "terminada"
+    assert orden_reabierta["id_venta_generada"] is None
+
+    regenerar = client.post(
+        f"/ordenes_taller/{orden_id}/generar-venta",
+        json={"id_usuario": usuario_id},
+    )
+    assert regenerar.status_code == 200, regenerar.text
+    assert regenerar.json()["venta_id"] != venta_id
+
 def test_ot_facturada_con_venta_pagada_total_permite_lista_para_retirar(
     client,
     db_conn,

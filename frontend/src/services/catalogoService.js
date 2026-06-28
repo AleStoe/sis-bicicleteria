@@ -48,13 +48,27 @@ export function cambiarEstadoCategoria(categoriaId, data) {
   });
 }
 
-export function listarMarcas() {
-  return apiRequest("/catalogo/marcas");
+export function listarMarcas(params = {}) {
+  return apiRequest(`/catalogo/marcas${buildQuery(params)}`);
 }
 
 export function crearMarca(data) {
   return apiRequest("/catalogo/marcas", {
     method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function editarMarca(marcaId, data) {
+  return apiRequest(`/catalogo/marcas/${marcaId}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export function cambiarEstadoMarca(marcaId, data) {
+  return apiRequest(`/catalogo/marcas/${marcaId}/estado`, {
+    method: "PATCH",
     body: JSON.stringify(data),
   });
 }

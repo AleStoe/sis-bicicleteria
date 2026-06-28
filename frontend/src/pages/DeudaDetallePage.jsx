@@ -232,7 +232,7 @@ export default function DeudaDetallePage() {
     }
 
     if (!previewPago) {
-      setError("Primero generá el preview del backend antes de confirmar el pago");
+      setError("Primero calculá el pago antes de confirmarlo");
       return;
     }
 

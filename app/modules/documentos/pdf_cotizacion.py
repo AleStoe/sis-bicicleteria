@@ -1,4 +1,3 @@
-from datetime import datetime
 from decimal import Decimal
 from io import BytesIO
 
@@ -15,7 +14,6 @@ from .pdf import (
     _text,
 )
 from app.modules.configuracion_negocio.service import obtener_configuracion_negocio
-from app.modules.configuracion_negocio.template import lineas_configurables
 
 
 def _draw_watermark(c, width, height):
@@ -58,6 +56,79 @@ def _wrap_text(value, max_chars=76):
     if current:
         lines.append(current)
     return lines or [""]
+
+
+def _dec(value) -> Decimal:
+    return Decimal(str(value or 0))
+
+
+def _label_tipo_precio(tipo_precio):
+    return "Mayorista" if tipo_precio == "mayorista" else "Minorista"
+
+
+def _format_percent(value):
+    numero = _dec(value)
+    return f"{numero.normalize():f}".rstrip("0").rstrip(".")
+
+
+def _monto_con_descuento(precio, porcentaje_descuento):
+    return _dec(precio) * (Decimal("1") - (_dec(porcentaje_descuento) / Decimal("100")))
+
+
+def _monto_con_recargo(precio, porcentaje_recargo):
+    return _dec(precio) * (Decimal("1") + (_dec(porcentaje_recargo) / Decimal("100")))
+
+
+def _build_opciones_pago(precio, opciones_pago):
+    precio = _dec(precio)
+    if precio <= 0:
+        return []
+
+    contado = (opciones_pago or {}).get("contado") or []
+    tarjeta = (opciones_pago or {}).get("tarjeta") or []
+    lineas = []
+
+    descuentos = [
+        _dec(opcion.get("porcentaje_descuento"))
+        for opcion in contado
+        if opcion.get("medio_pago") in {"efectivo", "transferencia"}
+    ]
+    if descuentos:
+        descuento_contado = max(descuentos)
+        label = "Contado / Transferencia"
+        if descuento_contado > 0:
+            label = f"{label} ({_format_percent(descuento_contado)}% OFF)"
+        lineas.append((label, _money(_monto_con_descuento(precio, descuento_contado))))
+
+    for plan in sorted(tarjeta, key=lambda p: (p.get("cuotas") or 1, p.get("label") or ""))[:4]:
+        cuotas = int(plan.get("cuotas") or 1)
+        total = _monto_con_recargo(precio, plan.get("porcentaje_recargo"))
+        if cuotas > 1:
+            cuota = total / Decimal(cuotas)
+            monto = f"{cuotas} cuotas de {_money(cuota)}"
+        else:
+            monto = _money(total)
+        lineas.append((plan.get("label") or f"Tarjeta {cuotas} cuota", monto))
+
+    return lineas
+
+
+def _draw_opciones_pago(c, *, y, width, margin_x, cotizacion, opciones_pago):
+    opciones = _build_opciones_pago(cotizacion.get("total_final"), opciones_pago)
+    if not opciones:
+        return y
+
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(margin_x, y, "Opciones de pago")
+    y -= 5 * mm
+
+    c.setFont("Helvetica", 9)
+    for label, monto in opciones[:5]:
+        c.drawString(margin_x, y, label)
+        c.drawRightString(width - margin_x, y, monto)
+        y -= 5 * mm
+
+    return y - 2 * mm
 
 
 def _table_header(c, y, width, margin_x):
@@ -109,6 +180,7 @@ def _draw_row(c, *, y, width, margin_x, item):
 def generar_cotizacion_pdf(data: dict) -> bytes:
     cotizacion = data["cotizacion"]
     items = data.get("items", [])
+    opciones_pago = data.get("opciones_pago")
     config = obtener_configuracion_negocio()
 
     buffer = BytesIO()
@@ -166,13 +238,17 @@ def generar_cotizacion_pdf(data: dict) -> bytes:
     c.drawString(margin_x, y, "Sucursal:")
     c.setFont("Helvetica", 10)
     c.drawString(margin_x + 24 * mm, y, _text(cotizacion.get("sucursal_nombre"))[:70])
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(width / 2 + 4 * mm, y, "Lista aplicada:")
+    c.setFont("Helvetica", 10)
+    c.drawString(width / 2 + 35 * mm, y, _label_tipo_precio(cotizacion.get("tipo_precio")))
     y -= 6 * mm
 
     if cotizacion.get("fecha_validez"):
         c.setFont("Helvetica-Bold", 10)
         c.drawString(margin_x, y, "Validez:")
         c.setFont("Helvetica", 10)
-        c.drawString(margin_x + 24 * mm, y, _text(cotizacion.get("fecha_validez"))[:20])
+        c.drawString(margin_x + 24 * mm, y, _fecha(cotizacion.get("fecha_validez"))[:20])
         y -= 6 * mm
 
     if cotizacion.get("problema_reportado"):
@@ -220,19 +296,32 @@ def generar_cotizacion_pdf(data: dict) -> bytes:
     c.drawRightString(width - margin_x - 34 * mm, y, "Descuento")
     c.drawRightString(width - margin_x, y, f"- {_money(cotizacion.get('descuento_total'))}")
     y -= 6 * mm
-    c.drawRightString(width - margin_x - 34 * mm, y, "Recargo")
+    c.drawRightString(width - margin_x - 34 * mm, y, "Financiacion")
     c.drawRightString(width - margin_x, y, f"+ {_money(cotizacion.get('recargo_total'))}")
     y -= 8 * mm
     c.setFont("Helvetica-Bold", 13)
     c.drawRightString(width - margin_x - 34 * mm, y, "TOTAL")
     c.drawRightString(width - margin_x, y, _money(cotizacion.get("total_final")))
 
-    y -= 15 * mm
+    y -= 11 * mm
+    y = _draw_opciones_pago(
+        c,
+        y=y,
+        width=width,
+        margin_x=margin_x,
+        cotizacion=cotizacion,
+        opciones_pago=opciones_pago,
+    )
+
+    y -= 5 * mm
     c.setLineWidth(0.35)
     c.line(margin_x, y, width - margin_x, y)
     y -= 7 * mm
     c.setFont("Helvetica", 8)
-    condiciones = lineas_configurables(config.get("condiciones_cotizacion"), config)
+    condiciones = [
+        "Esta cotización no implica una venta ni reserva de mercadería.",
+        "Los precios están sujetos a disponibilidad de stock y vigencia indicada.",
+    ]
     for condicion in condiciones:
         c.drawString(margin_x, y, f"- {condicion}")
         y -= 5 * mm

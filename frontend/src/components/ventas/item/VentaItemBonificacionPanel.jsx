@@ -4,9 +4,23 @@ export default function VentaItemBonificacionPanel({
   aplicarBonificacion,
   limpiarBonificacion,
 }) {
+  const motivosRapidos = [
+    "Garantía",
+    "Cortesía",
+    "Reposición",
+    "Error en mercadería",
+    "Atención comercial",
+    "Promoción",
+    "Diferencia de precio",
+    "Otro",
+  ];
+
   return (
     <div style={styles.panel}>
-      <div style={styles.panelTitle}>Bonificación</div>
+      <div style={styles.panelTitle}>Bonificar ítem</div>
+      <div style={styles.panelHelp}>
+        Usá esto cuando el producto queda bonificado en $0. No lo uses para descuentos por forma de pago.
+      </div>
 
       <div style={styles.inlineForm}>
         <input
@@ -16,12 +30,25 @@ export default function VentaItemBonificacionPanel({
           style={styles.inputGrow}
         />
 
+        <div style={styles.quickReasons}>
+          {motivosRapidos.map((motivo) => (
+            <button
+              key={motivo}
+              type="button"
+              onClick={() => setMotivoBonificacion(motivo)}
+              style={motivoBonificacion === motivo ? styles.reasonActive : styles.reason}
+            >
+              {motivo}
+            </button>
+          ))}
+        </div>
+
         <button
           type="button"
           onClick={aplicarBonificacion}
           style={styles.dangerBtn}
         >
-          Bonificar
+          Bonificar ítem
         </button>
 
         <button
@@ -49,6 +76,12 @@ const styles = {
     color: "#344054",
     marginBottom: 7,
   },
+  panelHelp: {
+    color: "#64748b",
+    fontSize: 12,
+    fontWeight: 700,
+    marginBottom: 8,
+  },
   inlineForm: {
     display: "flex",
     gap: 7,
@@ -62,6 +95,32 @@ const styles = {
     borderRadius: 8,
     padding: "7px 9px",
     fontSize: 13,
+  },
+  quickReasons: {
+    width: "100%",
+    display: "flex",
+    gap: 6,
+    flexWrap: "wrap",
+  },
+  reason: {
+    border: "1px solid #d0d5dd",
+    background: "white",
+    color: "#344054",
+    borderRadius: 999,
+    padding: "5px 8px",
+    fontSize: 11,
+    fontWeight: 800,
+    cursor: "pointer",
+  },
+  reasonActive: {
+    border: "1px solid #16a34a",
+    background: "#dcfce7",
+    color: "#166534",
+    borderRadius: 999,
+    padding: "5px 8px",
+    fontSize: 11,
+    fontWeight: 900,
+    cursor: "pointer",
   },
   dangerBtn: {
     border: "none",

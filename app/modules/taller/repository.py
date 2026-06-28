@@ -802,6 +802,9 @@ def get_venta_generada_por_orden_taller(conn, orden_id: int):
             SELECT id, estado, total_final, saldo_pendiente
             FROM ventas
             WHERE id_orden_taller = %s
+              AND estado <> 'anulada'
+            ORDER BY id DESC
+            LIMIT 1
             """,
             (orden_id,),
         )

@@ -4,6 +4,7 @@ from app.modules.cotizaciones.service import (
     _normalizar_telefono_whatsapp,
     _resolver_nombre_visible_cliente,
 )
+from app.modules.documentos.service import obtener_datos_cotizacion_pdf
 
 
 def test_whatsapp_cotizacion_resuelve_nombre_y_telefono_compatibles():
@@ -106,6 +107,7 @@ def test_crear_cotizacion_venta_no_mueve_stock(client, db_conn, seed_venta_basic
     data = response.json()
     assert data["numero"] == "COT-000001"
     assert data["tipo"] == "venta"
+    assert data["tipo_precio"] == "minorista"
     assert data["estado"] == "borrador"
     assert Decimal(data["subtotal"]) == Decimal("48880.00")
     assert Decimal(data["total_final"]) == Decimal("48880.00")
@@ -118,6 +120,59 @@ def test_crear_cotizacion_venta_no_mueve_stock(client, db_conn, seed_venta_basic
         seed_venta_basica["variante_id"],
     )
     assert stock_final == stock_inicial
+
+
+def test_crear_cotizacion_mayorista_usa_precio_mayorista(client, seed_venta_basica):
+    response = client.post(
+        "/cotizaciones/",
+        json={
+            "tipo": "venta",
+            "tipo_precio": "mayorista",
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_usuario_creador": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "tipo_item": "producto",
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": "1",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    data = response.json()
+    assert data["tipo_precio"] == "mayorista"
+    assert Decimal(data["items"][0]["precio_unitario"]) == Decimal("20000.00")
+    assert Decimal(data["total_final"]) == Decimal("20000.00")
+
+
+def test_cotizacion_precio_manual_conserva_snapshot(client, seed_venta_basica):
+    response = client.post(
+        "/cotizaciones/",
+        json={
+            "tipo": "venta",
+            "tipo_precio": "mayorista",
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_usuario_creador": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "tipo_item": "producto",
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": "2",
+                    "precio_unitario": "12345",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    data = response.json()
+    assert data["tipo_precio"] == "mayorista"
+    assert Decimal(data["items"][0]["precio_unitario"]) == Decimal("12345.00")
+    assert Decimal(data["total_final"]) == Decimal("24690.00")
 
 
 def test_agregar_y_quitar_item_recalcula_total(client, seed_venta_basica):
@@ -202,9 +257,66 @@ def test_cotizacion_reparacion_estados_y_whatsapp(client, db_conn, seed_venta_ba
     assert whatsapp.status_code == 200, whatsapp.text
     data = whatsapp.json()
     assert data["numero"] == crear.json()["numero"]
+    assert "Lista aplicada: Minorista" in data["mensaje"]
     assert "HACE RUIDO AL PEDALEAR" in data["mensaje"]
     assert "Total estimado" in data["mensaje"]
+    assert "Tipo: reparacion" not in data["mensaje"]
     assert data["whatsapp_url"].startswith("https://api.whatsapp.com/send?phone=549")
+
+
+def test_whatsapp_cotizacion_mayorista_muestra_lista_y_precios_formateados(client, seed_venta_basica):
+    crear = client.post(
+        "/cotizaciones/",
+        json={
+            "tipo": "venta",
+            "tipo_precio": "mayorista",
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_usuario_creador": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "tipo_item": "producto",
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": "1",
+                }
+            ],
+        },
+    )
+    assert crear.status_code == 201, crear.text
+
+    whatsapp = client.get(f"/cotizaciones/{crear.json()['id']}/mensaje-whatsapp")
+    assert whatsapp.status_code == 200, whatsapp.text
+    mensaje = whatsapp.json()["mensaje"]
+
+    assert "Lista aplicada: Mayorista" in mensaje
+    assert "Total estimado: $20.000,00" in mensaje
+    assert "Esta cotización no reserva stock" in mensaje
+    assert "Tipo:" not in mensaje
+
+
+def test_datos_pdf_cotizacion_incluyen_lista_y_opciones_pago(client, seed_venta_basica):
+    crear = client.post(
+        "/cotizaciones/",
+        json={
+            "tipo": "venta",
+            "tipo_precio": "mayorista",
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_usuario_creador": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "tipo_item": "producto",
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": "1",
+                }
+            ],
+        },
+    )
+    assert crear.status_code == 201, crear.text
+
+    data = obtener_datos_cotizacion_pdf(crear.json()["id"])
+    assert data["cotizacion"]["tipo_precio"] == "mayorista"
+    assert set(data["opciones_pago"].keys()) == {"contado", "tarjeta"}
 
 
 def test_no_permite_editar_cotizacion_aceptada(client, seed_venta_basica):

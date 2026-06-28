@@ -27,7 +27,8 @@ const VENTAS_COLUMNS = [
   { key: "id", label: "ID" },
   { key: "fecha", label: "Fecha" },
   { key: "cliente", label: "Cliente" },
-  { key: "sucursal", label: "Sucursal" },
+  { key: "items", label: "Items" },
+  { key: "origen", label: "Origen" },
   { key: "estado", label: "Estado" },
   { key: "total", label: "Total" },
   { key: "saldo", label: "Saldo" },
@@ -121,6 +122,26 @@ export default function VentasListPage() {
     );
   }, [ventasFiltradas]);
 
+  const mostrarSucursal = useMemo(() => {
+    const sucursales = new Set(
+      (ventas || [])
+        .map((venta) => Number(venta.id_sucursal))
+        .filter((id) => Number.isFinite(id) && id > 0)
+    );
+
+    return sucursales.size > 1;
+  }, [ventas]);
+
+  const columnasVentas = useMemo(() => {
+    if (!mostrarSucursal) return VENTAS_COLUMNS;
+
+    return [
+      ...VENTAS_COLUMNS.slice(0, 3),
+      { key: "sucursal", label: "Sucursal" },
+      ...VENTAS_COLUMNS.slice(3),
+    ];
+  }, [mostrarSucursal]);
+
   if (loading) {
     return <div style={{ padding: "24px" }}>Cargando ventas...</div>;
   }
@@ -192,10 +213,10 @@ export default function VentasListPage() {
         subtitle={`${ventasFiltradas.length} venta(s) encontradas`}
       >
         {isMobile ? (
-          <VentasMobileList ventas={ventasFiltradas} />
+          <VentasMobileList ventas={ventasFiltradas} mostrarSucursal={mostrarSucursal} />
         ) : (
           <Table
-            columns={VENTAS_COLUMNS}
+            columns={columnasVentas}
             data={ventasFiltradas}
             emptyMessage="No hay ventas para mostrar."
             renderRow={(venta) => (
@@ -203,7 +224,18 @@ export default function VentasListPage() {
                 <td style={tdStyle}>#{venta.id}</td>
                 <td style={tdStyle}>{formatDateTime(venta.fecha)}</td>
                 <td style={tdStyle}>{venta.cliente_nombre || "-"}</td>
-                <td style={tdStyle}>{venta.sucursal_nombre || "-"}</td>
+                {mostrarSucursal && <td style={tdStyle}>{venta.sucursal_nombre || "-"}</td>}
+                <td style={styles.itemsCell}>
+                  <strong>{formatCantidadItems(venta.cantidad_items)}</strong>
+                  {venta.tiene_serializadas ? (
+                    <span title="Venta con bicicleta serializada" aria-label="Venta con bicicleta serializada">
+                      🚲
+                    </span>
+                  ) : null}
+                </td>
+                <td style={tdStyle}>
+                  <OrigenVentaBadge origen={venta.origen_venta} />
+                </td>
                 <td style={tdStyle}>
                   <EstadoVentaBadge estado={venta.estado} />
                 </td>
@@ -221,8 +253,13 @@ export default function VentasListPage() {
                   {formatMoney(venta.saldo_pendiente)}
                 </td>
                 <td style={tdStyle}>
-                  <Link to={`/ventas/${venta.id}`} style={styles.linkAction}>
-                    Ver detalle
+                  <Link
+                    to={`/ventas/${venta.id}`}
+                    style={styles.iconAction}
+                    title="Ver detalle"
+                    aria-label={`Ver detalle de venta ${venta.id}`}
+                  >
+                    👁
                   </Link>
                 </td>
               </>
@@ -234,7 +271,7 @@ export default function VentasListPage() {
   );
 }
 
-function VentasMobileList({ ventas }) {
+function VentasMobileList({ ventas, mostrarSucursal }) {
   if (!ventas.length) {
     return <div style={styles.emptyMobile}>No hay ventas para mostrar.</div>;
   }
@@ -252,10 +289,18 @@ function VentasMobileList({ ventas }) {
                 <strong style={styles.cliente}>
                   {venta.cliente_nombre || "Sin cliente"}
                 </strong>
-                <div style={styles.mutedSmall}>{formatDateTime(venta.fecha)}</div>
+                <div style={styles.mutedSmall}>
+                  {formatDateTime(venta.fecha)}
+                  {venta.tiene_serializadas ? <span title="Venta con bicicleta serializada"> · 🚲</span> : null}
+                </div>
               </div>
 
               <EstadoVentaBadge estado={venta.estado} />
+            </div>
+
+            <div style={styles.mobileMetaRow}>
+              <OrigenVentaBadge origen={venta.origen_venta} />
+              <span style={styles.itemsPill}>Items {formatCantidadItems(venta.cantidad_items)}</span>
             </div>
 
             <div style={styles.amountGrid}>
@@ -273,7 +318,7 @@ function VentasMobileList({ ventas }) {
             </div>
 
             <div style={styles.mobileFields}>
-              <MobileField label="Sucursal" value={venta.sucursal_nombre || "-"} />
+              {mostrarSucursal && <MobileField label="Sucursal" value={venta.sucursal_nombre || "-"} />}
             </div>
 
             <Link to={`/ventas/${venta.id}`} style={styles.mobilePrimaryAction}>
@@ -284,6 +329,35 @@ function VentasMobileList({ ventas }) {
       })}
     </div>
   );
+}
+
+function formatCantidadItems(value) {
+  const numero = Number(value || 0);
+  if (!Number.isFinite(numero)) return 0;
+  return Math.trunc(numero);
+}
+
+function OrigenVentaBadge({ origen }) {
+  const config = getOrigenVentaConfig(origen);
+  return <span style={{ ...styles.originBadge, ...config.style }}>{config.label}</span>;
+}
+
+function getOrigenVentaConfig(origen) {
+  const key = String(origen || "venta").toLowerCase();
+
+  if (key === "taller") {
+    return { label: "Taller", style: { background: "#fff7ed", color: "#c2410c", borderColor: "#fed7aa" } };
+  }
+
+  if (key === "reserva") {
+    return { label: "Reserva", style: { background: "#eff6ff", color: "#1d4ed8", borderColor: "#bfdbfe" } };
+  }
+
+  if (key === "postventa") {
+    return { label: "Postventa", style: { background: "#ecfdf3", color: "#067647", borderColor: "#abefc6" } };
+  }
+
+  return { label: "Venta", style: { background: "#f8fafc", color: "#475569", borderColor: "#e2e8f0" } };
 }
 
 function MobileField({ label, value }) {
@@ -352,6 +426,35 @@ const styles = {
     textDecoration: "none",
     color: "#2563eb",
   },
+  iconAction: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    border: "1px solid #bfdbfe",
+    background: "#eff6ff",
+    color: "#1d4ed8",
+    display: "inline-grid",
+    placeItems: "center",
+    textDecoration: "none",
+    fontWeight: 1000,
+  },
+  itemsCell: {
+    ...tdStyle,
+    display: "flex",
+    alignItems: "center",
+    gap: 7,
+  },
+  originBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    border: "1px solid",
+    borderRadius: 999,
+    padding: "4px 8px",
+    fontSize: 11,
+    fontWeight: 950,
+    lineHeight: 1,
+    whiteSpace: "nowrap",
+  },
   emptyMobile: {
     padding: 16,
     borderRadius: 14,
@@ -403,6 +506,23 @@ const styles = {
     display: "grid",
     gridTemplateColumns: "1fr 1fr",
     gap: 8,
+  },
+  mobileMetaRow: {
+    display: "flex",
+    gap: 8,
+    alignItems: "center",
+    flexWrap: "wrap",
+  },
+  itemsPill: {
+    display: "inline-flex",
+    alignItems: "center",
+    border: "1px solid #e2e8f0",
+    borderRadius: 999,
+    padding: "4px 8px",
+    background: "#f8fafc",
+    color: "#475569",
+    fontSize: 11,
+    fontWeight: 950,
   },
   amountBox: {
     display: "grid",

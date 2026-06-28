@@ -4,6 +4,8 @@ from .schema import ClienteCreateInput, ClienteUpdateInput, BicicletaClienteCrea
 from .service import (
     listar_clientes_service,
     obtener_cliente_service,
+    obtener_historial_cliente_service,
+    obtener_taller_cliente_service,
     crear_cliente_service,
     actualizar_cliente_service,
     desactivar_cliente_service,
@@ -36,6 +38,16 @@ def obtener_duplicados_clientes():
 @router.get("/{cliente_id}")
 def obtener_cliente(cliente_id: int):
     return obtener_cliente_service(cliente_id)
+
+
+@router.get("/{cliente_id}/historial")
+def obtener_historial_cliente(cliente_id: int):
+    return obtener_historial_cliente_service(cliente_id)
+
+
+@router.get("/{cliente_id}/taller")
+def obtener_taller_cliente(cliente_id: int):
+    return obtener_taller_cliente_service(cliente_id)
 
 
 @router.post("/")

@@ -204,6 +204,7 @@ export default function CotizacionDetallePage() {
         <Metric label="Estado" value={labelEstado(cotizacion.estado)} tone={cotizacion.estado === "aceptada" ? "ok" : "info"} />
         <Metric label="Cliente" value={cotizacion.cliente_nombre || cotizacion.cliente_nombre_snapshot || "Mostrador"} tone="muted" />
         <Metric label="Items" value={cotizacion.items.length} tone="muted" />
+        <Metric label="Lista aplicada" value={labelTipoPrecio(cotizacion.tipo_precio)} tone="ok" />
         <Metric label="Subtotal" value={formatMoney(cotizacion.subtotal)} tone="muted" />
         <Metric label="Total" value={formatMoney(cotizacion.total_final)} tone="orange" />
       </section>
@@ -351,7 +352,7 @@ export default function CotizacionDetallePage() {
 
                 {itemSeleccionado && (
                   <div style={styles.notice}>
-                    Precio base: {formatMoney(itemSeleccionado.precio_minorista || itemSeleccionado.precio_sugerido || 0)}
+                    Precio {labelTipoPrecio(cotizacion.tipo_precio).toLowerCase()}: {formatMoney(getPrecioItemSeleccionado(itemSeleccionado, itemForm.tipo_item, cotizacion.tipo_precio))}
                   </div>
                 )}
 
@@ -376,6 +377,19 @@ function normalizarItem(item) {
     cantidad: item.cantidad || "1",
     precio_unitario: item.precio_unitario === "" ? null : item.precio_unitario,
   };
+}
+
+function getPrecioItemSeleccionado(item, tipoItem, tipoPrecio) {
+  if (tipoItem === "producto") {
+    if (tipoPrecio === "mayorista") return Number(item.precio_mayorista || 0);
+    return Number(item.precio_minorista || 0);
+  }
+
+  return Number(item.precio_sugerido || 0);
+}
+
+function labelTipoPrecio(tipoPrecio) {
+  return tipoPrecio === "mayorista" ? "Mayorista" : "Minorista";
 }
 
 function Metric({ label, value, tone }) {

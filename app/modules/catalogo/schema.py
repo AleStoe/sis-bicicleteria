@@ -210,10 +210,19 @@ class MarcaOut(BaseModel):
     nombre: str
     activa: bool
     created_at: datetime
+    productos_asociados: int = 0
 
 
 class MarcaCreate(BaseModel):
     nombre: str = Field(min_length=2, max_length=100)
+
+
+class MarcaUpdate(BaseModel):
+    nombre: str = Field(min_length=2, max_length=100)
+
+
+class MarcaEstadoUpdate(BaseModel):
+    activa: bool
 
 class ProductoUpdate(BaseModel):
     id_categoria: int | None = Field(default=None, gt=0)

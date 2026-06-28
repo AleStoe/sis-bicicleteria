@@ -127,7 +127,7 @@ export default function ReservasListPage() {
         <div style={tableHeaderStyle}>
           <div>
             <h2 style={{ margin: 0 }}>Listado</h2>
-            <p style={mutedStyle}>La base señada puede diferir del dinero cobrado si hubo descuento o recargo por medio de pago.</p>
+            <p style={mutedStyle}>La base señada puede diferir del dinero cobrado si hubo descuento o financiacion por medio de pago.</p>
           </div>
         </div>
 

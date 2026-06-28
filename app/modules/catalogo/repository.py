@@ -1,6 +1,3 @@
-from app.db.connection import get_connection
-
-
 def get_categorias(conn, incluir_inactivas: bool = False):
 
     with conn.cursor() as cur:
@@ -1034,17 +1031,49 @@ def crear_variante_catalogo(conn, data: dict):
         )
         return cur.fetchone()
 
-def get_marcas(conn):
+def get_marcas(conn, solo_activas: bool = True):
+    where_sql = "WHERE m.activa = TRUE" if solo_activas else ""
+
     with conn.cursor() as cur:
         cur.execute(
-            """
-            SELECT id, nombre, activa, created_at
-            FROM marcas
-            WHERE activa = TRUE
-            ORDER BY nombre
-            """
+            f"""
+            SELECT
+                m.id,
+                m.nombre,
+                m.activa,
+                m.created_at,
+                COUNT(p.id)::int AS productos_asociados
+            FROM marcas m
+            LEFT JOIN productos p
+                ON p.id_marca = m.id
+            {where_sql}
+            GROUP BY m.id, m.nombre, m.activa, m.created_at
+            ORDER BY m.nombre
+            """,
         )
         return cur.fetchall()
+
+
+def get_marca_by_nombre(conn, nombre: str, exclude_id: int | None = None):
+    params = [nombre]
+    exclude_sql = ""
+
+    if exclude_id is not None:
+        exclude_sql = "AND id <> %s"
+        params.append(exclude_id)
+
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT id, nombre, activa, created_at
+            FROM marcas
+            WHERE UPPER(TRIM(nombre)) = UPPER(TRIM(%s))
+            {exclude_sql}
+            LIMIT 1
+            """,
+            params,
+        )
+        return cur.fetchone()
 
 
 def crear_marca_catalogo(conn, data: dict):
@@ -1056,6 +1085,34 @@ def crear_marca_catalogo(conn, data: dict):
             RETURNING id, nombre, activa, created_at
             """,
             (data["nombre"],),
+        )
+        return cur.fetchone()
+
+
+def update_marca_catalogo(conn, marca_id: int, nombre: str):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE marcas
+            SET nombre = %s
+            WHERE id = %s
+            RETURNING id, nombre, activa, created_at
+            """,
+            (nombre, marca_id),
+        )
+        return cur.fetchone()
+
+
+def update_estado_marca_catalogo(conn, marca_id: int, activa: bool):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE marcas
+            SET activa = %s
+            WHERE id = %s
+            RETURNING id, nombre, activa, created_at
+            """,
+            (activa, marca_id),
         )
         return cur.fetchone()
 

@@ -271,9 +271,9 @@ def _draw_totales(c, venta, pagos, y, width, margin_x):
     y -= 7 * mm
 
     rows = [
-        ("Base comercial aplicada", _money(total_base)),
+        ("Cubre ventas", _money(total_base)),
         ("Total descuentos", f"- {_money(total_descuento)}"),
-        ("Total recargos", f"+ {_money(total_recargo)}"),
+        ("Total financiacion", f"+ {_money(total_recargo)}"),
         ("Total cobrado", _money(total_cobrado)),
         ("Total venta", _money(venta.get("total_final"))),
         ("Saldo restante", _money(venta.get("saldo_pendiente"))),

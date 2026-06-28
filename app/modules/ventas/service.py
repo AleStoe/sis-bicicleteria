@@ -1,5 +1,4 @@
 from decimal import Decimal
-from psycopg.rows import dict_row
 from datetime import date, timedelta
 from app.modules.pagos import service as pagos_service
 from app.shared.money import to_decimal
@@ -27,7 +26,6 @@ from app.modules.serializadas.repository import (
     update_bicicleta_serializada_estado,
     insert_bicicleta_cliente,
 )
-from app.modules.creditos.service import crear_credito_por_devolucion_venta
 from app.modules.deudas import service as deudas_service
 from app.modules.deudas import repository as deudas_repository
 from app.modules.creditos import repository as creditos_repository
@@ -46,6 +44,7 @@ from .repository import (
     update_venta_estado,
     update_venta_saldo_y_estado,
     insert_venta_anulacion,
+    reset_orden_taller_por_venta_anulada,
     insert_venta_devolucion,
     get_venta_devolucion_by_venta_item_id,
     insert_venta_item_devolucion,
@@ -67,8 +66,6 @@ from app.shared.constants import (
     MODO_DEVOLUCION_REVERSION_PAGO_EXTERNO,
     PAGO_ESTADO_DEVUELTO_EXTERNO
 )
-from app.modules.deudas import service as deudas_service
-
 def _consolidar_items(items):
     consolidados = {}
 
@@ -1332,6 +1329,28 @@ def anular_venta(venta_id: int, data):
                     detail=f"La venta {venta_id} no tiene items para anular",
                 )
 
+            pagos_confirmados = get_pagos_confirmados_por_venta(conn, venta_id)
+
+            medios_no_credito_automatico = {"tarjeta", "mercadopago"}
+            pagos_requieren_reversion = [
+                pago for pago in pagos_confirmados
+                if pago["medio_pago"] in medios_no_credito_automatico
+            ]
+
+            if pagos_requieren_reversion:
+                medios = ", ".join(
+                    sorted({pago["medio_pago"] for pago in pagos_requieren_reversion})
+                )
+
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "La venta tiene pagos confirmados por "
+                        f"{medios}. Primero revertí/cancelá esos pagos antes de anular, "
+                        "para evitar generar crédito comercial incorrecto."
+                    ),
+                )
+
             for item in items:
                 if item.get("id_bicicleta_serializada") is not None:
                     bicicleta = _validar_y_bloquear_bicicleta_serializada_para_anulacion(
@@ -1370,41 +1389,32 @@ def anular_venta(venta_id: int, data):
             for item in items_stock:
                 if item.get("id_bicicleta_serializada") is not None:
                     continue
-                stock_service.devolver_stock_a_disponible_desde_pendiente(
-                    conn,
-                    {
-                        "id_sucursal": venta["id_sucursal"],
-                        "id_variante": item["id_variante"],
-                        "cantidad": to_decimal(item["cantidad"]),
-                        "id_usuario": data.id_usuario,
-                        "origen_tipo": "venta",
-                        "origen_id": venta_id,
-                        "id_bicicleta_serializada": item.get("id_bicicleta_serializada"),
-                        "nota": f"Liberación por anulación de venta #{venta_id}",
-                    },
-                )
-
-            pagos_confirmados = get_pagos_confirmados_por_venta(conn, venta_id)
-
-            medios_no_credito_automatico = {"tarjeta", "mercadopago"}
-            pagos_requieren_reversion = [
-                pago for pago in pagos_confirmados
-                if pago["medio_pago"] in medios_no_credito_automatico
-            ]
-
-            if pagos_requieren_reversion:
-                medios = ", ".join(
-                    sorted({pago["medio_pago"] for pago in pagos_requieren_reversion})
-                )
-
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        "La venta tiene pagos confirmados por "
-                        f"{medios}. Primero revertí/cancelá esos pagos antes de anular, "
-                        "para evitar generar crédito comercial incorrecto."
-                    ),
-                )
+                # El repuesto de una OT ya salió del físico cuando fue ejecutado.
+                # Su venta conserva trazabilidad, pero nunca ocupó stock pendiente.
+                if item.get("id_orden_taller_item") is not None:
+                    continue
+                try:
+                    stock_service.devolver_stock_a_disponible_desde_pendiente(
+                        conn,
+                        {
+                            "id_sucursal": venta["id_sucursal"],
+                            "id_variante": item["id_variante"],
+                            "cantidad": to_decimal(item["cantidad"]),
+                            "id_usuario": data.id_usuario,
+                            "origen_tipo": "venta",
+                            "origen_id": venta_id,
+                            "id_bicicleta_serializada": item.get("id_bicicleta_serializada"),
+                            "nota": f"Liberación por anulación de venta #{venta_id}",
+                        },
+                    )
+                except ValueError as exc:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            "No se pudo anular porque el stock pendiente de la venta "
+                            f"no coincide con sus ítems: {exc}"
+                        ),
+                    ) from exc
 
             total_pagado = get_total_pagado_confirmado_por_venta(conn, venta_id)
 
@@ -1422,6 +1432,10 @@ def anular_venta(venta_id: int, data):
                 venta_id,
                 Decimal("0"),
                 VENTA_ESTADO_ANULADA,
+            )
+            orden_taller_reabierta = reset_orden_taller_por_venta_anulada(
+                conn,
+                venta_id,
             )
 
             auditoria_service.registrar_evento(
@@ -1446,6 +1460,11 @@ def anular_venta(venta_id: int, data):
                     "credito_generado": total_pagado > 0,
                     # si lo tenés en scope:
                     "credito_monto": str(total_pagado) if total_pagado > 0 else "0.00",
+                    "orden_taller_reabierta_id": (
+                        orden_taller_reabierta["id"]
+                        if orden_taller_reabierta
+                        else None
+                    ),
                 },
                 origen_tipo="venta",
                 origen_id=venta_id,

@@ -197,6 +197,7 @@ def obtener_datos_cotizacion_pdf(cotizacion_id: int):
         return {
             "cotizacion": cotizacion,
             "items": items,
+            "opciones_pago": _opciones_pago_etiquetas(conn),
         }
 
     finally:

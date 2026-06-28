@@ -1,12 +1,22 @@
+import { useEffect, useState } from "react";
 import CheckoutResumenPago from "./checkout/CheckoutResumenPago";
 import CheckoutAgregarPago from "./checkout/CheckoutAgregarPago";
 import CheckoutPagosList from "./checkout/CheckoutPagosList";
 import CheckoutTotalesSimulacion from "./checkout/CheckoutTotalesSimulacion";
 import useCheckoutVenta from "../../hooks/useCheckoutVenta";
 import { formatMoney } from "../../utils/formatters";
+import { ConfirmModal } from "../ui/ConfirmModal";
+import {
+  describirItems,
+  esConsumidorFinal,
+  getItemsBonificados,
+  getItemsConPrecioManual,
+} from "../../helpers/ventaPreventiveWarnings";
 
 export default function CheckoutVentaPanel({
    clienteId,
+  cliente = null,
+  deudaCliente = null,
   total,
   tipoPrecio,
   items,
@@ -17,6 +27,7 @@ export default function CheckoutVentaPanel({
   initialCheckoutDraft,
   onCheckoutDraftChange,
   mostrarPagosCargados = true,
+  consumidorFinalConfirmado = false,
   
 }) {
   const checkout = useCheckoutVenta({
@@ -34,16 +45,177 @@ export default function CheckoutVentaPanel({
   const entregaConSaldo = checkout.entregarAhora && !ventaSaldada;
   const montoCobroSugerido =
     checkout.previewSaldar?.monto_sugerido_para_saldar ?? null;
+  const [confirmConfig, setConfirmConfig] = useState(null);
+  const [advertenciasConfirmadas, setAdvertenciasConfirmadas] = useState({});
+  const [mensajeBloqueo, setMensajeBloqueo] = useState("");
+  const [recordatorioEntregaMostrado, setRecordatorioEntregaMostrado] = useState(false);
 
-  function finalizar() {
+  function pedirConfirmacion(config) {
+    return new Promise((resolve) => {
+      setConfirmConfig({
+        ...config,
+        onConfirm: () => {
+          setConfirmConfig(null);
+          resolve(true);
+        },
+        onCancel: () => {
+          setConfirmConfig(null);
+          resolve(false);
+        },
+      });
+    });
+  }
+
+  async function confirmarAdvertencia(key, config) {
+    if (advertenciasConfirmadas[key]) return true;
+
+    const confirmado = await pedirConfirmacion(config);
+    if (confirmado) {
+      setAdvertenciasConfirmadas((actual) => ({ ...actual, [key]: true }));
+    }
+
+    return confirmado;
+  }
+
+  async function revisarAdvertenciasAntesDeFinalizar() {
+    setMensajeBloqueo("");
+
+    if (!hayPagos && !checkout.entregarAhora) {
+      setMensajeBloqueo(
+        "Todavía no registraste ningún pago para esta venta. Registrá un pago o generá una deuda antes de finalizar."
+      );
+      return false;
+    }
+
+    if (!consumidorFinalConfirmado && esConsumidorFinal(clienteId, cliente)) {
+      const continuar = await confirmarAdvertencia("consumidor-final", {
+        title: "Venta a Consumidor Final",
+        message:
+          "Esta venta quedará registrada a Consumidor Final.\nDespués puede ser más difícil encontrarla por historial, garantía o reclamo.\n\n¿Querés continuar?",
+        confirmText: "Continuar",
+        cancelText: "Volver",
+        variant: "warning",
+      });
+
+      if (!continuar) return false;
+    }
+
+    const itemsManual = getItemsConPrecioManual(items);
+    if (itemsManual.length > 0) {
+      const detalle = describirItems(itemsManual);
+      const continuar = await confirmarAdvertencia("precio-manual", {
+        title: "Precios modificados",
+        message: `Esta venta tiene precios modificados manualmente.\nRevisá los importes antes de continuar.${detalle ? `\n\nÍtems: ${detalle}` : ""}`,
+        confirmText: "Continuar",
+        cancelText: "Revisar carrito",
+        variant: "warning",
+      });
+
+      if (!continuar) return false;
+    }
+
+    const itemsBonificados = getItemsBonificados(items);
+    if (itemsBonificados.length > 0) {
+      const detalle = describirItems(itemsBonificados);
+      const continuar = await confirmarAdvertencia("bonificados", {
+        title: "Ítems bonificados",
+        message: `Esta venta tiene ítems bonificados.\nRevisá que el motivo de bonificación sea correcto.${detalle ? `\n\nÍtems: ${detalle}` : ""}`,
+        confirmText: "Continuar",
+        cancelText: "Revisar carrito",
+        variant: "warning",
+      });
+
+      if (!continuar) return false;
+    }
+
+    if (hayPagos && !checkout.entregarAhora) {
+      const continuar = await confirmarAdvertencia("cobrada-sin-entrega", {
+        title: "Venta pendiente de entrega",
+        message:
+          "Esta venta quedará cobrada pero pendiente de entrega.\nRecordá marcarla como entregada cuando el cliente retire la mercadería.",
+        confirmText: "Continuar",
+        cancelText: "Revisar",
+        variant: "info",
+      });
+
+      if (!continuar) return false;
+    }
+
+    return true;
+  }
+
+  async function finalizar() {
+    const puedeContinuar = await revisarAdvertenciasAntesDeFinalizar();
+    if (!puedeContinuar) return;
+
     const payloadCheckout = checkout.finalizarCheckout();
     if (!payloadCheckout) return;
 
     onFinalizar?.(payloadCheckout);
   }
 
+  function handleAgregarPago() {
+    setMensajeBloqueo("");
+    checkout.agregarPago();
+  }
+
+  useEffect(() => {
+    if (!hayPagos || !ventaSaldada || checkout.entregarAhora || recordatorioEntregaMostrado || confirmConfig) {
+      return;
+    }
+
+    setRecordatorioEntregaMostrado(true);
+    setMensajeBloqueo("");
+    setConfirmConfig({
+      title: "Venta cobrada correctamente",
+      message: "¿El cliente retira la mercadería ahora?",
+      confirmText: "Entregar ahora",
+      cancelText: "Más tarde",
+      variant: "info",
+      onConfirm: () => {
+        setConfirmConfig(null);
+        checkout.setEntregarAhora(true);
+        window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+      },
+      onCancel: () => {
+        setConfirmConfig(null);
+        window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+      },
+    });
+  }, [
+    checkout.entregarAhora,
+    checkout.setEntregarAhora,
+    confirmConfig,
+    hayPagos,
+    recordatorioEntregaMostrado,
+    ventaSaldada,
+  ]);
+
   return (
     <section style={styles.card}>
+      <ConfirmModal
+        open={Boolean(confirmConfig)}
+        title={confirmConfig?.title}
+        message={confirmConfig?.message}
+        confirmText={confirmConfig?.confirmText}
+        cancelText={confirmConfig?.cancelText}
+        variant={confirmConfig?.variant}
+        onConfirm={confirmConfig?.onConfirm}
+        onCancel={confirmConfig?.onCancel}
+      />
+
+      {deudaCliente?.tieneDeuda && (
+        <div style={styles.warningNotice}>
+          Este cliente tiene deuda pendiente: {formatMoney(deudaCliente.saldo)}.
+        </div>
+      )}
+
+      {mensajeBloqueo && (
+        <div style={styles.blockNotice}>
+          {mensajeBloqueo}
+        </div>
+      )}
+
       <CheckoutResumenPago
         total={checkout.totalCalculado}
         totalOriginal={total}
@@ -68,7 +240,7 @@ export default function CheckoutVentaPanel({
           setMedioPago={checkout.setMedioPago}
           monto={checkout.monto}
           setMonto={checkout.setMonto}
-          agregarPago={checkout.agregarPago}
+          agregarPago={handleAgregarPago}
           sugerirMontoParaSaldar={checkout.sugerirMontoParaSaldar}
           previewSaldar={checkout.previewSaldar}
           previewMontoActual={checkout.previewMontoActual}
@@ -172,6 +344,16 @@ const styles = {
     padding: 14,
     marginTop: 12,
     background: "#ffffff",
+  },
+  warningNotice: {
+    border: "1px solid #fdba74",
+    background: "#fff7ed",
+    color: "#9a3412",
+    borderRadius: 14,
+    padding: "10px 12px",
+    marginBottom: 12,
+    fontWeight: 900,
+    fontSize: 13,
   },
   deliveryBox: {
     border: "1px solid #e2e8f0",

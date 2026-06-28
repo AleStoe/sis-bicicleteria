@@ -1,6 +1,12 @@
 import { OperationalStatusBadge, useBreakpoint } from "../../ui";
 
-export default function VentaPagosPanel({ pagos = [], formatMoney }) {
+export default function VentaPagosPanel({
+  pagos = [],
+  formatMoney,
+  procesando = false,
+  canRevertirPago = () => false,
+  onRevertirPago,
+}) {
   const { isMobile } = useBreakpoint();
 
   if (!pagos.length) return null;
@@ -43,7 +49,7 @@ export default function VentaPagosPanel({ pagos = [], formatMoney }) {
                     </>
                   )}
 
-                  <Row label="Base aplicada" value={formatMoney(detalleFinanciero.base)} isMobile={isMobile} />
+                  <Row label="Cubre de la venta" value={formatMoney(detalleFinanciero.base)} isMobile={isMobile} />
 
                   {detalleFinanciero.descuento > 0 && (
                     <Row
@@ -56,7 +62,7 @@ export default function VentaPagosPanel({ pagos = [], formatMoney }) {
 
                   {detalleFinanciero.recargo > 0 && (
                     <Row
-                      label="Recargo aplicado"
+                      label="Financiacion incluida"
                       value={`+ ${formatMoney(detalleFinanciero.recargo)}`}
                       tone="warning"
                       isMobile={isMobile}
@@ -73,6 +79,19 @@ export default function VentaPagosPanel({ pagos = [], formatMoney }) {
               )}
 
               {pago.nota && <div style={styles.note}>Nota: {pago.nota}</div>}
+
+              {canRevertirPago(pago) && (
+                <div style={styles.actionsRow}>
+                  <button
+                    type="button"
+                    disabled={procesando}
+                    onClick={() => onRevertirPago?.(pago)}
+                    style={styles.dangerButton}
+                  >
+                    Revertir pago
+                  </button>
+                </div>
+              )}
             </div>
           );
         })}
@@ -236,5 +255,19 @@ const styles = {
   note: {
     fontSize: 12,
     color: "#667085",
+  },
+  actionsRow: {
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: 8,
+  },
+  dangerButton: {
+    border: "1px solid #fecaca",
+    background: "#fff1f2",
+    color: "#b91c1c",
+    borderRadius: 10,
+    padding: "8px 12px",
+    fontWeight: 900,
+    cursor: "pointer",
   },
 };

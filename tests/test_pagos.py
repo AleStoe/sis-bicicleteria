@@ -627,6 +627,8 @@ def test_lista_pagos_de_una_venta_con_dos_medios(client, seed_venta_basica):
     assert len(data) == 2
     assert data[0]["origen_id"] == venta_id
     assert data[1]["origen_id"] == venta_id
+    assert data[0]["cliente_nombre"] == "Cliente Test"
+    assert data[0]["cliente_telefono"] == "2910000000"
 
     medios = [p["medio_pago"] for p in data]
     assert medios == ["efectivo", "transferencia"]
@@ -663,6 +665,7 @@ def test_lista_pagos_filtrados_por_cliente(client, seed_venta_basica):
     assert len(data) >= 1
     assert all(pago["id_cliente"] == cliente_id for pago in data)
     assert any(pago["origen_id"] == venta_id for pago in data)
+    assert any(pago["cliente_nombre"] == "Cliente Test" for pago in data)
 
     response_otro_cliente = client.get("/pagos/?id_cliente=999999")
     assert response_otro_cliente.status_code == 200

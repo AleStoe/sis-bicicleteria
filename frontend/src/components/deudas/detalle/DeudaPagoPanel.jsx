@@ -24,12 +24,12 @@ export default function DeudaPagoPanel({
   const puedePrevisualizar = deudaAbierta && !guardando && !simulando && montoCliente > 0;
   const puedeRegistrar = deudaAbierta && !guardando && !simulando && previewPago;
   const labelMonto =
-    pagoForm.medio_pago === "tarjeta" ? "Cliente paga / financia" : "Cliente paga";
+    pagoForm.medio_pago === "tarjeta" ? "Monto final en tarjeta" : "Cliente paga";
 
   return (
     <Card
       title="Registrar pago"
-      subtitle="Cargá lo que paga el cliente. El backend calcula la base que baja la deuda."
+      subtitle="Cargá lo que paga el cliente. El sistema calcula cuánto cubre de la deuda."
     >
       {!deudaAbierta ? (
         <div style={noteStyle}>
@@ -140,8 +140,7 @@ export default function DeudaPagoPanel({
           </Button>
 
           <div style={noteStyle}>
-            La base cubierta, descuentos y recargos salen del backend. Al confirmar
-            se registra la base calculada, no el flujo legacy.
+            Al confirmar, se registra el cobro con el descuento o la financiacion que corresponda.
           </div>
         </form>
       )}
@@ -156,13 +155,13 @@ function PreviewPagoDeuda({ preview }) {
   return (
     <div style={previewStyle}>
       <div style={previewHeaderStyle}>
-        <strong>Preview backend</strong>
+        <strong>Detalle del pago</strong>
         <span style={badgeStyle}>{preview.estado_estimado}</span>
       </div>
 
       <PreviewRow label="Saldo actual" value={formatMoney(preview.saldo_actual)} />
       <PreviewRow
-        label="Base que baja deuda"
+        label="Cubre de la deuda"
         value={formatMoney(preview.monto_base_aplicado)}
       />
 
@@ -175,13 +174,13 @@ function PreviewPagoDeuda({ preview }) {
 
       {recargo > 0 && (
         <PreviewRow
-          label="Recargo aplicado"
+          label="Financiacion incluida"
           value={`+ ${formatMoney(preview.recargo_aplicado)}`}
         />
       )}
 
       <PreviewRow
-        label={preview.medio_pago === "tarjeta" ? "Cliente financia" : "Cliente paga"}
+        label={preview.medio_pago === "tarjeta" ? "Total en tarjeta" : "Cliente paga"}
         value={formatMoney(preview.monto_total_cobrado)}
         strong
       />
@@ -195,7 +194,7 @@ function PreviewPagoDeuda({ preview }) {
         <div style={tarjetaInfoStyle}>
           {preview.cuotas ? `${preview.cuotas} cuota(s)` : "Tarjeta"}
           {preview.porcentaje_recargo_aplicado
-            ? ` · Recargo ${preview.porcentaje_recargo_aplicado}%`
+            ? ` · Financiacion ${preview.porcentaje_recargo_aplicado}%`
             : ""}
         </div>
       )}

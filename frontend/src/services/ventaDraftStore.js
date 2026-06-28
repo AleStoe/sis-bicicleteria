@@ -20,6 +20,9 @@ export function normalizarVentaDraft(draft) {
       typeof draft.usarCredito === "boolean" ? draft.usarCredito : true,
     idUsuario: draft.idUsuario ?? null,
     idSucursal: draft.idSucursal ?? null,
+    advertencias: {
+      consumidorFinalConfirmado: Boolean(draft.advertencias?.consumidorFinalConfirmado),
+    },
     checkout: {
       medioPago: draft.checkout?.medioPago || "efectivo",
       planTarjetaId: draft.checkout?.planTarjetaId

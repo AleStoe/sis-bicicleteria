@@ -23,6 +23,8 @@ from .repository import (
     activar_cliente,
     get_resumen_ventas_cliente,
     get_ventas_cliente,
+    get_historial_cliente_enriquecido,
+    get_ordenes_taller_cliente,
     get_bicicletas_cliente,
     insert_bicicleta_cliente,
     get_bicicleta_cliente_detalle,
@@ -203,6 +205,24 @@ def obtener_cliente_service(cliente_id: int):
             "resumen_ventas": resumen,
             "ventas_recientes": ventas,
         }
+    finally:
+        conn.close()
+
+
+def obtener_historial_cliente_service(cliente_id: int):
+    conn = get_connection()
+    try:
+        _obtener_cliente_o_404(conn, cliente_id)
+        return get_historial_cliente_enriquecido(conn, cliente_id)
+    finally:
+        conn.close()
+
+
+def obtener_taller_cliente_service(cliente_id: int):
+    conn = get_connection()
+    try:
+        _obtener_cliente_o_404(conn, cliente_id)
+        return get_ordenes_taller_cliente(conn, cliente_id)
     finally:
         conn.close()
 

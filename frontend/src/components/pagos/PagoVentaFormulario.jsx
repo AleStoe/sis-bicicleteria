@@ -24,7 +24,7 @@ export default function PagoVentaFormulario({
         <div>
           <div style={styles.sectionTitle}>Nuevo tramo de pago</div>
           <div style={styles.sectionHint}>
-            Cargá cuánto paga o financia el cliente. El sistema calcula la base que cubre.
+            Cargá cuánto paga el cliente. El sistema calcula cuánto cubre de la venta.
           </div>
         </div>
       </div>
@@ -99,7 +99,7 @@ export default function PagoVentaFormulario({
       <div style={styles.mainRow}>
         <label style={styles.field}>
           <span style={styles.label}>
-            {form.medio_pago === "tarjeta" ? "Cliente paga / financia" : "Cliente paga"}
+            {form.medio_pago === "tarjeta" ? "Monto final en tarjeta" : "Cliente paga"}
           </span>
 
           <input
@@ -122,7 +122,7 @@ export default function PagoVentaFormulario({
             placeholder="Ej: 20000"
           />
           <small style={styles.inputHelp}>
-            La base cubierta se calcula automáticamente y se muestra en el detalle.
+            El detalle muestra cuánto cubre de la venta.
           </small>
         </label>
 

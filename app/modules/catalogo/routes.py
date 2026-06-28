@@ -21,6 +21,8 @@ from .service import (
     crear_variante,    
     listar_marcas,
     crear_marca,
+    editar_marca,
+    cambiar_estado_marca,
     obtener_producto,
     editar_producto,
     cambiar_estado_producto,
@@ -52,6 +54,8 @@ from .schema import (
     VarianteCreateOut,    
     MarcaOut,
     MarcaCreate,
+    MarcaUpdate,
+    MarcaEstadoUpdate,
     ProductoUpdate,
     ProductoEstadoUpdate,
     VarianteUpdate,
@@ -186,13 +190,23 @@ def crear_variante_route(data: VarianteCreate):
     return crear_variante(data)
 
 @router.get("/marcas", response_model=list[MarcaOut])
-def marcas():
-    return listar_marcas()
+def marcas(solo_activas: bool = True):
+    return listar_marcas(solo_activas=solo_activas)
 
 
 @router.post("/marcas", response_model=MarcaOut)
 def crear_marca_route(data: MarcaCreate):
     return crear_marca(data)
+
+
+@router.put("/marcas/{marca_id}", response_model=MarcaOut)
+def editar_marca_route(marca_id: int, data: MarcaUpdate):
+    return editar_marca(marca_id, data)
+
+
+@router.patch("/marcas/{marca_id}/estado", response_model=MarcaOut)
+def cambiar_estado_marca_route(marca_id: int, data: MarcaEstadoUpdate):
+    return cambiar_estado_marca(marca_id, data)
 
 @router.get("/productos/{producto_id}", response_model=ProductoCreateOut)
 def producto_detalle_route(producto_id: int):

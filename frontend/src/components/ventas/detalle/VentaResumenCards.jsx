@@ -3,6 +3,7 @@ import { MetricCard, useBreakpoint } from "../../ui";
 
 export default function VentaResumenCards({
   venta,
+  situacionFinanciera,
   totalFinal,
   totalPagadoReal,
   cubiertoNoPago,
@@ -10,6 +11,9 @@ export default function VentaResumenCards({
   formatMoney,
 }) {
   const { isMobile } = useBreakpoint();
+  const resumen = situacionFinanciera?.resumen || {};
+  const pagosDeudaCobrado = Number(resumen.pagos_deuda_cobrado || 0);
+  const tieneCobroPorDeuda = pagosDeudaCobrado > 0;
 
   return (
     <section
@@ -22,7 +26,7 @@ export default function VentaResumenCards({
       <MetricCard label="Total venta" value={formatMoney(totalFinal)} />
 
       <MetricCard
-        label="Cobrado real"
+        label={tieneCobroPorDeuda ? "Cobrado real total" : "Cobrado real"}
         value={formatMoney(totalPagadoReal)}
         tone="success"
       />

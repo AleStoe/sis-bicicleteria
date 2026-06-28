@@ -194,6 +194,79 @@ def test_listar_marcas(client):
 
     assert isinstance(data, list)
     assert any(m["nombre"] == "MARCA TEST LISTAR" for m in data)
+    assert "productos_asociados" in data[0]
+
+
+def test_editar_marca_normaliza_y_evita_duplicados(client):
+    marca = _crear_marca(client, "Marca Editar Test")
+    _crear_marca(client, "Marca Duplicada Test")
+
+    response = client.put(
+        f"/catalogo/marcas/{marca['id']}",
+        json={"nombre": "  marca editada test  "},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["nombre"] == "MARCA EDITADA TEST"
+
+    duplicado = client.put(
+        f"/catalogo/marcas/{marca['id']}",
+        json={"nombre": "marca duplicada test"},
+    )
+
+    assert duplicado.status_code == 400
+
+
+def test_desactivar_y_reactivar_marca(client):
+    marca = _crear_marca(client, "Marca Estado Test")
+
+    desactivar = client.patch(
+        f"/catalogo/marcas/{marca['id']}/estado",
+        json={"activa": False},
+    )
+
+    assert desactivar.status_code == 200, desactivar.text
+    assert desactivar.json()["activa"] is False
+
+    activas = client.get("/catalogo/marcas")
+    assert activas.status_code == 200, activas.text
+    assert all(m["id"] != marca["id"] for m in activas.json())
+
+    todas = client.get("/catalogo/marcas?solo_activas=false")
+    assert todas.status_code == 200, todas.text
+    assert any(m["id"] == marca["id"] and m["activa"] is False for m in todas.json())
+
+    reactivar = client.patch(
+        f"/catalogo/marcas/{marca['id']}/estado",
+        json={"activa": True},
+    )
+
+    assert reactivar.status_code == 200, reactivar.text
+    assert reactivar.json()["activa"] is True
+
+
+def test_marca_inactiva_no_aparece_para_altas_pero_producto_existente_conserva_marca(client):
+    categoria = _get_first_categoria(client)
+    marca = _crear_marca(client, "Marca Producto Inactiva Test")
+    producto = _crear_producto(
+        client,
+        categoria_id=categoria["id"],
+        marca_id=marca["id"],
+        nombre="Producto Marca Inactiva Test",
+    )
+
+    response = client.patch(
+        f"/catalogo/marcas/{marca['id']}/estado",
+        json={"activa": False},
+    )
+    assert response.status_code == 200, response.text
+
+    marcas_activas = client.get("/catalogo/marcas").json()
+    assert all(m["id"] != marca["id"] for m in marcas_activas)
+
+    detalle = client.get(f"/catalogo/productos/{producto['id']}")
+    assert detalle.status_code == 200, detalle.text
+    assert detalle.json()["id_marca"] == marca["id"]
 
 
 def test_crear_producto_basico(client):

@@ -8,6 +8,7 @@ __pycache__/
 .env
 .env.*
 !.env.example
+.env.test
 venv/
 .venv/
 
@@ -15,9 +16,12 @@ venv/
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+frontend/.env*
+!frontend/.env.example
 
 # Uploads / generados locales
 uploads/
+backups/
 *.zip
 *.bak
 *.tmp

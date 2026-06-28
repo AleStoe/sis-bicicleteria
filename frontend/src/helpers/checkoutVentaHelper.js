@@ -85,7 +85,7 @@ export function getAjustePago(pago) {
   const descuento = Number(pago?.descuento_aplicado || 0);
 
   if (recargo > 0) {
-    return { label: "Recargo", value: recargo, tone: "warning" };
+    return { label: "Financiacion", value: recargo, tone: "warning" };
   }
 
   if (descuento > 0) {

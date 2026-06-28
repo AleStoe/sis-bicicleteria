@@ -2,17 +2,38 @@ import os
 
 import psycopg
 import pytest
+from dotenv import load_dotenv
 from fastapi.testclient import TestClient
 from psycopg.rows import dict_row
 
 
-# Forzar .env.test antes de importar la app/config
-os.environ["DB_HOST"] = "localhost"
-os.environ["DB_PORT"] = "5432"
-os.environ["DB_NAME"] = "bicicleteria_test"
-os.environ["DB_USER"] = "postgres"
-os.environ["DB_PASSWORD"] = "1460"
-os.environ["APP_AUTH_DISABLED"] = "true"
+# Cargar configuración de pruebas sin reutilizar accidentalmente la base operativa.
+TEST_ENV_PATH = os.path.join(os.path.dirname(__file__), "..", ".env.test")
+if os.path.exists(TEST_ENV_PATH):
+    load_dotenv(TEST_ENV_PATH, override=False)
+
+os.environ.setdefault("APP_AUTH_DISABLED", "true")
+
+required_test_settings = (
+    "DB_HOST",
+    "DB_PORT",
+    "DB_NAME",
+    "DB_USER",
+    "DB_PASSWORD",
+)
+missing_test_settings = [
+    key for key in required_test_settings if not os.environ.get(key)
+]
+if missing_test_settings:
+    raise RuntimeError(
+        "Falta configuración de pruebas. Definí estas variables o creá "
+        f".env.test: {', '.join(missing_test_settings)}"
+    )
+
+if "test" not in os.environ["DB_NAME"].lower():
+    raise RuntimeError(
+        "DB_NAME de pytest debe identificar explícitamente una base de test."
+    )
 
 from app.main import app  # noqa: E402
 

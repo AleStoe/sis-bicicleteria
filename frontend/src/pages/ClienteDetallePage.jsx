@@ -20,14 +20,13 @@ import {
   desactivarCliente,
   activarCliente,
   listarBicicletasCliente,
+  obtenerHistorialCliente,
+  obtenerTallerCliente,
 } from "../services/clientesService";
-import { listarDeudas } from "../services/deudasService";
-import { listarCreditosCliente } from "../services/creditosService";
-import { listarReservas } from "../services/reservasService";
-import { listarPagos } from "../services/pagosService";
 
 const TAB_RESUMEN = "resumen";
 const TAB_HISTORIAL = "historial";
+const TAB_TALLER = "taller";
 const TAB_VENTAS = "ventas";
 const TAB_DEUDAS = "deudas";
 const TAB_CREDITOS = "creditos";
@@ -39,6 +38,7 @@ const TAB_DATOS = "datos";
 const TABS = [
   { id: TAB_RESUMEN, label: "Resumen" },
   { id: TAB_HISTORIAL, label: "Historial" },
+  { id: TAB_TALLER, label: "Taller" },
   { id: TAB_VENTAS, label: "Ventas" },
   { id: TAB_DEUDAS, label: "Deudas" },
   { id: TAB_CREDITOS, label: "Créditos" },
@@ -85,6 +85,7 @@ export default function ClienteDetallePage() {
   const [creditos, setCreditos] = useState([]);
   const [reservas, setReservas] = useState([]);
   const [pagos, setPagos] = useState([]);
+  const [ordenesTaller, setOrdenesTaller] = useState([]);
   const [tabActiva, setTabActiva] = useState(TAB_RESUMEN);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -117,25 +118,25 @@ export default function ClienteDetallePage() {
       setLoading(true);
       setError("");
 
-      const [detalle, bicis, creditosData, deudasData, reservasData, pagosData] = await Promise.all([
+      const [detalle, bicis, historialData, tallerData] = await Promise.all([
         obtenerCliente(clienteId),
         listarBicicletasCliente(clienteId),
-        listarCreditosCliente(clienteId),
-        listarDeudas({ q: String(clienteId), estado: "" }),
-        listarReservas({ id_cliente: clienteId }),
-        listarPagos({ id_cliente: clienteId }),
+        obtenerHistorialCliente(clienteId),
+        obtenerTallerCliente(clienteId),
       ]);
 
-      const deudasDelCliente = Array.isArray(deudasData)
-        ? deudasData.filter((deuda) => String(deuda.id_cliente) === String(clienteId))
-        : [];
-
-      setData(detalle);
+      setData({
+        ...detalle,
+        ventas_recientes: Array.isArray(historialData?.ventas)
+          ? historialData.ventas
+          : detalle?.ventas_recientes || [],
+      });
       setBicicletas(Array.isArray(bicis) ? bicis : []);
-      setCreditos(Array.isArray(creditosData) ? creditosData : []);
-      setDeudas(deudasDelCliente);
-      setReservas(Array.isArray(reservasData) ? reservasData : []);
-      setPagos(Array.isArray(pagosData) ? pagosData : []);
+      setCreditos(Array.isArray(historialData?.creditos) ? historialData.creditos : []);
+      setDeudas(Array.isArray(historialData?.deudas) ? historialData.deudas : []);
+      setReservas(Array.isArray(historialData?.reservas) ? historialData.reservas : []);
+      setPagos(Array.isArray(historialData?.pagos) ? historialData.pagos : []);
+      setOrdenesTaller(Array.isArray(tallerData) ? tallerData : []);
     } catch (err) {
       setError(err.message || "No se pudo cargar el cliente");
     } finally {
@@ -372,8 +373,14 @@ export default function ClienteDetallePage() {
       )}
 
       {tabActiva === TAB_HISTORIAL && (
-        <Card title="Historial del cliente" subtitle="Ventas, bicicletas, reservas, pagos, deudas y creditos recientes en una sola linea.">
+        <Card title="Historial del cliente" subtitle="Movimientos recientes con el contexto necesario para entenderlos sin abrir cada detalle.">
           <HistorialCliente items={historialCliente} />
+        </Card>
+      )}
+
+      {tabActiva === TAB_TALLER && (
+        <Card title="Historial de taller" subtitle="Qué se revisó, qué se hizo y qué repuestos se usaron en cada visita.">
+          <TallerClienteList ordenes={ordenesTaller} />
         </Card>
       )}
 
@@ -402,7 +409,7 @@ export default function ClienteDetallePage() {
       )}
 
       {tabActiva === TAB_PAGOS && (
-        <Card title="Pagos recientes" subtitle="Cobros asociados al cliente, con descuentos y recargos aplicados.">
+        <Card title="Pagos recientes" subtitle="Cobros asociados al cliente, con descuentos y financiacion aplicada.">
           <PagosList pagos={pagos} />
         </Card>
       )}
@@ -511,23 +518,36 @@ function buildHistorialCliente({ ventas, deudas, creditos, reservas, pagos, bici
       tipo: "Venta",
       fecha: venta.fecha,
       titulo: `Venta #${venta.id}`,
-      detalle: `${formatMoney(venta.total)} - saldo ${formatMoney(venta.saldo_pendiente)}`,
+      lineas: [
+        `Total: ${formatMoney(venta.total)} · Saldo: ${formatMoney(venta.saldo_pendiente)}`,
+        venta.productos_resumen
+          ? `${formatCantidadItems(venta.cantidad_items)}: ${venta.productos_resumen}`
+          : formatCantidadItems(venta.cantidad_items),
+        `Origen: ${renderOrigenVenta(venta.origen)}`,
+      ],
       estado: venta.estado,
       to: `/ventas/${venta.id}`,
     })),
     ...deudas.map((deuda) => ({
       tipo: "Deuda",
-      fecha: deuda.fecha_creacion || deuda.fecha || deuda.created_at,
+      fecha: deuda.fecha_origen || deuda.fecha_creacion || deuda.fecha || deuda.created_at,
       titulo: `Deuda #${deuda.id}`,
-      detalle: `${renderOrigen(deuda)} - saldo ${formatMoney(deuda.saldo_actual)}`,
+      lineas: [
+        `Saldo pendiente: ${formatMoney(deuda.saldo_actual)}`,
+        deuda.venta_asociada_id ? `Asociada a Venta #${deuda.venta_asociada_id}` : renderOrigen(deuda),
+        deuda.proximo_vencimiento ? `Próximo vencimiento: ${formatDate(deuda.proximo_vencimiento)}` : null,
+      ],
       estado: deuda.estado,
       to: `/deudas/${deuda.id}`,
     })),
     ...creditos.map((credito) => ({
-      tipo: "Credito",
+      tipo: "Crédito",
       fecha: credito.fecha_creacion || credito.fecha || credito.created_at,
-      titulo: `Credito #${credito.id}`,
-      detalle: `${renderOrigen(credito)} - saldo ${formatMoney(credito.saldo_actual)}`,
+      titulo: `Crédito #${credito.id}`,
+      lineas: [
+        `Disponible: ${formatMoney(credito.saldo_actual)} · Usado: ${formatMoney(credito.monto_usado)}`,
+        credito.venta_asociada_id ? `Asociado a Venta #${credito.venta_asociada_id}` : renderOrigen(credito),
+      ],
       estado: credito.estado,
       to: `/creditos/${credito.id}`,
     })),
@@ -535,7 +555,12 @@ function buildHistorialCliente({ ventas, deudas, creditos, reservas, pagos, bici
       tipo: "Reserva",
       fecha: reserva.fecha_reserva,
       titulo: `Reserva #${reserva.id}`,
-      detalle: `Sena ${formatMoney(reserva.sena_total)} - saldo ${formatMoney(reserva.saldo_estimado)}`,
+      lineas: [
+        `Seña: ${formatMoney(reserva.sena_total)} · Saldo: ${formatMoney(reserva.saldo_estimado)}`,
+        reserva.producto_principal
+          ? `${formatCantidadItems(reserva.cantidad_items)}: ${reserva.producto_principal}`
+          : formatCantidadItems(reserva.cantidad_items),
+      ],
       estado: reserva.estado,
       to: `/reservas/${reserva.id}`,
     })),
@@ -543,7 +568,18 @@ function buildHistorialCliente({ ventas, deudas, creditos, reservas, pagos, bici
       tipo: "Pago",
       fecha: pago.fecha,
       titulo: `Pago #${pago.id}`,
-      detalle: `${renderMedioPago(pago.medio_pago)} - ${formatMoney(pago.monto_total_cobrado)}`,
+      lineas: [
+        `${renderMedioPago(pago.medio_pago)} · ${formatMoney(pago.monto_total_cobrado)}`,
+        pago.venta_asociada_id
+          ? `Aplicado a Venta #${pago.venta_asociada_id}`
+          : renderOrigen(pago),
+        Number(pago.monto_descuento_aplicado || 0) > 0
+          ? `Bonificación aplicada: ${formatMoney(pago.monto_descuento_aplicado)}`
+          : null,
+        Number(pago.monto_recargo_aplicado || 0) > 0
+          ? `Financiación: ${formatMoney(pago.monto_recargo_aplicado)}${pago.tarjeta_plan_nombre ? ` · ${pago.tarjeta_plan_nombre}` : ""}`
+          : null,
+      ],
       estado: pago.estado,
       to: getPagoOrigenUrl(pago),
     })),
@@ -551,7 +587,10 @@ function buildHistorialCliente({ ventas, deudas, creditos, reservas, pagos, bici
       tipo: "Bicicleta",
       fecha: bici.fecha_compra || bici.created_at || bici.fecha_alta,
       titulo: [bici.marca, bici.modelo].filter(Boolean).join(" ") || `Bicicleta #${bici.id}`,
-      detalle: `Cuadro ${bici.numero_cuadro || "-"} - ${calcularEstadoPostventa(bici)}`,
+      lineas: [
+        `Cuadro: ${bici.numero_cuadro || "-"}`,
+        `Postventa: ${calcularEstadoPostventa(bici)}`,
+      ],
       estado: bici.plan_postventa,
       to: `/clientes/${bici.id_cliente}/bicicletas/${bici.id}`,
     })),
@@ -582,12 +621,114 @@ function HistorialCliente({ items }) {
               </div>
               {item.estado && <EstadoOperacionBadge estado={item.estado} />}
             </div>
-            <p style={styles.relationshipDetail}>{item.detalle}</p>
+            <div style={styles.relationshipLines}>
+              {(item.lineas || [item.detalle])
+                .filter(Boolean)
+                .map((linea) => (
+                  <p key={linea} style={styles.relationshipDetail}>{linea}</p>
+                ))}
+            </div>
             {item.to && <Link to={item.to} style={styles.linkAction}>Abrir</Link>}
           </div>
         </div>
       ))}
     </div>
+  );
+}
+
+function TallerClienteList({ ordenes }) {
+  if (!ordenes.length) {
+    return <div style={styles.empty}>Este cliente todavía no tiene órdenes de taller.</div>;
+  }
+
+  return (
+    <div style={styles.tallerList}>
+      {ordenes.map((orden) => {
+        const items = Array.isArray(orden.items) ? orden.items : [];
+        const ejecutados = items.filter((item) => item.etapa === "ejecutado");
+        const itemsVisibles = ejecutados.length ? ejecutados : items;
+        const trabajos = itemsVisibles.filter((item) => item.tipo_item === "servicio");
+        const repuestos = itemsVisibles.filter((item) => item.tipo_item === "repuesto");
+
+        return (
+          <article key={orden.id} style={styles.tallerCard}>
+            <div style={styles.tallerHeader}>
+              <div>
+                <span style={styles.recordEyebrow}>Orden de taller</span>
+                <strong style={styles.tallerTitle}>OT #{orden.id}</strong>
+              </div>
+              <EstadoOperacionBadge estado={orden.estado} />
+            </div>
+
+            <div style={styles.tallerMeta}>
+              <strong>{orden.bicicleta_descripcion || `Bicicleta #${orden.bicicleta_id}`}</strong>
+              <span>
+                Ingreso: {formatDate(orden.fecha_ingreso)}
+                {orden.fecha_retirada ? ` · Retiro: ${formatDate(orden.fecha_retirada)}` : ""}
+              </span>
+            </div>
+
+            <TallerResumen title="Problema" text={orden.problema_reportado} />
+            <TallerResumen title="Diagnóstico" text={orden.diagnostico} />
+            <TallerItems title="Trabajos" items={trabajos} />
+            <TallerItems title="Repuestos" items={repuestos} />
+            <TallerResumen title="Notas" text={orden.observaciones} />
+
+            {orden.cliente_avisado_retiro && (
+              <div style={styles.tallerNotice}>
+                Cliente avisado por WhatsApp
+                {orden.fecha_aviso_retiro ? ` el ${formatDate(orden.fecha_aviso_retiro)}` : ""}.
+              </div>
+            )}
+
+            <div style={styles.tallerFooter}>
+              <div style={styles.tallerFinancial}>
+                {Number(orden.total_final || 0) > 0 && (
+                  <strong>Total OT: {formatMoney(orden.total_final)}</strong>
+                )}
+                {orden.id_venta_generada ? (
+                  <Link to={`/ventas/${orden.id_venta_generada}`} style={styles.linkAction}>
+                    Venta #{orden.id_venta_generada}
+                  </Link>
+                ) : (
+                  <span style={styles.mutedText}>Sin venta generada</span>
+                )}
+              </div>
+              <Link to={`/taller/${orden.id}`} style={styles.mobilePrimaryAction}>Ver OT</Link>
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
+function TallerResumen({ title, text }) {
+  if (!text) return null;
+
+  return (
+    <section style={styles.tallerSection}>
+      <strong style={styles.tallerSectionTitle}>{title}</strong>
+      <p style={styles.tallerSectionText}>{text}</p>
+    </section>
+  );
+}
+
+function TallerItems({ title, items }) {
+  if (!items.length) return null;
+
+  return (
+    <section style={styles.tallerSection}>
+      <strong style={styles.tallerSectionTitle}>{title}</strong>
+      <ul style={styles.tallerItems}>
+        {items.map((item) => (
+          <li key={item.id}>
+            {item.descripcion}
+            {Number(item.cantidad || 0) !== 1 ? ` × ${Number(item.cantidad)}` : ""}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -638,9 +779,9 @@ function PagosList({ pagos }) {
           fields={[
             { label: "Fecha", value: formatDate(pago.fecha) },
             { label: "Origen", value: renderOrigen(pago) },
-            { label: "Base", value: formatMoney(pago.monto_base_aplicado ?? pago.monto_base ?? pago.monto_total_cobrado) },
+            { label: "Cubre venta", value: formatMoney(pago.monto_base_aplicado ?? pago.monto_base ?? pago.monto_total_cobrado) },
             { label: "Descuento", value: formatMoney(pago.monto_descuento_aplicado ?? 0), tone: Number(pago.monto_descuento_aplicado || 0) > 0 ? "success" : undefined },
-            { label: "Recargo", value: formatMoney(pago.monto_recargo_aplicado ?? pago.monto_recargo_financiero ?? 0), tone: Number(pago.monto_recargo_aplicado || pago.monto_recargo_financiero || 0) > 0 ? "danger" : undefined },
+            { label: "Financiacion", value: formatMoney(pago.monto_recargo_aplicado ?? pago.monto_recargo_financiero ?? 0), tone: Number(pago.monto_recargo_aplicado || pago.monto_recargo_financiero || 0) > 0 ? "danger" : undefined },
             { label: "Cobrado", value: formatMoney(pago.monto_total_cobrado), strong: true },
           ]}
           action={
@@ -952,6 +1093,22 @@ function renderMedioPago(medio) {
   };
 
   return map[medio] || medio || "-";
+}
+
+function renderOrigenVenta(origen) {
+  const map = {
+    venta: "Venta normal",
+    taller: "Taller",
+    reserva: "Reserva",
+    postventa: "Postventa",
+  };
+
+  return map[origen] || "Venta normal";
+}
+
+function formatCantidadItems(cantidad) {
+  const total = Number(cantidad || 0);
+  return `${total} ${total === 1 ? "ítem" : "ítems"}`;
 }
 
 function getPagoOrigenUrl(pago) {
@@ -1281,6 +1438,92 @@ const styles = {
     color: "#475569",
     fontWeight: 750,
     overflowWrap: "anywhere",
+  },
+  relationshipLines: {
+    display: "grid",
+    gap: 3,
+  },
+  tallerList: {
+    display: "grid",
+    gap: 14,
+  },
+  tallerCard: {
+    border: "1px solid #dbe3ee",
+    borderRadius: 14,
+    padding: 16,
+    background: "#ffffff",
+    display: "grid",
+    gap: 12,
+    minWidth: 0,
+  },
+  tallerHeader: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+    flexWrap: "wrap",
+  },
+  tallerTitle: {
+    display: "block",
+    marginTop: 2,
+    fontSize: 20,
+  },
+  tallerMeta: {
+    display: "grid",
+    gap: 3,
+    color: "#475569",
+  },
+  tallerSection: {
+    display: "grid",
+    gap: 4,
+    paddingTop: 10,
+    borderTop: "1px solid #e2e8f0",
+  },
+  tallerSectionTitle: {
+    color: "#334155",
+    fontSize: 12,
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+  },
+  tallerSectionText: {
+    margin: 0,
+    color: "#334155",
+    lineHeight: 1.45,
+    whiteSpace: "pre-wrap",
+    overflowWrap: "anywhere",
+  },
+  tallerItems: {
+    margin: 0,
+    paddingLeft: 20,
+    color: "#334155",
+    lineHeight: 1.55,
+  },
+  tallerNotice: {
+    border: "1px solid #bbf7d0",
+    borderRadius: 10,
+    padding: "9px 11px",
+    background: "#f0fdf4",
+    color: "#166534",
+    fontWeight: 800,
+  },
+  tallerFooter: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    flexWrap: "wrap",
+    paddingTop: 10,
+    borderTop: "1px solid #e2e8f0",
+  },
+  tallerFinancial: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    flexWrap: "wrap",
+  },
+  mutedText: {
+    color: "#64748b",
+    fontWeight: 700,
   },
   bikeGrid: {
     display: "grid",

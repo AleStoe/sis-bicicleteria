@@ -21,7 +21,7 @@ export default function CheckoutTotalesSimulacion({ simulacion, simulando }) {
         )}
 
         {recargo > 0 && (
-          <Row label="Recargos / financiación" value={`+ ${formatMoney(recargo)}`} tone="warning" />
+          <Row label="Financiacion" value={`+ ${formatMoney(recargo)}`} tone="warning" />
         )}
 
         <Row label="Precio final estimado" value={formatMoney(simulacion.total_final)} strong tone="primary" />

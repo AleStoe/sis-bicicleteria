@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, model_validator
 
 
 CotizacionTipo = Literal["venta", "reparacion"]
+TipoPrecioCotizacion = Literal["minorista", "mayorista"]
 CotizacionEstado = Literal[
     "borrador",
     "enviada",
@@ -56,6 +57,7 @@ class CotizacionItemInput(BaseModel):
 
 class CotizacionCreate(BaseModel):
     tipo: CotizacionTipo
+    tipo_precio: TipoPrecioCotizacion = "minorista"
     id_sucursal: int = Field(gt=0)
     id_usuario_creador: int = Field(gt=0)
     id_cliente: int | None = Field(default=None, gt=0)
@@ -103,6 +105,7 @@ class CotizacionResumenResponse(BaseModel):
     id: int
     numero: str
     tipo: str
+    tipo_precio: TipoPrecioCotizacion = "minorista"
     estado: str
     fecha: datetime
     fecha_validez: date | None = None

@@ -312,6 +312,265 @@ def get_ventas_cliente(conn, cliente_id: int, limit=20):
         return cur.fetchall()
 
 
+def get_historial_cliente_enriquecido(conn, cliente_id: int, limit: int = 50):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT
+                v.id,
+                v.fecha,
+                v.estado,
+                v.total_final AS total,
+                v.saldo_pendiente,
+                COALESCE(items.cantidad_items, 0)::int AS cantidad_items,
+                items.productos_resumen,
+                CASE
+                    WHEN v.id_orden_taller IS NOT NULL THEN 'taller'
+                    WHEN v.id_reserva_origen IS NOT NULL THEN 'reserva'
+                    ELSE 'venta'
+                END AS origen
+            FROM ventas v
+            LEFT JOIN LATERAL (
+                SELECT
+                    COUNT(*)::int AS cantidad_items,
+                    (
+                        SELECT STRING_AGG(principales.descripcion_snapshot, ' · ')
+                        FROM (
+                            SELECT vi.descripcion_snapshot
+                            FROM venta_items vi
+                            WHERE vi.id_venta = v.id
+                            ORDER BY vi.id
+                            LIMIT 3
+                        ) principales
+                    ) AS productos_resumen
+                FROM venta_items vi_count
+                WHERE vi_count.id_venta = v.id
+            ) items ON TRUE
+            WHERE v.id_cliente = %s
+            ORDER BY v.fecha DESC, v.id DESC
+            LIMIT %s
+            """,
+            (cliente_id, limit),
+        )
+        ventas = cur.fetchall()
+
+        cur.execute(
+            """
+            SELECT
+                p.id,
+                p.fecha,
+                p.origen_tipo,
+                p.origen_id,
+                p.medio_pago,
+                p.monto_total_cobrado,
+                p.monto_base_aplicado,
+                p.monto_descuento_aplicado,
+                p.monto_recargo_aplicado,
+                p.estado,
+                p.nota,
+                td.cuotas,
+                tp.nombre AS tarjeta_plan_nombre,
+                CASE
+                    WHEN p.origen_tipo = 'venta' THEN p.origen_id
+                    WHEN p.origen_tipo = 'deuda_cliente'
+                         AND deuda.origen_tipo = 'venta' THEN deuda.origen_id
+                    ELSE NULL
+                END AS venta_asociada_id
+            FROM pagos p
+            LEFT JOIN deudas_cliente deuda
+                ON p.origen_tipo = 'deuda_cliente'
+               AND deuda.id = p.origen_id
+            LEFT JOIN pagos_tarjeta_detalle td
+                ON td.id_pago = p.id
+            LEFT JOIN tarjeta_planes tp
+                ON tp.id = td.id_tarjeta_plan
+            WHERE p.id_cliente = %s
+            ORDER BY p.fecha DESC, p.id DESC
+            LIMIT %s
+            """,
+            (cliente_id, limit),
+        )
+        pagos = cur.fetchall()
+
+        cur.execute(
+            """
+            SELECT
+                r.id,
+                r.fecha_reserva,
+                r.fecha_vencimiento,
+                r.estado,
+                r.sena_total,
+                r.saldo_estimado,
+                COALESCE(items.cantidad_items, 0)::int AS cantidad_items,
+                items.producto_principal
+            FROM reservas r
+            LEFT JOIN LATERAL (
+                SELECT
+                    COUNT(*)::int AS cantidad_items,
+                    (
+                        SELECT CONCAT(p.nombre, ' - ', v.nombre_variante)
+                        FROM reserva_items ri_principal
+                        JOIN variantes v ON v.id = ri_principal.id_variante
+                        JOIN productos p ON p.id = v.id_producto
+                        WHERE ri_principal.id_reserva = r.id
+                        ORDER BY ri_principal.id
+                        LIMIT 1
+                    ) AS producto_principal
+                FROM reserva_items ri_count
+                WHERE ri_count.id_reserva = r.id
+            ) items ON TRUE
+            WHERE r.id_cliente = %s
+            ORDER BY r.fecha_reserva DESC, r.id DESC
+            LIMIT %s
+            """,
+            (cliente_id, limit),
+        )
+        reservas = cur.fetchall()
+
+        cur.execute(
+            """
+            SELECT
+                d.id,
+                d.fecha_origen,
+                d.estado,
+                d.saldo_actual,
+                d.proximo_vencimiento,
+                d.origen_tipo,
+                d.origen_id,
+                CASE
+                    WHEN d.origen_tipo = 'venta' THEN d.origen_id
+                    ELSE NULL
+                END AS venta_asociada_id
+            FROM deudas_cliente d
+            WHERE d.id_cliente = %s
+            ORDER BY d.fecha_origen DESC, d.id DESC
+            LIMIT %s
+            """,
+            (cliente_id, limit),
+        )
+        deudas = cur.fetchall()
+
+        cur.execute(
+            """
+            SELECT
+                credito.id,
+                credito.created_at,
+                credito.estado,
+                credito.saldo_actual,
+                credito.origen_tipo,
+                credito.origen_id,
+                credito.observacion,
+                COALESCE(movimientos.monto_generado, 0) AS monto_generado,
+                COALESCE(movimientos.monto_usado, 0) AS monto_usado,
+                COALESCE(movimientos.monto_reintegrado, 0) AS monto_reintegrado,
+                CASE
+                    WHEN credito.origen_tipo = 'venta' THEN credito.origen_id
+                    ELSE NULL
+                END AS venta_asociada_id
+            FROM creditos_cliente credito
+            LEFT JOIN LATERAL (
+                SELECT
+                    COALESCE(SUM(monto) FILTER (
+                        WHERE tipo_movimiento = 'credito_generado'
+                    ), 0) AS monto_generado,
+                    COALESCE(SUM(monto) FILTER (
+                        WHERE tipo_movimiento = 'aplicacion_a_venta'
+                    ), 0) AS monto_usado,
+                    COALESCE(SUM(monto) FILTER (
+                        WHERE tipo_movimiento = 'reintegro'
+                    ), 0) AS monto_reintegrado
+                FROM credito_movimientos
+                WHERE id_credito = credito.id
+            ) movimientos ON TRUE
+            WHERE credito.id_cliente = %s
+            ORDER BY credito.created_at DESC, credito.id DESC
+            LIMIT %s
+            """,
+            (cliente_id, limit),
+        )
+        creditos = cur.fetchall()
+
+    return {
+        "ventas": ventas,
+        "pagos": pagos,
+        "reservas": reservas,
+        "deudas": deudas,
+        "creditos": creditos,
+    }
+
+
+def get_ordenes_taller_cliente(conn, cliente_id: int):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT
+                ot.id,
+                ot.fecha_ingreso,
+                ot.fecha_terminada,
+                ot.fecha_retirada,
+                ot.estado,
+                ot.problema_reportado,
+                ot.observaciones,
+                ot.cliente_avisado_retiro,
+                ot.fecha_aviso_retiro,
+                ot.total_final,
+                ot.saldo_pendiente,
+                ot.id_venta_generada,
+                ot.es_service_postventa,
+                ot.tipo_postventa,
+                bc.id AS bicicleta_id,
+                bc.marca AS bicicleta_marca,
+                bc.modelo AS bicicleta_modelo,
+                bc.rodado AS bicicleta_rodado,
+                bc.color AS bicicleta_color,
+                NULLIF(
+                    CONCAT_WS(
+                        ' ',
+                        NULLIF(bc.marca, ''),
+                        NULLIF(bc.modelo, ''),
+                        CASE
+                            WHEN NULLIF(bc.rodado, '') IS NOT NULL
+                                THEN 'R' || bc.rodado
+                            ELSE NULL
+                        END,
+                        NULLIF(bc.color, '')
+                    ),
+                    ''
+                ) AS bicicleta_descripcion,
+                NULL::text AS diagnostico,
+                COALESCE(items.items, '[]'::jsonb) AS items,
+                venta.estado AS venta_estado,
+                venta.total_final AS venta_total
+            FROM ordenes_taller ot
+            JOIN bicicletas_clientes bc
+                ON bc.id = ot.id_bicicleta_cliente
+            LEFT JOIN ventas venta
+                ON venta.id = ot.id_venta_generada
+            LEFT JOIN LATERAL (
+                SELECT JSONB_AGG(
+                    JSONB_BUILD_OBJECT(
+                        'id', item.id,
+                        'tipo_item', item.tipo_item,
+                        'descripcion', item.descripcion_snapshot,
+                        'cantidad', item.cantidad,
+                        'etapa', item.etapa,
+                        'aprobado', item.aprobado,
+                        'subtotal', item.subtotal
+                    )
+                    ORDER BY item.id
+                ) FILTER (WHERE item.id IS NOT NULL) AS items
+                FROM ordenes_taller_items item
+                WHERE item.id_orden_taller = ot.id
+                  AND item.etapa <> 'cancelado'
+            ) items ON TRUE
+            WHERE ot.id_cliente = %s
+            ORDER BY ot.fecha_ingreso DESC, ot.id DESC
+            """,
+            (cliente_id,),
+        )
+        return cur.fetchall()
+
+
 def get_resumen_ventas_cliente(conn, cliente_id: int):
     with conn.cursor() as cur:
         cur.execute(

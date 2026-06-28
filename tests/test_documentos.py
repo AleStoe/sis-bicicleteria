@@ -120,9 +120,8 @@ def test_comprobante_x_usa_descuento_efectivo_del_motor_financiero(
     assert Decimal(str(pago_documento["monto_total_cobrado"])) < Decimal(str(total))
 
     detalle = _detalle_pago_financiero(pago_documento)
-    assert "Base aplicada:" in detalle
-    assert "Descuento:" in detalle
-    assert "Cobrado real:" in detalle
+    assert "Monto abonado:" in detalle
+    assert "Bonificación aplicada:" in detalle
 
     response = client.get(f"/documentos/ventas/{venta_id}/comprobante-x")
 

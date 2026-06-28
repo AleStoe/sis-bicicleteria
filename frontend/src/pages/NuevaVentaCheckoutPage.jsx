@@ -5,6 +5,7 @@ import CheckoutClienteVentaCard from "../components/ventas/checkout/CheckoutClie
 import CheckoutResumenLateral from "../components/ventas/checkout/CheckoutResumenLateral";
 import { ConfirmModal } from "../components/ui/ConfirmModal";
 import { crearVenta, entregarVenta } from "../services/ventasService";
+import { listarDeudas } from "../services/deudasService";
 import { buildVentaPayload } from "../builders/ventasPayloadBuilder";
 import { validarVentaAntesDeCrear } from "../validators/ventasValidator";
 import { useToast } from "../hooks/useToast";
@@ -18,6 +19,10 @@ import {
   calcularResumenCheckout,
   getClienteNombre,
 } from "../helpers/checkoutVentaHelper";
+import {
+  calcularDeudaAbiertaCliente,
+  esConsumidorFinal,
+} from "../helpers/ventaPreventiveWarnings";
 
 const MOBILE_BREAKPOINT = 760;
 
@@ -51,6 +56,7 @@ export default function NuevaVentaCheckoutPage() {
   const [draftRevisado, setDraftRevisado] = useState(Boolean(state?.ventaDraft));
   const [checkoutEstado, setCheckoutEstado] = useState(null);
   const [guardando, setGuardando] = useState(false);
+  const [deudaCliente, setDeudaCliente] = useState({ tieneDeuda: false, saldo: 0 });
   const toast = useToast();
   const isMobile = useIsMobile();
 
@@ -79,6 +85,35 @@ export default function NuevaVentaCheckoutPage() {
 
     setDraftRevisado(true);
   }, [draft, sucursalId, usuarioId]);
+
+  useEffect(() => {
+    let cancelado = false;
+
+    async function cargarDeudaCliente() {
+      const clienteId = draft?.clienteId;
+
+      if (!clienteId || esConsumidorFinal(clienteId, draft?.cliente)) {
+        setDeudaCliente({ tieneDeuda: false, saldo: 0 });
+        return;
+      }
+
+      try {
+        const deudas = await listarDeudas({ id_cliente: clienteId, estado: "abierta" });
+        if (cancelado) return;
+        setDeudaCliente(calcularDeudaAbiertaCliente(deudas, clienteId));
+      } catch (err) {
+        if (!cancelado) {
+          setDeudaCliente({ tieneDeuda: false, saldo: 0 });
+        }
+      }
+    }
+
+    cargarDeudaCliente();
+
+    return () => {
+      cancelado = true;
+    };
+  }, [draft?.clienteId, draft?.cliente]);
 
   function continuarDraftGuardado() {
     setDraft(draftPendiente);
@@ -189,7 +224,9 @@ export default function NuevaVentaCheckoutPage() {
         sucursalId: draft.idSucursal ?? sucursalId,
         usuarioId: draft.idUsuario ?? usuarioId,
       });
-      navigate(`/ventas/${resultado.venta_id}`);
+      navigate(`/ventas/${resultado.venta_id}`, {
+        state: { scrollToTop: true, ventaFinalizadaDesdeCheckout: true },
+      });
     } catch (err) {
       toast.error(err.message || "No se pudo finalizar la venta");
     } finally {
@@ -221,6 +258,8 @@ export default function NuevaVentaCheckoutPage() {
 
           <CheckoutVentaPanel
             clienteId={draft.clienteId}
+            cliente={draft.cliente}
+            deudaCliente={deudaCliente}
             total={draft.total}
             tipoPrecio={draft.tipoPrecio}
             items={draft.items}
@@ -231,6 +270,7 @@ export default function NuevaVentaCheckoutPage() {
             initialCheckoutDraft={draft.checkout}
             onCheckoutDraftChange={guardarCheckoutDraft}
             mostrarPagosCargados={false}
+            consumidorFinalConfirmado={Boolean(draft.advertencias?.consumidorFinalConfirmado)}
           />
         </section>
 

@@ -91,7 +91,7 @@ const groups = [
   {
     title: "Control",
     links: [
-      { to: "/alertas-operativas", label: "Alertas Operativas", icon: Gauge, roles: OPERACION_TALLER, badge: "alertas" },
+      { to: "/salud-operativa", label: "Salud Operativa", icon: Gauge, roles: OPERACION_TALLER, badge: "alertas" },
       { to: "/admin/dashboard", label: "Dashboard Admin", icon: LayoutDashboard, roles: ADMIN },
       { to: "/gastos", label: "Gastos", icon: Receipt, roles: ADMIN_ENCARGADO },
       { to: "/deudas", label: "Deudas", icon: FileSearch, roles: OPERACION },
@@ -224,6 +224,13 @@ function contarAlertasOperativas(data) {
     data.deudas_vencidas,
     data.taller_atrasado,
     data.stock_critico,
+    data.ventas_cobradas_no_entregadas,
+    data.ventas_saldo_sin_deuda,
+    data.ventas_saldo_desincronizado,
+    data.pagos_revertidos_hoy,
+    data.cajas_abiertas_anteriores,
+    data.productos_maestros_incompletos,
+    data.maestros_inactivos_en_uso,
   ].reduce((total, items) => total + (Array.isArray(items) ? items.length : 0), 0);
 }
 

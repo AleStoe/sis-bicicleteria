@@ -29,7 +29,10 @@ from .repository import (
     crear_producto_catalogo,
     crear_variante_catalogo,
     get_marcas,
+    get_marca_by_nombre,
     crear_marca_catalogo,
+    update_marca_catalogo,
+    update_estado_marca_catalogo,
     update_producto_catalogo,
     update_producto_estado,
     get_variante_by_id,
@@ -547,11 +550,11 @@ def crear_variante(data):
     finally:
         conn.close()
         
-def listar_marcas():
+def listar_marcas(solo_activas: bool = True):
     conn = get_connection()
 
     try:
-        return get_marcas(conn)
+        return get_marcas(conn, solo_activas=solo_activas)
     finally:
         conn.close()
 
@@ -561,16 +564,60 @@ def crear_marca(data):
 
     try:
         with conn.transaction():
+            nombre = normalize_text_upper(data.nombre)
+
+            if get_marca_by_nombre(conn, nombre):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Ya existe una marca con ese nombre",
+                )
+
             try:
                 return crear_marca_catalogo(
                     conn,
-                    {"nombre": normalize_text_upper(data.nombre)},
+                    {"nombre": nombre},
                 )
             except UniqueViolation:
                 raise HTTPException(
                     status_code=400,
                     detail="Ya existe una marca con ese nombre",
                 )
+    finally:
+        conn.close()
+
+
+def editar_marca(marca_id: int, data):
+    conn = get_connection()
+
+    try:
+        with conn.transaction():
+            marca = get_marca_by_id(conn, marca_id)
+            if marca is None:
+                raise HTTPException(status_code=404, detail="Marca no encontrada")
+
+            nombre = normalize_text_upper(data.nombre)
+
+            if get_marca_by_nombre(conn, nombre, exclude_id=marca_id):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Ya existe una marca con ese nombre",
+                )
+
+            return update_marca_catalogo(conn, marca_id, nombre)
+    finally:
+        conn.close()
+
+
+def cambiar_estado_marca(marca_id: int, data):
+    conn = get_connection()
+
+    try:
+        with conn.transaction():
+            marca = get_marca_by_id(conn, marca_id)
+            if marca is None:
+                raise HTTPException(status_code=404, detail="Marca no encontrada")
+
+            return update_estado_marca_catalogo(conn, marca_id, data.activa)
     finally:
         conn.close()
     

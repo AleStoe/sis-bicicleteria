@@ -667,7 +667,7 @@ function SimulacionSenaBox({
       <div style={previewHeaderStyle}>Simulación de seña</div>
       <Line label="Base cubierta" value={formatMoney(base)} />
       {descuento > 0 && <Line label="Descuento aplicado" value={`-${formatMoney(descuento)}`} />}
-      {recargo > 0 && <Line label="Recargo aplicado" value={formatMoney(recargo)} />}
+      {recargo > 0 && <Line label="Financiacion incluida" value={formatMoney(recargo)} />}
       <div style={previewTotalStyle}>
         <span>Total a cobrar</span>
         <strong>{formatMoney(cobrado)}</strong>
@@ -675,7 +675,7 @@ function SimulacionSenaBox({
       <Line label="Saldo base restante" value={formatMoney(saldoBase)} />
       {medioPago === "tarjeta" && (
         <div style={previewHintStyle}>
-          La reserva cubre la base. El recargo es costo financiero del medio de pago.
+          La reserva cubre la base. La financiacion corresponde al medio de pago.
         </div>
       )}
     </div>

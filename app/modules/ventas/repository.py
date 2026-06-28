@@ -207,6 +207,38 @@ def insert_venta_anulacion(conn, venta_id: int, motivo: str, id_usuario: int):
         return cur.fetchone()["id"]
 
 
+def reset_orden_taller_por_venta_anulada(conn, venta_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            UPDATE ordenes_taller
+            SET id_venta_generada = NULL,
+                estado = 'terminada',
+                updated_at = NOW()
+            WHERE id_venta_generada = %s
+              AND estado = 'facturada'
+            RETURNING id
+            """,
+            (venta_id,),
+        )
+        orden = cur.fetchone()
+
+        if orden is not None:
+            # Libera la restricción de una venta activa por OT. La venta anulada
+            # conserva trazabilidad mediante sus items, observación y auditoría.
+            cur.execute(
+                """
+                UPDATE ventas
+                SET id_orden_taller = NULL,
+                    updated_at = NOW()
+                WHERE id = %s
+                """,
+                (venta_id,),
+            )
+
+        return orden
+
+
 # =========================================================
 # LECTURAS
 # =========================================================
@@ -226,12 +258,29 @@ def get_ventas(conn):
                 v.tipo_precio,
                 v.total_final,
                 v.saldo_pendiente,
-                v.id_reserva_origen
+                v.id_reserva_origen,
+                COALESCE(items.cantidad_items, 0) AS cantidad_items,
+                COALESCE(items.tiene_serializadas, FALSE) AS tiene_serializadas,
+                CASE
+                    WHEN v.id_reserva_origen IS NOT NULL THEN 'reserva'
+                    WHEN COALESCE(items.tiene_items_taller, FALSE) THEN 'taller'
+                    ELSE 'venta'
+                END AS origen_venta
             FROM ventas v
             INNER JOIN clientes c
                 ON c.id = v.id_cliente
             INNER JOIN sucursales s
                 ON s.id = v.id_sucursal
+            LEFT JOIN (
+                SELECT
+                    id_venta,
+                    SUM(cantidad) AS cantidad_items,
+                    BOOL_OR(id_bicicleta_serializada IS NOT NULL) AS tiene_serializadas,
+                    BOOL_OR(id_orden_taller_item IS NOT NULL) AS tiene_items_taller
+                FROM venta_items
+                GROUP BY id_venta
+            ) items
+                ON items.id_venta = v.id
             ORDER BY v.id DESC
             """
         )

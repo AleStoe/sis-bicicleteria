@@ -52,6 +52,7 @@ export default function CotizacionesListPage() {
   const [error, setError] = useState("");
   const [form, setForm] = useState({
     tipo: "venta",
+    tipo_precio: "minorista",
     id_cliente: "",
     cliente_nombre_snapshot: "",
     cliente_telefono_snapshot: "",
@@ -214,7 +215,7 @@ export default function CotizacionesListPage() {
           descripcion_snapshot: descripcionVariante(variante),
           detalle: variante.nombre_variante || variante.sku || "",
           cantidad: "1",
-          precio_unitario: String(variante.precio_minorista || 0),
+          precio_unitario: String(getPrecioVariante(variante, form.tipo_precio)),
         },
       ];
     });
@@ -289,6 +290,7 @@ export default function CotizacionesListPage() {
 
       const payload = {
         tipo: form.tipo,
+        tipo_precio: form.tipo_precio,
         id_sucursal: Number(sucursalId || 1),
         id_usuario_creador: Number(usuarioId || 1),
         id_cliente: form.id_cliente ? Number(form.id_cliente) : null,
@@ -344,6 +346,18 @@ export default function CotizacionesListPage() {
                 Reparacion
               </button>
             </div>
+
+            <label style={styles.field}>
+              <span>Lista aplicada</span>
+              <select
+                value={form.tipo_precio}
+                onChange={(e) => setForm((p) => ({ ...p, tipo_precio: e.target.value }))}
+                style={styles.input}
+              >
+                <option value="minorista">Minorista</option>
+                <option value="mayorista">Mayorista</option>
+              </select>
+            </label>
 
             <label style={styles.field}>
               <span>Cliente</span>
@@ -412,7 +426,7 @@ export default function CotizacionesListPage() {
                           key={variante.id}
                           title={descripcionVariante(variante)}
                           meta={metaVariante(variante)}
-                          price={variante.precio_minorista}
+                          price={getPrecioVariante(variante, form.tipo_precio)}
                           badge={variante.categoria_nombre || "Producto"}
                           selected={variantesAgregadas.has(String(variante.id))}
                           onAdd={() => agregarProducto(variante)}
@@ -634,6 +648,7 @@ function CotizacionCard({ cotizacion }) {
             <FileText size={16} />
             <strong>{cotizacion.numero}</strong>
             <span style={badgeTipo(cotizacion.tipo)}>{cotizacion.tipo === "reparacion" ? "Reparacion" : "Venta"}</span>
+            <span style={styles.priceTypeBadge}>Lista {labelTipoPrecio(cotizacion.tipo_precio)}</span>
           </div>
           <p style={styles.cardTitle}>{cotizacion.cliente_nombre || cotizacion.cliente_nombre_snapshot || "Cliente mostrador"}</p>
           {cotizacion.problema_reportado && <p style={styles.muted}>{cotizacion.problema_reportado}</p>}
@@ -644,6 +659,7 @@ function CotizacionCard({ cotizacion }) {
       <div style={styles.metaGrid}>
         <Info label="Fecha" value={formatDate(cotizacion.fecha)} />
         <Info label="Items" value={cotizacion.items_count} />
+        <Info label="Lista" value={labelTipoPrecio(cotizacion.tipo_precio)} />
         <Info label="Total" value={formatMoney(cotizacion.total_final)} />
       </div>
 
@@ -687,6 +703,15 @@ function metaVariante(variante) {
   ]
     .filter(Boolean)
     .join(" - ");
+}
+
+function getPrecioVariante(variante, tipoPrecio) {
+  if (tipoPrecio === "mayorista") return Number(variante.precio_mayorista || 0);
+  return Number(variante.precio_minorista || 0);
+}
+
+function labelTipoPrecio(tipoPrecio) {
+  return tipoPrecio === "mayorista" ? "Mayorista" : "Minorista";
 }
 
 function labelTipoItem(tipo) {
@@ -794,6 +819,7 @@ const styles = {
   card: { border: "1px solid #e2e8f0", borderRadius: 16, padding: 14, display: "grid", gap: 12, background: "white" },
   cardTop: { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start" },
   numberRow: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", color: "#0f172a" },
+  priceTypeBadge: { borderRadius: 999, padding: "4px 8px", fontSize: 11, fontWeight: 900, color: "#166534", background: "#dcfce7", border: "1px solid #bbf7d0" },
   cardTitle: { margin: "6px 0 0", fontWeight: 1000, fontSize: 17 },
   muted: { margin: "4px 0 0", color: "#64748b", fontWeight: 700 },
   metaGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8 },

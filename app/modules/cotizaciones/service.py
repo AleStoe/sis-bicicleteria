@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from urllib.parse import quote_plus
 
@@ -6,7 +6,6 @@ from fastapi import HTTPException
 
 from app.db.connection import get_connection
 from app.modules.configuracion_negocio.service import obtener_configuracion_negocio
-from app.modules.configuracion_negocio.template import render_template
 from app.core.text_normalization import clean_text, normalize_text_upper
 
 from .repository import (
@@ -50,6 +49,7 @@ def crear_cotizacion(data):
                 conn,
                 {
                     "tipo": data.tipo,
+                    "tipo_precio": data.tipo_precio,
                     "fecha_validez": data.fecha_validez or date.today() + timedelta(days=7),
                     "id_sucursal": data.id_sucursal,
                     "id_cliente": data.id_cliente,
@@ -77,7 +77,7 @@ def crear_cotizacion(data):
             )
 
             for item in data.items:
-                _insertar_item_normalizado(conn, cotizacion["id"], item)
+                _insertar_item_normalizado(conn, cotizacion["id"], item, cotizacion.get("tipo_precio"))
 
             recalcular_totales_cotizacion(conn, cotizacion["id"])
             return obtener_cotizacion(cotizacion["id"], conn=conn)
@@ -115,7 +115,7 @@ def agregar_item_cotizacion(cotizacion_id: int, item):
         with conn.transaction():
             cotizacion = _get_cotizacion_o_404(conn, cotizacion_id)
             _validar_editable(cotizacion)
-            creado = _insertar_item_normalizado(conn, cotizacion_id, item)
+            creado = _insertar_item_normalizado(conn, cotizacion_id, item, cotizacion.get("tipo_precio"))
             recalcular_totales_cotizacion(conn, cotizacion_id)
             return creado
     finally:
@@ -172,36 +172,7 @@ def generar_mensaje_whatsapp_cotizacion(cotizacion_id: int):
         items = cotizacion["items"]
         cliente = _resolver_nombre_visible_cliente(cotizacion)
 
-        consulta_bloque = ""
-        if cotizacion.get("problema_reportado"):
-            consulta_bloque = f"Consulta: {cotizacion['problema_reportado']}\n"
-
-        detalle_bloque = ""
-        if items:
-            detalle_lineas = ["Detalle:"]
-            for item in items:
-                detalle_lineas.append(
-                    f"- {item['descripcion_snapshot']} x {item['cantidad']}: ${item['subtotal']}"
-                )
-            detalle_bloque = "\n".join(detalle_lineas) + "\n"
-
-        validez_bloque = ""
-        if cotizacion.get("fecha_validez"):
-            validez_bloque = f"Valida hasta: {cotizacion['fecha_validez']}\n"
-
-        mensaje = render_template(
-            config.get("plantilla_cotizacion_whatsapp"),
-            {
-                **config,
-                "cliente_nombre": cliente,
-                "numero_cotizacion": cotizacion["numero"],
-                "tipo_cotizacion": "reparacion" if cotizacion["tipo"] == "reparacion" else "bicicleta/productos",
-                "consulta_bloque": consulta_bloque,
-                "detalle_bloque": detalle_bloque,
-                "total": f"${cotizacion['total_final']}",
-                "validez_bloque": validez_bloque,
-            },
-        )
+        mensaje = _build_mensaje_whatsapp_cotizacion(cotizacion, items, cliente, config)
         telefono = _normalizar_telefono_whatsapp(
             cotizacion.get("cliente_telefono_snapshot")
             or cotizacion.get("cliente_telefono")
@@ -244,13 +215,13 @@ def _validar_base(conn, data):
             )
 
 
-def _insertar_item_normalizado(conn, cotizacion_id: int, item):
-    normalizado = _normalizar_item(conn, item)
+def _insertar_item_normalizado(conn, cotizacion_id: int, item, tipo_precio: str | None = "minorista"):
+    normalizado = _normalizar_item(conn, item, tipo_precio=tipo_precio)
     normalizado["id_cotizacion"] = cotizacion_id
     return insert_cotizacion_item(conn, normalizado)
 
 
-def _normalizar_item(conn, item):
+def _normalizar_item(conn, item, *, tipo_precio: str | None = "minorista"):
     precio = item.precio_unitario
     descripcion = _limpiar_texto(item.descripcion_snapshot)
     costo = None
@@ -264,7 +235,12 @@ def _normalizar_item(conn, item):
         if not variante["activo"] or not variante["producto_activo"]:
             raise HTTPException(status_code=400, detail="La variante no esta activa")
 
-        precio = precio if precio is not None else variante["precio_minorista"]
+        precio_catalogo = (
+            variante["precio_mayorista"]
+            if tipo_precio == "mayorista" and variante.get("precio_mayorista") is not None
+            else variante["precio_minorista"]
+        )
+        precio = precio if precio is not None else precio_catalogo
         descripcion = descripcion or _descripcion_variante(variante)
         costo = variante.get("costo_promedio_vigente")
 
@@ -351,6 +327,66 @@ def _resolver_nombre_visible_cliente(data) -> str:
     )
 
     return nombre_partes or "cliente"
+
+
+def _build_mensaje_whatsapp_cotizacion(cotizacion: dict, items: list[dict], cliente: str, config: dict) -> str:
+    detalle_lineas = []
+    for item in items:
+        cantidad = Decimal(str(item.get("cantidad") or 0))
+        detalle_lineas.append(
+            f"• {item.get('descripcion_snapshot')} ×{cantidad:g} — {_format_money_whatsapp(item.get('subtotal'))}"
+        )
+
+    partes = [
+        f"Hola {cliente} 👋",
+        "",
+        f"Te enviamos la cotización {cotizacion.get('numero')}.",
+        "",
+        f"Lista aplicada: {_label_tipo_precio(cotizacion.get('tipo_precio'))}",
+    ]
+
+    if cotizacion.get("problema_reportado"):
+        partes.extend(["", f"Consulta: {cotizacion.get('problema_reportado')}"])
+
+    if detalle_lineas:
+        partes.extend(["", "Detalle:", *detalle_lineas])
+
+    partes.extend(["", f"Total estimado: {_format_money_whatsapp(cotizacion.get('total_final'))}"])
+
+    if cotizacion.get("fecha_validez"):
+        partes.append(f"Válida hasta: {_format_date_whatsapp(cotizacion.get('fecha_validez'))}")
+
+    partes.extend(
+        [
+            "",
+            "Esta cotización no reserva stock y los precios están sujetos a disponibilidad y vigencia.",
+            "",
+            f"{config.get('nombre_negocio') or 'Emprendimiento Agus'} 🚲",
+        ]
+    )
+
+    return "\n".join(partes)
+
+
+def _label_tipo_precio(tipo_precio: str | None) -> str:
+    return "Mayorista" if tipo_precio == "mayorista" else "Minorista"
+
+
+def _format_money_whatsapp(value) -> str:
+    numero = Decimal(str(value or 0)).quantize(Decimal("0.01"))
+    formatted = f"{numero:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"${formatted}"
+
+
+def _format_date_whatsapp(value) -> str:
+    if isinstance(value, datetime):
+        value = value.date()
+    if isinstance(value, date):
+        return value.strftime("%d/%m/%Y")
+    try:
+        return datetime.fromisoformat(str(value)).strftime("%d/%m/%Y")
+    except ValueError:
+        return str(value)
 
 
 def _normalizar_telefono_whatsapp(telefono: str | None) -> str | None:

@@ -87,6 +87,10 @@ export default function PagosPage() {
         pago.estado,
         pago.nota,
         pago.id_cliente,
+        pago.cliente_nombre,
+        pago.cliente_telefono,
+        pago.cliente_dni,
+        pago.cliente_cuit,
         pago.id_usuario,
       ].filter(Boolean).join(" "));
 
@@ -140,7 +144,7 @@ export default function PagosPage() {
 
     const motivo = await pedirPrompt({
       title: "Revertir pago",
-      message: `Vas a revertir el pago #${pago.id}. Esta acción debe quedar justificada.`,
+      message: `Se revertirá este pago y se actualizarán los saldos asociados.\n\nPago #${pago.id}. Esta acción debe quedar justificada.`,
       label: "Motivo de reversión",
       required: true,
       minLength: 3,
@@ -202,8 +206,8 @@ export default function PagosPage() {
 
       <section style={isMobile ? styles.metricsGridMobile : styles.metricsGrid}>
         <Metric label="Cobrado real" value={formatMoney(resumen.cobradoReal)} tone="ok" />
-        <Metric label="Base aplicada" value={formatMoney(resumen.baseAplicada)} tone="info" />
-        <Metric label="Recargos" value={formatMoney(resumen.recargos)} tone="orange" />
+        <Metric label="Cubre ventas" value={formatMoney(resumen.baseAplicada)} tone="info" />
+        <Metric label="Financiacion" value={formatMoney(resumen.recargos)} tone="orange" />
         <Metric label="Confirmados" value={resumen.confirmados} tone="ok" />
         <Metric label="Revertidos" value={resumen.revertidos} tone={resumen.revertidos > 0 ? "danger" : "muted"} />
         <Metric label="Pagos deuda" value={resumen.pagosDeuda} tone="warning" />
@@ -307,10 +311,10 @@ export default function PagosPage() {
                 <strong>Cobrado real</strong> es la plata que entró a caja o medio externo.
               </p>
               <p>
-                <strong>Base aplicada</strong> es cuánto saldo comercial cubrió el pago.
+                <strong>Cubre de la venta</strong> muestra cuanto saldo comercial cubrio el pago.
               </p>
               <p>
-                En pagos de deuda puede pasar que la base aplicada sea mayor al efectivo cobrado.
+                En pagos de deuda puede pasar que cubra mas deuda que el efectivo cobrado.
               </p>
             </div>
           </section>
@@ -362,10 +366,10 @@ function PagoCard({ pago, selected, guardando, onSelect, onRevertir, canRevertir
       </div>
 
       <div style={styles.paymentMetaGrid}>
-        <InfoCompact label="Cliente" value={pago.id_cliente ? `#${pago.id_cliente}` : "-"} />
-        <InfoCompact label="Base aplicada" value={formatMoney(montoBase)} />
-        <InfoCompact label="Recargo" value={formatMoney(pago.monto_recargo_aplicado || 0)} />
-        <InfoCompact label="Diferencia" value={formatMoney(diferencia)} />
+        <InfoCompact label="Cliente" value={formatClientePago(pago)} />
+        <InfoCompact label="Telefono" value={pago.cliente_telefono || "-"} />
+        <InfoCompact label="Cubre venta" value={formatMoney(montoBase)} />
+        <InfoCompact label="Financiacion" value={formatMoney(pago.monto_recargo_aplicado || 0)} />
       </div>
 
       <div style={styles.paymentBottom}>
@@ -437,9 +441,11 @@ function PagoDetalle({ pago, guardando, onRevertir, canRevertirPago }) {
       <div style={styles.infoStack}>
         <Info label="Origen" value={renderOrigen(pago)} />
         <Info label="Medio" value={labelMedioPago(pago.medio_pago)} />
-        <Info label="Cliente" value={pago.id_cliente ? `#${pago.id_cliente}` : "-"} />
-        <Info label="Base aplicada" value={formatMoney(montoBase)} />
-        <Info label="Recargo aplicado" value={formatMoney(recargo)} />
+        <Info label="Cliente" value={formatClientePago(pago)} />
+        <Info label="Telefono" value={pago.cliente_telefono || "-"} />
+        <Info label="DNI/CUIT" value={pago.cliente_dni || pago.cliente_cuit || "-"} />
+        <Info label="Cubre de la venta" value={formatMoney(montoBase)} />
+        <Info label="Financiacion incluida" value={formatMoney(recargo)} />
         <Info label="Diferencia no cobrada" value={formatMoney(diferencia)} />
         <Info label="Usuario" value={formatUsuario(pago)} />
         <Info label="Fecha" value={formatDate(pago.fecha)} />
@@ -505,6 +511,11 @@ function formatUsuario(item) {
   }
 
   return item.id_usuario ? `Usuario #${item.id_usuario}` : "-";
+}
+
+function formatClientePago(pago) {
+  const nombre = pago.cliente_nombre || (pago.id_cliente ? `Cliente #${pago.id_cliente}` : "-");
+  return pago.id_cliente && pago.cliente_nombre ? `${nombre} #${pago.id_cliente}` : nombre;
 }
 
 function EstadoPagoBadge({ estado }) {

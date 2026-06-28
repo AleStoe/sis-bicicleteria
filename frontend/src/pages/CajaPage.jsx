@@ -632,7 +632,7 @@ function CajaResumenDiario({ resumen, formatCurrency, isMobile }) {
           tone="success"
         />
         <ResumenDiarioMetric
-          label="Desc./rec."
+          label="Desc./fin."
           value={`${formatCurrency(pagos.descuentos_aplicados)} / ${formatCurrency(pagos.recargos_aplicados)}`}
           detail={`Base: ${formatCurrency(pagos.base_aplicada)}`}
         />

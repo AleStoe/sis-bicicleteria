@@ -21,13 +21,13 @@ export default function PagoVentaPreview({ preview, simulando }) {
     <div style={styles.wrapper}>
       <div style={styles.operatorHint}>
         <span style={styles.operatorHintLabel}>
-          {hayRecargo ? "Total a financiar ahora" : "Total a cobrar ahora"}
+          {hayRecargo ? "Total en tarjeta" : "Total a cobrar ahora"}
         </span>
         <strong>{formatMoney(preview.monto_total_cobrado)}</strong>
         <small>
           Cubre {formatMoney(preview.monto_base_aplicado)} de la venta.
           {hayDescuento && ` Descuento aplicado: ${formatMoney(descuento)}.`}
-          {hayRecargo && ` Recargo aplicado: ${formatMoney(recargo)}.`}
+          {hayRecargo && ` Financiacion incluida: ${formatMoney(recargo)}.`}
           {` Queda pendiente: ${formatMoney(preview.saldo_restante_estimado)}.`}
         </small>
       </div>
@@ -35,26 +35,26 @@ export default function PagoVentaPreview({ preview, simulando }) {
       <div style={boxStyle}>
         <div style={styles.previewTitle}>
           {hayRecargo
-            ? "Financiacion aplicada"
+            ? "Detalle de financiacion"
             : hayDescuento
               ? "Beneficio aplicado"
               : "Resumen del cobro"}
         </div>
 
-        <Row label="Cubre saldo" value={formatMoney(preview.monto_base_aplicado)} />
+        <Row label="Cubre de la venta" value={formatMoney(preview.monto_base_aplicado)} />
 
         {hayDescuento && (
           <Row label="Descuento" value={`- ${formatMoney(descuento)}`} tone="success" />
         )}
 
         {hayRecargo && (
-          <Row label="Recargo" value={`+ ${formatMoney(recargo)}`} tone="warning" />
+          <Row label="Financiacion" value={`+ ${formatMoney(recargo)}`} tone="warning" />
         )}
 
-        <Row label="Saldo pendiente luego" value={formatMoney(preview.saldo_restante_estimado)} />
+        <Row label="Pendiente despues de este cobro" value={formatMoney(preview.saldo_restante_estimado)} />
 
         <div style={styles.previewTotalRow}>
-          <span>{hayRecargo ? "Total a financiar ahora" : "Total a cobrar ahora"}</span>
+          <span>{hayRecargo ? "Total en tarjeta" : "Total a cobrar ahora"}</span>
           <strong>{formatMoney(preview.monto_total_cobrado)}</strong>
         </div>
       </div>

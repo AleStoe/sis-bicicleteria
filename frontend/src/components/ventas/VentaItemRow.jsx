@@ -239,7 +239,7 @@ export default function VentaItemRow({
             onClick={() => togglePanel("precio")}
             style={panelActivo === "precio" ? styles.actionBtnActive : styles.actionBtn}
           >
-            Precio
+            Modificar precio
           </button>
 
           <button
@@ -249,7 +249,7 @@ export default function VentaItemRow({
               panelActivo === "bonificacion" ? styles.actionBtnActive : styles.actionBtn
             }
           >
-            Bonificar
+            Bonificar ítem
           </button>
 
           <button

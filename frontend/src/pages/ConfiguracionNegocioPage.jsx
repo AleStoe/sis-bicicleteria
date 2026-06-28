@@ -32,6 +32,7 @@ const VARIABLES = [
   "{horarios_retiro}",
   "{whatsapp_cierre}",
   "{numero_cotizacion}",
+  "{lista_aplicada}",
   "{tipo_cotizacion}",
   "{consulta_bloque}",
   "{detalle_bloque}",

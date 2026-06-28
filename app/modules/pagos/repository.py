@@ -116,9 +116,14 @@ def get_pagos(conn, id_cliente: int | None = None):
                 p.estado,
                 p.nota,
                 p.id_usuario,
+                c.nombre AS cliente_nombre,
+                c.telefono AS cliente_telefono,
+                c.dni AS cliente_dni,
+                c.cuit AS cliente_cuit,
                 u.nombre AS usuario_nombre,
                 u.username AS usuario_username
             FROM pagos p
+            LEFT JOIN clientes c ON c.id = p.id_cliente
             LEFT JOIN usuarios u ON u.id = p.id_usuario
             {where_sql}
             ORDER BY p.fecha DESC, p.id DESC
@@ -145,6 +150,10 @@ def obtener_pagos_por_venta(conn, venta_id: int):
                 p.estado,
                 p.nota,
                 p.id_usuario,
+                c.nombre AS cliente_nombre,
+                c.telefono AS cliente_telefono,
+                c.dni AS cliente_dni,
+                c.cuit AS cliente_cuit,
 
                 d.id_tarjeta_plan,
                 tp.nombre AS tarjeta_plan_nombre,
@@ -156,6 +165,8 @@ def obtener_pagos_por_venta(conn, venta_id: int):
                 d.monto_neto_liquidado
 
             FROM pagos p
+            LEFT JOIN clientes c
+                ON c.id = p.id_cliente
             LEFT JOIN pagos_tarjeta_detalle d
                 ON d.id_pago = p.id
             LEFT JOIN tarjeta_planes tp
@@ -283,7 +294,7 @@ def insert_pago_reversion_relacion(
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
-            INSERT INTO pagos_reversion (
+            INSERT INTO pagos_reversiones (
                 id_pago_original,
                 id_pago_reversion,
                 motivo
@@ -305,7 +316,7 @@ def get_reversion_by_pago_original(conn, pago_id: int):
         cur.execute(
             """
             SELECT id
-            FROM pagos_reversion
+            FROM pagos_reversiones
             WHERE id_pago_original = %s
             """,
             (pago_id,),

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useLocation, useParams } from "react-router-dom";
 import VentaHeader from "../components/ventas/detalle/VentaHeader";
 import VentaResumenCards from "../components/ventas/detalle/VentaResumenCards";
 import VentaLecturaRapida from "../components/ventas/detalle/VentaLecturaRapida";
@@ -17,7 +17,7 @@ import {
   devolverItemsVenta,
 } from "../services/ventasService";
 import VentaItemsVendidos from "../components/ventas/detalle/VentaItemsVendidos";
-import { listarPagosDeVenta } from "../services/pagosService";
+import { listarPagosDeVenta, revertirPago } from "../services/pagosService";
 import { useSession } from "../context/SessionContext";
 import { formatMoney } from "../utils/formatters";
 import VentaAccionesPanel from "../components/ventas/detalle/VentaAccionesPanel";
@@ -28,11 +28,13 @@ import {
   successStyle,
 } from "../styles/pages/ventaDetallePageStyles";
 import { obtenerAccionesVentaDetalle } from "../rules/ventaDetalleActionRules";
+import { puedeRevertirPago } from "../rules/ventaDetalleActionRules";
 
 export default function VentaDetallePage() {
   const params = useParams();
+  const location = useLocation();
   const ventaId = params.ventaId || params.id;
-  const { usuarioId } = useSession();
+  const { usuarioId, usuarioActual } = useSession();
 
   const [data, setData] = useState(null);
   const [pagos, setPagos] = useState([]);
@@ -75,33 +77,25 @@ export default function VentaDetallePage() {
     });
   }
   useEffect(() => {
-    cargarTodo();
+    cargarVenta({ mostrarCarga: true, limpiarMensaje: true });
   }, [ventaId]);
 
-  async function cargarTodo() {
-    try {
-      setLoading(true);
-      setError("");
-      setMensaje("");
-      
-      const [ventaData, pagosData] = await Promise.all([
-        obtenerVenta(ventaId),
-        listarPagosDeVenta(ventaId),
-      ]);
-
-      setData(ventaData);
-      setPagos(pagosData || []);
-    } catch (err) {
-      setError(err.message || "No se pudo cargar la venta");
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    if (location.state?.scrollToTop || location.state?.ventaFinalizadaDesdeCheckout) {
+      window.requestAnimationFrame(() => {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      });
     }
-  
-  }
+  }, [location.state]);
 
-  async function cargarVenta() {
+  async function cargarVenta({
+    mostrarCarga = false,
+    limpiarMensaje = false,
+  } = {}) {
     try {
+      if (mostrarCarga) setLoading(true);
       setError("");
+      if (limpiarMensaje) setMensaje("");
 
       const [ventaData, pagosData] = await Promise.all([
         obtenerVenta(ventaId),
@@ -111,15 +105,37 @@ export default function VentaDetallePage() {
       setData(ventaData);
       setPagos(pagosData || []);
     } catch (err) {
-      setError(err.message || "No se pudo refrescar la venta");
+      setError(
+        err.message ||
+          (mostrarCarga
+            ? "No se pudo cargar la venta"
+            : "No se pudo refrescar la venta")
+      );
+    } finally {
+      if (mostrarCarga) setLoading(false);
     }
   }
 
   async function handleEntregarVenta() {
+    const venta = data?.venta;
+    const saldo = Number(venta?.saldo_pendiente || 0);
+    const tieneDeudaFormal = Boolean(
+      data?.situacion_financiera?.tiene_deuda ||
+        data?.situacion_financiera?.deuda_abierta ||
+        data?.situacion_financiera?.deuda_formal
+    );
+
+    if (saldo > 0 && !tieneDeudaFormal) {
+      setError("No se puede entregar una venta con saldo pendiente sin deuda formal asociada.");
+      return;
+    }
+
     const confirmar = await pedirConfirmacion({
       title: "Entregar venta",
       message:
-        "¿Confirmás la entrega de esta venta? Si tiene saldo pendiente, el backend exigirá permiso y creará deuda.",
+        saldo > 0
+          ? "Esta venta tiene saldo pendiente, pero cuenta con deuda formal asociada.\n¿Confirmás la entrega?"
+          : "¿Confirmás la entrega de esta venta? Revisá que el cobro esté correcto antes de entregar la mercadería.",
       confirmText: "Entregar venta",
       cancelText: "Cancelar",
       variant: "warning",
@@ -143,7 +159,55 @@ export default function VentaDetallePage() {
     }
   }
 
+  async function handleRevertirPago(pago) {
+    if (!puedeRevertirPago(pago, usuarioActual)) {
+      setError("No tenes permiso para revertir este pago o el pago no esta confirmado.");
+      return;
+    }
+
+    const motivo = await pedirPrompt({
+      title: "Revertir pago",
+      message: `Se revertirá este pago y se actualizarán los saldos asociados.\n\nPago #${pago.id}. ¿Querés continuar?`,
+      label: "Motivo de reversion",
+      required: true,
+      minLength: 3,
+      confirmText: "Revertir pago",
+      cancelText: "Cancelar",
+    });
+
+    if (!motivo || !motivo.trim()) return;
+
+    try {
+      setProcesando(true);
+      setError("");
+      setMensaje("");
+
+      await revertirPago(pago.id, {
+        motivo: motivo.trim(),
+        id_usuario: usuarioId,
+      });
+
+      await cargarVenta();
+      setMensaje(`Pago #${pago.id} revertido correctamente`);
+    } catch (err) {
+      setError(err.message || "No se pudo revertir el pago");
+    } finally {
+      setProcesando(false);
+    }
+  }
+
   async function handleAnularVenta() {
+    const confirmarAnulacion = await pedirConfirmacion({
+      title: "Anular venta",
+      message:
+        "Esta acción anulará la venta y puede impactar en stock, pagos, deudas o créditos asociados.\n¿Confirmás la anulación?",
+      confirmText: "Continuar",
+      cancelText: "Cancelar",
+      variant: "danger",
+    });
+
+    if (!confirmarAnulacion) return;
+
     const motivo = await pedirPrompt({
       title: "Anular venta",
       label: "Motivo de anulación",
@@ -542,6 +606,7 @@ const {
 
       <VentaResumenCards
         venta={venta}
+        situacionFinanciera={situacion_financiera}
         totalFinal={totalFinal}
         totalPagadoReal={totalPagadoReal}
         cubiertoNoPago={cubiertoNoPago}
@@ -552,6 +617,7 @@ const {
       <VentaLecturaRapida
         venta={venta}
         items={items}
+        situacionFinanciera={situacion_financiera}
         totalFinal={totalFinal}
         totalPagadoReal={totalPagadoReal}
         saldoPendiente={saldoPendiente}
@@ -601,7 +667,13 @@ const {
         deuda={deuda}
       />
 
-      <VentaPagosPanel pagos={pagos} formatMoney={formatMoney} />
+      <VentaPagosPanel
+        pagos={pagos}
+        formatMoney={formatMoney}
+        procesando={procesando}
+        canRevertirPago={(pago) => puedeRevertirPago(pago, usuarioActual)}
+        onRevertirPago={handleRevertirPago}
+      />
 
       <VentaItemsVendidos
         venta={venta}

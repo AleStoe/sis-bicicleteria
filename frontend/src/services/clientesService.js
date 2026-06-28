@@ -19,6 +19,14 @@ export function obtenerCliente(clienteId) {
   return apiRequest(`/clientes/${clienteId}`);
 }
 
+export function obtenerHistorialCliente(clienteId) {
+  return apiRequest(`/clientes/${clienteId}/historial`);
+}
+
+export function obtenerTallerCliente(clienteId) {
+  return apiRequest(`/clientes/${clienteId}/taller`);
+}
+
 export function crearCliente(data) {
   return apiRequest("/clientes/", {
     method: "POST",

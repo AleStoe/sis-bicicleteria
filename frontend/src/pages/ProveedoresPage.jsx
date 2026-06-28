@@ -6,15 +6,25 @@ import {
   desactivarProveedor,
   listarProveedores,
 } from "../services/proveedoresService";
+import {
+  cambiarEstadoMarca,
+  crearMarca,
+  editarMarca,
+  listarMarcas,
+} from "../services/catalogoService";
 import useMediaQuery from "../hooks/useMediaQuery";
 import { normalizeTextUpper } from "../utils/textNormalization";
 
 export default function ProveedoresPage() {
   const isMobile = useMediaQuery("(max-width: 760px)");
   const isNarrow = useMediaQuery("(max-width: 1100px)");
+  const [tabActiva, setTabActiva] = useState("proveedores");
   const [proveedores, setProveedores] = useState([]);
+  const [marcas, setMarcas] = useState([]);
   const [busqueda, setBusqueda] = useState("");
   const [soloActivos, setSoloActivos] = useState(true);
+  const [busquedaMarcas, setBusquedaMarcas] = useState("");
+  const [soloMarcasActivas, setSoloMarcasActivas] = useState(false);
 
   const [form, setForm] = useState({
     nombre: "",
@@ -28,6 +38,8 @@ export default function ProveedoresPage() {
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
   const [proveedorEditando, setProveedorEditando] = useState(null);
+  const [marcaForm, setMarcaForm] = useState({ nombre: "" });
+  const [marcaEditando, setMarcaEditando] = useState(null);
 
   async function cargarProveedores() {
     try {
@@ -46,9 +58,30 @@ export default function ProveedoresPage() {
     }
   }
 
+  async function cargarMarcas() {
+    try {
+      setCargando(true);
+      setError("");
+
+      const data = await listarMarcas({
+        solo_activas: soloMarcasActivas,
+      });
+
+      setMarcas(data || []);
+    } catch (err) {
+      setError(err.message || "Error al cargar marcas");
+    } finally {
+      setCargando(false);
+    }
+  }
+
   useEffect(() => {
     cargarProveedores();
   }, [soloActivos]);
+
+  useEffect(() => {
+    cargarMarcas();
+  }, [soloMarcasActivas]);
 
   const proveedoresFiltrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
@@ -63,6 +96,16 @@ export default function ProveedoresPage() {
       );
     });
   }, [proveedores, busqueda]);
+
+  const marcasFiltradas = useMemo(() => {
+    const q = busquedaMarcas.trim().toLowerCase();
+
+    if (!q) return marcas;
+
+    return marcas.filter((m) =>
+      String(m.nombre || "").toLowerCase().includes(q)
+    );
+  }, [marcas, busquedaMarcas]);
 
   function actualizarCampo(campo, valor) {
     setForm((prev) => ({
@@ -81,6 +124,11 @@ export default function ProveedoresPage() {
     });
   }
 
+  function limpiarMarcaFormulario() {
+    setMarcaEditando(null);
+    setMarcaForm({ nombre: "" });
+  }
+
   function iniciarEdicion(proveedor) {
     setProveedorEditando(proveedor);
     setError("");
@@ -91,6 +139,13 @@ export default function ProveedoresPage() {
       email: proveedor.email || "",
       notas: proveedor.notas || "",
     });
+  }
+
+  function iniciarEdicionMarca(marca) {
+    setMarcaEditando(marca);
+    setError("");
+    setMensaje("");
+    setMarcaForm({ nombre: marca.nombre || "" });
   }
 
   async function guardarProveedor(e) {
@@ -131,6 +186,38 @@ export default function ProveedoresPage() {
     }
   }
 
+  async function guardarMarca(e) {
+    e.preventDefault();
+
+    if (!marcaForm.nombre.trim()) {
+      setError("El nombre de la marca es obligatorio");
+      return;
+    }
+
+    try {
+      setGuardando(true);
+      setError("");
+      setMensaje("");
+
+      const payload = { nombre: normalizeTextUpper(marcaForm.nombre.trim()) };
+
+      if (marcaEditando) {
+        await editarMarca(marcaEditando.id, payload);
+        setMensaje("Marca actualizada correctamente");
+      } else {
+        await crearMarca(payload);
+        setMensaje("Marca creada correctamente");
+      }
+
+      limpiarMarcaFormulario();
+      await cargarMarcas();
+    } catch (err) {
+      setError(err.message || "Error al guardar marca");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
   async function cambiarEstadoProveedor(proveedor) {
     const accion = proveedor.activo ? desactivarProveedor : activarProveedor;
 
@@ -154,6 +241,27 @@ export default function ProveedoresPage() {
     }
   }
 
+  async function cambiarEstadoMarcaItem(marca) {
+    try {
+      setGuardando(true);
+      setError("");
+      setMensaje("");
+
+      await cambiarEstadoMarca(marca.id, { activa: !marca.activa });
+
+      if (marcaEditando?.id === marca.id && marca.activa) {
+        limpiarMarcaFormulario();
+      }
+
+      setMensaje(marca.activa ? "Marca desactivada" : "Marca activada");
+      await cargarMarcas();
+    } catch (err) {
+      setError(err.message || "No se pudo cambiar el estado de la marca");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
   return (
     <div style={{ ...styles.page, ...(isMobile ? styles.pageMobile : {}) }}>
       <div style={{ ...styles.header, ...(isMobile ? styles.headerMobile : {}) }}>
@@ -168,6 +276,24 @@ export default function ProveedoresPage() {
       {error && <div style={styles.error}>{error}</div>}
       {mensaje && <div style={styles.success}>{mensaje}</div>}
 
+      <div style={styles.tabs}>
+        <button
+          type="button"
+          style={tabActiva === "proveedores" ? styles.tabActive : styles.tab}
+          onClick={() => setTabActiva("proveedores")}
+        >
+          Proveedores
+        </button>
+        <button
+          type="button"
+          style={tabActiva === "marcas" ? styles.tabActive : styles.tab}
+          onClick={() => setTabActiva("marcas")}
+        >
+          Marcas
+        </button>
+      </div>
+
+      {tabActiva === "proveedores" && (
       <div style={isNarrow ? styles.gridMobile : styles.grid}>
         <section style={styles.card}>
           <div style={styles.formHeader}>
@@ -356,6 +482,165 @@ export default function ProveedoresPage() {
           </div>
         </section>
       </div>
+      )}
+
+      {tabActiva === "marcas" && (
+        <div style={isNarrow ? styles.gridMobile : styles.grid}>
+          <section style={styles.card}>
+            <div style={styles.formHeader}>
+              <div>
+                <h2 style={styles.cardTitle}>
+                  {marcaEditando ? "Editar marca" : "Nueva marca"}
+                </h2>
+                {marcaEditando && (
+                  <p style={styles.editingHint}>Editando #{marcaEditando.id}</p>
+                )}
+              </div>
+              {marcaEditando && (
+                <button
+                  type="button"
+                  style={styles.linkButton}
+                  onClick={limpiarMarcaFormulario}
+                  disabled={guardando}
+                >
+                  Cancelar
+                </button>
+              )}
+            </div>
+
+            <form onSubmit={guardarMarca} style={styles.form}>
+              <label style={styles.label}>
+                Nombre *
+                <input
+                  style={styles.input}
+                  value={marcaForm.nombre}
+                  onChange={(e) => setMarcaForm({ nombre: normalizeTextUpper(e.target.value) })}
+                  placeholder="Ej: SHIMANO"
+                />
+              </label>
+
+              <button type="submit" style={styles.primaryButton} disabled={guardando}>
+                {guardando
+                  ? "Guardando..."
+                  : marcaEditando
+                    ? "Guardar cambios"
+                    : "Crear marca"}
+              </button>
+            </form>
+          </section>
+
+          <section style={styles.card}>
+            <div style={isMobile ? styles.toolbarMobile : styles.toolbar}>
+              <div>
+                <h2 style={styles.cardTitle}>Marcas</h2>
+                <p style={styles.counter}>
+                  {marcasFiltradas.length} marca(s)
+                </p>
+              </div>
+
+              <button
+                type="button"
+                style={styles.secondaryButton}
+                onClick={cargarMarcas}
+                disabled={cargando}
+              >
+                {cargando ? "Cargando..." : "Actualizar"}
+              </button>
+            </div>
+
+            <div style={isMobile ? styles.filtersMobile : styles.filters}>
+              <input
+                style={styles.input}
+                value={busquedaMarcas}
+                onChange={(e) => setBusquedaMarcas(e.target.value)}
+                placeholder="Buscar por nombre de marca..."
+              />
+
+              <label style={styles.checkboxLabel}>
+                <input
+                  type="checkbox"
+                  checked={soloMarcasActivas}
+                  onChange={(e) => setSoloMarcasActivas(e.target.checked)}
+                />
+                Solo activas
+              </label>
+            </div>
+
+            <div style={styles.tableWrapper}>
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>ID</th>
+                    <th style={styles.th}>Nombre</th>
+                    <th style={styles.th}>Productos</th>
+                    <th style={styles.th}>Estado</th>
+                    <th style={styles.th}>Acciones</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {marcasFiltradas.map((m) => (
+                    <tr key={m.id}>
+                      <td style={styles.tdMuted}>{m.id}</td>
+                      <td style={styles.tdStrong}>{m.nombre}</td>
+                      <td style={styles.td}>{m.productos_asociados ?? 0}</td>
+                      <td style={styles.td}>
+                        <span
+                          style={{
+                            ...styles.badge,
+                            ...(m.activa ? styles.badgeOk : styles.badgeOff),
+                          }}
+                        >
+                          {m.activa ? "Activa" : "Inactiva"}
+                        </span>
+                      </td>
+                      <td style={styles.td}>
+                        <div style={styles.actions}>
+                          <button
+                            type="button"
+                            style={styles.smallButton}
+                            onClick={() => iniciarEdicionMarca(m)}
+                            disabled={guardando}
+                          >
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            style={{
+                              ...styles.smallButton,
+                              ...(m.activa ? styles.dangerButton : styles.successButton),
+                            }}
+                            onClick={() => cambiarEstadoMarcaItem(m)}
+                            disabled={guardando}
+                          >
+                            {m.activa ? "Desactivar" : "Activar"}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+
+                  {!cargando && marcasFiltradas.length === 0 && (
+                    <tr>
+                      <td style={styles.empty} colSpan={5}>
+                        No hay marcas para mostrar.
+                      </td>
+                    </tr>
+                  )}
+
+                  {cargando && (
+                    <tr>
+                      <td style={styles.empty} colSpan={5}>
+                        Cargando marcas...
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }
@@ -390,6 +675,30 @@ const styles = {
   subtitle: {
     margin: "6px 0 0",
     color: "#666",
+  },
+  tabs: {
+    display: "flex",
+    gap: "8px",
+    marginBottom: "16px",
+    flexWrap: "wrap",
+  },
+  tab: {
+    border: "1px solid #cfd7e3",
+    borderRadius: "999px",
+    padding: "9px 14px",
+    background: "#fff",
+    color: "#344054",
+    fontWeight: 800,
+    cursor: "pointer",
+  },
+  tabActive: {
+    border: "1px solid #1f6feb",
+    borderRadius: "999px",
+    padding: "9px 14px",
+    background: "#eff6ff",
+    color: "#1f6feb",
+    fontWeight: 900,
+    cursor: "pointer",
   },
   grid: {
     display: "grid",

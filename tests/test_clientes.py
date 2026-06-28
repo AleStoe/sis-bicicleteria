@@ -489,6 +489,263 @@ def test_rechaza_condicion_iva_invalida(client, clean_db):
 
     assert response.status_code == 422
 
+def test_historial_y_taller_cliente_sin_movimientos(client, clean_db):
+    crear = client.post(
+        "/clientes/",
+        json={
+            "nombre": "Cliente Sin Historial",
+            "telefono": "2915558080",
+            "tipo_cliente": "minorista",
+        },
+    )
+    assert crear.status_code == 200, crear.text
+    cliente_id = crear.json()["cliente_id"]
+
+    historial = client.get(f"/clientes/{cliente_id}/historial")
+    taller = client.get(f"/clientes/{cliente_id}/taller")
+
+    assert historial.status_code == 200, historial.text
+    assert historial.json() == {
+        "ventas": [],
+        "pagos": [],
+        "reservas": [],
+        "deudas": [],
+        "creditos": [],
+    }
+    assert taller.status_code == 200, taller.text
+    assert taller.json() == []
+
+
+def test_historial_cliente_devuelve_contexto_comercial_enriquecido(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    venta = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [{
+                "id_variante": seed_venta_basica["variante_id"],
+                "cantidad": 1,
+            }],
+        },
+    )
+    assert venta.status_code == 200, venta.text
+    venta_id = venta.json()["venta_id"]
+
+    reserva = client.post(
+        "/reservas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [{
+                "id_variante": seed_venta_basica["variante_id"],
+                "cantidad": 1,
+                "precio_estimado": seed_venta_basica["precio_venta"],
+            }],
+        },
+    )
+    assert reserva.status_code == 200, reserva.text
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO pagos (
+                id_cliente, origen_tipo, origen_id, medio_pago,
+                monto_total_cobrado, monto_base_aplicado,
+                monto_descuento_aplicado, monto_recargo_aplicado,
+                estado, id_usuario
+            )
+            VALUES (%s, 'venta', %s, 'efectivo', 21996, 24440, 2444, 0, 'confirmado', %s)
+            RETURNING id
+            """,
+            (
+                seed_venta_basica["cliente_id"],
+                venta_id,
+                seed_venta_basica["usuario_id"],
+            ),
+        )
+        pago_id = cur.fetchone()["id"]
+
+        cur.execute(
+            """
+            INSERT INTO deudas_cliente (
+                id_cliente, origen_tipo, origen_id, saldo_actual, estado
+            )
+            VALUES (%s, 'venta', %s, 12000, 'abierta')
+            RETURNING id
+            """,
+            (seed_venta_basica["cliente_id"], venta_id),
+        )
+        deuda_id = cur.fetchone()["id"]
+
+        cur.execute(
+            """
+            INSERT INTO creditos_cliente (
+                id_cliente, origen_tipo, origen_id, saldo_actual, estado
+            )
+            VALUES (%s, 'venta', %s, 5000, 'aplicado_parcial')
+            RETURNING id
+            """,
+            (seed_venta_basica["cliente_id"], venta_id),
+        )
+        credito_id = cur.fetchone()["id"]
+
+        cur.execute(
+            """
+            INSERT INTO credito_movimientos (
+                id_credito, tipo_movimiento, monto,
+                origen_tipo, origen_id, id_usuario
+            )
+            VALUES
+                (%s, 'credito_generado', 8000, 'venta', %s, %s),
+                (%s, 'aplicacion_a_venta', 3000, 'venta', %s, %s)
+            """,
+            (
+                credito_id, venta_id, seed_venta_basica["usuario_id"],
+                credito_id, venta_id, seed_venta_basica["usuario_id"],
+            ),
+        )
+    db_conn.commit()
+
+    response = client.get(
+        f"/clientes/{seed_venta_basica['cliente_id']}/historial"
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+
+    venta_historial = next(item for item in data["ventas"] if item["id"] == venta_id)
+    assert venta_historial["cantidad_items"] == 1
+    assert "Aceite lubricante Zefal Pro" in venta_historial["productos_resumen"]
+    assert venta_historial["origen"] == "venta"
+
+    pago_historial = next(item for item in data["pagos"] if item["id"] == pago_id)
+    assert pago_historial["venta_asociada_id"] == venta_id
+    assert float(pago_historial["monto_descuento_aplicado"]) == 2444
+
+    reserva_historial = next(
+        item for item in data["reservas"]
+        if item["id"] == reserva.json()["reserva_id"]
+    )
+    assert reserva_historial["cantidad_items"] == 1
+    assert "Aceite lubricante Zefal Pro" in reserva_historial["producto_principal"]
+
+    deuda_historial = next(item for item in data["deudas"] if item["id"] == deuda_id)
+    assert deuda_historial["venta_asociada_id"] == venta_id
+
+    credito_historial = next(
+        item for item in data["creditos"] if item["id"] == credito_id
+    )
+    assert credito_historial["venta_asociada_id"] == venta_id
+    assert float(credito_historial["monto_generado"]) == 8000
+    assert float(credito_historial["monto_usado"]) == 3000
+
+
+def test_taller_cliente_devuelve_ordenes_con_y_sin_venta(
+    client,
+    db_conn,
+    seed_taller_basico,
+):
+    def crear_orden(problema):
+        return client.post(
+            "/ordenes_taller/",
+            json={
+                "id_sucursal": seed_taller_basico["sucursal_id"],
+                "id_cliente": seed_taller_basico["cliente_id"],
+                "id_bicicleta_cliente": seed_taller_basico["bicicleta_cliente_id"],
+                "problema_reportado": problema,
+                "id_usuario": seed_taller_basico["usuario_id"],
+            },
+        )
+
+    orden_con_venta = crear_orden("No entraban bien los cambios")
+    orden_sin_venta = crear_orden("Control general")
+    assert orden_con_venta.status_code == 201, orden_con_venta.text
+    assert orden_sin_venta.status_code == 201, orden_sin_venta.text
+    orden_id = orden_con_venta.json()["id"]
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO ventas (
+                id_sucursal, id_cliente, estado, subtotal_base,
+                descuento_total, recargo_total, total_final,
+                saldo_pendiente, id_usuario_creador, id_orden_taller
+            )
+            VALUES (%s, %s, 'entregada', 18500, 0, 0, 18500, 0, %s, %s)
+            RETURNING id
+            """,
+            (
+                seed_taller_basico["sucursal_id"],
+                seed_taller_basico["cliente_id"],
+                seed_taller_basico["usuario_id"],
+                orden_id,
+            ),
+        )
+        venta_id = cur.fetchone()["id"]
+
+        cur.execute(
+            """
+            UPDATE ordenes_taller
+            SET estado = 'retirada',
+                fecha_terminada = NOW() - INTERVAL '1 day',
+                fecha_retirada = NOW(),
+                cliente_avisado_retiro = TRUE,
+                fecha_aviso_retiro = NOW() - INTERVAL '12 hours',
+                total_final = 18500,
+                saldo_pendiente = 0,
+                id_venta_generada = %s
+            WHERE id = %s
+            """,
+            (venta_id, orden_id),
+        )
+
+        cur.execute(
+            """
+            INSERT INTO ordenes_taller_items (
+                id_orden_taller, etapa, descripcion_snapshot, cantidad,
+                precio_unitario, aprobado, subtotal, tipo_item
+            )
+            VALUES
+                (%s, 'ejecutado', 'Regulación de transmisión', 1, 12000, TRUE, 12000, 'servicio'),
+                (%s, 'ejecutado', 'Cable cambio Shimano', 1, 6500, TRUE, 6500, 'repuesto')
+            """,
+            (orden_id, orden_id),
+        )
+
+    db_conn.commit()
+
+    response = client.get(
+        f"/clientes/{seed_taller_basico['cliente_id']}/taller"
+    )
+    assert response.status_code == 200, response.text
+    ordenes = response.json()
+    assert len(ordenes) == 2
+
+    completa = next(item for item in ordenes if item["id"] == orden_id)
+    assert completa["estado"] == "retirada"
+    assert completa["id_venta_generada"] == venta_id
+    assert completa["venta_estado"] == "entregada"
+    assert completa["fecha_retirada"] is not None
+    assert completa["cliente_avisado_retiro"] is True
+    assert "Venzo" in completa["bicicleta_descripcion"]
+    assert completa["diagnostico"] is None
+    assert {item["tipo_item"] for item in completa["items"]} == {
+        "servicio",
+        "repuesto",
+    }
+
+    pendiente = next(
+        item for item in ordenes if item["id"] == orden_sin_venta.json()["id"]
+    )
+    assert pendiente["id_venta_generada"] is None
+    assert pendiente["items"] == []
+
+
 def test_historial_bicicleta_cliente_devuelve_taller_y_venta_origen(client, db_conn, clean_db):
     crear_cliente = client.post(
         "/clientes/",

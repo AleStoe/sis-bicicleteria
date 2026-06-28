@@ -1,4 +1,4 @@
-import { API_BASE_URL } from "../config/appConfig";
+import { API_BASE_URL, API_BASE_URL_CANDIDATES } from "../config/appConfig";
 import { clearStoredSession, getStoredAuthToken } from "./sessionStore";
 
 export async function apiRequest(path, options = {}) {
@@ -7,19 +7,23 @@ export async function apiRequest(path, options = {}) {
 
   let response;
 
+  const requestOptions = {
+    ...options,
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(isFormData
+        ? {}
+        : {
+            "Content-Type": "application/json",
+          }),
+      ...(options.headers || {}),
+    },
+  };
+  const method = String(requestOptions.method || "GET").toUpperCase();
+  const allowFallback = method === "GET" || method === "HEAD";
+
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
-      ...options,
-      headers: {
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(isFormData
-          ? {}
-          : {
-              "Content-Type": "application/json",
-            }),
-        ...(options.headers || {}),
-      },
-    });
+    response = await fetchWithFallback(path, requestOptions, allowFallback);
   } catch (err) {
     throw new Error(
       "No se pudo conectar con el servidor. Verificá que el backend esté abierto y que la URL interna sea correcta."
@@ -52,4 +56,22 @@ export async function apiRequest(path, options = {}) {
   }
 
   return data;
+}
+
+async function fetchWithFallback(path, options, allowFallback) {
+  const candidates = API_BASE_URL_CANDIDATES?.length
+    ? API_BASE_URL_CANDIDATES
+    : [API_BASE_URL];
+  const bases = allowFallback ? candidates : [API_BASE_URL];
+  let lastError;
+
+  for (const baseUrl of bases) {
+    try {
+      return await fetch(`${baseUrl}${path}`, options);
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  throw lastError;
 }

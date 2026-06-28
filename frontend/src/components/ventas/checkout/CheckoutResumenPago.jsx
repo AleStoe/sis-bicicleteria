@@ -47,7 +47,7 @@ export default function CheckoutResumenPago({
 
       {hayAjusteReglas && (
         <div style={styles.totalLineMuted}>
-          <span>Total con reglas comerciales</span>
+          <span>Total final de venta</span>
           <strong>{formatMoney(totalConReglas)}</strong>
         </div>
       )}
@@ -117,9 +117,9 @@ export default function CheckoutResumenPago({
 
       {tieneSugerencia && (
         <div style={styles.cashHint}>
-          <span>Para saldar en {getMedioLabel(medioPago)}</span>
+          <span>{getSugerenciaTitulo(medioPago)}</span>
           <strong>{formatMoney(montoCobroSugerido)}</strong>
-          <small>Calculado automáticamente según reglas comerciales.</small>
+          <small>{getSugerenciaDetalle(medioPago)}</small>
         </div>
       )}
     </div>
@@ -135,6 +135,21 @@ function getMedioLabel(medio) {
   };
 
   return labels[medio] || "el medio seleccionado";
+}
+
+function getSugerenciaTitulo(medio) {
+  if (medio === "tarjeta") return "Total necesario en tarjeta para cancelar la venta";
+  return "Total a cobrar para cancelar la venta";
+}
+
+function getSugerenciaDetalle(medio) {
+  const label = getMedioLabel(medio);
+
+  if (medio === "tarjeta") {
+    return "Si abona el saldo restante con tarjeta, este es el monto final.";
+  }
+
+  return `Si abona el saldo restante en ${label}, este es el monto a cobrar.`;
 }
 
 const styles = {

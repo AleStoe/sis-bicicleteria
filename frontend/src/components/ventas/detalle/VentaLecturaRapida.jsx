@@ -3,6 +3,7 @@ import { Card, OperationalStatusBadge, useBreakpoint } from "../../ui";
 export default function VentaLecturaRapida({
   venta,
   items = [],
+  situacionFinanciera,
   totalFinal,
   totalPagadoReal,
   saldoPendiente,
@@ -11,6 +12,11 @@ export default function VentaLecturaRapida({
   const { isMobile } = useBreakpoint();
   const visibles = items.slice(0, 3);
   const restantes = Math.max(items.length - visibles.length, 0);
+  const resumen = situacionFinanciera?.resumen || {};
+  const pagosDeudaCobrado = Number(resumen.pagos_deuda_cobrado || 0);
+  const baseCanceladaPorDeuda = Number(resumen.base_cancelada_por_pagos_deuda || 0);
+  const cobroPorDeudaDiferencia = pagosDeudaCobrado - baseCanceladaPorDeuda;
+  const tieneCobroPorDeuda = pagosDeudaCobrado > 0;
 
   return (
     <Card
@@ -38,9 +44,15 @@ export default function VentaLecturaRapida({
         />
 
         <SummaryBlock
-          title="Cobrado real"
+          title={tieneCobroPorDeuda ? "Cobrado real total" : "Cobrado real"}
           value={formatMoney(totalPagadoReal)}
-          detail={saldoPendiente > 0 ? "Todavia queda saldo pendiente." : "La venta no tiene saldo por cobrar."}
+          detail={
+            tieneCobroPorDeuda
+              ? `Incluye ${formatMoney(pagosDeudaCobrado)} cobrado desde deuda asociada.`
+              : saldoPendiente > 0
+                ? "Todavia queda saldo pendiente."
+                : "La venta no tiene saldo por cobrar."
+          }
           tone={saldoPendiente > 0 ? "warning" : "success"}
         />
 
@@ -51,6 +63,18 @@ export default function VentaLecturaRapida({
           tone={saldoPendiente > 0 ? "danger" : "success"}
         />
       </div>
+
+      {tieneCobroPorDeuda && (
+        <div style={debtExplanationStyle}>
+          <strong>Esta venta se termino de cobrar desde una deuda asociada.</strong>
+          <span>
+            Total de venta/base: {formatMoney(totalFinal)}. Cobrado por deuda: {formatMoney(pagosDeudaCobrado)}.
+            {Math.abs(cobroPorDeudaDiferencia) > 0.01
+              ? ` La diferencia contra la base (${formatMoney(Math.abs(cobroPorDeudaDiferencia))}) viene de descuentos o financiacion aplicados al cobrar esa deuda.`
+              : " No hubo diferencia entre base cancelada y cobro real."}
+          </span>
+        </div>
+      )}
     </Card>
   );
 }
@@ -111,4 +135,17 @@ const detailStyle = {
   fontSize: 13,
   lineHeight: 1.35,
   overflowWrap: "anywhere",
+};
+
+const debtExplanationStyle = {
+  marginTop: 12,
+  border: "1px solid #bfdbfe",
+  background: "#eff6ff",
+  color: "#1e3a8a",
+  borderRadius: 12,
+  padding: 12,
+  display: "grid",
+  gap: 4,
+  fontSize: 13,
+  lineHeight: 1.4,
 };

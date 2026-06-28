@@ -80,6 +80,10 @@ class PagoResumenOutput(BaseModel):
     estado: str
     nota: str | None = None
     id_usuario: int
+    cliente_nombre: str | None = None
+    cliente_telefono: str | None = None
+    cliente_dni: str | None = None
+    cliente_cuit: str | None = None
     usuario_nombre: str | None = None
     usuario_username: str | None = None
     id_tarjeta_plan: int | None = None

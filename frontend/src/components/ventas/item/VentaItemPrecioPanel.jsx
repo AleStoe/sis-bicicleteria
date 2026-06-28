@@ -6,9 +6,23 @@ export default function VentaItemPrecioPanel({
   aplicarPrecioManual,
   limpiarPrecioManual,
 }) {
+  const motivosRapidos = [
+    "Precio acordado con cliente",
+    "Igualar precio competencia",
+    "Promoción del local",
+    "Error de etiqueta",
+    "Cliente frecuente",
+    "Autorizado por encargado",
+    "Ajuste comercial",
+    "Otro",
+  ];
+
   return (
     <div style={styles.panel}>
-      <div style={styles.panelTitle}>Precio manual</div>
+      <div style={styles.panelTitle}>Modificar precio</div>
+      <div style={styles.panelHelp}>
+        Usá esto sólo para cambiar el precio de venta de este ítem. Las bonificaciones por forma de pago se aplican en el cobro.
+      </div>
 
       <div style={styles.inlineForm}>
         <input
@@ -25,6 +39,19 @@ export default function VentaItemPrecioPanel({
           placeholder="Motivo obligatorio"
           style={styles.inputGrow}
         />
+
+        <div style={styles.quickReasons}>
+          {motivosRapidos.map((motivo) => (
+            <button
+              key={motivo}
+              type="button"
+              onClick={() => setMotivoPrecio(motivo)}
+              style={motivoPrecio === motivo ? styles.reasonActive : styles.reason}
+            >
+              {motivo}
+            </button>
+          ))}
+        </div>
 
         <button
           type="button"
@@ -59,11 +86,43 @@ const styles = {
     color: "#344054",
     marginBottom: 7,
   },
+  panelHelp: {
+    color: "#64748b",
+    fontSize: 12,
+    fontWeight: 700,
+    marginBottom: 8,
+  },
   inlineForm: {
     display: "flex",
     gap: 7,
     flexWrap: "wrap",
     alignItems: "center",
+  },
+  quickReasons: {
+    width: "100%",
+    display: "flex",
+    gap: 6,
+    flexWrap: "wrap",
+  },
+  reason: {
+    border: "1px solid #d0d5dd",
+    background: "white",
+    color: "#344054",
+    borderRadius: 999,
+    padding: "5px 8px",
+    fontSize: 11,
+    fontWeight: 800,
+    cursor: "pointer",
+  },
+  reasonActive: {
+    border: "1px solid #2563eb",
+    background: "#eff6ff",
+    color: "#1d4ed8",
+    borderRadius: 999,
+    padding: "5px 8px",
+    fontSize: 11,
+    fontWeight: 900,
+    cursor: "pointer",
   },
   input: {
     width: 130,

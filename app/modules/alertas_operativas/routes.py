@@ -1,8 +1,13 @@
 from fastapi import APIRouter, Query
+from pydantic import BaseModel, Field
 
-from .service import obtener_alertas_operativas
+from .service import obtener_alertas_operativas, sincronizar_saldo_venta_desde_deuda
 
 router = APIRouter()
+
+
+class SincronizarSaldoVentaInput(BaseModel):
+    id_usuario: int = Field(gt=0)
 
 
 @router.get("/")
@@ -14,3 +19,8 @@ def alertas(
         dias_lista_retiro=dias_lista_retiro,
         stock_umbral=stock_umbral,
     )
+
+
+@router.post("/ventas/{venta_id}/sincronizar-deuda")
+def sincronizar_saldo_venta(venta_id: int, data: SincronizarSaldoVentaInput):
+    return sincronizar_saldo_venta_desde_deuda(venta_id, data.id_usuario)

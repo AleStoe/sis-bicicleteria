@@ -24,6 +24,7 @@ def insert_cotizacion(conn, data: dict):
             """
             INSERT INTO cotizaciones (
                 tipo,
+                tipo_precio,
                 estado,
                 fecha_validez,
                 id_sucursal,
@@ -39,6 +40,7 @@ def insert_cotizacion(conn, data: dict):
             )
             VALUES (
                 %(tipo)s,
+                %(tipo_precio)s,
                 'borrador',
                 %(fecha_validez)s,
                 %(id_sucursal)s,

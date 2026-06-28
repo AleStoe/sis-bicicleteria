@@ -158,6 +158,9 @@ class VentaResumenOutput(BaseModel):
     estado: str
     total_final: Decimal
     saldo_pendiente: Decimal
+    cantidad_items: Decimal | int = 0
+    tiene_serializadas: bool = False
+    origen_venta: str = "venta"
 
 
 class VentaDetalleCabeceraOutput(BaseModel):

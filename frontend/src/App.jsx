@@ -164,6 +164,14 @@ export default function App() {
             }
           />
           <Route
+            path="/salud-operativa"
+            element={
+              <ProtectedRoute rolesPermitidos={OPERACION_TALLER}>
+                <AlertasOperativasPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/etiquetas"
             element={
               <ProtectedRoute rolesPermitidos={OPERACION_TALLER}>

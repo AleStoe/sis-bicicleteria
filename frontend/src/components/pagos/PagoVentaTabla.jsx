@@ -31,7 +31,7 @@ export default function PagoVentaTabla({
                 </div>
 
                 <div style={styles.metaGrid}>
-                  <Meta label="Base" value={formatMoney(pago.monto_base_aplicado)} />
+                  <Meta label="Cubre venta" value={formatMoney(pago.monto_base_aplicado)} />
 
                   <Meta
                     label="Desc."
@@ -40,7 +40,7 @@ export default function PagoVentaTabla({
                   />
 
                   <Meta
-                    label="Recargo"
+                    label="Financiacion"
                     value={`+ ${formatMoney(pago.monto_recargo_aplicado)}`}
                     tone="warning"
                   />

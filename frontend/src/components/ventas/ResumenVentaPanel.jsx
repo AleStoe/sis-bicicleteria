@@ -13,10 +13,6 @@ export default function ResumenVentaPanel({ total }) {
         <span>Subtotal</span>
         <strong>{formatMoney(total)}</strong>
       </div>
-      <div style={summaryLineStyle}>
-        <span>Descuento</span>
-        <strong>{formatMoney(0)}</strong>
-      </div>
       <div style={totalLineStyle}>
         <span>Total</span>
         <strong>{formatMoney(total)}</strong>

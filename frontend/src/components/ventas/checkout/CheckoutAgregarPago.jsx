@@ -122,15 +122,31 @@ export default function CheckoutAgregarPago({
       {mostrarInstruccion && (
         <div style={styles.operatorHint}>
           <span style={styles.operatorHintLabel}>
-            {esTarjeta ? "Total a financiar ahora" : "Total a cobrar ahora"}
+            {esTarjeta ? "Total en tarjeta" : "Total a cobrar ahora"}
           </span>
           <strong>{formatMoney(montoACobrarAhora)}</strong>
           {mostrarPreview ? (
             <small>
-              En {medioActivo?.label || "este medio"} cubre {formatMoney(montoBaseSugerido)} de la venta.
-              {hayDescuento && ` Descuento aplicado: ${formatMoney(descuentoPreview)}.`}
-              {hayRecargo && ` Recargo aplicado: ${formatMoney(recargoPreview)}.`}
-              {Number.isFinite(saldoPendienteLuego) && ` Queda pendiente: ${formatMoney(saldoPendienteLuego)}.`}
+              Con este pago en {medioActivo?.label || "este medio"} se cubren{" "}
+              {formatMoney(montoBaseSugerido)} de la venta.
+              {hayDescuento && (
+                <>
+                  <br />
+                  Descuento aplicado: {formatMoney(descuentoPreview)}.
+                </>
+              )}
+              {hayRecargo && (
+                <>
+                  <br />
+                  Financiacion incluida: {formatMoney(recargoPreview)}.
+                </>
+              )}
+              {Number.isFinite(saldoPendienteLuego) && (
+                <>
+                  <br />
+                  Saldo pendiente: {formatMoney(saldoPendienteLuego)}.
+                </>
+              )}
             </small>
           ) : simulando ? (
             <small>Calculando simulación del pago...</small>
@@ -152,14 +168,14 @@ export default function CheckoutAgregarPago({
         >
           <div style={styles.previewTitle}>
             {hayRecargo
-              ? "Financiacion aplicada"
+              ? "Detalle de financiacion"
               : hayDescuento
                 ? "Beneficio aplicado"
                 : "Resumen del cobro"}
           </div>
 
           <div style={styles.previewRow}>
-            <span>Cubre saldo</span>
+            <span>Cubre de la venta</span>
             <strong>{formatMoney(montoBaseSugerido)}</strong>
           </div>
 
@@ -172,7 +188,7 @@ export default function CheckoutAgregarPago({
 
           {hayRecargo && (
             <div style={styles.previewRow}>
-              <span>Recargo</span>
+              <span>Financiacion</span>
               <strong style={styles.warningText}>+ {formatMoney(recargoPreview)}</strong>
             </div>
           )}
@@ -185,12 +201,12 @@ export default function CheckoutAgregarPago({
           )}
 
           <div style={styles.previewRow}>
-            <span>Saldo pendiente luego</span>
+            <span>Saldo pendiente</span>
             <strong>{formatMoney(saldoPendienteLuego)}</strong>
           </div>
 
           <div style={styles.previewTotalRow}>
-            <span>{esTarjeta ? "Total a financiar ahora" : "Total a cobrar ahora"}</span>
+            <span>{esTarjeta ? "Total en tarjeta" : "Total a cobrar ahora"}</span>
             <strong>{formatMoney(montoSugeridoCobrado)}</strong>
           </div>
         </div>
@@ -198,7 +214,7 @@ export default function CheckoutAgregarPago({
 
       <div style={styles.amountHeader}>
         <div style={styles.amountLabel}>
-          {esTarjeta ? "Cliente financia total" : "Cliente paga"}
+          {esTarjeta ? "Monto final en tarjeta" : "Cliente paga"}
         </div>
 
         <button
