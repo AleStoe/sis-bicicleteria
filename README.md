@@ -121,39 +121,32 @@ No usar `-BaselineExisting` para saltear migraciones pendientes. El
 `database_schema.sql` actual ya incluye como baseline todas las migraciones
 versionadas hasta `20260628_01_drop_pagos_reversion_legacy.sql`.
 
-## Compilar y arrancar beta
+## Arranque diario de la beta
 
-Compilar el frontend:
-
-```powershell
-cd frontend
-npm ci
-npm run build
-cd ..
-```
-
-Iniciar backend sin `--reload` y servir el frontend compilado:
+El sistema usa un único punto de entrada:
 
 ```powershell
-.\run_beta_lan.bat
+.\run_sistema_agus.bat
 ```
 
-Direcciones:
+El script:
 
-- En el servidor: `http://localhost:5173`
-- En otra PC: `http://IP_DEL_SERVIDOR:5173`
-- API: `http://IP_DEL_SERVIDOR:8000`
+- detecta automáticamente la IP del servidor
+- inicia Uvicorn en `0.0.0.0:8000`
+- espera hasta que el backend responda
+- inicia Vite en `0.0.0.0:5173`
+- muestra las direcciones para esta PC y para la red local
 
 Consultar la IP con `ipconfig`. Conviene reservar la IP del servidor en el
 router y habilitar en Firewall de Windows los puertos TCP `5173` y `8000`
 sólo para red privada.
 
-El frontend calcula la URL de la API desde el hostname abierto en el
-navegador. No crear `frontend/.env.local` con una IP fija salvo que la API
-esté deliberadamente en otro equipo.
+No crear `frontend/.env.local` con una IP fija. El frontend obtiene el host
+desde la dirección abierta en el navegador: localhost en el servidor y la IP
+local en los demás equipos. Así ninguna dirección anterior queda incrustada.
 
-`run_beta_lan.bat` es el arranque oficial. `run_lan.bat` se conserva solamente
-como acceso legacy y redirige al script oficial; no contiene una IP fija.
+Durante la beta se usa Vite para simplificar la operación diaria. El frontend
+compilado se evaluará al preparar la instalación productiva definitiva.
 
 ## Backup
 

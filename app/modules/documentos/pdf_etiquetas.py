@@ -217,28 +217,40 @@ def _draw_info_grid(c, item, tipo, margin, width):
     ]
     info = [(label, _text(value)) for label, value in datos if _text(value).strip()]
     if not info:
-        return 78 * mm
+        return
 
-    # En A4 no alcanza el alto para una grilla de 2 columnas + opciones de pago.
-    # La pasamos a 4 columnas y 2 filas para mantener talle/color/rodado sin pisar pagos.
     usable_width = width - margin * 2
     col_width = usable_width / 4
-    row_y = 77 * mm
-    min_y = row_y
+    row_y = 46 * mm
 
     for index, (label, value) in enumerate(info[:8]):
         col = index % 4
         row = index // 4
         x = margin + col * col_width
-        y = row_y - row * 11 * mm
-        min_y = min(min_y, y)
+        y = row_y - row * 12 * mm
+        value_width = col_width - 4 * mm
 
-        c.setFont("Helvetica-Bold", 7.2)
+        c.setFont("Helvetica-Bold", 6.8)
         c.drawString(x, y, f"{label.upper()}")
-        c.setFont("Helvetica", 8.8)
-        c.drawString(x, y - 4.2 * mm, _clip(value, 20))
-
-    return min_y - 8 * mm
+        value_size = _fit_font_size(
+            c,
+            value,
+            "Helvetica",
+            value_width,
+            8.6,
+            6.4,
+        )
+        _draw_wrapped_text(
+            c,
+            value,
+            x,
+            y - 3.8 * mm,
+            value_width,
+            "Helvetica",
+            value_size,
+            3.2 * mm,
+            max_lines=2,
+        )
 
 def _build_opciones_pago(precio, opciones_pago):
     precio = _dec(precio)
@@ -258,24 +270,39 @@ def _build_opciones_pago(precio, opciones_pago):
     if descuento_contado > 0:
         lineas.append(
             {
-                "label": "Efectivo / Transferencia",
+                "tipo": "efectivo",
+                "label": "Precio efectivo / transferencia",
                 "badge": f"{_format_percent(descuento_contado)}% OFF",
                 "monto": _money_entero(_monto_con_descuento(precio, descuento_contado)),
             }
         )
 
-    for plan in sorted(tarjeta, key=lambda p: (p.get("cuotas") or 1, p.get("label") or ""))[:4]:
+    lineas.append(
+        {
+            "tipo": "lista",
+            "label": "Precio de lista",
+            "badge": "",
+            "monto": _money_entero(precio),
+        }
+    )
+
+    planes_visibles = [
+        plan for plan in tarjeta
+        if int(plan.get("cuotas") or 1) in {3, 6}
+    ]
+    for plan in sorted(
+        planes_visibles,
+        key=lambda p: (p.get("cuotas") or 1, p.get("label") or ""),
+    ):
         cuotas = int(plan.get("cuotas") or 1)
         total = _monto_con_recargo(precio, plan.get("porcentaje_recargo"))
-        if cuotas > 1:
-            cuota = _round_money(total / Decimal(cuotas))
-            monto = f"{cuotas} cuotas de {_money_entero(cuota)}"
-        else:
-            monto = _money_entero(total)
+        cuota = _round_money(total / Decimal(cuotas))
+        monto = f"{cuotas} x {_money_entero(cuota)}"
 
         lineas.append(
             {
-                "label": plan.get("label") or f"Tarjeta {cuotas} cuota",
+                "tipo": "tarjeta",
+                "label": f"Tarjeta {cuotas} cuotas",
                 "badge": "",
                 "monto": monto,
             }
@@ -289,32 +316,62 @@ def _draw_opciones_pago_a4(c, item, opciones_pago, x, y, w):
     if not lineas:
         return
 
-    h = 30 * mm
-    c.setFillColorRGB(0.94, 0.98, 0.96)
-    c.roundRect(x, y, w, h, 4 * mm, fill=1, stroke=0)
+    c.setFillColorRGB(0.15, 0.19, 0.23)
+    c.setFont("Helvetica-Bold", 8)
+    c.drawString(x, y + 43 * mm, "OPCIONES DE PAGO")
 
-    c.setFillColorRGB(0.03, 0.21, 0.15)
-    c.setFont("Helvetica-Bold", 9.5)
-    c.drawString(x + 4 * mm, y + h - 7 * mm, "Opciones de pago")
+    efectivo = next(
+        (linea for linea in lineas if linea["tipo"] == "efectivo"),
+        None,
+    )
+    otras = [linea for linea in lineas if linea["tipo"] != "efectivo"]
 
-    text_y = y + h - 13 * mm
-    for linea in lineas[:4]:
-        c.setFillColorRGB(0.08, 0.17, 0.14)
-        c.setFont("Helvetica-Bold", 8.2)
-        c.drawString(x + 4 * mm, text_y, _clip(linea["label"], 24))
+    panel_h = 39 * mm
+    c.setStrokeColorRGB(0.82, 0.85, 0.88)
+    c.setLineWidth(0.5)
+    c.roundRect(x, y, w, panel_h, 3 * mm, fill=0, stroke=1)
 
-        monto_x = x + w - 4 * mm
-        if linea.get("badge"):
-            c.setFillColorRGB(0.0, 0.45, 0.29)
-            c.setFont("Helvetica-Bold", 8)
-            c.drawRightString(monto_x - 31 * mm, text_y, linea["badge"])
+    row_top = y + panel_h
+    if efectivo:
+        promo_h = 18 * mm
+        c.setFillColorRGB(0.91, 0.98, 0.94)
+        c.roundRect(x, row_top - promo_h, w, promo_h, 3 * mm, fill=1, stroke=0)
 
-        c.setFillColorRGB(0.02, 0.12, 0.11)
+        c.setFillColorRGB(0.0, 0.43, 0.25)
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(x + 5 * mm, row_top - 6 * mm, efectivo["badge"])
+        c.setFont("Helvetica-Bold", 10)
+        c.drawString(x + 5 * mm, row_top - 12 * mm, "PRECIO EFECTIVO")
+
+        efectivo_size = _fit_font_size(
+            c,
+            efectivo["monto"],
+            "Helvetica-Bold",
+            w * 0.48,
+            25,
+            18,
+        )
+        c.setFont("Helvetica-Bold", efectivo_size)
+        c.drawRightString(x + w - 5 * mm, row_top - 12 * mm, efectivo["monto"])
+        row_top -= promo_h
+
+    available_h = row_top - y
+    row_h = available_h / max(len(otras), 1)
+    for index, linea in enumerate(otras):
+        row_y = row_top - row_h * index
+        if index:
+            c.setStrokeColorRGB(0.89, 0.91, 0.93)
+            c.line(x + 4 * mm, row_y, x + w - 4 * mm, row_y)
+
+        baseline = row_y - row_h * 0.68
+        c.setFillColorRGB(0.16, 0.19, 0.23)
         c.setFont("Helvetica-Bold", 8.4)
-        c.drawRightString(monto_x, text_y, linea["monto"])
-        text_y -= 5 * mm
+        c.drawString(x + 5 * mm, baseline, linea["label"])
+        c.setFont("Helvetica-Bold", 9.2)
+        c.drawRightString(x + w - 5 * mm, baseline, linea["monto"])
 
     c.setFillColorRGB(0, 0, 0)
+    c.setStrokeColorRGB(0, 0, 0)
 
 
 def generar_cartel_precio_a4_pdf(data: dict) -> bytes:
@@ -333,7 +390,7 @@ def generar_cartel_precio_a4_pdf(data: dict) -> bytes:
 
     title = _text(_label_title(item)).upper()
     title_size = _fit_font_size(c, title, "Helvetica-Bold", usable_width, 31, 20)
-    y = _draw_wrapped_text(
+    title_bottom = _draw_wrapped_text(
         c,
         title,
         margin,
@@ -346,12 +403,13 @@ def generar_cartel_precio_a4_pdf(data: dict) -> bytes:
     )
 
     variante = _variant_parts(item)
+    content_bottom = title_bottom
     if variante:
-        _draw_wrapped_text(
+        content_bottom = _draw_wrapped_text(
             c,
             variante,
             margin,
-            y - 1 * mm,
+            title_bottom - 1 * mm,
             usable_width,
             "Helvetica",
             13,
@@ -360,49 +418,59 @@ def generar_cartel_precio_a4_pdf(data: dict) -> bytes:
         )
 
     image_path = _resolver_imagen_local(item.get("imagen_principal"))
-    image_box_y = height - 145 * mm
+    image_box_top = min(height - 48 * mm, content_bottom - 3 * mm)
+    image_box_h = 108 * mm
+    image_box_y = image_box_top - image_box_h
     if image_path:
         _draw_image_fit(
             c,
             image_path,
-            margin + 16 * mm,
+            margin,
             image_box_y,
-            usable_width - 32 * mm,
-            78 * mm,
+            usable_width,
+            image_box_h,
         )
     else:
         c.setStrokeColorRGB(0.82, 0.86, 0.91)
-        c.roundRect(margin + 16 * mm, image_box_y, usable_width - 32 * mm, 78 * mm, 8, stroke=1, fill=0)
+        c.roundRect(margin, image_box_y, usable_width, image_box_h, 8, stroke=1, fill=0)
         c.setFont("Helvetica-Bold", 15)
-        c.drawCentredString(width / 2, image_box_y + 40 * mm, "IMAGEN NO DISPONIBLE")
+        c.drawCentredString(width / 2, image_box_y + 53 * mm, "IMAGEN NO DISPONIBLE")
         c.setStrokeColorRGB(0, 0, 0)
 
     price_text = _money(item.get("precio_minorista"))
     price_size = _fit_font_size(c, price_text, "Helvetica-Bold", usable_width, 54, 40)
+    c.setFont("Helvetica-Bold", 8)
+    c.drawString(margin, 130 * mm, "PRECIO DE LISTA")
     c.setFont("Helvetica-Bold", price_size)
-    c.drawString(margin, 93 * mm, price_text)
+    c.drawString(margin, 107 * mm, price_text)
 
-    c.setLineWidth(0.8)
-    c.line(margin, 84 * mm, width - margin, 84 * mm)
-    info_bottom_y = _draw_info_grid(c, item, tipo, margin, width)
-    opciones_y = min(31 * mm, info_bottom_y - 31 * mm)
-    opciones_y = max(27 * mm, opciones_y)
-    _draw_opciones_pago_a4(c, item, opciones_pago, margin, opciones_y, usable_width)
-
-    c.setLineWidth(0.4)
-    c.line(margin, 24 * mm, width - margin, 24 * mm)
-    c.setFont("Helvetica", 8)
-    c.drawString(margin, 17 * mm, "Precio sujeto a modificaciones. Documento interno no fiscal.")
+    _draw_opciones_pago_a4(c, item, opciones_pago, margin, 54 * mm, usable_width)
+    _draw_info_grid(c, item, tipo, margin, width)
 
     value = _text(_barcode_value(tipo, item)).strip()
-    barcode = Code128(value, barHeight=15 * mm, barWidth=0.48 * mm)
-    barcode_x = width - margin - min(barcode.width, 78 * mm)
-    if barcode.width > 78 * mm:
-        barcode = Code128(value, barHeight=17 * mm, barWidth=0.38 * mm)
-        barcode_x = width - margin - barcode.width
-    barcode.drawOn(c, barcode_x, 5 * mm)
-    c.setFont("Helvetica-Bold", 7.2)
-    c.drawCentredString(barcode_x + barcode.width / 2, 2 * mm, _clip(value, 42))
+    barcode_max_width = 72 * mm
+    bar_width = max(
+        0.22 * mm,
+        min(0.42 * mm, barcode_max_width / max(len(value or "0") * 11, 1)),
+    )
+    barcode = Code128(value, barHeight=12 * mm, barWidth=bar_width)
+    barcode_x = width - margin - barcode.width
+    barcode.drawOn(c, barcode_x, 7 * mm)
+
+    code_size = _fit_font_size(
+        c,
+        value,
+        "Helvetica-Bold",
+        barcode.width,
+        7.2,
+        5.5,
+    )
+    c.setFont("Helvetica-Bold", code_size)
+    c.drawCentredString(barcode_x + barcode.width / 2, 3.5 * mm, value)
+
+    c.setFont("Helvetica", 7.2)
+    c.drawString(margin, 9 * mm, "Precio sujeto a modificaciones.")
+    c.drawString(margin, 5.5 * mm, "Documento interno no fiscal.")
 
     c.save()
     pdf = buffer.getvalue()

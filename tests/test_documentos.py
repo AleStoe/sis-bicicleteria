@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from app.modules.documentos.pdf import _detalle_pago_financiero
+from app.modules.documentos.pdf_etiquetas import _build_opciones_pago
 from app.modules.documentos.repository import (
     get_pagos_comprobante_by_venta_id,
     get_venta_items_comprobante_by_venta_id,
@@ -248,6 +249,38 @@ def test_cartel_precio_variante_devuelve_pdf(client, seed_venta_basica):
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/pdf"
     assert response.content.startswith(b"%PDF")
+
+
+def test_cartel_precio_ordena_opciones_comerciales_sin_inventar_planes():
+    opciones = {
+        "contado": [
+            {
+                "medio_pago": "efectivo",
+                "porcentaje_descuento": Decimal("10"),
+            }
+        ],
+        "tarjeta": [
+            {"label": "Tarjeta 12 cuotas", "cuotas": 12, "porcentaje_recargo": 90},
+            {"label": "Tarjeta 6 cuotas", "cuotas": 6, "porcentaje_recargo": 35},
+            {"label": "Tarjeta 3 cuotas", "cuotas": 3, "porcentaje_recargo": 15},
+        ],
+    }
+
+    lineas = _build_opciones_pago(327778, opciones)
+
+    assert [linea["tipo"] for linea in lineas] == [
+        "efectivo",
+        "lista",
+        "tarjeta",
+        "tarjeta",
+    ]
+    assert [linea["label"] for linea in lineas] == [
+        "Precio efectivo / transferencia",
+        "Precio de lista",
+        "Tarjeta 3 cuotas",
+        "Tarjeta 6 cuotas",
+    ]
+    assert lineas[0]["badge"] == "10% OFF"
 
 
 def test_etiqueta_deposito_bicicleta_serializada_devuelve_pdf(
