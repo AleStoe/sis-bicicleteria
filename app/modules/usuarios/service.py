@@ -3,6 +3,16 @@ import bcrypt
 
 from app.db.connection import get_connection
 from app.core.text_normalization import clean_text, normalize_text_upper
+from app.modules.auditoria import service as auditoria_service
+from app.shared.constants import (
+    AUDITORIA_ACCION_USUARIO_ACTIVADO,
+    AUDITORIA_ACCION_USUARIO_CREADO,
+    AUDITORIA_ACCION_USUARIO_DESACTIVADO,
+    AUDITORIA_ACCION_USUARIO_EDITADO,
+    AUDITORIA_ACCION_USUARIO_PASSWORD_PROPIA_CAMBIADA,
+    AUDITORIA_ACCION_USUARIO_PASSWORD_RESETEADO,
+    AUDITORIA_ENTIDAD_USUARIO,
+)
 from .repository import (
     get_usuarios,
     get_usuario_by_id,
@@ -82,6 +92,30 @@ def _obtener_rol_o_400(conn, rol: str):
     return rol_db
 
 
+def _registrar_auditoria_usuario(
+    conn,
+    *,
+    id_usuario_actor: int | None,
+    usuario_id: int,
+    accion: str,
+    detalle: str,
+    metadata: dict | None = None,
+):
+    if not id_usuario_actor:
+        return
+
+    auditoria_service.registrar_evento(
+        conn,
+        id_usuario=id_usuario_actor,
+        id_sucursal=None,
+        entidad=AUDITORIA_ENTIDAD_USUARIO,
+        entidad_id=usuario_id,
+        accion=accion,
+        detalle=detalle,
+        metadata=metadata,
+    )
+
+
 def _validar_username_unico(conn, username: str, usuario_id_actual: int | None = None):
     existente = get_usuario_by_username(conn, username)
 
@@ -132,7 +166,7 @@ def obtener_duplicados_usuarios_service():
         conn.close()
 
 
-def crear_usuario_service(data):
+def crear_usuario_service(data, id_usuario_actor: int | None = None):
     conn = get_connection()
 
     try:
@@ -148,6 +182,14 @@ def crear_usuario_service(data):
 
             usuario_id = insert_usuario(conn, data, password_hash)
             set_rol_usuario(conn, usuario_id, rol["id"])
+            _registrar_auditoria_usuario(
+                conn,
+                id_usuario_actor=id_usuario_actor,
+                usuario_id=usuario_id,
+                accion=AUDITORIA_ACCION_USUARIO_CREADO,
+                detalle=f"Usuario creado: {data.username}",
+                metadata={"rol": data.rol},
+            )
 
         return {
             "ok": True,
@@ -157,7 +199,11 @@ def crear_usuario_service(data):
         conn.close()
 
 
-def actualizar_usuario_service(usuario_id: int, data):
+def actualizar_usuario_service(
+    usuario_id: int,
+    data,
+    id_usuario_actor: int | None = None,
+):
     conn = get_connection()
 
     try:
@@ -173,6 +219,14 @@ def actualizar_usuario_service(usuario_id: int, data):
 
             update_usuario(conn, usuario_id, data)
             set_rol_usuario(conn, usuario_id, rol["id"])
+            _registrar_auditoria_usuario(
+                conn,
+                id_usuario_actor=id_usuario_actor,
+                usuario_id=usuario_id,
+                accion=AUDITORIA_ACCION_USUARIO_EDITADO,
+                detalle=f"Usuario editado: {data.username}",
+                metadata={"rol": data.rol, "activo": data.activo},
+            )
 
         return {
             "ok": True,
@@ -182,7 +236,10 @@ def actualizar_usuario_service(usuario_id: int, data):
         conn.close()
 
 
-def activar_usuario_service(usuario_id: int):
+def activar_usuario_service(
+    usuario_id: int,
+    id_usuario_actor: int | None = None,
+):
     conn = get_connection()
 
     try:
@@ -196,6 +253,13 @@ def activar_usuario_service(usuario_id: int):
                 )
 
             activar_usuario(conn, usuario_id)
+            _registrar_auditoria_usuario(
+                conn,
+                id_usuario_actor=id_usuario_actor,
+                usuario_id=usuario_id,
+                accion=AUDITORIA_ACCION_USUARIO_ACTIVADO,
+                detalle=f"Usuario activado: {usuario['username']}",
+            )
 
         return {
             "ok": True,
@@ -206,7 +270,10 @@ def activar_usuario_service(usuario_id: int):
         conn.close()
 
 
-def desactivar_usuario_service(usuario_id: int):
+def desactivar_usuario_service(
+    usuario_id: int,
+    id_usuario_actor: int | None = None,
+):
     conn = get_connection()
 
     try:
@@ -220,6 +287,13 @@ def desactivar_usuario_service(usuario_id: int):
                 )
 
             desactivar_usuario(conn, usuario_id)
+            _registrar_auditoria_usuario(
+                conn,
+                id_usuario_actor=id_usuario_actor,
+                usuario_id=usuario_id,
+                accion=AUDITORIA_ACCION_USUARIO_DESACTIVADO,
+                detalle=f"Usuario desactivado: {usuario['username']}",
+            )
 
         return {
             "ok": True,
@@ -229,7 +303,11 @@ def desactivar_usuario_service(usuario_id: int):
     finally:
         conn.close()
 
-def resetear_password_usuario_service(usuario_id: int, data):
+def resetear_password_usuario_service(
+    usuario_id: int,
+    data,
+    id_usuario_actor: int | None = None,
+):
     conn = get_connection()
 
     try:
@@ -239,6 +317,13 @@ def resetear_password_usuario_service(usuario_id: int, data):
             password_hash = hash_password(data.password)
 
             update_usuario_password(conn, usuario_id, password_hash)
+            _registrar_auditoria_usuario(
+                conn,
+                id_usuario_actor=id_usuario_actor,
+                usuario_id=usuario_id,
+                accion=AUDITORIA_ACCION_USUARIO_PASSWORD_RESETEADO,
+                detalle="Contraseña de usuario restablecida",
+            )
 
         return {
             "ok": True,
@@ -247,7 +332,11 @@ def resetear_password_usuario_service(usuario_id: int, data):
     finally:
         conn.close()
 
-def cambiar_password_propia_service(usuario_id: int, data):
+def cambiar_password_propia_service(
+    usuario_id: int,
+    data,
+    id_usuario_actor: int | None = None,
+):
     conn = get_connection()
 
     try:
@@ -280,6 +369,13 @@ def cambiar_password_propia_service(usuario_id: int, data):
 
             password_hash = hash_password(data.password_nueva)
             update_usuario_password(conn, usuario_id, password_hash)
+            _registrar_auditoria_usuario(
+                conn,
+                id_usuario_actor=id_usuario_actor,
+                usuario_id=usuario_id,
+                accion=AUDITORIA_ACCION_USUARIO_PASSWORD_PROPIA_CAMBIADA,
+                detalle="Contraseña propia actualizada",
+            )
 
         return {
             "ok": True,

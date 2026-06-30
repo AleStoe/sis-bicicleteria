@@ -292,7 +292,7 @@ def generar_comprobante_x_pdf(data: dict) -> bytes:
             c.drawString(
                 margin_x + 24 * mm,
                 row_top - 8 * mm,
-                f"Bonificado: {_text(item.get('motivo_bonificacion'))[:38]}",
+                f"Bonificación: {_text(item.get('motivo_bonificacion'))[:38]}",
             )
 
         c.setFont("Helvetica", 7.5)

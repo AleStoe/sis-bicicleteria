@@ -39,6 +39,10 @@ export function getPrecioA4VarianteUrl(varianteId) {
   return withAccessToken(`${API_BASE_URL}/documentos/etiquetas/variantes/${varianteId}/precio-a4`);
 }
 
+export function getHistoriaVarianteUrl(varianteId) {
+  return withAccessToken(`${API_BASE_URL}/documentos/etiquetas/variantes/${varianteId}/historia`);
+}
+
 export function getEtiquetaDepositoBicicletaUrl(bicicletaId, copias = 1) {
   return withAccessToken(
     `${API_BASE_URL}/documentos/etiquetas/bicicletas/${bicicletaId}/deposito?copias=${encodeURIComponent(copias)}`
@@ -47,4 +51,8 @@ export function getEtiquetaDepositoBicicletaUrl(bicicletaId, copias = 1) {
 
 export function getPrecioA4BicicletaUrl(bicicletaId) {
   return withAccessToken(`${API_BASE_URL}/documentos/etiquetas/bicicletas/${bicicletaId}/precio-a4`);
+}
+
+export function getHistoriaBicicletaUrl(bicicletaId) {
+  return withAccessToken(`${API_BASE_URL}/documentos/etiquetas/bicicletas/${bicicletaId}/historia`);
 }

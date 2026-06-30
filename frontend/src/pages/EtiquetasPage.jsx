@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { Barcode, FileText, Printer, Search, Tags } from "lucide-react";
+import { Barcode, FileText, ImageDown, Printer, Search, Tags } from "lucide-react";
 import { listarVariantes } from "../services/catalogoService";
 import { listarSerializadas } from "../services/serializadasService";
 import {
   getEtiquetaDepositoBicicletaUrl,
   getEtiquetaDepositoVarianteUrl,
+  getHistoriaBicicletaUrl,
+  getHistoriaVarianteUrl,
   getPrecioA4BicicletaUrl,
   getPrecioA4VarianteUrl,
 } from "../services/documentosService";
@@ -137,6 +139,14 @@ export default function EtiquetasPage() {
     abrirPdf(url);
   }
 
+  function descargarHistoria(item) {
+    const url =
+      modo === "variantes"
+        ? getHistoriaVarianteUrl(item.id)
+        : getHistoriaBicicletaUrl(item.id);
+    abrirPdf(url);
+  }
+
   return (
     <main style={styles.page}>
       <header style={styles.header}>
@@ -194,30 +204,6 @@ export default function EtiquetasPage() {
       </section>
 
 
-      <section style={styles.previewPanel}>
-        <div style={styles.previewHeader}>
-          <Barcode size={18} />
-          <strong>Plantilla depósito 80x40</strong>
-        </div>
-
-        <div style={styles.previewLabel}>
-          <div style={styles.previewText}>
-            <div style={styles.previewBrand}>EMPRENDIMIENTO AGUS</div>
-            <div style={styles.previewProduct}>NOMBRE DEL PRODUCTO / VARIANTE</div>
-            <div style={styles.previewMeta}>CÓDIGO DE DEPÓSITO</div>
-          </div>
-
-          <div style={styles.previewBarcodeBox}>
-            <div style={styles.previewBarcode} />
-            <div style={styles.previewCode}>CODIGO DE BARRAS</div>
-          </div>
-        </div>
-
-        <p style={styles.previewHelp}>
-          Vista visual estilo Sur Dulce para depósito: nombre del producto y código de barras. La impresión sigue usando el PDF original del backend, sin tocar el motor del lector.
-        </p>
-      </section>
-
       {error && <div style={styles.error}>{error}</div>}
       {loading && <div style={styles.empty}>Cargando etiquetas...</div>}
 
@@ -261,6 +247,10 @@ export default function EtiquetasPage() {
                 <button type="button" onClick={() => imprimirPrecioA4(item)} style={styles.secondaryButton}>
                   <FileText size={17} />
                   A4 precio
+                </button>
+                <button type="button" onClick={() => descargarHistoria(item)} style={styles.storyButton}>
+                  <ImageDown size={17} />
+                  Historia 9:16
                 </button>
               </div>
             </article>
@@ -452,7 +442,7 @@ const styles = {
   },
   actionsMobile: {
     display: "grid",
-    gridTemplateColumns: "1fr 1fr",
+    gridTemplateColumns: "repeat(auto-fit, minmax(145px, 1fr))",
     gap: 8,
   },
   primaryButton: {
@@ -479,85 +469,17 @@ const styles = {
     fontWeight: 900,
     cursor: "pointer",
   },
-
-  previewPanel: {
-    display: "grid",
-    gap: 10,
-    background: "#ffffff",
-    border: "1px solid #e2e8f0",
-    borderRadius: 10,
-    padding: 14,
-    boxShadow: "0 8px 22px rgba(15, 23, 42, 0.04)",
-  },
-  previewHeader: {
-    display: "flex",
+  storyButton: {
+    display: "inline-flex",
     alignItems: "center",
-    gap: 8,
-    color: "#0f172a",
-  },
-  previewLabel: {
-    width: "min(100%, 302px)",
-    height: 151,
-    background: "#ffffff",
-    border: "1px solid rgba(15, 23, 42, 0.9)",
-    borderRadius: 16,
-    padding: 12,
-    display: "grid",
-    gridTemplateColumns: "1fr 96px",
-    gap: 10,
-    alignItems: "center",
-  },
-  previewText: {
-    minWidth: 0,
-    display: "grid",
-    gap: 8,
-  },
-  previewBrand: {
-    fontSize: 14,
-    lineHeight: 1,
-    fontWeight: 950,
-    letterSpacing: 0.8,
-  },
-  previewProduct: {
-    fontSize: 12,
-    lineHeight: 1.15,
+    gap: 7,
+    border: "1px solid #067647",
+    background: "#ecfdf3",
+    color: "#067647",
+    borderRadius: 8,
+    padding: "9px 11px",
     fontWeight: 900,
-    overflow: "hidden",
-  },
-  previewMeta: {
-    fontSize: 9,
-    lineHeight: 1.2,
-    fontWeight: 800,
-    color: "#334155",
-  },
-  previewBarcodeBox: {
-    minWidth: 0,
-    display: "grid",
-    gap: 5,
-    alignContent: "center",
-    justifyItems: "stretch",
-    background: "#ffffff",
-    borderRadius: 6,
-    padding: 3,
-  },
-  previewBarcode: {
-    height: 58,
-    borderRadius: 2,
-    background:
-      "repeating-linear-gradient(90deg, #000 0 2px, #fff 2px 4px, #000 4px 7px, #fff 7px 10px)",
-  },
-  previewCode: {
-    textAlign: "center",
-    fontSize: 8,
-    lineHeight: 1,
-    fontWeight: 900,
-    letterSpacing: 0.5,
-  },
-  previewHelp: {
-    margin: 0,
-    color: "#64748b",
-    fontSize: 13,
-    fontWeight: 700,
+    cursor: "pointer",
   },
   error: {
     border: "1px solid #fecaca",

@@ -52,6 +52,7 @@ def get_venta_items_comprobante_by_venta_id(conn, venta_id: int):
                 vi.precio_unitario_original,
                 vi.precio_unitario_final,
                 vi.bonificado,
+                vi.bonificacion_unitaria,
                 vi.motivo_bonificacion,
                 vi.motivo_precio_manual,
                 vi.subtotal,

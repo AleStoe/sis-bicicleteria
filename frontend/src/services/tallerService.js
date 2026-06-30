@@ -106,3 +106,17 @@ export function marcarAvisoRetiroOrdenTaller(ordenId, data) {
     body: JSON.stringify(data),
   });
 }
+
+export function crearNotaOrdenTaller(ordenId, data) {
+  return apiRequest(`/ordenes_taller/${ordenId}/notas`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function actualizarNotaOrdenTaller(ordenId, notaId, data) {
+  return apiRequest(`/ordenes_taller/${ordenId}/notas/${notaId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}

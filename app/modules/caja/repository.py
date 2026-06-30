@@ -1,6 +1,8 @@
 from psycopg.rows import dict_row
 from decimal import Decimal
 
+from app.shared.constants import VENTA_ESTADOS_REPORTING
+
 def get_sucursal_by_id(conn, sucursal_id: int):
     with conn.cursor() as cur:
         cur.execute(
@@ -497,13 +499,7 @@ def get_resumen_pagos_caja(conn, caja_id: int | None, *, fecha, id_sucursal: int
 
 def get_resumen_rentabilidad_dia(conn, *, fecha, id_sucursal: int | None = None):
     sucursal_sql = ""
-    estados_operativos = [
-        "pagada_parcial",
-        "pagada_total",
-        "entregada",
-        "devuelta_parcial",
-        "devuelta",
-    ]
+    estados_operativos = list(VENTA_ESTADOS_REPORTING)
     if id_sucursal is not None:
         sucursal_sql = "AND v.id_sucursal = %s"
 

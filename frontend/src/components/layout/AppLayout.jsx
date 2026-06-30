@@ -86,12 +86,12 @@ export default function AppLayout({ children }) {
               style={mobileSidebarPanelStyle}
               onClick={(event) => event.stopPropagation()}
             >
-              <Sidebar onNavigate={() => setMenuOpen(false)} />
+              <Sidebar mobile onNavigate={() => setMenuOpen(false)} />
             </div>
           </div>
         )}
 
-        <div style={mainContainerStyle}>
+        <div style={mainContainerStyle(isMobile)}>
           <header style={topbarStyle(isMobile)}>
             <div
               style={{

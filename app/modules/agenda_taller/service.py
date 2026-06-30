@@ -15,6 +15,7 @@ from app.modules.taller.repository import (
     get_bicicleta_cliente,
     insert_orden_taller,
     insert_orden_taller_evento,
+    get_orden_postventa_abierta_por_bicicleta,
 )
 from .repository import (
     insert_turno_agenda,
@@ -28,12 +29,100 @@ from .repository import (
     update_estado_turno,
     get_turno_agenda_for_update,
     update_turno_convertido_orden,
+    get_turno_postventa_activo_por_bicicleta,
     marcar_recordatorio_enviado,
     marcar_cliente_avisado,
 )
 
 
 ESTADOS_ACTIVOS = {"pendiente", "confirmado", "en_taller"}
+TIPO_SERVICE_POSTVENTA = "service_postventa_30_dias"
+
+
+def _resolver_vinculos_turno(conn, data, *, excluir_turno_id=None):
+    bicicleta_id = data.id_bicicleta_cliente
+    cliente_id = data.id_cliente
+
+    if bicicleta_id is None:
+        if data.tipo_turno == TIPO_SERVICE_POSTVENTA:
+            raise HTTPException(
+                status_code=400,
+                detail="Seleccioná una bicicleta vendida para agendar el service postventa.",
+            )
+        if data.id_venta_origen is not None:
+            raise HTTPException(
+                status_code=400,
+                detail="La venta origen sólo puede vincularse junto con una bicicleta.",
+            )
+        return None, None
+
+    if cliente_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="La bicicleta debe estar vinculada a un cliente.",
+        )
+
+    bicicleta = get_bicicleta_cliente(conn, bicicleta_id)
+    if bicicleta is None:
+        raise HTTPException(status_code=404, detail="La bicicleta seleccionada no existe.")
+
+    if bicicleta["id_cliente"] != cliente_id:
+        raise HTTPException(
+            status_code=400,
+            detail="La bicicleta seleccionada no pertenece al cliente.",
+        )
+
+    venta_origen = bicicleta.get("id_venta_origen")
+    if data.id_venta_origen is not None and data.id_venta_origen != venta_origen:
+        raise HTTPException(
+            status_code=400,
+            detail="La venta origen no corresponde a la bicicleta seleccionada.",
+        )
+
+    if data.tipo_turno == TIPO_SERVICE_POSTVENTA:
+        if bicicleta.get("id_bicicleta_serializada") is None or venta_origen is None:
+            raise HTTPException(
+                status_code=400,
+                detail="El service postventa requiere una bicicleta serializada vendida.",
+            )
+        if bicicleta.get("plan_postventa") != "service_30_dias":
+            raise HTTPException(
+                status_code=400,
+                detail="La bicicleta no tiene habilitado el service postventa de 30 días.",
+            )
+        if bicicleta.get("service_gratis_usado"):
+            raise HTTPException(
+                status_code=400,
+                detail="El service postventa gratuito de esta bicicleta ya fue utilizado.",
+            )
+        fecha_limite = bicicleta.get("fecha_limite_service_gratis")
+        if (
+            fecha_limite
+            and fecha_limite < date.today()
+            and not bicicleta.get("service_gratis_autorizado_fuera_plazo")
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "El service postventa está vencido. "
+                    "Primero autorizá la excepción desde la ficha de la bicicleta."
+                ),
+            )
+        turno_existente = get_turno_postventa_activo_por_bicicleta(
+            conn,
+            bicicleta_id,
+            excluir_turno_id=excluir_turno_id,
+        )
+        if turno_existente is not None:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Ya existe un turno de service postventa pendiente "
+                    f"para esta bicicleta: #{turno_existente['id']}"
+                ),
+            )
+
+    return bicicleta, venta_origen
 
 
 def _build_problema_reportado_desde_turno(turno):
@@ -85,7 +174,12 @@ def crear_turno(data):
 
     try:
         with conn.transaction():
-            turno = insert_turno_agenda(conn, data)
+            _, venta_origen = _resolver_vinculos_turno(conn, data)
+            turno = insert_turno_agenda(
+                conn,
+                data,
+                id_venta_origen=venta_origen,
+            )
             insert_historial_turno(
                 conn,
                 id_turno_agenda=turno["id"],
@@ -193,7 +287,17 @@ def editar_turno(turno_id, data):
                 )
 
             reprogramado = _es_reprogramacion(turno_anterior, data)
-            turno = update_turno_agenda(conn, turno_id, data)
+            _, venta_origen = _resolver_vinculos_turno(
+                conn,
+                data,
+                excluir_turno_id=turno_id,
+            )
+            turno = update_turno_agenda(
+                conn,
+                turno_id,
+                data,
+                id_venta_origen=venta_origen,
+            )
 
             insert_historial_turno(
                 conn,
@@ -298,7 +402,59 @@ def convertir_turno_a_orden(turno_id: int, data):
                     detail="La bicicleta indicada no pertenece al cliente del turno",
                 )
 
-            problema_reportado = _build_problema_reportado_desde_turno(turno)
+            es_postventa = turno.get("tipo_turno") == TIPO_SERVICE_POSTVENTA
+            if es_postventa:
+                if bicicleta.get("id_bicicleta_serializada") is None:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="El service postventa requiere una bicicleta serializada.",
+                    )
+                if bicicleta.get("id_venta_origen") != turno.get("id_venta_origen"):
+                    raise HTTPException(
+                        status_code=400,
+                        detail="La venta origen del turno ya no coincide con la bicicleta.",
+                    )
+                if bicicleta.get("plan_postventa") != "service_30_dias":
+                    raise HTTPException(
+                        status_code=400,
+                        detail="La bicicleta no tiene habilitado el service postventa de 30 días.",
+                    )
+                if bicicleta.get("service_gratis_usado"):
+                    raise HTTPException(
+                        status_code=400,
+                        detail="El service postventa gratuito ya fue utilizado.",
+                    )
+                fecha_limite = bicicleta.get("fecha_limite_service_gratis")
+                if (
+                    fecha_limite
+                    and fecha_limite < date.today()
+                    and not bicicleta.get("service_gratis_autorizado_fuera_plazo")
+                ):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "El service postventa está vencido. "
+                            "Primero autorizá la excepción desde la ficha de la bicicleta."
+                        ),
+                    )
+                orden_abierta = get_orden_postventa_abierta_por_bicicleta(
+                    conn,
+                    bicicleta_id=turno["id_bicicleta_cliente"],
+                )
+                if orden_abierta is not None:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "Ya existe una orden de service postventa pendiente "
+                            f"para esta bicicleta: #{orden_abierta['id']}"
+                        ),
+                    )
+
+            problema_reportado = (
+                "SERVICE POSTVENTA 30 DIAS"
+                if es_postventa
+                else _build_problema_reportado_desde_turno(turno)
+            )
             orden = insert_orden_taller(
                 conn,
                 {
@@ -307,11 +463,21 @@ def convertir_turno_a_orden(turno_id: int, data):
                     "id_bicicleta_cliente": turno["id_bicicleta_cliente"],
                     "estado": ORDEN_TALLER_ESTADO_INGRESADA,
                     "problema_reportado": problema_reportado,
+                    "fecha_prometida": turno.get("fecha_prometida_entrega"),
+                    "prioridad": "normal",
+                    "es_service_postventa": es_postventa,
+                    "tipo_postventa": "service_30_dias" if es_postventa else None,
                     "id_usuario": data.id_usuario,
                 },
             )
 
             observaciones = _build_observaciones_desde_turno(turno)
+            if es_postventa:
+                observaciones += (
+                    "\n\nService gratuito de postventa."
+                    f"\nVenta origen: #{turno['id_venta_origen']}"
+                    f"\nBicicleta serializada: #{bicicleta['id_bicicleta_serializada']}"
+                )
             insert_orden_taller_evento(
                 conn,
                 id_orden_taller=orden["id"],

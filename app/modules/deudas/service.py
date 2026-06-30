@@ -547,6 +547,7 @@ def cancelar_deuda_por_devolucion_venta(
     *,
     id_venta: int,
     id_usuario: int,
+    monto_maximo: Decimal | None = None,
 ):
     deuda = repository.get_deuda_abierta_by_origen_for_update(
         conn,
@@ -559,6 +560,7 @@ def cancelar_deuda_por_devolucion_venta(
             "deuda_cancelada": False,
             "deuda_id": None,
             "monto_cancelado": Decimal("0"),
+            "saldo_restante": Decimal("0"),
         }
 
     saldo_actual = Decimal(str(deuda["saldo_actual"]))
@@ -575,17 +577,42 @@ def cancelar_deuda_por_devolucion_venta(
             "deuda_cancelada": True,
             "deuda_id": deuda["id"],
             "monto_cancelado": Decimal("0"),
+            "saldo_restante": Decimal("0"),
         }
+
+    monto_cancelado = (
+        min(saldo_actual, Decimal(str(monto_maximo)))
+        if monto_maximo is not None
+        else saldo_actual
+    )
+
+    if monto_cancelado <= Decimal("0"):
+        return {
+            "deuda_cancelada": False,
+            "deuda_id": deuda["id"],
+            "monto_cancelado": Decimal("0"),
+            "saldo_restante": saldo_actual,
+        }
+
+    saldo_restante = saldo_actual - monto_cancelado
+    estado_nuevo = (
+        DEUDA_ESTADO_CERRADA
+        if saldo_restante == Decimal("0")
+        else DEUDA_ESTADO_ABIERTA
+    )
 
     repository.insert_deuda_movimiento(
         conn,
         {
             "id_deuda": deuda["id"],
             "tipo_movimiento": DEUDA_MOVIMIENTO_PAGO,
-            "monto": saldo_actual,
+            "monto": monto_cancelado,
             "origen_tipo": ORIGEN_VENTA,
             "origen_id": id_venta,
-            "nota": f"Deuda cancelada automáticamente por devolución de venta #{id_venta}",
+            "nota": (
+                f"Deuda reducida automáticamente por devolución "
+                f"de venta #{id_venta}"
+            ),
             "id_usuario": id_usuario,
         },
     )
@@ -593,8 +620,8 @@ def cancelar_deuda_por_devolucion_venta(
     repository.update_deuda_saldo_y_estado(
         conn,
         deuda_id=deuda["id"],
-        saldo_actual=Decimal("0"),
-        estado=DEUDA_ESTADO_CERRADA,
+        saldo_actual=saldo_restante,
+        estado=estado_nuevo,
     )
 
     auditoria_service.registrar_evento(
@@ -606,14 +633,16 @@ def cancelar_deuda_por_devolucion_venta(
         accion="deuda_cancelada_por_devolucion_venta",
         detalle=(
             f"Deuda cancelada por devolución de venta. "
-            f"venta_id={id_venta}, deuda_id={deuda['id']}, monto={saldo_actual}"
+            f"venta_id={id_venta}, deuda_id={deuda['id']}, "
+            f"monto={monto_cancelado}, saldo_restante={saldo_restante}"
         ),
         metadata={
             "tipo": "deuda_cancelada_por_devolucion_venta",
             "deuda_id": deuda["id"],
             "venta_id": id_venta,
-            "monto_cancelado": str(saldo_actual),
-            "estado_nuevo": DEUDA_ESTADO_CERRADA,
+            "monto_cancelado": str(monto_cancelado),
+            "saldo_restante": str(saldo_restante),
+            "estado_nuevo": estado_nuevo,
         },
         origen_tipo="venta",
         origen_id=id_venta,
@@ -622,5 +651,6 @@ def cancelar_deuda_por_devolucion_venta(
     return {
         "deuda_cancelada": True,
         "deuda_id": deuda["id"],
-        "monto_cancelado": saldo_actual,
+        "monto_cancelado": monto_cancelado,
+        "saldo_restante": saldo_restante,
     }

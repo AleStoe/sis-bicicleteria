@@ -16,6 +16,9 @@ from .schemas import (
     OrdenTallerAvisoRetiroInput,
     OrdenTallerMensajeRetiroOutput,
     OrdenTallerDashboardOutput,
+    OrdenTallerNotaCreate,
+    OrdenTallerNotaUpdate,
+    OrdenTallerNotaResponse,
 )
 from .service import (
     crear_orden_taller,
@@ -32,6 +35,8 @@ from .service import (
     generar_mensaje_lista_retiro_orden_taller,
     registrar_aviso_retiro_orden_taller,
     obtener_dashboard_taller,
+    crear_nota_orden_taller,
+    actualizar_nota_orden_taller,
 )
 
 router = APIRouter(prefix="/ordenes_taller", tags=["Taller"])
@@ -86,6 +91,27 @@ def mensaje_lista_retiro(orden_id: int):
 @router.patch("/{orden_id}/aviso-retiro", response_model=OrdenTallerResponse)
 def marcar_aviso_retiro(orden_id: int, payload: OrdenTallerAvisoRetiroInput):
     return registrar_aviso_retiro_orden_taller(orden_id, payload)
+
+
+@router.post(
+    "/{orden_id}/notas",
+    response_model=OrdenTallerNotaResponse,
+    status_code=201,
+)
+def crear_nota(orden_id: int, payload: OrdenTallerNotaCreate):
+    return crear_nota_orden_taller(orden_id, payload)
+
+
+@router.patch(
+    "/{orden_id}/notas/{nota_id}",
+    response_model=OrdenTallerNotaResponse,
+)
+def actualizar_nota(
+    orden_id: int,
+    nota_id: int,
+    payload: OrdenTallerNotaUpdate,
+):
+    return actualizar_nota_orden_taller(orden_id, nota_id, payload)
 
 
 @router.post("/{orden_id}/items", response_model=OrdenTallerItemResponse, status_code=201)

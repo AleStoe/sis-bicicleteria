@@ -1,14 +1,23 @@
 import { colors, radius, spacing } from "../../theme";
 
 export const sidebarHeaderStyle = {
-  marginBottom: spacing.xl,
+  marginBottom: spacing.md,
 };
 
 export const navSectionStyle = {
   display: "grid",
   gap: spacing.md,
+  alignContent: "start",
+  gridAutoRows: "max-content",
   overflowY: "auto",
-  paddingRight: 2,
+  overflowX: "hidden",
+  paddingRight: 6,
+  paddingBottom: spacing.lg,
+  flex: "1 1 auto",
+  minHeight: 0,
+  minWidth: 0,
+  width: "100%",
+  overscrollBehavior: "contain",
 };
 
 export const navGroupTitleStyle = {
@@ -21,6 +30,8 @@ export const navGroupTitleStyle = {
 };
 
 export const navItemStyle = {
+  width: "100%",
+  minWidth: 0,
   display: "flex",
   alignItems: "center",
   gap: spacing.md,
@@ -45,6 +56,8 @@ export const navIconStyle = {
 };
 
 export const navItemLabelStyle = {
+  minWidth: 0,
+  flex: "1 1 auto",
   whiteSpace: "nowrap",
   overflow: "hidden",
   textOverflow: "ellipsis",

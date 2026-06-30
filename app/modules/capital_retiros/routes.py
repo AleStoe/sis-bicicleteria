@@ -1,7 +1,11 @@
 from typing import List, Optional
 from datetime import date
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
+
+from app.core.security import CurrentUser, aplicar_actor_actual
+from app.modules.authz.service import requerir_permiso
+from app.shared.constants import PERMISO_GESTIONAR_CAPITAL_RETIROS
 
 from .schema import (
     ParticipanteCapitalCreateInput,
@@ -33,10 +37,14 @@ from .service import (
 )
 
 router = APIRouter()
+puede_gestionar_capital = requerir_permiso(PERMISO_GESTIONAR_CAPITAL_RETIROS)
 
 
 @router.post("/participantes", response_model=ParticipanteCapitalOutput)
-def crear_participante_route(data: ParticipanteCapitalCreateInput):
+def crear_participante_route(
+    data: ParticipanteCapitalCreateInput,
+    _usuario: CurrentUser = Depends(puede_gestionar_capital),
+):
     return crear_participante(data)
 
 
@@ -51,17 +59,29 @@ def participante_perfil_route(participante_id: int):
 
 
 @router.put("/participantes/{participante_id}", response_model=ParticipanteCapitalOutput)
-def editar_participante_route(participante_id: int, data: ParticipanteCapitalUpdateInput):
+def editar_participante_route(
+    participante_id: int,
+    data: ParticipanteCapitalUpdateInput,
+    _usuario: CurrentUser = Depends(puede_gestionar_capital),
+):
     return editar_participante(participante_id, data)
 
 
 @router.patch("/participantes/{participante_id}/estado", response_model=ParticipanteCapitalEstadoOutput)
-def cambiar_estado_participante_route(participante_id: int, data: ParticipanteCapitalEstadoInput):
+def cambiar_estado_participante_route(
+    participante_id: int,
+    data: ParticipanteCapitalEstadoInput,
+    _usuario: CurrentUser = Depends(puede_gestionar_capital),
+):
     return cambiar_estado_participante(participante_id, data)
 
 
 @router.post("/movimientos", response_model=MovimientoCapitalCreateOutput)
-def crear_movimiento_route(data: MovimientoCapitalCreateInput):
+def crear_movimiento_route(
+    data: MovimientoCapitalCreateInput,
+    usuario: CurrentUser = Depends(puede_gestionar_capital),
+):
+    aplicar_actor_actual(data, usuario)
     return crear_movimiento(data)
 
 
@@ -119,5 +139,10 @@ def movimiento_detalle_route(movimiento_id: int):
 
 
 @router.post("/movimientos/{movimiento_id}/anular", response_model=MovimientoCapitalEstadoOutput)
-def anular_movimiento_route(movimiento_id: int, data: MovimientoCapitalAnularInput):
+def anular_movimiento_route(
+    movimiento_id: int,
+    data: MovimientoCapitalAnularInput,
+    usuario: CurrentUser = Depends(puede_gestionar_capital),
+):
+    aplicar_actor_actual(data, usuario)
     return anular_movimiento(movimiento_id, data)

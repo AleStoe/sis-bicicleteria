@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { API_BASE_URL } from "../../config/appConfig";
 import { obtenerFichaTecnicaProducto } from "../../services/catalogoService";
 import EstadoBadge from "./EstadoBadge";
+import PreciosComercialesCatalogo from "./PreciosComercialesCatalogo";
 
 export default function CatalogoDetalleModal({ item, onClose, onEdit }) {
   const [fichaTecnica, setFichaTecnica] = useState([]);
@@ -78,10 +79,12 @@ export default function CatalogoDetalleModal({ item, onClose, onEdit }) {
               <strong>{item.disponible_para_venta ? "Listo para vender" : "Revisar"}</strong>
             </div>
 
-            <div style={styles.priceGrid}>
-              <PriceBox label="Minorista" value={item.precio_minorista} />
-              <PriceBox label="Mayorista" value={item.precio_mayorista} />
-            </div>
+            <PreciosComercialesCatalogo
+              item={item}
+              nombre={[item.producto_nombre, item.nombre_variante]
+                .filter(Boolean)
+                .join(" - ")}
+            />
           </section>
 
           <section style={styles.rightColumn}>
@@ -163,15 +166,6 @@ function StockBox({ label, value, tone }) {
   );
 }
 
-function PriceBox({ label, value }) {
-  return (
-    <div style={styles.priceBox}>
-      <span>{label}</span>
-      <strong>{formatMoney(value)}</strong>
-    </div>
-  );
-}
-
 function FichaTecnicaAgrupada({ items }) {
   const grupos = items.reduce((acc, item) => {
     const grupo = item.grupo || "Otros";
@@ -202,14 +196,6 @@ function FichaTecnicaAgrupada({ items }) {
 function formatNumber(value) {
   return Number(value || 0).toLocaleString("es-AR", {
     maximumFractionDigits: 3,
-  });
-}
-
-function formatMoney(value) {
-  return Number(value || 0).toLocaleString("es-AR", {
-    style: "currency",
-    currency: "ARS",
-    maximumFractionDigits: 2,
   });
 }
 
@@ -332,19 +318,6 @@ const styles = {
   },
   badgeWrap: {
     display: "flex",
-  },
-  priceGrid: {
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: 12,
-  },
-  priceBox: {
-    background: "#ffffff",
-    border: "1px solid #e2e8f0",
-    borderRadius: 18,
-    padding: 14,
-    display: "grid",
-    gap: 6,
   },
   stockGrid: {
     display: "grid",

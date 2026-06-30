@@ -16,6 +16,8 @@ import {
   actualizarOperativoOrdenTaller,
   generarMensajeListaRetiroOrdenTaller,
   marcarAvisoRetiroOrdenTaller,
+  crearNotaOrdenTaller,
+  actualizarNotaOrdenTaller,
 } from "../services/tallerService";
 import { formatDate, formatMoney } from "../utils/formatters";
 import { EstadoBadge } from "./TallerListPage";
@@ -102,30 +104,33 @@ function AccionesRapidasTaller({
       <div style={styles.quickActionsGrid}>
         <QuickAction
           title="Presupuesto"
-          detail={esOrdenPostventa ? "No aplica en postventa" : "PDF para aprobar trabajos"}
-          label={esOrdenPostventa ? "No aplica" : "Imprimir"}
-          disabled={guardando || esOrdenPostventa || !tieneItemsPresupuesto}
+          detail={
+            esOrdenPostventa
+              ? "Muestra repuestos, cobertura y diferencia"
+              : "PDF para aprobar trabajos"
+          }
+          label="Imprimir"
+          disabled={guardando || !tieneItemsPresupuesto}
           onClick={onImprimirPresupuesto}
         />
         <QuickAction
           title="Facturacion"
           detail={
-            esOrdenPostventa
-              ? "Service bonificado"
-              : orden.id_venta_generada
+            orden.id_venta_generada
                 ? `Venta #${orden.id_venta_generada}`
-                : "Generar venta desde OT"
+                : esOrdenPostventa && Number(orden.total_final || 0) <= 0
+                  ? "Sin diferencia a cobrar"
+                  : "Generar venta desde OT"
           }
           label={
-            esOrdenPostventa
-              ? "No aplica"
-              : orden.id_venta_generada
+            orden.id_venta_generada
                 ? "Cobrar"
-                : "Generar venta"
+                : esOrdenPostventa && Number(orden.total_final || 0) <= 0
+                  ? "No aplica"
+                  : "Generar venta"
           }
           disabled={
             guardando ||
-            esOrdenPostventa ||
             (orden.id_venta_generada ? false : !puedeGenerarVenta)
           }
           onClick={orden.id_venta_generada ? onCobrar : onGenerarVenta}
@@ -205,10 +210,18 @@ export default function TallerDetallePage() {
     id_servicio_taller: "",
     cantidad: "1",
     precio_unitario: "",
+    cubrir_garantia: false,
+    valor_cobertura_unitario: "",
+    motivo_cobertura: "Garantía local",
+    observacion_cobertura: "",
   });
   const [operativoForm, setOperativoForm] = useState({
     fecha_prometida: "",
     prioridad: "normal",
+  });
+  const [notaForm, setNotaForm] = useState({
+    tipo: "interna",
+    contenido: "",
   });
   function formatUsuario(item) {
     if (item.usuario_nombre) {
@@ -275,6 +288,8 @@ export default function TallerDetallePage() {
 
   const items = orden?.items || [];
   const eventos = orden?.eventos || [];
+  const notas = orden?.notas || [];
+  const alertasBicicleta = orden?.alertas_bicicleta || [];
 
   const resumen = useMemo(() => {
     return items.reduce(
@@ -315,7 +330,11 @@ export default function TallerDetallePage() {
   const puedeTerminarTrabajo =
     orden?.estado === "en_reparacion" &&
     (
-      esOrdenPostventa ||
+      (
+        esOrdenPostventa &&
+        resumen.pendientesAprobacion === 0 &&
+        resumen.pendientesEjecucion === 0
+      ) ||
       (
         resumen.activos > 0 &&
         resumen.pendientesAprobacion === 0 &&
@@ -326,12 +345,14 @@ export default function TallerDetallePage() {
   const puedeGenerarVenta =
     orden?.estado === "terminada" &&
     !orden?.id_venta_generada &&
-    !esOrdenPostventa &&
+    (!esOrdenPostventa || Number(orden?.total_final || 0) > 0) &&
     resumen.facturables > 0;
 
   const puedeMarcarListaParaRetirar =
     esOrdenPostventa
-      ? orden?.estado === "terminada"
+      ? Number(orden?.total_final || 0) > 0
+        ? orden?.estado === "facturada" && Boolean(orden?.id_venta_generada)
+        : orden?.estado === "terminada"
       : orden?.estado === "facturada" && Boolean(orden?.id_venta_generada);
 
   const puedeMarcarRetirada = orden?.estado === "lista_para_retirar";
@@ -401,7 +422,10 @@ export default function TallerDetallePage() {
       if (
         estado === "lista_para_retirar" &&
         !orden.id_venta_generada &&
-        orden.es_service_postventa !== true
+        (
+          orden.es_service_postventa !== true ||
+          Number(orden.total_final || 0) > 0
+        )
       ) {
         return false;
       }
@@ -419,6 +443,10 @@ export default function TallerDetallePage() {
       id_servicio_taller: "",
       cantidad: "1",
       precio_unitario: "",
+      cubrir_garantia: false,
+      valor_cobertura_unitario: "",
+      motivo_cobertura: "Garantía local",
+      observacion_cobertura: "",
     });
     setBusquedaVariante("");
     setBusquedaServicio("");
@@ -433,6 +461,7 @@ export default function TallerDetallePage() {
     }
 
     setItemForm({
+      ...itemForm,
       tipo_item: "repuesto",
       id_variante: id,
       id_servicio_taller: "",
@@ -526,6 +555,16 @@ export default function TallerDetallePage() {
       setError("");
       setMensaje("");
 
+      const cobertura = Number(itemForm.valor_cobertura_unitario || 0);
+      if (
+        !esServicio &&
+        itemForm.cubrir_garantia &&
+        cobertura > Number(itemForm.precio_unitario || 0)
+      ) {
+        setError("La cobertura no puede superar el precio del repuesto.");
+        return;
+      }
+
       const payload = esServicio
         ? {
             tipo_item: "servicio",
@@ -539,6 +578,14 @@ export default function TallerDetallePage() {
             id_variante: Number(itemForm.id_variante),
             cantidad: Number(itemForm.cantidad),
             precio_unitario: Number(itemForm.precio_unitario || 0),
+            valor_cobertura_unitario:
+              itemForm.cubrir_garantia ? cobertura : 0,
+            motivo_cobertura:
+              itemForm.cubrir_garantia ? itemForm.motivo_cobertura : null,
+            observacion_cobertura:
+              itemForm.cubrir_garantia
+                ? itemForm.observacion_cobertura.trim() || null
+                : null,
             id_usuario: usuarioId,
           };
 
@@ -549,7 +596,17 @@ export default function TallerDetallePage() {
       );
 
       
-      setItemForm({ tipo_item: itemForm.tipo_item, id_variante: "", id_servicio_taller: "", cantidad: "1", precio_unitario: "" });
+      setItemForm({
+        tipo_item: itemForm.tipo_item,
+        id_variante: "",
+        id_servicio_taller: "",
+        cantidad: "1",
+        precio_unitario: "",
+        cubrir_garantia: false,
+        valor_cobertura_unitario: "",
+        motivo_cobertura: "Garantía local",
+        observacion_cobertura: "",
+      });
       setBusquedaVariante("");
       setBusquedaServicio("");
       await refrescarOrden();
@@ -576,6 +633,13 @@ export default function TallerDetallePage() {
     if (guardando) return;
 
     const esServicio = tipo_item === "servicio";
+    if (esOrdenPostventa && !esServicio) {
+      seleccionarVariante(id);
+      setMensaje(
+        "Repuesto seleccionado. Indicá si tiene cobertura antes de agregarlo.",
+      );
+      return;
+    }
     const cantidad = Number(itemForm.cantidad || 1);
 
     if (cantidad <= 0) {
@@ -613,6 +677,10 @@ export default function TallerDetallePage() {
         id_servicio_taller: "",
         cantidad: "1",
         precio_unitario: "",
+        cubrir_garantia: false,
+        valor_cobertura_unitario: "",
+        motivo_cobertura: "Garantía local",
+        observacion_cobertura: "",
       });
       setBusquedaVariante("");
       setBusquedaServicio("");
@@ -758,6 +826,81 @@ export default function TallerDetallePage() {
     }
   }
 
+  async function agregarNota(e) {
+    e.preventDefault();
+    if (!notaForm.contenido.trim()) {
+      setError("Escribí el contenido de la nota.");
+      return;
+    }
+
+    try {
+      setGuardando(true);
+      setError("");
+      await crearNotaOrdenTaller(ordenId, {
+        tipo: notaForm.tipo,
+        contenido: notaForm.contenido.trim(),
+        id_usuario: usuarioId,
+      });
+      setNotaForm({ tipo: "interna", contenido: "" });
+      await refrescarOrden();
+      setMensaje("Nota técnica agregada.");
+    } catch (err) {
+      setError(err?.detail || err?.message || "No se pudo agregar la nota");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  async function editarNota(nota) {
+    const contenido = await pedirPrompt({
+      title: "Editar nota",
+      message: "Corregí el contenido sin perder su trazabilidad.",
+      label: labelTipoNota(nota.tipo),
+      defaultValue: nota.contenido,
+      placeholder: "Contenido de la nota",
+      confirmText: "Guardar cambios",
+    });
+    if (contenido === null || !contenido.trim()) return;
+
+    try {
+      setGuardando(true);
+      setError("");
+      await actualizarNotaOrdenTaller(ordenId, nota.id, {
+        contenido: contenido.trim(),
+        id_usuario: usuarioId,
+      });
+      await refrescarOrden();
+      setMensaje("Nota actualizada.");
+    } catch (err) {
+      setError(err?.detail || err?.message || "No se pudo editar la nota");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  async function cambiarEstadoNota(nota, estado) {
+    try {
+      setGuardando(true);
+      setError("");
+      await actualizarNotaOrdenTaller(ordenId, nota.id, {
+        estado,
+        id_usuario: usuarioId,
+      });
+      await refrescarOrden();
+      setMensaje(
+        estado === "resuelta"
+          ? "Nota marcada como resuelta."
+          : estado === "archivada"
+            ? "Nota archivada."
+            : "Nota reactivada.",
+      );
+    } catch (err) {
+      setError(err?.detail || err?.message || "No se pudo actualizar la nota");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
   async function enviarWhatsappRetiro() {
     try {
       setGuardando(true);
@@ -820,7 +963,15 @@ export default function TallerDetallePage() {
           value={orden.es_service_postventa ? "Postventa 30 días" : "Taller"}
           tone={orden.es_service_postventa ? "info" : "muted"}
         />
-        <Metric label="Total" value={esOrdenPostventa ? "No aplica" : formatMoney(orden.total_final)} tone={esOrdenPostventa ? "muted" : "orange"} />
+        <Metric
+          label={esOrdenPostventa ? "Diferencia a cobrar" : "Total"}
+          value={formatMoney(orden.total_final)}
+          tone={
+            esOrdenPostventa && Number(orden.total_final || 0) <= 0
+              ? "ok"
+              : "orange"
+          }
+        />
         <Metric label="Saldo pendiente" value={esOrdenPostventa ? "No aplica" : formatMoney(orden.saldo_pendiente)} tone={esOrdenPostventa || Number(orden.saldo_pendiente || 0) <= 0 ? "ok" : "warning"} />
         <Metric label="Venta" value={esOrdenPostventa ? "No aplica" : orden.id_venta_generada ? `#${orden.id_venta_generada}` : "No generada"} tone={esOrdenPostventa || orden.id_venta_generada ? "ok" : "warning"} />
         <Metric label="Prometida" value={orden.fecha_prometida ? formatDate(orden.fecha_prometida) : "Sin fecha"} tone={orden.dias_demorados > 0 ? "warning" : "muted"} />
@@ -860,23 +1011,174 @@ export default function TallerDetallePage() {
             </div>
           </section>
 
+          <section style={styles.card}>
+            <div style={styles.sectionHeader}>
+              <p style={styles.eyebrow}>Historial técnico</p>
+              <h2 style={styles.cardTitle}>Notas y recomendaciones</h2>
+              <p style={styles.muted}>
+                La visibilidad al cliente depende del tipo elegido.
+              </p>
+            </div>
+
+            {alertasBicicleta.length > 0 ? (
+              <div style={styles.previousAlertsBox}>
+                <strong>Alertas activas de servicios anteriores</strong>
+                {alertasBicicleta.map((alerta) => (
+                  <div key={alerta.id} style={styles.previousAlertItem}>
+                    <span>{alerta.contenido}</span>
+                    <Link
+                      to={`/taller/${alerta.id_orden_taller}`}
+                      style={styles.previousAlertLink}
+                    >
+                      Ver OT #{alerta.id_orden_taller}
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            <form onSubmit={agregarNota} style={styles.noteComposer}>
+              <label style={styles.field}>
+                <span style={styles.label}>Tipo de nota</span>
+                <select
+                  value={notaForm.tipo}
+                  onChange={(e) =>
+                    setNotaForm((actual) => ({ ...actual, tipo: e.target.value }))
+                  }
+                  style={styles.input}
+                >
+                  <option value="interna">Nota interna</option>
+                  <option value="cliente">Nota para cliente</option>
+                  <option value="recomendacion_futura">Recomendación futura</option>
+                  <option value="alerta_tecnica">Alerta técnica de bicicleta</option>
+                </select>
+              </label>
+
+              <label style={styles.field}>
+                <span style={styles.label}>Contenido</span>
+                <textarea
+                  value={notaForm.contenido}
+                  onChange={(e) =>
+                    setNotaForm((actual) => ({
+                      ...actual,
+                      contenido: e.target.value,
+                    }))
+                  }
+                  placeholder="Ej: revisar pastillas de freno en el próximo service"
+                  style={styles.noteTextarea}
+                  maxLength={2000}
+                />
+              </label>
+
+              <div style={styles.noteComposerFooter}>
+                <span style={styles.noteVisibilityHint}>
+                  {visibilidadTipoNota(notaForm.tipo)}
+                </span>
+                <button
+                  type="submit"
+                  disabled={guardando || !notaForm.contenido.trim()}
+                  style={styles.primaryButton}
+                >
+                  Agregar nota
+                </button>
+              </div>
+            </form>
+
+            {notas.length === 0 ? (
+              <div style={styles.emptySmall}>Todavía no hay notas técnicas.</div>
+            ) : (
+              <div style={styles.notesList}>
+                {notas.map((nota) => (
+                  <article
+                    key={nota.id}
+                    style={{
+                      ...styles.technicalNote,
+                      ...(nota.estado === "archivada"
+                        ? styles.technicalNoteArchived
+                        : {}),
+                    }}
+                  >
+                    <div style={styles.technicalNoteHeader}>
+                      <div style={styles.noteBadges}>
+                        <span style={styleTipoNota(nota.tipo)}>
+                          {labelTipoNota(nota.tipo)}
+                        </span>
+                        <span style={styleEstadoNota(nota.estado)}>
+                          {labelEstadoNota(nota.estado)}
+                        </span>
+                      </div>
+                      <span style={styles.technicalNoteMeta}>
+                        {formatDate(nota.created_at)} ·{" "}
+                        {nota.usuario_creador_nombre ||
+                          `Usuario #${nota.id_usuario_creador}`}
+                      </span>
+                    </div>
+
+                    <p style={styles.technicalNoteText}>{nota.contenido}</p>
+
+                    <div style={styles.noteActions}>
+                      <button
+                        type="button"
+                        onClick={() => editarNota(nota)}
+                        disabled={guardando}
+                        style={styles.smallSecondary}
+                      >
+                        Editar
+                      </button>
+                      {nota.estado !== "resuelta" ? (
+                        <button
+                          type="button"
+                          onClick={() => cambiarEstadoNota(nota, "resuelta")}
+                          disabled={guardando}
+                          style={styles.smallPrimary}
+                        >
+                          Marcar resuelta
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => cambiarEstadoNota(nota, "activa")}
+                          disabled={guardando}
+                          style={styles.smallSecondary}
+                        >
+                          Reactivar
+                        </button>
+                      )}
+                      {nota.estado !== "archivada" ? (
+                        <button
+                          type="button"
+                          onClick={() => cambiarEstadoNota(nota, "archivada")}
+                          disabled={guardando}
+                          style={styles.smallDanger}
+                        >
+                          Archivar
+                        </button>
+                      ) : null}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+
           {esOrdenPostventa ? (
             <section style={styles.card}>
               <div style={styles.sectionHeader}>
                 <div>
                   <p style={styles.eyebrow}>Service postventa</p>
-                  <h2 style={styles.cardTitle}>Sin presupuesto ni facturacion</h2>
+                  <h2 style={styles.cardTitle}>Service bonificado con repuestos opcionales</h2>
                   <p style={styles.muted}>
-                    Esta OT cubre el primer control bonificado de la bicicleta. Avanzala por la guia del operador y avisale al cliente cuando quede lista para retirar.
+                    La mano de obra queda cubierta. Si se cambia una pieza, podés bonificarla total o parcialmente y cobrar sólo la diferencia.
                   </p>
                 </div>
               </div>
 
               <div style={styles.postventaNotice}>
-                No hace falta cargar items, imprimir presupuesto ni generar venta. Si aparece un trabajo extra con costo, crealo como una orden de taller normal.
+                Sin repuestos pagos, la OT sigue en $0. Si existe una diferencia por upgrade, ejecutá el repuesto y generá la venta por ese importe.
               </div>
             </section>
-          ) : (
+          ) : null}
+
           <section style={styles.card}>
             <div style={styles.sectionHeader}>
               <div>
@@ -1014,6 +1316,115 @@ export default function TallerDetallePage() {
                 </div>
               )}
 
+              {esOrdenPostventa && itemForm.tipo_item === "servicio" ? (
+                <div style={styles.coverageInfo}>
+                  La mano de obra de este service se cubrirá automáticamente al 100%.
+                </div>
+              ) : null}
+
+              {esOrdenPostventa && itemForm.tipo_item === "repuesto" ? (
+                <div style={styles.coveragePanel}>
+                  <label style={styles.coverageToggle}>
+                    <input
+                      type="checkbox"
+                      checked={itemForm.cubrir_garantia}
+                      onChange={(e) =>
+                        setItemForm((actual) => ({
+                          ...actual,
+                          cubrir_garantia: e.target.checked,
+                          valor_cobertura_unitario: e.target.checked
+                            ? actual.valor_cobertura_unitario
+                            : "",
+                        }))
+                      }
+                    />
+                    Cubrir por garantía / postventa
+                  </label>
+
+                  {itemForm.cubrir_garantia ? (
+                    <div style={styles.coverageFields}>
+                      <label style={styles.field}>
+                        <span style={styles.label}>Valor reconocido por garantía</span>
+                        <input
+                          type="number"
+                          min="0"
+                          max={itemForm.precio_unitario || undefined}
+                          step="0.01"
+                          value={itemForm.valor_cobertura_unitario}
+                          onChange={(e) =>
+                            setItemForm((actual) => ({
+                              ...actual,
+                              valor_cobertura_unitario: e.target.value,
+                            }))
+                          }
+                          style={styles.input}
+                        />
+                      </label>
+                      <label style={styles.field}>
+                        <span style={styles.label}>Motivo</span>
+                        <select
+                          value={itemForm.motivo_cobertura}
+                          onChange={(e) =>
+                            setItemForm((actual) => ({
+                              ...actual,
+                              motivo_cobertura: e.target.value,
+                            }))
+                          }
+                          style={styles.input}
+                        >
+                          <option>Garantía fábrica</option>
+                          <option>Garantía local</option>
+                          <option>Service postventa</option>
+                          <option>Atención comercial</option>
+                          <option>Diferencia por upgrade</option>
+                          <option>Otro</option>
+                        </select>
+                      </label>
+                      <label style={styles.field}>
+                        <span style={styles.label}>Observación opcional</span>
+                        <input
+                          value={itemForm.observacion_cobertura}
+                          onChange={(e) =>
+                            setItemForm((actual) => ({
+                              ...actual,
+                              observacion_cobertura: e.target.value,
+                            }))
+                          }
+                          placeholder="Ej: se reconoce el valor del piñón original"
+                          style={styles.input}
+                        />
+                      </label>
+                    </div>
+                  ) : null}
+
+                  <div style={styles.coverageResult}>
+                    <span>Precio: {formatMoney(itemForm.precio_unitario || 0)}</span>
+                    <span>
+                      Cobertura: -
+                      {formatMoney(
+                        itemForm.cubrir_garantia
+                          ? itemForm.valor_cobertura_unitario || 0
+                          : 0,
+                      )}
+                    </span>
+                    <strong>
+                      Diferencia por unidad:{" "}
+                      {formatMoney(
+                        Math.max(
+                          0,
+                          Number(itemForm.precio_unitario || 0) -
+                            Number(
+                              itemForm.cubrir_garantia
+                                ? itemForm.valor_cobertura_unitario || 0
+                                : 0,
+                            ),
+                        ),
+                      )}
+                    </strong>
+                  </div>
+                </div>
+              ) : null}
+
               <div style={{ ...styles.itemFormRow, ...(isMobile ? styles.itemFormRowMobile : {}) }}>
                 {itemForm.tipo_item === "servicio" && !itemForm.id_servicio_taller && (
                   <div style={styles.error}>
@@ -1071,7 +1482,6 @@ export default function TallerDetallePage() {
               </div>
             </form>
           </section>
-          )}
 
           <section style={styles.cardNoPadding}>
             <div style={styles.tableHeader}>
@@ -1083,7 +1493,9 @@ export default function TallerDetallePage() {
 
             {items.length === 0 ? (
               esOrdenPostventa ? (
-                <div style={styles.empty}>No aplica cargar items para este service bonificado.</div>
+                <div style={styles.empty}>
+                  Service sin repuestos adicionales. Total a cobrar: $0.
+                </div>
               ) : (
                 <div style={styles.empty}>Todavía no hay items cargados.</div>
               )
@@ -1217,4 +1629,64 @@ export default function TallerDetallePage() {
       />
     </div>
   );
+}
+
+function labelTipoNota(tipo) {
+  const labels = {
+    interna: "Nota interna",
+    cliente: "Nota para cliente",
+    recomendacion_futura: "Recomendación futura",
+    alerta_tecnica: "Alerta técnica",
+  };
+  return labels[tipo] || tipo;
+}
+
+function labelEstadoNota(estado) {
+  const labels = {
+    activa: "Activa",
+    resuelta: "Resuelta",
+    archivada: "Archivada",
+  };
+  return labels[estado] || estado;
+}
+
+function visibilidadTipoNota(tipo) {
+  if (tipo === "interna") {
+    return "Sólo visible para el equipo. Nunca sale en PDF ni WhatsApp.";
+  }
+  if (tipo === "alerta_tecnica") {
+    return "Queda destacada en la ficha de la bicicleta y futuras revisiones.";
+  }
+  return "Puede aparecer en el PDF y en el mensaje de retiro al cliente.";
+}
+
+function styleTipoNota(tipo) {
+  const tones = {
+    interna: { background: "#f1f5f9", color: "#475569" },
+    cliente: { background: "#eff6ff", color: "#1d4ed8" },
+    recomendacion_futura: { background: "#ecfdf5", color: "#047857" },
+    alerta_tecnica: { background: "#fff7ed", color: "#c2410c" },
+  };
+  return {
+    borderRadius: 999,
+    padding: "5px 9px",
+    fontSize: 12,
+    fontWeight: 950,
+    ...(tones[tipo] || tones.interna),
+  };
+}
+
+function styleEstadoNota(estado) {
+  const tones = {
+    activa: { background: "#fef3c7", color: "#92400e" },
+    resuelta: { background: "#dcfce7", color: "#166534" },
+    archivada: { background: "#e2e8f0", color: "#475569" },
+  };
+  return {
+    borderRadius: 999,
+    padding: "5px 9px",
+    fontSize: 12,
+    fontWeight: 900,
+    ...(tones[estado] || tones.activa),
+  };
 }

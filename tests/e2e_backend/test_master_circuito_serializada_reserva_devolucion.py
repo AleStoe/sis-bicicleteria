@@ -275,19 +275,29 @@ def test_master_reserva_serializada_venta_entrega_devolucion_credito(
     assert _dec(stock["stock_vendido_pendiente_entrega"]) == Decimal("0.000")
 
     # =====================================================
-    # 5. MARCAR VENTA COMO PAGADA PARA PODER ENTREGAR
+    # 5. PAGAR VENTA PARA PODER ENTREGAR
     # =====================================================
-    with db_conn.cursor() as cur:
-        cur.execute(
-            """
-            UPDATE ventas
-            SET saldo_pendiente = 0,
-                estado = 'pagada_total'
-            WHERE id = %s
-            """,
-            (venta_id,),
-        )
-    db_conn.commit()
+    abrir = client.post(
+        "/cajas/abrir",
+        json={
+            "id_sucursal": sucursal_id,
+            "id_usuario": usuario_id,
+            "monto_apertura": 0,
+        },
+    )
+    assert abrir.status_code == 200, abrir.text
+
+    pago = client.post(
+        "/pagos/",
+        json={
+            "origen_tipo": "venta",
+            "origen_id": venta_id,
+            "medio_pago": "efectivo",
+            "monto_base": str(venta["saldo_pendiente"]),
+            "id_usuario": usuario_id,
+        },
+    )
+    assert pago.status_code == 200, pago.text
 
     # =====================================================
     # 6. ENTREGAR VENTA SERIALIZADA
@@ -360,5 +370,17 @@ def test_master_reserva_serializada_venta_entrega_devolucion_credito(
     assert len(creditos) >= 1
 
     credito = creditos[0]
-    assert _dec(credito["saldo_actual"]) == Decimal("950000.00")
+    pago_efectivo = db_conn.execute(
+        """
+        SELECT monto_total_cobrado
+        FROM pagos
+        WHERE origen_tipo = 'venta'
+          AND origen_id = %s
+          AND estado = 'confirmado'
+        """,
+        (venta_id,),
+    ).fetchone()
+    assert _dec(credito["saldo_actual"]) == _dec(
+        pago_efectivo["monto_total_cobrado"]
+    )
     assert credito["estado"] in ("activo", "abierto")

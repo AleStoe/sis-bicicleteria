@@ -14,6 +14,13 @@ EstadoAgendaTaller = Literal[
     "convertido_orden",
 ]
 
+TipoTurnoAgendaTaller = Literal[
+    "reparacion_comun",
+    "service_postventa_30_dias",
+    "garantia",
+    "consulta_revision",
+]
+
 TipoHistorialAgendaTaller = Literal[
     "creado",
     "editado",
@@ -29,6 +36,7 @@ class AgendaTallerCreateInput(BaseModel):
     id_sucursal: int = Field(gt=0)
     id_bicicleta_cliente: Optional[int] = Field(default=None, gt=0)
     id_cliente: Optional[int] = Field(default=None, gt=0)
+    id_venta_origen: Optional[int] = Field(default=None, gt=0)
 
     cliente_nombre: str = Field(min_length=2, max_length=150)
     cliente_telefono: Optional[str] = Field(default=None, max_length=50)
@@ -42,6 +50,7 @@ class AgendaTallerCreateInput(BaseModel):
     # puede ser sólo reserva de ingreso y la promesa cerrarse recién al presupuestar.
     fecha_prometida_entrega: Optional[date] = None
 
+    tipo_turno: TipoTurnoAgendaTaller = "reparacion_comun"
     tipo_servicio: str = Field(min_length=2, max_length=150)
     descripcion: Optional[str] = None
     notas: Optional[str] = None
@@ -52,6 +61,7 @@ class AgendaTallerCreateInput(BaseModel):
 class AgendaTallerUpdateInput(BaseModel):
     id_cliente: Optional[int] = Field(default=None, gt=0)
     id_bicicleta_cliente: Optional[int] = Field(default=None, gt=0)
+    id_venta_origen: Optional[int] = Field(default=None, gt=0)
 
     cliente_nombre: str = Field(min_length=2, max_length=150)
     cliente_telefono: Optional[str] = Field(default=None, max_length=50)
@@ -62,6 +72,7 @@ class AgendaTallerUpdateInput(BaseModel):
     hora_fin: Optional[time] = None
     fecha_prometida_entrega: Optional[date] = None
 
+    tipo_turno: TipoTurnoAgendaTaller = "reparacion_comun"
     tipo_servicio: str = Field(min_length=2, max_length=150)
     descripcion: Optional[str] = None
     notas: Optional[str] = None
@@ -86,6 +97,8 @@ class AgendaTallerOutput(BaseModel):
 
     id_cliente: Optional[int]
     id_bicicleta_cliente: Optional[int]
+    id_bicicleta_serializada: Optional[int] = None
+    id_venta_origen: Optional[int] = None
 
     cliente_nombre: str
     cliente_telefono: Optional[str]
@@ -97,6 +110,7 @@ class AgendaTallerOutput(BaseModel):
     hora_fin: Optional[time]
     fecha_prometida_entrega: Optional[date] = None
 
+    tipo_turno: TipoTurnoAgendaTaller = "reparacion_comun"
     tipo_servicio: str
     descripcion: Optional[str]
     notas: Optional[str]

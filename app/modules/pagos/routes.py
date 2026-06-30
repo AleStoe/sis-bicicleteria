@@ -1,5 +1,9 @@
 from typing import List
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
+
+from app.core.security import CurrentUser, aplicar_actor_actual
+from app.modules.authz.service import requerir_permiso
+from app.shared.constants import PERMISO_REGISTRAR_PAGO, PERMISO_REVERTIR_PAGO
 
 from .schema import (
     PagoCreateInput,
@@ -13,15 +17,26 @@ from .schema import (
 from .service import crear_pago, listar_pagos, obtener_pagos_venta, revertir_pago, simular_pago_venta
 
 router = APIRouter()
+puede_registrar_pago = requerir_permiso(PERMISO_REGISTRAR_PAGO)
+puede_revertir_pago = requerir_permiso(PERMISO_REVERTIR_PAGO)
 
 
 @router.post("/", response_model=PagoCreateOutput)
-def registrar_pago(data: PagoCreateInput):
+def registrar_pago(
+    data: PagoCreateInput,
+    usuario: CurrentUser = Depends(puede_registrar_pago),
+):
+    aplicar_actor_actual(data, usuario)
     return crear_pago(data)
 
 
 @router.post("/{pago_id}/revertir", response_model=PagoReversionOutput)
-def revertir_pago_route(pago_id: int, data: PagoReversionInput):
+def revertir_pago_route(
+    pago_id: int,
+    data: PagoReversionInput,
+    usuario: CurrentUser = Depends(puede_revertir_pago),
+):
+    aplicar_actor_actual(data, usuario)
     return revertir_pago(pago_id, data)
 
 

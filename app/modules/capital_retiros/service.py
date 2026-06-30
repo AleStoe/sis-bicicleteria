@@ -4,9 +4,15 @@ from datetime import date
 from fastapi import HTTPException
 
 from app.db.connection import get_connection
+from app.modules.auditoria import service as auditoria_service
 from app.modules.caja.repository import (
     get_caja_abierta_hoy_by_sucursal_for_update,
     insert_caja_movimiento,
+)
+from app.shared.constants import (
+    AUDITORIA_ACCION_CAPITAL_MOVIMIENTO_ANULADO,
+    AUDITORIA_ACCION_CAPITAL_MOVIMIENTO_CREADO,
+    AUDITORIA_ENTIDAD_CAPITAL_RETIRO,
 )
 
 from .repository import (
@@ -321,6 +327,28 @@ def crear_movimiento(data):
 
                 vincular_movimiento_a_caja(conn, movimiento_id, caja_movimiento_id)
 
+            auditoria_service.registrar_evento(
+                conn,
+                id_usuario=data.id_usuario,
+                id_sucursal=data.id_sucursal,
+                entidad=AUDITORIA_ENTIDAD_CAPITAL_RETIRO,
+                entidad_id=movimiento_id,
+                accion=AUDITORIA_ACCION_CAPITAL_MOVIMIENTO_CREADO,
+                detalle=(
+                    f"Movimiento de capital creado. tipo={data.tipo_movimiento}, "
+                    f"monto={data.monto}, impacta_caja={data.impacta_caja}"
+                ),
+                metadata={
+                    "tipo_movimiento": data.tipo_movimiento,
+                    "monto": str(data.monto),
+                    "participante_id": data.id_participante,
+                    "impacta_caja": data.impacta_caja,
+                    "caja_movimiento_id": caja_movimiento_id,
+                },
+                origen_tipo=ORIGEN_CAPITAL_RETIROS,
+                origen_id=movimiento_id,
+            )
+
         return {
             "ok": True,
             "movimiento_id": movimiento_id,
@@ -407,6 +435,27 @@ def anular_movimiento(movimiento_id: int, data):
                     "origen_id": movimiento_id,
                     "id_usuario": data.id_usuario,
                 },
+            )
+
+            auditoria_service.registrar_evento(
+                conn,
+                id_usuario=data.id_usuario,
+                id_sucursal=movimiento["id_sucursal"],
+                entidad=AUDITORIA_ENTIDAD_CAPITAL_RETIRO,
+                entidad_id=movimiento_id,
+                accion=AUDITORIA_ACCION_CAPITAL_MOVIMIENTO_ANULADO,
+                detalle=(
+                    f"Movimiento de capital anulado. "
+                    f"monto={movimiento['monto']}, motivo={data.motivo}"
+                ),
+                metadata={
+                    "tipo_movimiento": movimiento["tipo_movimiento"],
+                    "monto": str(movimiento["monto"]),
+                    "motivo": data.motivo,
+                    "caja_movimiento_id": caja_movimiento_id,
+                },
+                origen_tipo=ORIGEN_CAPITAL_RETIROS_ANULACION,
+                origen_id=movimiento_id,
             )
 
         return {

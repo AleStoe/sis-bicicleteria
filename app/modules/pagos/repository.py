@@ -222,7 +222,7 @@ def sincronizar_venta_financiera_desde_pagos(conn, venta_id: int):
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
-            WITH resumen AS (
+            WITH pagos_resumen AS (
                 SELECT
                     v.id,
                     COALESCE(v.subtotal_base, 0)::numeric(14,2) AS subtotal_base,
@@ -242,6 +242,38 @@ def sincronizar_venta_financiera_desde_pagos(conn, venta_id: int):
                    AND p.estado = 'confirmado'
                 WHERE v.id = %s
                 GROUP BY v.id, v.subtotal_base
+            ), credito_resumen AS (
+                SELECT
+                    cm.origen_id AS venta_id,
+                    COALESCE(
+                        SUM(COALESCE(cm.monto_base_aplicado, cm.monto)),
+                        0
+                    )::numeric(14,2) AS base_cubierta,
+                    COALESCE(
+                        SUM(COALESCE(cm.monto_descuento_aplicado, 0)),
+                        0
+                    )::numeric(14,2) AS descuento_total
+                FROM credito_movimientos cm
+                WHERE cm.origen_tipo = 'venta'
+                  AND cm.origen_id = %s
+                  AND cm.tipo_movimiento = 'aplicacion_a_venta'
+                GROUP BY cm.origen_id
+            ), resumen AS (
+                SELECT
+                    pr.id,
+                    pr.subtotal_base,
+                    (
+                        pr.base_pagada
+                        + COALESCE(cr.base_cubierta, 0)
+                    )::numeric(14,2) AS base_pagada,
+                    (
+                        pr.descuento_total
+                        + COALESCE(cr.descuento_total, 0)
+                    )::numeric(14,2) AS descuento_total,
+                    pr.recargo_total
+                FROM pagos_resumen pr
+                LEFT JOIN credito_resumen cr
+                    ON cr.venta_id = pr.id
             ), calculo AS (
                 SELECT
                     id,
@@ -276,7 +308,7 @@ def sincronizar_venta_financiera_desde_pagos(conn, venta_id: int):
                 v.saldo_pendiente,
                 v.estado
             """,
-            (venta_id,),
+            (venta_id, venta_id),
         )
         return cur.fetchone()
 

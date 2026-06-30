@@ -37,9 +37,17 @@ const VISTAS = {
   ATRASADAS: "atrasadas",
 };
 
+const TIPOS_TURNO = [
+  { value: "reparacion_comun", label: "Reparación común" },
+  { value: "service_postventa_30_dias", label: "Service postventa 30 días" },
+  { value: "garantia", label: "Garantía" },
+  { value: "consulta_revision", label: "Consulta / revisión" },
+];
+
 const FORM_INICIAL = {
   id_cliente: null,
   id_bicicleta_cliente: null,
+  id_venta_origen: null,
   cliente_nombre: "",
   cliente_telefono: "",
   fecha: "",
@@ -47,7 +55,8 @@ const FORM_INICIAL = {
   franja: "mañana",
   hora_inicio: "09:00",
   hora_fin: "",
-  tipo_servicio: "",
+  tipo_turno: "reparacion_comun",
+  tipo_servicio: "REPARACIÓN COMÚN",
   descripcion: "",
   notas: "",
 };
@@ -95,6 +104,17 @@ export default function AgendaTallerPage() {
   const [bicicletasCliente, setBicicletasCliente] = useState([]);
   const [mostrarAltaBicicleta, setMostrarAltaBicicleta] = useState(false);
   const [biciForm, setBiciForm] = useState(BICICLETA_FORM_INICIAL);
+  const esTurnoPostventa = form.tipo_turno === "service_postventa_30_dias";
+  const bicicletasElegibles = useMemo(
+    () =>
+      esTurnoPostventa
+        ? bicicletasCliente.filter(esBicicletaElegiblePostventa)
+        : bicicletasCliente,
+    [bicicletasCliente, esTurnoPostventa],
+  );
+  const bicicletaSeleccionada = bicicletasCliente.find(
+    (bici) => Number(bici.id) === Number(form.id_bicicleta_cliente),
+  );
 
   useEffect(() => {
     cargarTurnos();
@@ -208,6 +228,7 @@ export default function AgendaTallerPage() {
         ...current,
         id_cliente: cliente.id,
         id_bicicleta_cliente: null,
+        id_venta_origen: null,
         cliente_nombre: cliente.nombre || "",
         cliente_telefono: cliente.telefono || "",
       }));
@@ -222,10 +243,16 @@ export default function AgendaTallerPage() {
 
       setBicicletasCliente(lista);
 
-      if (lista.length === 1) {
+      const elegibles =
+        form.tipo_turno === "service_postventa_30_dias"
+          ? lista.filter(esBicicletaElegiblePostventa)
+          : lista;
+
+      if (elegibles.length === 1) {
         setForm((current) => ({
           ...current,
-          id_bicicleta_cliente: lista[0].id,
+          id_bicicleta_cliente: elegibles[0].id,
+          id_venta_origen: elegibles[0].id_venta_origen || null,
         }));
       }
     } catch (err) {
@@ -236,9 +263,31 @@ export default function AgendaTallerPage() {
   }
 
   function seleccionarBicicleta(bicicletaId) {
+    const bicicleta = bicicletasCliente.find(
+      (item) => Number(item.id) === Number(bicicletaId),
+    );
     setForm((current) => ({
       ...current,
       id_bicicleta_cliente: bicicletaId ? Number(bicicletaId) : null,
+      id_venta_origen: bicicleta?.id_venta_origen || null,
+    }));
+  }
+
+  function cambiarTipoTurno(tipoTurno) {
+    const esPostventa = tipoTurno === "service_postventa_30_dias";
+    const bicicletaActual = bicicletasCliente.find(
+      (item) => Number(item.id) === Number(form.id_bicicleta_cliente),
+    );
+    const bicicletaValida =
+      !esPostventa ||
+      esBicicletaElegiblePostventa(bicicletaActual);
+
+    setForm((current) => ({
+      ...current,
+      tipo_turno: tipoTurno,
+      tipo_servicio: labelTipoTurno(tipoTurno).toUpperCase(),
+      id_bicicleta_cliente: bicicletaValida ? current.id_bicicleta_cliente : null,
+      id_venta_origen: bicicletaValida ? current.id_venta_origen : null,
     }));
   }
 
@@ -260,6 +309,7 @@ export default function AgendaTallerPage() {
       ...current,
       id_cliente: null,
       id_bicicleta_cliente: null,
+      id_venta_origen: null,
       cliente_nombre: "",
       cliente_telefono: "",
     }));
@@ -334,6 +384,7 @@ export default function AgendaTallerPage() {
       setForm({
         id_cliente: turno.id_cliente || null,
         id_bicicleta_cliente: turno.id_bicicleta_cliente || null,
+        id_venta_origen: turno.id_venta_origen || null,
         cliente_nombre: turno.cliente_nombre || "",
         cliente_telefono: turno.cliente_telefono || "",
         fecha: turno.fecha || "",
@@ -341,7 +392,8 @@ export default function AgendaTallerPage() {
         franja: turno.franja || "mañana",
         hora_inicio: normalizarHora(turno.hora_inicio) || "09:00",
         hora_fin: normalizarHora(turno.hora_fin) || "",
-        tipo_servicio: turno.tipo_servicio || "",
+        tipo_turno: turno.tipo_turno || "reparacion_comun",
+        tipo_servicio: turno.tipo_servicio || "REPARACIÓN COMÚN",
         descripcion: turno.descripcion || "",
         notas: turno.notas || "",
       });
@@ -363,7 +415,9 @@ export default function AgendaTallerPage() {
 
   function validarFormulario() {
     if (!form.id_cliente) return "Seleccioná un cliente existente.";
-    if (!form.id_bicicleta_cliente) return "Seleccioná una bicicleta del cliente.";
+    if (esTurnoPostventa && !form.id_bicicleta_cliente) {
+      return "Seleccioná una bicicleta serializada vendida para el service postventa.";
+    }
     if (!form.fecha) return "La fecha del turno es obligatoria.";
     if (!form.hora_inicio) return "La hora de inicio es obligatoria.";
     if (!form.tipo_servicio.trim()) return "El tipo de servicio es obligatorio.";
@@ -373,8 +427,13 @@ export default function AgendaTallerPage() {
   function buildPayload() {
     return {
       ...form,
-      id_cliente: Number(form.id_cliente),
-      id_bicicleta_cliente: Number(form.id_bicicleta_cliente),
+      id_cliente: form.id_cliente ? Number(form.id_cliente) : null,
+      id_bicicleta_cliente: form.id_bicicleta_cliente
+        ? Number(form.id_bicicleta_cliente)
+        : null,
+      id_venta_origen: form.id_venta_origen
+        ? Number(form.id_venta_origen)
+        : null,
       cliente_nombre: form.cliente_nombre.trim(),
       cliente_telefono: form.cliente_telefono?.trim() || null,
       hora_fin: form.hora_fin || null,
@@ -617,6 +676,29 @@ export default function AgendaTallerPage() {
           </div>
 
           <form onSubmit={handleSubmit}>
+            <label style={styles.label}>Tipo de turno</label>
+            <select
+              value={form.tipo_turno}
+              onChange={(e) => cambiarTipoTurno(e.target.value)}
+              style={styles.input}
+            >
+              {TIPOS_TURNO.map((tipo) => (
+                <option key={tipo.value} value={tipo.value}>
+                  {tipo.label}
+                </option>
+              ))}
+            </select>
+
+            {esTurnoPostventa ? (
+              <div style={styles.postventaNotice}>
+                <strong>Service gratuito de los 30 días</strong>
+                <span>
+                  Elegí la bicicleta vendida. La agenda conservará la serializada y
+                  la venta de origen para crear la OT sin volver a cargar datos.
+                </span>
+              </div>
+            ) : null}
+
             <label style={styles.label}>Buscar cliente</label>
 
             <input
@@ -687,7 +769,7 @@ export default function AgendaTallerPage() {
               value={form.id_bicicleta_cliente || ""}
               onChange={(e) => seleccionarBicicleta(e.target.value)}
               style={styles.input}
-              disabled={!form.id_cliente || bicicletasCliente.length === 0}
+              disabled={!form.id_cliente || bicicletasElegibles.length === 0}
             >
               <option value="">
                 {form.id_cliente
@@ -695,14 +777,30 @@ export default function AgendaTallerPage() {
                   : "Primero seleccioná un cliente"}
               </option>
 
-              {bicicletasCliente.map((bici) => (
+              {bicicletasElegibles.map((bici) => (
                 <option key={bici.id} value={bici.id}>
-                  {formatBicicleta(bici)}
+                  {formatBicicletaAgenda(bici, esTurnoPostventa)}
                 </option>
               ))}
             </select>
 
-            {form.id_cliente ? (
+            {bicicletaSeleccionada && esTurnoPostventa ? (
+              <div style={styles.linkedSaleBox}>
+                <strong>{formatBicicleta(bicicletaSeleccionada)}</strong>
+                <span>
+                  Venta #{bicicletaSeleccionada.id_venta_origen} ·{" "}
+                  {formatFecha(bicicletaSeleccionada.fecha_compra)}
+                </span>
+                <span>
+                  Serializada #{bicicletaSeleccionada.id_bicicleta_serializada}
+                  {bicicletaSeleccionada.numero_cuadro
+                    ? ` · Cuadro ${bicicletaSeleccionada.numero_cuadro}`
+                    : ""}
+                </span>
+              </div>
+            ) : null}
+
+            {form.id_cliente && !esTurnoPostventa ? (
               <div style={styles.inlineActions}>
                 <button
                   type="button"
@@ -715,13 +813,23 @@ export default function AgendaTallerPage() {
               </div>
             ) : null}
 
-            {form.id_cliente && bicicletasCliente.length === 0 && !mostrarAltaBicicleta ? (
+            {form.id_cliente &&
+            bicicletasCliente.length === 0 &&
+            !mostrarAltaBicicleta &&
+            !esTurnoPostventa ? (
               <div style={styles.warningText}>
                 Este cliente no tiene bicicletas cargadas. Podés agregarla acá sin salir de la agenda.
               </div>
             ) : null}
 
-            {form.id_cliente && mostrarAltaBicicleta ? (
+            {form.id_cliente && esTurnoPostventa && bicicletasElegibles.length === 0 ? (
+              <div style={styles.warningText}>
+                Este cliente no tiene bicicletas serializadas vendidas disponibles para
+                vincular al service postventa.
+              </div>
+            ) : null}
+
+            {form.id_cliente && mostrarAltaBicicleta && !esTurnoPostventa ? (
               <div style={styles.quickBikeBox}>
                 <div style={styles.quickBikeHeader}>
                   <strong>Alta rápida de bicicleta</strong>
@@ -856,10 +964,11 @@ export default function AgendaTallerPage() {
             </div>
 
             <input
-              placeholder="Tipo de servicio"
+              placeholder="Trabajo o consulta inicial"
               value={form.tipo_servicio}
               onChange={(e) => setForm({ ...form, tipo_servicio: e.target.value })}
               style={styles.input}
+              readOnly={esTurnoPostventa}
             />
 
             <textarea
@@ -978,6 +1087,23 @@ export default function AgendaTallerPage() {
                       <span style={{ ...styles.estado, ...getEstadoStyle(turno.estado) }}>
                         {labelEstado(turno.estado)}
                       </span>
+                    </div>
+
+                    <div style={styles.turnoTypeRow}>
+                      <span
+                        style={
+                          turno.tipo_turno === "service_postventa_30_dias"
+                            ? styles.postventaBadge
+                            : styles.turnoTypeBadge
+                        }
+                      >
+                        {labelTipoTurno(turno.tipo_turno)}
+                      </span>
+                      {turno.id_venta_origen ? (
+                        <span style={styles.saleOriginBadge}>
+                          Venta #{turno.id_venta_origen}
+                        </span>
+                      ) : null}
                     </div>
 
                     <div style={styles.service}>{turno.tipo_servicio}</div>
@@ -1429,6 +1555,13 @@ function labelEstado(estado) {
   return labels[estado] || estado;
 }
 
+function labelTipoTurno(tipoTurno) {
+  return (
+    TIPOS_TURNO.find((tipo) => tipo.value === tipoTurno)?.label ||
+    "Reparación común"
+  );
+}
+
 function getEstadoStyle(estado) {
   if (estado === "pendiente") {
     return { background: "#fef3c7", color: "#92400e" };
@@ -1465,6 +1598,24 @@ function formatBicicleta(bici) {
     .join(" · ");
 
   return texto || `Bicicleta #${bici.id}`;
+}
+
+function formatBicicletaAgenda(bici, incluirVenta = false) {
+  const bicicleta = formatBicicleta(bici);
+  if (!incluirVenta) return bicicleta;
+
+  const venta = bici.id_venta_origen ? `Venta #${bici.id_venta_origen}` : "Sin venta";
+  const fecha = bici.fecha_compra ? formatFecha(bici.fecha_compra) : "Sin fecha";
+  return `${bicicleta} · ${venta} · ${fecha}`;
+}
+
+function esBicicletaElegiblePostventa(bici) {
+  return Boolean(
+    bici?.id_bicicleta_serializada &&
+      bici?.id_venta_origen &&
+      bici?.plan_postventa === "service_30_dias" &&
+      !bici?.service_gratis_usado,
+  );
 }
 
 const styles = {
@@ -1668,6 +1819,27 @@ const styles = {
     padding: 10,
     color: "#166534",
   },
+  postventaNotice: {
+    display: "grid",
+    gap: 3,
+    marginBottom: 12,
+    border: "1px solid #86efac",
+    background: "#f0fdf4",
+    borderRadius: 10,
+    padding: 11,
+    color: "#166534",
+  },
+  linkedSaleBox: {
+    display: "grid",
+    gap: 3,
+    margin: "-2px 0 12px",
+    border: "1px solid #bfdbfe",
+    background: "#eff6ff",
+    borderRadius: 10,
+    padding: 11,
+    color: "#1e3a8a",
+    fontSize: 13,
+  },
   quickBikeBox: {
     display: "grid",
     gap: 2,
@@ -1715,6 +1887,36 @@ const styles = {
     whiteSpace: "nowrap",
   },
   service: { marginTop: 10, fontWeight: 900, color: "#0f172a" },
+  turnoTypeRow: {
+    display: "flex",
+    gap: 7,
+    flexWrap: "wrap",
+    marginTop: 10,
+  },
+  turnoTypeBadge: {
+    borderRadius: 999,
+    padding: "4px 8px",
+    background: "#f1f5f9",
+    color: "#475569",
+    fontWeight: 900,
+    fontSize: 11,
+  },
+  postventaBadge: {
+    borderRadius: 999,
+    padding: "4px 8px",
+    background: "#dcfce7",
+    color: "#166534",
+    fontWeight: 950,
+    fontSize: 11,
+  },
+  saleOriginBadge: {
+    borderRadius: 999,
+    padding: "4px 8px",
+    background: "#dbeafe",
+    color: "#1d4ed8",
+    fontWeight: 900,
+    fontSize: 11,
+  },
   descripcion: { marginTop: 6, color: "#475569" },
   metaBlock: { display: "grid", gap: 4, marginTop: 8 },
   metaLine: { color: "#64748b", fontWeight: 800, fontSize: 13 },

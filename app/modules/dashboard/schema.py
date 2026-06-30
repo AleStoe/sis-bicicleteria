@@ -9,6 +9,10 @@ class DashboardKpiOutput(BaseModel):
     ventas_mes: Decimal
     gastos_mes: Decimal
     resultado_estimado: Decimal
+    margen_bruto_mes: Decimal
+    margen_bruto_porcentaje: Decimal
+    cantidad_ventas_mes: int
+    ticket_promedio_mes: Decimal
     caja_actual: Decimal
     deudas_abiertas: Decimal
     creditos_abiertos: Decimal

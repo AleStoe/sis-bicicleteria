@@ -4,6 +4,13 @@ from psycopg.rows import dict_row
 _BASE_SELECT_TURNOS = """
     SELECT
         at.*,
+        bc.id_bicicleta_serializada,
+        bc.id_venta_origen AS bicicleta_id_venta_origen,
+        bc.fecha_compra AS bicicleta_fecha_venta,
+        bc.plan_postventa,
+        bc.fecha_limite_service_gratis,
+        bc.service_gratis_usado,
+        bc.service_gratis_autorizado_fuera_plazo,
         CASE
             WHEN bc.id IS NULL THEN NULL
             ELSE CONCAT_WS(
@@ -23,7 +30,7 @@ _BASE_SELECT_TURNOS = """
 """
 
 
-def insert_turno_agenda(conn, data):
+def insert_turno_agenda(conn, data, *, id_venta_origen=None):
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
@@ -31,6 +38,7 @@ def insert_turno_agenda(conn, data):
                 id_sucursal,
                 id_cliente,
                 id_bicicleta_cliente,
+                id_venta_origen,
                 cliente_nombre,
                 cliente_telefono,
                 fecha,
@@ -38,13 +46,14 @@ def insert_turno_agenda(conn, data):
                 hora_inicio,
                 hora_fin,
                 fecha_prometida_entrega,
+                tipo_turno,
                 tipo_servicio,
                 descripcion,
                 notas,
                 id_usuario_creador
             )
             VALUES (
-                %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s
+                %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s
             )
             RETURNING *
             """,
@@ -52,6 +61,7 @@ def insert_turno_agenda(conn, data):
                 data.id_sucursal,
                 data.id_cliente,
                 data.id_bicicleta_cliente,
+                id_venta_origen,
                 data.cliente_nombre,
                 data.cliente_telefono,
                 data.fecha,
@@ -59,6 +69,7 @@ def insert_turno_agenda(conn, data):
                 data.hora_inicio,
                 data.hora_fin,
                 data.fecha_prometida_entrega,
+                data.tipo_turno,
                 data.tipo_servicio,
                 data.descripcion,
                 data.notas,
@@ -242,7 +253,33 @@ def get_turno_agenda_for_update(conn, turno_id):
         return cur.fetchone()
 
 
-def update_turno_agenda(conn, turno_id, data):
+def get_turno_postventa_activo_por_bicicleta(
+    conn,
+    bicicleta_id,
+    *,
+    excluir_turno_id=None,
+):
+    sql = """
+        SELECT id
+        FROM agenda_taller
+        WHERE id_bicicleta_cliente = %s
+          AND tipo_turno = 'service_postventa_30_dias'
+          AND estado IN ('pendiente', 'confirmado', 'en_taller')
+    """
+    params = [bicicleta_id]
+
+    if excluir_turno_id is not None:
+        sql += " AND id <> %s"
+        params.append(excluir_turno_id)
+
+    sql += " ORDER BY id DESC LIMIT 1"
+
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(sql, params)
+        return cur.fetchone()
+
+
+def update_turno_agenda(conn, turno_id, data, *, id_venta_origen=None):
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
@@ -250,6 +287,7 @@ def update_turno_agenda(conn, turno_id, data):
             SET
                 id_cliente = %s,
                 id_bicicleta_cliente = %s,
+                id_venta_origen = %s,
                 cliente_nombre = %s,
                 cliente_telefono = %s,
                 fecha = %s,
@@ -257,6 +295,7 @@ def update_turno_agenda(conn, turno_id, data):
                 hora_inicio = %s,
                 hora_fin = %s,
                 fecha_prometida_entrega = %s,
+                tipo_turno = %s,
                 tipo_servicio = %s,
                 descripcion = %s,
                 notas = %s,
@@ -267,6 +306,7 @@ def update_turno_agenda(conn, turno_id, data):
             (
                 data.id_cliente,
                 data.id_bicicleta_cliente,
+                id_venta_origen,
                 data.cliente_nombre,
                 data.cliente_telefono,
                 data.fecha,
@@ -274,6 +314,7 @@ def update_turno_agenda(conn, turno_id, data):
                 data.hora_inicio,
                 data.hora_fin,
                 data.fecha_prometida_entrega,
+                data.tipo_turno,
                 data.tipo_servicio,
                 data.descripcion,
                 data.notas,

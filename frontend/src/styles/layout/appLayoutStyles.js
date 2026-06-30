@@ -9,8 +9,9 @@ export const appShellStyle = (isMobile = false) => ({
   gridTemplateColumns: isMobile ? "1fr" : "260px 1fr",
 });
 
-export const sidebarContainerStyle = {
-  height: "100%",
+export const sidebarContainerStyle = (isMobile = false) => ({
+  height: "100vh",
+  width: isMobile ? "100%" : "260px",
   background: colors.sidebar,
   color: colors.surface,
   borderRight: "1px solid rgba(255,255,255,.06)",
@@ -18,13 +19,19 @@ export const sidebarContainerStyle = {
   flexDirection: "column",
   padding: spacing.lg,
   overflow: "hidden",
-};
+  position: isMobile ? "relative" : "fixed",
+  top: 0,
+  left: 0,
+  zIndex: isMobile ? "auto" : 50,
+  boxSizing: "border-box",
+});
 
-export const mainContainerStyle = {
+export const mainContainerStyle = (isMobile = false) => ({
+  gridColumn: isMobile ? "1" : "2",
   display: "flex",
   flexDirection: "column",
   minWidth: 0,
-};
+});
 
 export const topbarStyle = (isMobile = false) => ({
   minHeight: isMobile ? "56px" : "64px",

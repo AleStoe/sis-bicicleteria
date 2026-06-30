@@ -10,7 +10,8 @@ import {
 import ProductImage from "../components/catalogo/ProductImage";
 import EstadoBadge from "../components/catalogo/EstadoBadge";
 import CatalogoDetalleModal from "../components/catalogo/CatalogoDetalleModal";
-import { formatMoney, formatNumber } from "../utils/formatters";
+import PreciosComercialesCatalogo from "../components/catalogo/PreciosComercialesCatalogo";
+import { formatNumber } from "../utils/formatters";
 const ID_SUCURSAL_DEFAULT = 1;
 const LIMIT = 24;
 const MOBILE_BREAKPOINT = 760;
@@ -45,64 +46,6 @@ function getMotivoTexto(item) {
   if (item.motivo_no_disponible === "sin_stock") return "Sin exhibición";
   if (item.motivo_no_disponible === "precio_no_definido") return "Falta definir precio";
   return "Revisar antes de vender";
-}
-
-function tienePrecio(value) {
-  return Number(value || 0) > 0;
-}
-
-function precioConsulta(value) {
-  return tienePrecio(value) ? formatMoney(value) : "No definido";
-}
-
-function precioConsultaClipboard(value) {
-  return precioConsulta(value).replace(/\$\s+/g, "$");
-}
-
-function getNombreConsulta(item) {
-  return [item.producto_nombre, item.nombre_variante].filter(Boolean).join("\n");
-}
-
-async function copiarTextoPortapapeles(texto) {
-  if (navigator.clipboard?.writeText && window.isSecureContext) {
-    try {
-      await navigator.clipboard.writeText(texto);
-      return true;
-    } catch {
-      // Sigue con fallback para celulares/navegadores que bloquean permisos.
-    }
-  }
-
-  const textarea = document.createElement("textarea");
-  textarea.value = texto;
-  textarea.setAttribute("readonly", "");
-  textarea.style.position = "fixed";
-  textarea.style.top = "0";
-  textarea.style.left = "0";
-  textarea.style.width = "1px";
-  textarea.style.height = "1px";
-  textarea.style.opacity = "0";
-  textarea.style.pointerEvents = "none";
-
-  document.body.appendChild(textarea);
-  textarea.focus();
-  textarea.select();
-  textarea.setSelectionRange(0, textarea.value.length);
-
-  let copiado = false;
-  try {
-    copiado = document.execCommand("copy");
-  } catch {
-    copiado = false;
-  } finally {
-    document.body.removeChild(textarea);
-  }
-
-  if (!copiado) {
-    window.prompt("Copiá este texto para responder la consulta:", texto);
-  }
-
-  return copiado;
 }
 
 function normalizarTexto(valor) {
@@ -455,47 +398,11 @@ export default function CatalogoPage() {
 }
 
 function CatalogoCard({ item, selected, onSelect, onOpenDetail, isMobile }) {
-  const [copiado, setCopiado] = useState("");
-  const [copyFallback, setCopyFallback] = useState(false);
   const stockColumns = isMobile
     ? "1fr"
     : Number(item.stock_reservado || 0) > 0
       ? "repeat(3, 1fr)"
       : "repeat(2, 1fr)";
-  const precioMinoristaDefinido = tienePrecio(item.precio_minorista);
-  const precioMayoristaDefinido = tienePrecio(item.precio_mayorista);
-  const puedeCopiarAmbos = precioMinoristaDefinido || precioMayoristaDefinido;
-  const nombreConsulta = getNombreConsulta(item) || getTituloItem(item) || "VARIANTE";
-
-  async function copiarConsulta(tipo) {
-    let texto = "";
-
-    if (tipo === "minorista") {
-      texto = `${nombreConsulta}\nPrecio: ${precioConsultaClipboard(item.precio_minorista)}`;
-    }
-
-    if (tipo === "mayorista") {
-      texto = `${nombreConsulta}\nPrecio mayorista: ${precioConsultaClipboard(item.precio_mayorista)}`;
-    }
-
-    if (tipo === "ambos") {
-      texto = [
-        nombreConsulta,
-        `Precio: ${precioConsultaClipboard(item.precio_minorista)}`,
-        `Mayorista: ${precioConsultaClipboard(item.precio_mayorista)}`,
-      ].join("\n");
-    }
-
-    const copiadoOk = await copiarTextoPortapapeles(texto);
-    setCopyFallback(!copiadoOk);
-
-    if (copiadoOk) {
-      setCopiado(tipo);
-      setTimeout(() => setCopiado((actual) => (actual === tipo ? "" : actual)), 1400);
-    } else {
-      setTimeout(() => setCopyFallback(false), 3000);
-    }
-  }
 
   return (
     <article
@@ -505,29 +412,35 @@ function CatalogoCard({ item, selected, onSelect, onOpenDetail, isMobile }) {
       }}
       onClick={onSelect}
     >
-      <div
-        style={{
-          ...styles.cardImageWrap,
-          ...(isMobile ? styles.cardImageWrapMobile : {}),
-        }}
-        onDoubleClick={onOpenDetail}
-      >
-        <ProductImage url={item.imagen_principal} size={isMobile ? 74 : 96} />
-      </div>
-
       <div style={styles.cardBody}>
-        <div style={{ ...styles.cardTop, ...(isMobile ? styles.cardTopMobile : {}) }}>
+        <div style={styles.cardTop}>
           <div style={styles.cardTitleWrap}>
             <strong style={styles.cardTitle}>{item.producto_nombre}</strong>
             <span style={styles.cardVariant}>{item.nombre_variante}</span>
           </div>
-          <EstadoBadge item={item} />
         </div>
 
-        <div style={styles.tagsRow}>
-          {item.marca_nombre && <span style={styles.tag}>{item.marca_nombre}</span>}
-          <span style={styles.tag}>{item.categoria_nombre}</span>
-          {item.serializable && <span style={styles.serialTag}>Serializada</span>}
+        <div
+          style={{
+            ...styles.cardImageWrap,
+            ...(isMobile ? styles.cardImageWrapMobile : {}),
+          }}
+          onDoubleClick={onOpenDetail}
+        >
+          <ProductImage
+            url={item.imagen_principal}
+            width="100%"
+            height={isMobile ? 170 : 200}
+          />
+        </div>
+
+        <div style={styles.cardMetaRow}>
+          <div style={styles.tagsRow}>
+            {item.marca_nombre && <span style={styles.tag}>{item.marca_nombre}</span>}
+            <span style={styles.tag}>{item.categoria_nombre}</span>
+            {item.serializable && <span style={styles.serialTag}>Serializada</span>}
+          </div>
+          <EstadoBadge item={item} />
         </div>
 
         <div style={{ ...styles.stockStrip, gridTemplateColumns: stockColumns }}>
@@ -539,52 +452,10 @@ function CatalogoCard({ item, selected, onSelect, onOpenDetail, isMobile }) {
           )}
         </div>
 
-        <div style={{ ...styles.priceGrid, ...(isMobile ? styles.priceGridMobile : {}) }}>
-          <div style={styles.priceBox}>
-            <span>Minorista</span>
-            <strong>{precioConsulta(item.precio_minorista)}</strong>
-          </div>
-          <div style={styles.priceBox}>
-            <span>Mayorista</span>
-            <strong>{precioConsulta(item.precio_mayorista)}</strong>
-          </div>
-        </div>
-
-        <div style={{ ...styles.copyActions, ...(isMobile ? styles.copyActionsMobile : {}) }}>
-          <CopyButton
-            label="Copiar minorista"
-            copied={copiado === "minorista"}
-            disabled={!precioMinoristaDefinido}
-            onClick={(e) => {
-              e.stopPropagation();
-              copiarConsulta("minorista");
-            }}
-          />
-          <CopyButton
-            label="Copiar mayorista"
-            copied={copiado === "mayorista"}
-            disabled={!precioMayoristaDefinido}
-            onClick={(e) => {
-              e.stopPropagation();
-              copiarConsulta("mayorista");
-            }}
-          />
-          <CopyButton
-            label="Copiar ambos"
-            copied={copiado === "ambos"}
-            disabled={!puedeCopiarAmbos}
-            onClick={(e) => {
-              e.stopPropagation();
-              copiarConsulta("ambos");
-            }}
-          />
-        </div>
-
-        {copyFallback ? (
-          <div style={styles.copyFallbackText}>
-            Tu navegador bloqueó el copiado automático. Te dejé el texto abierto para copiar manual.
-          </div>
-        ) : null}
+        <PreciosComercialesCatalogo
+          item={item}
+          nombre={getTituloItem(item)}
+        />
 
         <div
           style={{
@@ -616,20 +487,6 @@ function CatalogoCard({ item, selected, onSelect, onOpenDetail, isMobile }) {
   );
 }
 
-function CopyButton({ label, copied, disabled, onClick }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      style={disabled ? styles.copyButtonDisabled : copied ? styles.copyButtonCopied : styles.copyButton}
-    >
-      {copied ? "Copiado" : label}
-    </button>
-  );
-}
-
-
 function PanelPreviewCatalogo({ item, onDetalle }) {
   return (
     <section style={styles.previewPanel}>
@@ -653,11 +510,16 @@ function PanelPreviewCatalogo({ item, onDetalle }) {
         <strong>{formatNumber(item.stock_disponible)}</strong>
       </div>
 
+      <PreciosComercialesCatalogo
+        item={item}
+        nombre={getTituloItem(item)}
+        compact
+        mostrarCopiado={false}
+      />
+
       <div style={styles.sideInfoGridLight}>
         <Info label="Disponible" value={formatNumber(item.stock_disponible)} />
         <Info label="Físico" value={formatNumber(item.stock_fisico)} />
-        <Info label="Minorista" value={formatMoney(item.precio_minorista)} />
-        <Info label="Mayorista" value={formatMoney(item.precio_mayorista)} />
         <Info label="Código proveedor" value={item.codigo_proveedor} />
         <Info label="SKU" value={item.sku} />
       </div>
@@ -936,38 +798,37 @@ const styles = {
   },
   cardsGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(420px, 1fr))",
+    gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 480px), 1fr))",
     gap: 12,
     padding: 16,
   },
   card: {
     border: "1px solid #e2e8f0",
-    borderRadius: 20,
+    borderRadius: 8,
     background: "white",
     padding: 12,
     display: "grid",
-    gridTemplateColumns: "112px minmax(0, 1fr)",
-    gap: 12,
+    gridTemplateColumns: "minmax(0, 1fr)",
     cursor: "pointer",
     boxShadow: "0 8px 18px rgba(15, 23, 42, 0.04)",
   },
   cardSelected: {
     border: "1px solid #f97316",
-    borderRadius: 20,
+    borderRadius: 8,
     background: "#fff7ed",
     padding: 12,
     display: "grid",
-    gridTemplateColumns: "112px minmax(0, 1fr)",
-    gap: 12,
+    gridTemplateColumns: "minmax(0, 1fr)",
     cursor: "pointer",
     boxShadow: "0 14px 28px rgba(249, 115, 22, 0.18)",
   },
   cardImageWrap: {
-    borderRadius: 18,
+    borderRadius: 8,
     background: "#f8fafc",
     display: "grid",
     placeItems: "center",
-    minHeight: 112,
+    minHeight: 200,
+    minWidth: 0,
   },
   cardBody: {
     minWidth: 0,
@@ -976,9 +837,7 @@ const styles = {
   },
   cardTop: {
     display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) auto",
-    gap: 10,
-    alignItems: "start",
+    gridTemplateColumns: "minmax(0, 1fr)",
   },
   cardTitleWrap: {
     minWidth: 0,
@@ -986,13 +845,20 @@ const styles = {
     gap: 3,
   },
   cardTitle: {
-    fontSize: 15,
+    fontSize: 17,
     lineHeight: 1.25,
   },
   cardVariant: {
     color: "#64748b",
     fontSize: 13,
     fontWeight: 800,
+  },
+  cardMetaRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 10,
+    flexWrap: "wrap",
   },
   tagsRow: {
     display: "flex",
@@ -1034,74 +900,6 @@ const styles = {
     ok: { background: "#ecfdf5", borderColor: "#bbf7d0", color: "#047857" },
     info: { background: "#eff6ff", borderColor: "#bfdbfe", color: "#1d4ed8" },
     muted: { background: "#f8fafc", borderColor: "#e2e8f0", color: "#475569" },
-  },
-  priceGrid: {
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: 8,
-  },
-  priceBox: {
-    background: "#f8fafc",
-    border: "1px solid #e2e8f0",
-    borderRadius: 12,
-    padding: 9,
-    display: "grid",
-    gap: 3,
-  },
-  copyActions: {
-    display: "grid",
-    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-    gap: 6,
-  },
-  copyActionsMobile: {
-    gridTemplateColumns: "1fr",
-  },
-  copyButton: {
-    minHeight: 34,
-    border: "1px solid #bfdbfe",
-    background: "#eff6ff",
-    color: "#1d4ed8",
-    borderRadius: 10,
-    padding: "7px 8px",
-    fontSize: 12,
-    fontWeight: 1000,
-    cursor: "pointer",
-    whiteSpace: "normal",
-  },
-  copyButtonCopied: {
-    minHeight: 34,
-    border: "1px solid #bbf7d0",
-    background: "#ecfdf5",
-    color: "#047857",
-    borderRadius: 10,
-    padding: "7px 8px",
-    fontSize: 12,
-    fontWeight: 1000,
-    cursor: "pointer",
-    whiteSpace: "normal",
-  },
-  copyButtonDisabled: {
-    minHeight: 34,
-    border: "1px solid #e2e8f0",
-    background: "#f8fafc",
-    color: "#94a3b8",
-    borderRadius: 10,
-    padding: "7px 8px",
-    fontSize: 12,
-    fontWeight: 1000,
-    cursor: "not-allowed",
-    whiteSpace: "normal",
-  },
-  copyFallbackText: {
-    marginTop: -2,
-    marginBottom: 8,
-    padding: "8px 10px",
-    borderRadius: 10,
-    background: "#fff7ed",
-    color: "#9a3412",
-    fontWeight: 800,
-    fontSize: 12,
-    lineHeight: 1.35,
   },
   codesBox: {
     display: "grid",
@@ -1466,20 +1264,13 @@ const styles = {
     padding: 10,
   },
   cardMobile: {
-    gridTemplateColumns: "82px minmax(0, 1fr)",
-    gap: 10,
+    gridTemplateColumns: "minmax(0, 1fr)",
     padding: 10,
-    borderRadius: 16,
+    borderRadius: 8,
   },
   cardImageWrapMobile: {
-    minHeight: 82,
-    borderRadius: 14,
-  },
-  cardTopMobile: {
-    gridTemplateColumns: "1fr",
-  },
-  priceGridMobile: {
-    gridTemplateColumns: "1fr",
+    minHeight: 170,
+    borderRadius: 8,
   },
   sidePanelMobile: {
     position: "static",

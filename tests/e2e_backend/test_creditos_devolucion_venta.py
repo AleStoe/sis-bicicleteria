@@ -138,6 +138,32 @@ def _crear_venta_serializada(client, seed, bicicleta_id: int):
         },
     )
 
+
+def _crear_venta_serializada_pagada_efectivo(client, seed, bicicleta_id: int):
+    return client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed["cliente_id"],
+            "id_sucursal": seed["sucursal_id"],
+            "id_usuario": seed["usuario_id"],
+            "usar_credito": False,
+            "items": [
+                {
+                    "id_variante": seed["variante_id"],
+                    "id_bicicleta_serializada": bicicleta_id,
+                    "cantidad": 1,
+                }
+            ],
+            "pagos": [
+                {
+                    "medio_pago": "efectivo",
+                    "monto_base": str(seed["precio_venta"]),
+                    "nota": "Pago efectivo test devolución",
+                }
+            ],
+        },
+    )
+
 def _abrir_caja(client, seed):
     response = client.post(
         "/cajas/abrir",
@@ -286,15 +312,15 @@ def test_devolucion_serializada_genera_credito(client, db_conn, clean_db):
     assert bici_response.status_code == 200, bici_response.text
     bicicleta_id = bici_response.json()["bicicleta_id"]
 
-    venta_response = _crear_venta_serializada(
+    _abrir_caja(client, seed)
+
+    venta_response = _crear_venta_serializada_pagada_efectivo(
         client,
         seed,
         bicicleta_id,
     )
     assert venta_response.status_code == 200, venta_response.text
     venta_id = venta_response.json()["venta_id"]
-
-    _marcar_venta_como_pagada_total(db_conn, venta_id)
 
     entrega_response = _entregar_venta(
         client,
@@ -318,19 +344,23 @@ def test_devolucion_serializada_genera_credito(client, db_conn, clean_db):
 
     assert len(creditos) == 1
 
+    pagos = _get_pagos_venta(db_conn, venta_id)
+    assert len(pagos) == 1
+    cobrado_real = _dec(pagos[0]["monto_total_cobrado"])
+
     credito = creditos[0]
     assert credito["id_cliente"] == seed["cliente_id"]
     assert credito["origen_tipo"] == "venta"
     assert credito["origen_id"] == venta_id
     assert credito["estado"] == "abierto"
-    assert _dec(credito["saldo_actual"]) == Decimal("990000.00")
+    assert _dec(credito["saldo_actual"]) == cobrado_real
 
     movimientos = _get_credito_movimientos(db_conn, credito["id"])
     assert len(movimientos) == 1
 
     movimiento = movimientos[0]
     assert movimiento["tipo_movimiento"] == "credito_generado"
-    assert _dec(movimiento["monto"]) == Decimal("990000.00")
+    assert _dec(movimiento["monto"]) == cobrado_real
     assert movimiento["origen_tipo"] == "venta"
     assert movimiento["origen_id"] == venta_id
     assert movimiento["id_usuario"] == seed["usuario_id"]

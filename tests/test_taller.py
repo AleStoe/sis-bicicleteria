@@ -65,6 +65,104 @@ def test_flujo_base_taller_crear_obtener_y_cambiar_estado(client, seed_taller_ba
     assert detalle_actualizado["eventos"][1]["tipo_evento"] == ORDEN_TALLER_EVENTO_CAMBIO_ESTADO
 
 
+def test_notas_tecnicas_ot_visibilidad_y_trazabilidad(
+    client,
+    db_conn,
+    seed_taller_basico,
+):
+    crear = client.post(
+        "/ordenes_taller/",
+        json={
+            "id_sucursal": seed_taller_basico["sucursal_id"],
+            "id_cliente": seed_taller_basico["cliente_id"],
+            "id_bicicleta_cliente": seed_taller_basico["bicicleta_cliente_id"],
+            "problema_reportado": "Control técnico",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert crear.status_code == 201, crear.text
+    orden_id = crear.json()["id"]
+
+    contenidos = {
+        "interna": "No mencionar al cliente esta observación interna.",
+        "cliente": "Mantener la cadena limpia y lubricada.",
+        "recomendacion_futura": "Cambiar cadena en el próximo service.",
+        "alerta_tecnica": "Rosca sensible en pedal derecho.",
+    }
+    notas = {}
+    for tipo, contenido in contenidos.items():
+        response = client.post(
+            f"/ordenes_taller/{orden_id}/notas",
+            json={
+                "tipo": tipo,
+                "contenido": contenido,
+                "id_usuario": seed_taller_basico["usuario_id"],
+            },
+        )
+        assert response.status_code == 201, response.text
+        notas[tipo] = response.json()
+
+    detalle = client.get(f"/ordenes_taller/{orden_id}")
+    assert detalle.status_code == 200, detalle.text
+    assert {nota["tipo"] for nota in detalle.json()["notas"]} == set(contenidos)
+    assert all(nota["usuario_creador_nombre"] for nota in detalle.json()["notas"])
+
+    nueva_orden = client.post(
+        "/ordenes_taller/",
+        json={
+            "id_sucursal": seed_taller_basico["sucursal_id"],
+            "id_cliente": seed_taller_basico["cliente_id"],
+            "id_bicicleta_cliente": seed_taller_basico["bicicleta_cliente_id"],
+            "problema_reportado": "Ingreso posterior",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert nueva_orden.status_code == 201, nueva_orden.text
+    detalle_futuro = client.get(
+        f"/ordenes_taller/{nueva_orden.json()['id']}"
+    )
+    assert detalle_futuro.status_code == 200, detalle_futuro.text
+    assert [
+        alerta["contenido"]
+        for alerta in detalle_futuro.json()["alertas_bicicleta"]
+    ] == [contenidos["alerta_tecnica"]]
+
+    editar = client.patch(
+        f"/ordenes_taller/{orden_id}/notas/{notas['recomendacion_futura']['id']}",
+        json={
+            "contenido": "Revisar cadena y cassette en 30 días.",
+            "estado": "resuelta",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert editar.status_code == 200, editar.text
+    assert editar.json()["estado"] == "resuelta"
+    assert editar.json()["fecha_resolucion"] is not None
+
+    ficha = client.get(
+        f"/clientes/{seed_taller_basico['cliente_id']}/bicicletas/"
+        f"{seed_taller_basico['bicicleta_cliente_id']}/historial"
+    )
+    assert ficha.status_code == 200, ficha.text
+    tipos_ficha = {nota["tipo"] for nota in ficha.json()["notas_tecnicas"]}
+    assert tipos_ficha == {"recomendacion_futura", "alerta_tecnica"}
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "UPDATE ordenes_taller SET estado = 'terminada' WHERE id = %s",
+            (orden_id,),
+        )
+    db_conn.commit()
+
+    whatsapp = client.get(f"/ordenes_taller/{orden_id}/mensaje-lista-retiro")
+    assert whatsapp.status_code == 200, whatsapp.text
+    mensaje = whatsapp.json()["mensaje"]
+    assert contenidos["cliente"] in mensaje
+    assert "Revisar cadena y cassette en 30 días." in mensaje
+    assert contenidos["interna"] not in mensaje
+    assert contenidos["alerta_tecnica"] not in mensaje
+
+
 def test_no_permite_crear_orden_con_bicicleta_de_otro_cliente(client, seed_taller_basico):
     crear_response = client.post(
         "/ordenes_taller/",
@@ -1777,6 +1875,38 @@ def test_ot_facturada_con_venta_pagada_total_permite_lista_para_retirar(
     assert response.json()["estado"] == "lista_para_retirar"
 
 
+def test_ot_facturada_con_venta_entregada_saldo_cero_permite_lista_para_retirar(
+    client,
+    db_conn,
+    seed_taller_basico,
+):
+    orden_id, venta_id = _crear_ot_facturada_con_venta(client, seed_taller_basico)
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE ventas
+            SET estado = 'entregada',
+                saldo_pendiente = 0,
+                entrega_con_deuda_autorizada = FALSE
+            WHERE id = %s
+            """,
+            (venta_id,),
+        )
+    db_conn.commit()
+
+    response = client.post(
+        f"/ordenes_taller/{orden_id}/estado",
+        json={
+            "nuevo_estado": "lista_para_retirar",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["estado"] == "lista_para_retirar"
+
+
 def test_generar_venta_desde_ot_no_duplica_por_doble_request(
     client,
     seed_taller_basico,
@@ -1859,6 +1989,38 @@ def test_ot_facturada_con_venta_pagada_parcial_bloquea_lista_para_retirar(
             UPDATE ventas
             SET estado = 'pagada_parcial',
                 saldo_pendiente = 500
+            WHERE id = %s
+            """,
+            (venta_id,),
+        )
+    db_conn.commit()
+
+    response = client.post(
+        f"/ordenes_taller/{orden_id}/estado",
+        json={
+            "nuevo_estado": "lista_para_retirar",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+
+    assert response.status_code == 400
+    assert "no está pagada ni entregada con deuda formal" in response.json()["detail"]
+
+
+def test_ot_facturada_con_venta_entregada_saldo_pendiente_sin_deuda_bloquea(
+    client,
+    db_conn,
+    seed_taller_basico,
+):
+    orden_id, venta_id = _crear_ot_facturada_con_venta(client, seed_taller_basico)
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE ventas
+            SET estado = 'entregada',
+                saldo_pendiente = 500,
+                entrega_con_deuda_autorizada = FALSE
             WHERE id = %s
             """,
             (venta_id,),
@@ -2107,3 +2269,366 @@ def test_service_postventa_flujo_completo_marca_usado_y_genera_whatsapp(
 
     assert bicicleta["service_gratis_usado"] is True
     assert bicicleta["id_orden_service_gratis"] == orden_id
+
+
+def _crear_ot_postventa_cobertura(
+    client,
+    db_conn,
+    seed_taller_basico,
+    *,
+    sucursal_id,
+):
+    bicicleta_id = seed_taller_basico["bicicleta_cliente_id"]
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE bicicletas_clientes
+            SET
+                plan_postventa = 'service_30_dias',
+                fecha_limite_service_gratis = CURRENT_DATE + 30,
+                service_gratis_usado = FALSE,
+                id_orden_service_gratis = NULL,
+                service_gratis_autorizado_fuera_plazo = FALSE
+            WHERE id = %s
+            """,
+            (bicicleta_id,),
+        )
+    db_conn.commit()
+
+    response = client.post(
+        f"/clientes/{seed_taller_basico['cliente_id']}/bicicletas/"
+        f"{bicicleta_id}/crear-service-postventa",
+        json={
+            "id_sucursal": sucursal_id,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert response.status_code == 200, response.text
+    return response.json()["orden_id"]
+
+
+def test_postventa_repuesto_cobertura_total_no_genera_cobro(
+    client,
+    db_conn,
+    seed_taller_basico,
+    seed_venta_basica,
+):
+    orden_id = _crear_ot_postventa_cobertura(
+        client,
+        db_conn,
+        seed_taller_basico,
+        sucursal_id=seed_venta_basica["sucursal_id"],
+    )
+    item = client.post(
+        f"/ordenes_taller/{orden_id}/items",
+        json={
+            "tipo_item": "repuesto",
+            "id_variante": seed_venta_basica["variante_id"],
+            "cantidad": 1,
+            "precio_unitario": 17000,
+            "valor_cobertura_unitario": 17000,
+            "motivo_cobertura": "Garantía fábrica",
+            "observacion_cobertura": "Pieza reconocida al 100%",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert item.status_code == 201, item.text
+    assert Decimal(str(item.json()["subtotal"])) == Decimal("0")
+    assert Decimal(str(item.json()["valor_cobertura_unitario"])) == Decimal("17000")
+
+    detalle = client.get(f"/ordenes_taller/{orden_id}")
+    assert detalle.status_code == 200, detalle.text
+    assert Decimal(str(detalle.json()["total_final"])) == Decimal("0")
+
+    aprobar = client.post(
+        f"/ordenes_taller/{orden_id}/items/{item.json()['id']}/aprobacion",
+        json={
+            "aprobado": True,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert aprobar.status_code == 200, aprobar.text
+    for estado in ["presupuestada", "en_reparacion"]:
+        cambio = client.post(
+            f"/ordenes_taller/{orden_id}/estado",
+            json={
+                "nuevo_estado": estado,
+                "id_usuario": seed_taller_basico["usuario_id"],
+            },
+        )
+        assert cambio.status_code == 200, cambio.text
+    ejecutar = client.post(
+        f"/ordenes_taller/{orden_id}/items/{item.json()['id']}/ejecutar",
+        params={"id_usuario": seed_taller_basico["usuario_id"]},
+    )
+    assert ejecutar.status_code == 200, ejecutar.text
+    terminar = client.post(
+        f"/ordenes_taller/{orden_id}/estado",
+        json={
+            "nuevo_estado": "terminada",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert terminar.status_code == 200, terminar.text
+    venta = client.post(
+        f"/ordenes_taller/{orden_id}/generar-venta",
+        json={"id_usuario": seed_taller_basico["usuario_id"]},
+    )
+    assert venta.status_code == 400
+    assert "no tiene diferencia" in venta.json()["detail"].lower()
+    lista = client.post(
+        f"/ordenes_taller/{orden_id}/estado",
+        json={
+            "nuevo_estado": "lista_para_retirar",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert lista.status_code == 200, lista.text
+
+
+def test_postventa_mano_obra_se_bonifica_automaticamente(
+    client,
+    db_conn,
+    seed_taller_basico,
+):
+    orden_id = _crear_ot_postventa_cobertura(
+        client,
+        db_conn,
+        seed_taller_basico,
+        sucursal_id=seed_taller_basico["sucursal_id"],
+    )
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO servicios_taller (
+                nombre, descripcion, precio_sugerido, activo
+            )
+            VALUES ('SERVICE POSTVENTA TEST', 'Mano de obra', 5000, TRUE)
+            RETURNING id
+            """
+        )
+        servicio_id = cur.fetchone()["id"]
+    db_conn.commit()
+
+    item = client.post(
+        f"/ordenes_taller/{orden_id}/items",
+        json={
+            "tipo_item": "servicio",
+            "id_servicio_taller": servicio_id,
+            "cantidad": 1,
+            "precio_unitario": 5000,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert item.status_code == 201, item.text
+    assert Decimal(str(item.json()["valor_cobertura_unitario"])) == Decimal("5000")
+    assert item.json()["motivo_cobertura"] == "Service postventa"
+    assert Decimal(str(item.json()["subtotal"])) == Decimal("0")
+
+
+def test_ot_comun_no_aplica_cobertura_y_cobra_precio_completo(
+    client,
+    seed_taller_basico,
+    seed_venta_basica,
+):
+    crear = client.post(
+        "/ordenes_taller/",
+        json={
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_cliente": seed_taller_basico["cliente_id"],
+            "id_bicicleta_cliente": seed_taller_basico["bicicleta_cliente_id"],
+            "problema_reportado": "Cambio normal de repuesto",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert crear.status_code == 201, crear.text
+    orden_id = crear.json()["id"]
+
+    cobertura_invalida = client.post(
+        f"/ordenes_taller/{orden_id}/items",
+        json={
+            "tipo_item": "repuesto",
+            "id_variante": seed_venta_basica["variante_id"],
+            "cantidad": 1,
+            "precio_unitario": 17000,
+            "valor_cobertura_unitario": 10000,
+            "motivo_cobertura": "Garantía local",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert cobertura_invalida.status_code == 400
+
+    item_normal = client.post(
+        f"/ordenes_taller/{orden_id}/items",
+        json={
+            "tipo_item": "repuesto",
+            "id_variante": seed_venta_basica["variante_id"],
+            "cantidad": 1,
+            "precio_unitario": 17000,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert item_normal.status_code == 201, item_normal.text
+    assert Decimal(str(item_normal.json()["subtotal"])) == Decimal("17000")
+
+
+def test_postventa_upgrade_genera_venta_y_caja_solo_por_diferencia(
+    client,
+    db_conn,
+    seed_taller_basico,
+    seed_venta_basica,
+):
+    sucursal_id = seed_venta_basica["sucursal_id"]
+    usuario_id = seed_taller_basico["usuario_id"]
+    variante_id = seed_venta_basica["variante_id"]
+    orden_id = _crear_ot_postventa_cobertura(
+        client,
+        db_conn,
+        seed_taller_basico,
+        sucursal_id=sucursal_id,
+    )
+
+    item = client.post(
+        f"/ordenes_taller/{orden_id}/items",
+        json={
+            "tipo_item": "repuesto",
+            "id_variante": variante_id,
+            "cantidad": 1,
+            "precio_unitario": 17000,
+            "valor_cobertura_unitario": 10000,
+            "motivo_cobertura": "Diferencia por upgrade",
+            "observacion_cobertura": "Se reconoce el valor de la pieza original",
+            "id_usuario": usuario_id,
+        },
+    )
+    assert item.status_code == 201, item.text
+    item_id = item.json()["id"]
+    assert Decimal(str(item.json()["subtotal"])) == Decimal("7000")
+
+    aprobar = client.post(
+        f"/ordenes_taller/{orden_id}/items/{item_id}/aprobacion",
+        json={"aprobado": True, "id_usuario": usuario_id},
+    )
+    assert aprobar.status_code == 200, aprobar.text
+
+    for estado in ["presupuestada", "en_reparacion"]:
+        cambio = client.post(
+            f"/ordenes_taller/{orden_id}/estado",
+            json={"nuevo_estado": estado, "id_usuario": usuario_id},
+        )
+        assert cambio.status_code == 200, cambio.text
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT stock_fisico
+            FROM stock_sucursal
+            WHERE id_sucursal = %s AND id_variante = %s
+            """,
+            (sucursal_id, variante_id),
+        )
+        stock_antes = Decimal(str(cur.fetchone()["stock_fisico"]))
+
+    ejecutar = client.post(
+        f"/ordenes_taller/{orden_id}/items/{item_id}/ejecutar",
+        params={"id_usuario": usuario_id},
+    )
+    assert ejecutar.status_code == 200, ejecutar.text
+
+    terminar = client.post(
+        f"/ordenes_taller/{orden_id}/estado",
+        json={"nuevo_estado": "terminada", "id_usuario": usuario_id},
+    )
+    assert terminar.status_code == 200, terminar.text
+
+    lista_sin_cobrar = client.post(
+        f"/ordenes_taller/{orden_id}/estado",
+        json={"nuevo_estado": "lista_para_retirar", "id_usuario": usuario_id},
+    )
+    assert lista_sin_cobrar.status_code == 400
+
+    venta = client.post(
+        f"/ordenes_taller/{orden_id}/generar-venta",
+        json={"id_usuario": usuario_id},
+    )
+    assert venta.status_code == 200, venta.text
+    venta_id = venta.json()["venta_id"]
+
+    with db_conn.cursor() as cur:
+        cur.execute("SELECT * FROM ventas WHERE id = %s", (venta_id,))
+        venta_db = cur.fetchone()
+        cur.execute(
+            "SELECT * FROM venta_items WHERE id_venta = %s",
+            (venta_id,),
+        )
+        item_venta = cur.fetchone()
+        cur.execute(
+            """
+            SELECT stock_fisico
+            FROM stock_sucursal
+            WHERE id_sucursal = %s AND id_variante = %s
+            """,
+            (sucursal_id, variante_id),
+        )
+        stock_despues = Decimal(str(cur.fetchone()["stock_fisico"]))
+
+    assert Decimal(str(venta_db["total_final"])) == Decimal("7000")
+    assert Decimal(str(item_venta["precio_lista"])) == Decimal("17000")
+    assert Decimal(str(item_venta["bonificacion_unitaria"])) == Decimal("10000")
+    assert Decimal(str(item_venta["precio_final"])) == Decimal("7000")
+    assert Decimal(str(item_venta["subtotal"])) == Decimal("7000")
+    assert item_venta["motivo_bonificacion"].startswith("Diferencia por upgrade")
+    assert stock_despues == stock_antes - Decimal("1")
+
+    comprobante = client.get(f"/documentos/ventas/{venta_id}/comprobante-x")
+    assert comprobante.status_code == 200, comprobante.text
+    assert comprobante.content.startswith(b"%PDF")
+
+    abrir_caja = client.post(
+        "/cajas/abrir",
+        json={
+            "id_sucursal": sucursal_id,
+            "id_usuario": usuario_id,
+            "monto_apertura": 0,
+        },
+    )
+    assert abrir_caja.status_code == 200, abrir_caja.text
+    caja_id = abrir_caja.json()["caja_id"]
+
+    pago = client.post(
+        "/pagos/",
+        json={
+            "origen_tipo": "venta",
+            "origen_id": venta_id,
+            "medio_pago": "mercadopago",
+            "monto_base": 7000,
+            "id_usuario": usuario_id,
+            "nota": "Diferencia upgrade postventa",
+        },
+    )
+    assert pago.status_code == 200, pago.text
+
+    with db_conn.cursor() as cur:
+        cur.execute("SELECT * FROM pagos WHERE id = %s", (pago.json()["pago_id"],))
+        pago_db = cur.fetchone()
+        cur.execute(
+            """
+            SELECT monto
+            FROM caja_movimientos
+            WHERE id_caja = %s
+              AND origen_tipo = 'pago'
+              AND origen_id = %s
+            """,
+            (caja_id, pago.json()["pago_id"]),
+        )
+        movimiento = cur.fetchone()
+
+    assert Decimal(str(pago_db["monto_base_aplicado"])) == Decimal("7000")
+    assert Decimal(str(pago_db["monto_total_cobrado"])) == Decimal("7000")
+    assert Decimal(str(movimiento["monto"])) == Decimal("7000")
+
+    lista_cobrada = client.post(
+        f"/ordenes_taller/{orden_id}/estado",
+        json={"nuevo_estado": "lista_para_retirar", "id_usuario": usuario_id},
+    )
+    assert lista_cobrada.status_code == 200, lista_cobrada.text

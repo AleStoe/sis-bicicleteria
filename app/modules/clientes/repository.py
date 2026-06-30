@@ -805,6 +805,35 @@ def get_historial_taller_bicicleta_cliente(conn, bicicleta_id: int):
         return cur.fetchall()
 
 
+def get_notas_tecnicas_bicicleta_cliente(conn, bicicleta_id: int):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT
+                n.id,
+                n.id_orden_taller,
+                n.tipo,
+                n.contenido,
+                n.estado,
+                n.fecha_resolucion,
+                n.created_at,
+                n.updated_at,
+                u.nombre AS usuario_nombre
+            FROM ordenes_taller_notas n
+            LEFT JOIN usuarios u ON u.id = n.id_usuario_creador
+            WHERE n.id_bicicleta_cliente = %s
+              AND n.tipo IN ('recomendacion_futura', 'alerta_tecnica')
+              AND n.estado <> 'archivada'
+            ORDER BY
+                CASE n.estado WHEN 'activa' THEN 0 ELSE 1 END,
+                n.created_at DESC,
+                n.id DESC
+            """,
+            (bicicleta_id,),
+        )
+        return cur.fetchall()
+
+
 def get_venta_origen_bicicleta_cliente(conn, venta_id: int | None):
     if venta_id is None:
         return None
@@ -889,6 +918,49 @@ def get_timeline_bicicleta_cliente(conn, bicicleta_id: int):
                     "descripcion": f"Estado {venta['estado']}. Total {venta['total_final']}. Saldo {venta['saldo_pendiente']}.",
                     "referencia_tipo": "venta",
                     "referencia_id": venta["id"],
+                }
+            )
+
+        cur.execute(
+            """
+            SELECT
+                at.id,
+                at.created_at,
+                at.fecha,
+                at.estado,
+                at.tipo_turno,
+                at.tipo_servicio,
+                at.id_orden_taller,
+                at.id_venta_origen
+            FROM agenda_taller at
+            WHERE at.id_bicicleta_cliente = %s
+            ORDER BY at.fecha ASC, at.hora_inicio ASC, at.id ASC
+            """,
+            (bicicleta_id,),
+        )
+        for turno in cur.fetchall():
+            es_postventa = turno["tipo_turno"] == "service_postventa_30_dias"
+            descripcion = (
+                f"Turno {turno['estado']} para {turno['fecha']}."
+                f" Venta origen #{turno['id_venta_origen']}."
+                if es_postventa
+                else f"Turno {turno['estado']} para {turno['fecha']}."
+            )
+            if turno["id_orden_taller"]:
+                descripcion += f" OT #{turno['id_orden_taller']} generada."
+
+            eventos.append(
+                {
+                    "fecha": turno["created_at"],
+                    "tipo": "service_postventa_agendado" if es_postventa else "turno_taller",
+                    "titulo": (
+                        "Service postventa agendado"
+                        if es_postventa
+                        else f"Turno de taller #{turno['id']}"
+                    ),
+                    "descripcion": descripcion,
+                    "referencia_tipo": "turno_agenda",
+                    "referencia_id": turno["id"],
                 }
             )
 

@@ -1,6 +1,10 @@
 from typing import List
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
+
+from app.core.security import CurrentUser, aplicar_actor_actual
+from app.modules.authz.service import requerir_permiso
+from app.shared.constants import PERMISO_REGISTRAR_PAGO
 
 from .schema import (
     ReservaCancelarInput,
@@ -23,10 +27,15 @@ from .service import (
 )
 
 router = APIRouter()
+puede_registrar_pago = requerir_permiso(PERMISO_REGISTRAR_PAGO)
 
 
 @router.post("/", response_model=ReservaCreateOutput)
-def registrar_reserva(data: ReservaCreateInput):
+def registrar_reserva(
+    data: ReservaCreateInput,
+    usuario: CurrentUser = Depends(puede_registrar_pago),
+):
+    aplicar_actor_actual(data, usuario)
     return crear_reserva(data)
 
 
@@ -66,4 +75,3 @@ def cancelar_reserva_route(reserva_id: int, data: ReservaCancelarInput):
 @router.post("/{reserva_id}/convertir-a-venta", response_model=ReservaConvertirOutput)
 def convertir_reserva_route(reserva_id: int, data: ReservaConvertirInput):
     return convertir_reserva_en_venta(reserva_id, data)
-

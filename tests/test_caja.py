@@ -543,8 +543,9 @@ def test_egreso_crea_auditoria(client, db_conn, seed_venta_basica):
     assert response.status_code == 200, response.text
 
     eventos = get_auditoria_by_entidad(db_conn, "caja", caja_id)
-    assert len(eventos) == 1
-    assert eventos[0]["accion"] == "egreso_caja"
+    acciones = [evento["accion"] for evento in eventos]
+    assert acciones.count("abrir_caja") == 1
+    assert acciones.count("egreso_caja") == 1
 
 
 def test_ajuste_crea_auditoria(client, db_conn, seed_venta_basica):
@@ -568,8 +569,9 @@ def test_ajuste_crea_auditoria(client, db_conn, seed_venta_basica):
     assert response.status_code == 200, response.text
 
     eventos = get_auditoria_by_entidad(db_conn, "caja", caja_id)
-    assert len(eventos) == 1
-    assert eventos[0]["accion"] == "ajuste_caja"
+    acciones = [evento["accion"] for evento in eventos]
+    assert acciones.count("abrir_caja") == 1
+    assert acciones.count("ajuste_caja") == 1
 
 
 def test_cierre_crea_auditoria(client, db_conn, seed_venta_basica):
@@ -588,8 +590,9 @@ def test_cierre_crea_auditoria(client, db_conn, seed_venta_basica):
     assert response.status_code == 200, response.text
 
     eventos = get_auditoria_by_entidad(db_conn, "caja", caja_id)
-    assert len(eventos) == 1
-    assert eventos[0]["accion"] == "cerrar_caja"
+    acciones = [evento["accion"] for evento in eventos]
+    assert acciones.count("abrir_caja") == 1
+    assert acciones.count("cerrar_caja") == 1
 
     
 def test_rechaza_ajuste_de_caja_demasiado_grande(client, db_conn, seed_venta_basica):

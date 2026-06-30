@@ -50,7 +50,10 @@ CREATE TABLE public.agenda_taller (
     fecha_recordatorio timestamp with time zone,
     fecha_prometida_entrega date,
     cliente_avisado boolean DEFAULT false NOT NULL,
-    fecha_cliente_avisado timestamp with time zone
+    fecha_cliente_avisado timestamp with time zone,
+    tipo_turno character varying(40) DEFAULT 'reparacion_comun'::character varying NOT NULL,
+    id_venta_origen bigint,
+    CONSTRAINT chk_agenda_taller_tipo_turno CHECK (((tipo_turno)::text = ANY (ARRAY[('reparacion_comun'::character varying)::text, ('service_postventa_30_dias'::character varying)::text, ('garantia'::character varying)::text, ('consulta_revision'::character varying)::text])))
 );
 
 
@@ -859,6 +862,8 @@ CREATE TABLE public.credito_movimientos (
     fecha timestamp with time zone DEFAULT now() NOT NULL,
     tipo_movimiento character varying(30) NOT NULL,
     monto numeric(14,2) NOT NULL,
+    monto_base_aplicado numeric(14,2),
+    monto_descuento_aplicado numeric(14,2),
     origen_tipo character varying(30),
     origen_id bigint,
     nota text,
@@ -1404,6 +1409,23 @@ CREATE TABLE public.ordenes_taller_eventos (
     created_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
+CREATE TABLE public.ordenes_taller_notas (
+    id bigserial PRIMARY KEY,
+    id_orden_taller bigint NOT NULL,
+    id_bicicleta_cliente bigint NOT NULL,
+    tipo character varying(40) NOT NULL,
+    contenido text NOT NULL,
+    estado character varying(20) DEFAULT 'activa'::character varying NOT NULL,
+    id_usuario_creador bigint NOT NULL,
+    id_usuario_actualiza bigint,
+    fecha_resolucion timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT chk_ordenes_taller_notas_contenido CHECK ((length(TRIM(BOTH FROM contenido)) > 0)),
+    CONSTRAINT chk_ordenes_taller_notas_estado CHECK (((estado)::text = ANY (ARRAY[('activa'::character varying)::text, ('resuelta'::character varying)::text, ('archivada'::character varying)::text]))),
+    CONSTRAINT chk_ordenes_taller_notas_tipo CHECK (((tipo)::text = ANY (ARRAY[('interna'::character varying)::text, ('cliente'::character varying)::text, ('recomendacion_futura'::character varying)::text, ('alerta_tecnica'::character varying)::text])))
+);
+
 
 --
 -- Name: ordenes_taller_eventos_id_seq; Type: SEQUENCE; Schema: public; Owner: -
@@ -1462,6 +1484,10 @@ CREATE TABLE public.ordenes_taller_items (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     tipo_item character varying(20) DEFAULT 'repuesto'::character varying NOT NULL,
     id_servicio_taller bigint,
+    valor_cobertura_unitario numeric(14,2) DEFAULT 0 NOT NULL,
+    motivo_cobertura character varying(80),
+    observacion_cobertura text,
+    CONSTRAINT chk_orden_taller_item_cobertura CHECK (((valor_cobertura_unitario >= (0)::numeric) AND (valor_cobertura_unitario <= precio_unitario) AND ((valor_cobertura_unitario = (0)::numeric) OR (((tipo_item)::text = ANY (ARRAY[('repuesto'::character varying)::text, ('servicio'::character varying)::text])) AND (NULLIF(TRIM(BOTH FROM motivo_cobertura), ''::text) IS NOT NULL))))),
     CONSTRAINT chk_ordenes_taller_items_cantidad_positiva CHECK ((cantidad > (0)::numeric)),
     CONSTRAINT chk_ordenes_taller_items_etapa CHECK (((etapa)::text = ANY (ARRAY[('presupuestado'::character varying)::text, ('agregado'::character varying)::text, ('ejecutado'::character varying)::text, ('cancelado'::character varying)::text]))),
     CONSTRAINT chk_ordenes_taller_items_montos_no_negativos CHECK (((precio_unitario >= (0)::numeric) AND (subtotal >= (0)::numeric) AND ((costo_unitario_aplicado IS NULL) OR (costo_unitario_aplicado >= (0)::numeric)))),
@@ -2368,6 +2394,8 @@ CREATE TABLE public.venta_items (
     id_orden_taller_item integer,
     tipo_item character varying(30) DEFAULT 'producto'::character varying NOT NULL,
     id_servicio_taller bigint,
+    bonificacion_unitaria numeric(14,2) DEFAULT 0 NOT NULL,
+    CONSTRAINT chk_venta_items_bonificacion_unitaria CHECK (((bonificacion_unitaria >= (0)::numeric) AND (bonificacion_unitaria <= precio_lista))),
     CONSTRAINT chk_venta_items_bici_serializada_cantidad CHECK (((id_bicicleta_serializada IS NULL) OR (cantidad = (1)::numeric))),
     CONSTRAINT chk_venta_items_cantidad_positiva CHECK ((cantidad > (0)::numeric)),
     CONSTRAINT chk_venta_items_montos_no_negativos CHECK (((precio_lista >= (0)::numeric) AND (precio_final >= (0)::numeric) AND (costo_unitario_aplicado >= (0)::numeric) AND (subtotal >= (0)::numeric))),
@@ -3897,6 +3925,10 @@ ALTER TABLE ONLY public.ventas
 
 CREATE INDEX idx_agenda_taller_bicicleta_cliente ON public.agenda_taller USING btree (id_bicicleta_cliente);
 
+CREATE INDEX idx_agenda_taller_bicicleta_tipo ON public.agenda_taller USING btree (id_bicicleta_cliente, tipo_turno);
+
+CREATE INDEX idx_agenda_taller_venta_origen ON public.agenda_taller USING btree (id_venta_origen);
+
 
 --
 -- Name: idx_agenda_taller_cliente_avisado; Type: INDEX; Schema: public; Owner: -
@@ -4891,6 +4923,10 @@ CREATE INDEX ix_venta_items_id_orden_taller_item ON public.venta_items USING btr
 
 CREATE UNIQUE INDEX ux_ordenes_taller_id_venta_generada ON public.ordenes_taller USING btree (id_venta_generada) WHERE (id_venta_generada IS NOT NULL);
 
+CREATE INDEX idx_ordenes_taller_notas_orden ON public.ordenes_taller_notas USING btree (id_orden_taller, created_at DESC);
+
+CREATE INDEX idx_ordenes_taller_notas_bicicleta ON public.ordenes_taller_notas USING btree (id_bicicleta_cliente, tipo, estado);
+
 
 --
 -- Name: ux_reglas_comerciales_nombre_tipo_medio_activa; Type: INDEX; Schema: public; Owner: -
@@ -4944,6 +4980,9 @@ ALTER TABLE ONLY public.agenda_taller
 
 ALTER TABLE ONLY public.agenda_taller
     ADD CONSTRAINT agenda_taller_id_orden_taller_fkey FOREIGN KEY (id_orden_taller) REFERENCES public.ordenes_taller(id);
+
+ALTER TABLE ONLY public.agenda_taller
+    ADD CONSTRAINT agenda_taller_id_venta_origen_fkey FOREIGN KEY (id_venta_origen) REFERENCES public.ventas(id);
 
 
 --
@@ -5529,6 +5568,18 @@ ALTER TABLE ONLY public.ordenes_taller_eventos
 ALTER TABLE ONLY public.ordenes_taller_eventos
     ADD CONSTRAINT ordenes_taller_eventos_id_usuario_fkey FOREIGN KEY (id_usuario) REFERENCES public.usuarios(id);
 
+ALTER TABLE ONLY public.ordenes_taller_notas
+    ADD CONSTRAINT fk_ordenes_taller_notas_orden FOREIGN KEY (id_orden_taller) REFERENCES public.ordenes_taller(id);
+
+ALTER TABLE ONLY public.ordenes_taller_notas
+    ADD CONSTRAINT fk_ordenes_taller_notas_bicicleta FOREIGN KEY (id_bicicleta_cliente) REFERENCES public.bicicletas_clientes(id);
+
+ALTER TABLE ONLY public.ordenes_taller_notas
+    ADD CONSTRAINT fk_ordenes_taller_notas_usuario_creador FOREIGN KEY (id_usuario_creador) REFERENCES public.usuarios(id);
+
+ALTER TABLE ONLY public.ordenes_taller_notas
+    ADD CONSTRAINT fk_ordenes_taller_notas_usuario_actualiza FOREIGN KEY (id_usuario_actualiza) REFERENCES public.usuarios(id);
+
 
 --
 -- Name: ordenes_taller ordenes_taller_id_bicicleta_cliente_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -6023,4 +6074,3 @@ ALTER TABLE ONLY public.ventas
 --
 
 \unrestrict K1RYW9fSlGLQK7XarwqGOCKQOvz7QPDKusZACxY21F1Ie6E3F4eF5pLOwx0PZG9
-

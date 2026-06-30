@@ -1,5 +1,6 @@
-from fastapi import HTTPException
+from fastapi import Depends, HTTPException
 
+from app.core.security import CurrentUser, obtener_usuario_actual
 from app.shared.constants import (
     PERMISO_AJUSTAR_CAJA,
     PERMISO_AJUSTAR_STOCK,
@@ -38,6 +39,24 @@ def exigir_permiso(conn, id_usuario: int, permiso: str):
         return
 
     _forbidden(permiso)
+
+
+def exigir_permiso_actual(usuario: CurrentUser, permiso: str):
+    if usuario.auth_disabled or "*" in usuario.permisos:
+        return
+
+    if permiso not in usuario.permisos:
+        _forbidden(permiso)
+
+
+def requerir_permiso(permiso: str):
+    def dependency(
+        usuario: CurrentUser = Depends(obtener_usuario_actual),
+    ) -> CurrentUser:
+        exigir_permiso_actual(usuario, permiso)
+        return usuario
+
+    return dependency
 
 
 def exigir_permiso_anular_venta(conn, id_usuario: int):

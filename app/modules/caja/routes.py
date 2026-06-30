@@ -1,6 +1,15 @@
 from typing import List
 from datetime import date
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
+
+from app.core.security import CurrentUser, aplicar_actor_actual
+from app.modules.authz.service import requerir_permiso
+from app.shared.constants import (
+    PERMISO_ABRIR_CAJA,
+    PERMISO_AJUSTAR_CAJA,
+    PERMISO_CERRAR_CAJA,
+    PERMISO_REGISTRAR_EGRESO,
+)
 
 from .schema import (
     CajaAbrirInput,
@@ -18,10 +27,18 @@ from .schema import (
 from .service import abrir_caja, cerrar_caja, obtener_caja_abierta, obtener_caja_detalle, registrar_egreso, registrar_ajuste, listar_historial_cajas, obtener_resumen_diario_caja
 
 router = APIRouter()
+puede_abrir_caja = requerir_permiso(PERMISO_ABRIR_CAJA)
+puede_cerrar_caja = requerir_permiso(PERMISO_CERRAR_CAJA)
+puede_ajustar_caja = requerir_permiso(PERMISO_AJUSTAR_CAJA)
+puede_registrar_egreso = requerir_permiso(PERMISO_REGISTRAR_EGRESO)
 
 
 @router.post("/abrir", response_model=CajaAbrirOutput)
-def abrir_caja_route(data: CajaAbrirInput):
+def abrir_caja_route(
+    data: CajaAbrirInput,
+    usuario: CurrentUser = Depends(puede_abrir_caja),
+):
+    aplicar_actor_actual(data, usuario)
     return abrir_caja(data)
 
 
@@ -60,14 +77,29 @@ def caja_detalle(caja_id: int):
 
 
 @router.post("/{caja_id}/egresos", response_model=CajaEgresoOutput)
-def registrar_egreso_route(caja_id: int, data: CajaEgresoInput):
+def registrar_egreso_route(
+    caja_id: int,
+    data: CajaEgresoInput,
+    usuario: CurrentUser = Depends(puede_registrar_egreso),
+):
+    aplicar_actor_actual(data, usuario)
     return registrar_egreso(caja_id, data)
 
 
 @router.post("/{caja_id}/cerrar", response_model=CajaCerrarOutput)
-def cerrar_caja_route(caja_id: int, data: CajaCerrarInput):
+def cerrar_caja_route(
+    caja_id: int,
+    data: CajaCerrarInput,
+    usuario: CurrentUser = Depends(puede_cerrar_caja),
+):
+    aplicar_actor_actual(data, usuario)
     return cerrar_caja(caja_id, data)
 
 @router.post("/{caja_id}/ajustes", response_model=CajaEgresoOutput)
-def registrar_ajuste_route(caja_id: int, data: CajaAjusteInput):
+def registrar_ajuste_route(
+    caja_id: int,
+    data: CajaAjusteInput,
+    usuario: CurrentUser = Depends(puede_ajustar_caja),
+):
+    aplicar_actor_actual(data, usuario)
     return registrar_ajuste(caja_id, data)

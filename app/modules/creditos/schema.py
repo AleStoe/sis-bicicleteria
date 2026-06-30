@@ -8,6 +8,8 @@ class CreditoMovimientoResponse(BaseModel):
     id_credito: int
     tipo_movimiento: str
     monto: Decimal
+    monto_base_aplicado: Decimal | None = None
+    monto_descuento_aplicado: Decimal | None = None
     origen_tipo: str | None = None
     origen_id: int | None = None
     nota: str | None = None
@@ -30,6 +32,7 @@ class CreditoResponse(BaseModel):
 class CreditoDetalleResponse(BaseModel):
     credito: CreditoResponse
     movimientos: list[CreditoMovimientoResponse]
+    origen_venta: dict | None = None
 
 
 class CreditoReintegroInput(BaseModel):

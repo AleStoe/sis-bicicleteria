@@ -295,6 +295,21 @@ export function ItemCard({ item, guardando, onAprobar, onDesaprobar, onEjecutar,
             <strong style={styles.itemTitle}>{item.descripcion_snapshot}</strong>
           </div>
           <p style={styles.muted}>#{item.id} · Cantidad {formatNumber(item.cantidad)} · {formatMoney(item.precio_unitario)} c/u</p>
+          {Number(item.valor_cobertura_unitario || 0) > 0 ? (
+            <div style={styles.coverageSummary}>
+              <span>
+                Cobertura {item.motivo_cobertura}: -
+                {formatMoney(
+                  Number(item.valor_cobertura_unitario) *
+                    Number(item.cantidad || 1),
+                )}
+              </span>
+              <strong>Diferencia a cobrar: {formatMoney(item.subtotal)}</strong>
+              {item.observacion_cobertura ? (
+                <small>{item.observacion_cobertura}</small>
+              ) : null}
+            </div>
+          ) : null}
         </div>
         <EtapaBadge etapa={item.etapa} aprobado={item.aprobado} />
       </div>

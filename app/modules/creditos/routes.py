@@ -1,8 +1,11 @@
 from typing import List
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from app.core.security import CurrentUser, aplicar_actor_actual
 from app.db.connection import get_connection
+from app.modules.authz.service import requerir_permiso
+from app.shared.constants import PERMISO_REINTEGRAR_CREDITO
 
 from .schema import (
     CreditoDetalleResponse,
@@ -17,6 +20,7 @@ from .service import (
 )
 
 router = APIRouter()
+puede_reintegrar_credito = requerir_permiso(PERMISO_REINTEGRAR_CREDITO)
 
 @router.get("/cliente/{id_cliente}/disponibles", response_model=List[CreditoResponse])
 def creditos_disponibles_cliente(id_cliente: int):
@@ -46,7 +50,12 @@ def obtener_credito(credito_id: int):
 
 
 @router.post("/{credito_id}/reintegrar", response_model=CreditoReintegroResponse)
-def reintegrar_credito_route(credito_id: int, data: CreditoReintegroInput):
+def reintegrar_credito_route(
+    credito_id: int,
+    data: CreditoReintegroInput,
+    usuario: CurrentUser = Depends(puede_reintegrar_credito),
+):
+    aplicar_actor_actual(data, usuario)
     conn = get_connection()
     try:
         with conn.transaction():

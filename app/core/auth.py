@@ -4,11 +4,13 @@ import hmac
 import json
 import time
 from typing import Any
+from urllib.parse import parse_qsl, urlencode
 
-from fastapi import HTTPException, Request, status
+from fastapi import HTTPException, Request
 from starlette.responses import JSONResponse
 
 from app.core.config import settings
+from app.core.security import cargar_usuario_actual
 
 
 AUTH_EXEMPT_PATHS = {
@@ -26,6 +28,10 @@ ACTOR_USER_FIELDS = {
     "id_usuario_creador",
     "id_usuario_cierre",
     "id_usuario_apertura",
+}
+ACTOR_ROOT_FIELDS = {
+    "id_usuario",
+    "id_usuario_creador",
 }
 
 
@@ -110,11 +116,13 @@ async def auth_middleware(request: Request, call_next):
         return await call_next(request)
 
     try:
-        usuario = _obtener_usuario_request(request)
-        request.state.usuario = usuario
+        token_payload = _obtener_usuario_request(request)
+        current_user = cargar_usuario_actual(token_payload)
+        request.state.usuario = token_payload
+        request.state.current_user = current_user
 
         body = await request.body()
-        _validar_actor_request(request, usuario, body)
+        body = _sobrescribir_actor_request(request, current_user.id, body)
         _reinyectar_body(request, body)
     except HTTPException as exc:
         return JSONResponse(
@@ -148,60 +156,97 @@ def _is_exempt_path(path: str) -> bool:
     return path.startswith("/uploads/")
 
 
-def _validar_actor_request(request: Request, usuario: dict[str, Any], body: bytes):
-    usuario_id = int(usuario["sub"])
-
-    for field in ACTOR_USER_FIELDS:
-        value = request.query_params.get(field)
-        if value is not None:
-            _validar_actor_value(field, value, usuario_id)
+def _sobrescribir_actor_request(
+    request: Request,
+    usuario_id: int,
+    body: bytes,
+) -> bytes:
+    _sobrescribir_actor_query(request, usuario_id)
 
     if not body:
-        return
+        return body
 
     content_type = request.headers.get("content-type", "")
     if "application/json" not in content_type:
-        return
+        return body
 
     try:
         data = json.loads(body)
     except json.JSONDecodeError:
-        return
+        return body
 
-    for field, value in _iter_actor_values(data):
-        _validar_actor_value(field, value, usuario_id)
+    modificado = _inyectar_actor_raiz(data, usuario_id)
+    modificado = _sobrescribir_actor_values(data, usuario_id) or modificado
+    if not modificado:
+        return body
+
+    nuevo_body = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode(
+        "utf-8"
+    )
+    _actualizar_content_length(request, len(nuevo_body))
+    return nuevo_body
 
 
-def _iter_actor_values(data: Any):
+def _sobrescribir_actor_values(data: Any, usuario_id: int) -> bool:
+    modificado = False
+
     if isinstance(data, dict):
         for key, value in data.items():
-            if key in ACTOR_USER_FIELDS and value is not None:
-                yield key, value
+            if key in ACTOR_USER_FIELDS:
+                if value != usuario_id:
+                    data[key] = usuario_id
+                    modificado = True
             else:
-                yield from _iter_actor_values(value)
+                modificado = (
+                    _sobrescribir_actor_values(value, usuario_id) or modificado
+                )
     elif isinstance(data, list):
         for item in data:
-            yield from _iter_actor_values(item)
+            modificado = _sobrescribir_actor_values(item, usuario_id) or modificado
+
+    return modificado
 
 
-def _validar_actor_value(field: str, value: Any, usuario_id: int):
-    try:
-        value_int = int(value)
-    except (TypeError, ValueError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"{field} inválido",
-        ) from exc
+def _inyectar_actor_raiz(data: Any, usuario_id: int) -> bool:
+    if not isinstance(data, dict):
+        return False
 
-    if value_int != usuario_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="El usuario de la operación no coincide con la sesión",
-        )
+    modificado = False
+    for field in ACTOR_ROOT_FIELDS:
+        if field not in data:
+            data[field] = usuario_id
+            modificado = True
+
+    return modificado
+
+
+def _sobrescribir_actor_query(request: Request, usuario_id: int):
+    query_string = request.scope.get("query_string", b"")
+    pares = parse_qsl(query_string.decode("utf-8"), keep_blank_values=True)
+    nuevos_pares = [
+        (key, str(usuario_id) if key in ACTOR_USER_FIELDS else value)
+        for key, value in pares
+    ]
+    claves = {key for key, _ in nuevos_pares}
+    if "id_usuario" not in claves:
+        nuevos_pares.append(("id_usuario", str(usuario_id)))
+
+    request.scope["query_string"] = urlencode(nuevos_pares, doseq=True).encode("utf-8")
+
+
+def _actualizar_content_length(request: Request, body_length: int):
+    headers = [
+        (key, value)
+        for key, value in request.scope.get("headers", [])
+        if key.lower() != b"content-length"
+    ]
+    headers.append((b"content-length", str(body_length).encode("ascii")))
+    request.scope["headers"] = headers
 
 
 def _reinyectar_body(request: Request, body: bytes):
     async def receive():
         return {"type": "http.request", "body": body, "more_body": False}
 
+    request._body = body
     request._receive = receive

@@ -1,5 +1,9 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 from typing import Optional
+
+from app.core.security import CurrentUser, aplicar_actor_actual
+from app.modules.authz.service import requerir_permiso
+from app.shared.constants import PERMISO_REGISTRAR_PAGO
 from .schema import DeudaCrearInput, DeudaPagoInput
 from .service import (
     crear_deuda_por_venta,
@@ -10,6 +14,7 @@ from .service import (
 )
 
 router = APIRouter()
+puede_registrar_pago = requerir_permiso(PERMISO_REGISTRAR_PAGO)
 
 
 @router.post("/")
@@ -43,5 +48,10 @@ def preview_pago_deuda(deuda_id: int, data: DeudaPagoInput):
 
 
 @router.post("/{deuda_id}/pagos")
-def pagar_deuda(deuda_id: int, data: DeudaPagoInput):
+def pagar_deuda(
+    deuda_id: int,
+    data: DeudaPagoInput,
+    usuario: CurrentUser = Depends(puede_registrar_pago),
+):
+    aplicar_actor_actual(data, usuario)
     return registrar_pago_deuda(deuda_id, data)

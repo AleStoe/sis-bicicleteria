@@ -35,19 +35,28 @@ def _crear_venta_serializada(client, seed_venta_devolucion_serializada, biciclet
     )
 
 
-def _marcar_venta_como_pagada_total(db_conn, venta_id: int):
-    with db_conn.cursor() as cur:
-        cur.execute(
-            """
-            UPDATE ventas
-            SET
-                saldo_pendiente = 0,
-                estado = 'pagada_total'
-            WHERE id = %s
-            """,
-            (venta_id,),
-        )
-    db_conn.commit()
+def _pagar_venta_efectivo(client, seed, venta_id: int):
+    abrir = client.post(
+        "/cajas/abrir",
+        json={
+            "id_sucursal": seed["sucursal_id"],
+            "id_usuario": seed["usuario_id"],
+            "monto_apertura": 0,
+        },
+    )
+    assert abrir.status_code == 200, abrir.text
+
+    pago = client.post(
+        "/pagos/",
+        json={
+            "origen_tipo": "venta",
+            "origen_id": venta_id,
+            "medio_pago": "efectivo",
+            "monto_base": str(seed["precio_venta"]),
+            "id_usuario": seed["usuario_id"],
+        },
+    )
+    assert pago.status_code == 200, pago.text
 
 
 def _entregar_venta(client, seed_venta_devolucion_serializada, venta_id: int):
@@ -241,7 +250,7 @@ def test_devolucion_serializada_exitosa(client, db_conn, seed_venta_devolucion_s
     assert venta_response.status_code == 200, venta_response.text
     venta_id = venta_response.json()["venta_id"]
 
-    _marcar_venta_como_pagada_total(db_conn, venta_id)
+    _pagar_venta_efectivo(client, seed_venta_devolucion_serializada, venta_id)
 
     entrega_response = _entregar_venta(client, seed_venta_devolucion_serializada, venta_id)
     assert entrega_response.status_code == 200, entrega_response.text
@@ -364,7 +373,7 @@ def test_no_permite_devolver_serializada_que_no_pertenece_a_la_venta(client, db_
     assert venta_response.status_code == 200, venta_response.text
     venta_id = venta_response.json()["venta_id"]
 
-    _marcar_venta_como_pagada_total(db_conn, venta_id)
+    _pagar_venta_efectivo(client, seed_venta_devolucion_serializada, venta_id)
 
     entrega_response = _entregar_venta(client, seed_venta_devolucion_serializada, venta_id)
     assert entrega_response.status_code == 200, entrega_response.text
@@ -402,7 +411,7 @@ def test_no_permite_doble_devolucion_del_mismo_item(client, db_conn, seed_venta_
     assert venta_response.status_code == 200, venta_response.text
     venta_id = venta_response.json()["venta_id"]
 
-    _marcar_venta_como_pagada_total(db_conn, venta_id)
+    _pagar_venta_efectivo(client, seed_venta_devolucion_serializada, venta_id)
 
     entrega_response = _entregar_venta(client, seed_venta_devolucion_serializada, venta_id)
     assert entrega_response.status_code == 200, entrega_response.text
@@ -453,7 +462,7 @@ def test_deja_fila_en_venta_devoluciones(client, db_conn, seed_venta_devolucion_
     assert venta_response.status_code == 200, venta_response.text
     venta_id = venta_response.json()["venta_id"]
 
-    _marcar_venta_como_pagada_total(db_conn, venta_id)
+    _pagar_venta_efectivo(client, seed_venta_devolucion_serializada, venta_id)
 
     entrega_response = _entregar_venta(client, seed_venta_devolucion_serializada, venta_id)
     assert entrega_response.status_code == 200, entrega_response.text

@@ -68,6 +68,12 @@ from .repository import (
     recalcular_total_orden_taller,
     insert_orden_taller_evento,
     get_eventos_orden_taller,
+    insert_nota_orden_taller,
+    get_notas_orden_taller,
+    get_alertas_activas_bicicleta,
+    get_nota_orden_taller_by_id,
+    update_nota_orden_taller,
+    get_notas_cliente_orden_taller,
     get_item_orden_taller_by_id_for_update,
     update_orden_taller_item_aprobacion,
     update_orden_taller_item_ejecutado, 
@@ -102,14 +108,17 @@ def _validar_venta_taller_habilitada_para_retiro(conn, orden: dict) -> None:
         )
 
     saldo_pendiente = Decimal(str(venta.get("saldo_pendiente") or 0))
-    venta_pagada = venta.get("estado") == "pagada_total" and saldo_pendiente == 0
+    venta_sin_saldo = (
+        venta.get("estado") in {"pagada_total", "entregada"}
+        and saldo_pendiente == 0
+    )
     venta_entregada_con_deuda = (
         venta.get("estado") == "entregada"
         and saldo_pendiente > 0
         and venta.get("tiene_deuda_formal") is True
     )
 
-    if venta_pagada or venta_entregada_con_deuda:
+    if venta_sin_saldo or venta_entregada_con_deuda:
         return
 
     raise HTTPException(
@@ -222,14 +231,110 @@ def obtener_orden_taller(orden_id: int):
 
         eventos = get_eventos_orden_taller(conn, orden_id)
         items = get_items_orden_taller(conn, orden_id)
+        notas = get_notas_orden_taller(conn, orden_id)
+        alertas_bicicleta = get_alertas_activas_bicicleta(
+            conn,
+            orden["id_bicicleta_cliente"],
+            excluir_orden_id=orden_id,
+        )
 
         return {
             **orden,
             "eventos": eventos,
             "items": items,
+            "notas": notas,
+            "alertas_bicicleta": alertas_bicicleta,
         }
     finally:
         conn.close()
+
+
+def crear_nota_orden_taller(orden_id: int, data):
+    conn = get_connection()
+    try:
+        with conn.transaction():
+            try:
+                validar_usuario_activo(conn, data.id_usuario)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+
+            orden = get_orden_taller_by_id_for_update(conn, orden_id)
+            if orden is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No existe la orden de taller {orden_id}",
+                )
+
+            contenido = data.contenido.strip()
+            nota = insert_nota_orden_taller(
+                conn,
+                orden_id=orden_id,
+                bicicleta_id=orden["id_bicicleta_cliente"],
+                tipo=data.tipo,
+                contenido=contenido,
+                id_usuario=data.id_usuario,
+            )
+            insert_orden_taller_evento(
+                conn,
+                id_orden_taller=orden_id,
+                tipo_evento="nota_tecnica_creada",
+                detalle=f"Nota {data.tipo} #{nota['id']} creada",
+                id_usuario=data.id_usuario,
+            )
+            return nota
+    finally:
+        conn.close()
+
+
+def actualizar_nota_orden_taller(orden_id: int, nota_id: int, data):
+    conn = get_connection()
+    try:
+        with conn.transaction():
+            try:
+                validar_usuario_activo(conn, data.id_usuario)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+
+            orden = get_orden_taller_by_id_for_update(conn, orden_id)
+            if orden is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No existe la orden de taller {orden_id}",
+                )
+
+            nota_anterior = get_nota_orden_taller_by_id(conn, orden_id, nota_id)
+            if nota_anterior is None:
+                raise HTTPException(status_code=404, detail="La nota no existe en esta OT")
+
+            contenido = data.contenido.strip() if data.contenido is not None else None
+            nota = update_nota_orden_taller(
+                conn,
+                orden_id=orden_id,
+                nota_id=nota_id,
+                contenido=contenido,
+                estado=data.estado,
+                id_usuario=data.id_usuario,
+            )
+
+            cambios = []
+            if contenido is not None and contenido != nota_anterior["contenido"]:
+                cambios.append("contenido editado")
+            if data.estado is not None and data.estado != nota_anterior["estado"]:
+                cambios.append(
+                    f"estado {nota_anterior['estado']} -> {data.estado}"
+                )
+
+            insert_orden_taller_evento(
+                conn,
+                id_orden_taller=orden_id,
+                tipo_evento="nota_tecnica_actualizada",
+                detalle=f"Nota #{nota_id}: {', '.join(cambios) or 'actualizada'}",
+                id_usuario=data.id_usuario,
+            )
+            return nota
+    finally:
+        conn.close()
+
 
 def cambiar_estado_orden_taller(orden_id: int, data):
     conn = get_connection()
@@ -263,7 +368,6 @@ def cambiar_estado_orden_taller(orden_id: int, data):
             if (
                 orden["estado"] == "en_reparacion"
                 and data.nuevo_estado == "terminada"
-                and not es_service_postventa
             ):
                 items = get_items_orden_taller(conn, orden_id)
 
@@ -272,7 +376,7 @@ def cambiar_estado_orden_taller(orden_id: int, data):
                     if item["etapa"] != "cancelado"
                 ]
 
-                if not items_activos:
+                if not items_activos and not es_service_postventa:
                     raise HTTPException(
                         status_code=400,
                         detail="No se puede marcar como terminada una orden sin items activos",
@@ -291,14 +395,20 @@ def cambiar_estado_orden_taller(orden_id: int, data):
 
             if (
                 data.nuevo_estado == "lista_para_retirar"
-                and not es_service_postventa
+                and (
+                    not es_service_postventa
+                    or Decimal(str(orden.get("total_final") or 0)) > 0
+                )
             ):
                 _validar_venta_taller_habilitada_para_retiro(conn, orden)
 
             if (
                 orden["estado"] == "lista_para_retirar"
                 and data.nuevo_estado == "retirada"
-                and not es_service_postventa
+                and (
+                    not es_service_postventa
+                    or Decimal(str(orden.get("total_final") or 0)) > 0
+                )
             ):
                 _validar_venta_taller_habilitada_para_retiro(conn, orden)
 
@@ -388,7 +498,47 @@ def agregar_item_orden_taller(orden_id: int, data):
                     detail="Tipo de item de taller inválido",
                 )
 
-            subtotal = Decimal(data.cantidad) * Decimal(data.precio_unitario)
+            precio_unitario = Decimal(data.precio_unitario)
+            cobertura_unitaria = Decimal(data.valor_cobertura_unitario or 0)
+            motivo_cobertura = (
+                data.motivo_cobertura.strip()
+                if data.motivo_cobertura
+                else None
+            )
+            observacion_cobertura = (
+                data.observacion_cobertura.strip()
+                if data.observacion_cobertura
+                else None
+            )
+
+            if orden.get("es_service_postventa") is True and data.tipo_item == "servicio":
+                cobertura_unitaria = precio_unitario
+                motivo_cobertura = "Service postventa"
+            elif cobertura_unitaria > 0 and orden.get("es_service_postventa") is not True:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "La cobertura por garantía sólo puede cargarse "
+                        "en una OT postventa."
+                    ),
+                )
+
+            if cobertura_unitaria > precio_unitario:
+                raise HTTPException(
+                    status_code=400,
+                    detail="La cobertura no puede superar el precio del ítem.",
+                )
+
+            if cobertura_unitaria > 0 and not motivo_cobertura:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Indicá el motivo de la cobertura por garantía.",
+                )
+
+            subtotal = (
+                Decimal(data.cantidad)
+                * (precio_unitario - cobertura_unitaria)
+            )
 
             item = insert_orden_taller_item(
                 conn,
@@ -399,7 +549,10 @@ def agregar_item_orden_taller(orden_id: int, data):
                     "id_servicio_taller": id_servicio_taller,
                     "descripcion_snapshot": descripcion_snapshot,
                     "cantidad": data.cantidad,
-                    "precio_unitario": data.precio_unitario,
+                    "precio_unitario": precio_unitario,
+                    "valor_cobertura_unitario": cobertura_unitaria,
+                    "motivo_cobertura": motivo_cobertura,
+                    "observacion_cobertura": observacion_cobertura,
                     "subtotal": subtotal,
                 },
             )
@@ -410,7 +563,11 @@ def agregar_item_orden_taller(orden_id: int, data):
                 conn,
                 id_orden_taller=orden_id,
                 tipo_evento=ORDEN_TALLER_EVENTO_AGREGADO_ITEM,
-                detalle=f"Item agregado: {descripcion_snapshot}",
+                detalle=(
+                    f"Item agregado: {descripcion_snapshot}. "
+                    f"Cobertura: {cobertura_unitaria}. "
+                    f"Diferencia: {precio_unitario - cobertura_unitaria}."
+                ),
                 id_usuario=data.id_usuario,
             )
 
@@ -793,8 +950,32 @@ def generar_venta_desde_orden_taller(orden_id: int, data):
                         detail="La orden no tiene items ejecutados para facturar",
                     )
 
+                total_facturable = sum(
+                    Decimal(str(item.get("subtotal") or 0))
+                    for item in items_ejecutados
+                )
+                if total_facturable <= 0:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "La OT no tiene diferencia a cobrar. "
+                            "No hace falta generar una venta."
+                        ),
+                    )
+
                 payload_items = []
                 for item in items_ejecutados:
+                    cobertura = Decimal(
+                        str(item.get("valor_cobertura_unitario") or 0)
+                    )
+                    tiene_cobertura = cobertura > 0
+                    motivo_cobertura = item.get("motivo_cobertura")
+                    if item.get("observacion_cobertura"):
+                        motivo_cobertura = (
+                            f"{motivo_cobertura}. "
+                            f"{item['observacion_cobertura']}"
+                        )
+
                     if item.get("tipo_item") == "servicio":
                         payload_items.append({
                             "tipo_item": "servicio_taller",
@@ -803,6 +984,9 @@ def generar_venta_desde_orden_taller(orden_id: int, data):
                             "cantidad": item["cantidad"],
                             "precio_unitario_manual": item["precio_unitario"],
                             "motivo_precio_manual": f"Precio de taller OT #{orden_id}",
+                            "bonificado": tiene_cobertura,
+                            "bonificacion_unitaria_manual": cobertura if tiene_cobertura else None,
+                            "motivo_bonificacion": motivo_cobertura,
                             "id_orden_taller_item": item["id"],
                         })
                         continue
@@ -813,6 +997,9 @@ def generar_venta_desde_orden_taller(orden_id: int, data):
                         "cantidad": item["cantidad"],
                         "precio_unitario_manual": item["precio_unitario"],
                         "motivo_precio_manual": f"Precio de taller OT #{orden_id}",
+                        "bonificado": tiene_cobertura,
+                        "bonificacion_unitaria_manual": cobertura if tiene_cobertura else None,
+                        "motivo_bonificacion": motivo_cobertura,
                         "id_orden_taller_item": item["id"],
                     })
 
@@ -997,7 +1184,7 @@ def _format_money_mensaje(value) -> str:
 
     return f"${monto:,.0f}".replace(",", ".")
 
-def _build_mensaje_lista_retiro(orden, conn, items):
+def _build_mensaje_lista_retiro(orden, conn, items, notas_cliente):
     config = obtener_configuracion_negocio()
     cliente = _resolver_nombre_visible_cliente(orden)
     bicicleta = _format_bicicleta_mensaje(orden)
@@ -1028,6 +1215,11 @@ def _build_mensaje_lista_retiro(orden, conn, items):
 
             subtotal = _format_money_mensaje(item.get("subtotal"))
             trabajos_lineas.append(f"• {descripcion}: {subtotal}")
+
+        if notas_cliente:
+            trabajos_lineas.extend(["", "*Notas y recomendaciones:*", ""])
+            for nota in notas_cliente:
+                trabajos_lineas.append(f"• {nota['contenido']}")
         trabajos_lineas.extend(["", "--------------------", ""])
 
     total_bloque = ""
@@ -1103,11 +1295,13 @@ def generar_mensaje_lista_retiro_orden_taller(orden_id: int):
             )
 
         items = get_items_orden_taller(conn, orden_id)
+        notas_cliente = get_notas_cliente_orden_taller(conn, orden_id)
 
         mensaje = _build_mensaje_lista_retiro(
             orden,
             conn,
             items,
+            notas_cliente,
         )
 
         telefono = _normalizar_telefono_whatsapp(

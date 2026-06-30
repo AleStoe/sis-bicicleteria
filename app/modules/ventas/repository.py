@@ -127,6 +127,7 @@ def insert_venta_item(conn, data: dict):
             precio_unitario_original,
             precio_unitario_final,
             bonificado,
+            bonificacion_unitaria,
             motivo_bonificacion,
             motivo_precio_manual,
             costo_unitario_aplicado,
@@ -136,7 +137,7 @@ def insert_venta_item(conn, data: dict):
             %s, %s, %s, %s, %s,
             %s, %s, %s, %s, %s,
             %s, %s, %s, %s, %s,
-            %s, %s
+            %s, %s, %s
         )
             RETURNING id
             """,
@@ -154,6 +155,7 @@ def insert_venta_item(conn, data: dict):
                 data["precio_unitario_original"],
                 data["precio_unitario_final"],
                 data.get("bonificado", False),
+                data.get("bonificacion_unitaria", 0),
                 data.get("motivo_bonificacion"),
                 data.get("motivo_precio_manual"),
                 data["costo_unitario_aplicado"],
@@ -338,6 +340,7 @@ def get_venta_items_by_venta_id(conn, venta_id: int):
                 vi.costo_unitario_aplicado,
                 vi.subtotal,
                 vi.bonificado,
+                vi.bonificacion_unitaria,
                 vi.motivo_bonificacion,
                 vi.motivo_precio_manual,
                 vi.precio_unitario_original,
@@ -390,6 +393,7 @@ def get_venta_items_detallados_by_venta_id(conn, venta_id: int):
                 p.serializable,
                 p.activo AS producto_activo,
                 vi.bonificado,
+                vi.bonificacion_unitaria,
                 vi.motivo_bonificacion,
                 vi.motivo_precio_manual,
                 vi.precio_unitario_original,

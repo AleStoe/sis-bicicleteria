@@ -3,6 +3,8 @@ from datetime import date
 from decimal import Decimal
 
 from app.db.connection import get_connection
+from app.modules.alertas_operativas.service import obtener_alertas_operativas
+from app.modules.authz.service import exigir_rol_admin
 
 from .repository import (
     get_ventas_mes,
@@ -19,10 +21,6 @@ from .repository import (
     count_repuestos_criticos,
     get_productos_sin_movimiento,
     count_productos_sin_movimiento,
-    get_bicis_listas_retiro_count,
-    get_reservas_vencidas_count,
-    get_deudas_vencidas_resumen,
-    get_taller_atrasado_count,
     get_ventas_ultimos_meses,
     get_top_clientes,
     get_capital_inmovilizado,
@@ -54,15 +52,7 @@ def _alerta(tipo, titulo, detalle, cantidad, severidad, to):
     }
 
 
-def _build_alertas_operativas(
-    *,
-    caja,
-    bicis_listas,
-    reservas_vencidas,
-    deudas_vencidas,
-    taller_atrasado,
-    stock_critico,
-):
+def _build_alertas_operativas(*, caja, salud):
     alertas = []
 
     if not caja.get("caja_abierta_id"):
@@ -77,67 +67,34 @@ def _build_alertas_operativas(
             )
         )
 
-    if taller_atrasado:
-        alertas.append(
-            _alerta(
-                "taller_atrasado",
-                "Taller atrasado",
-                "Ordenes con fecha prometida vencida.",
-                taller_atrasado,
-                "alta",
-                "/alertas-operativas",
-            )
-        )
+    configuracion = (
+        ("taller_atrasado", "Taller atrasado", "Órdenes con fecha prometida vencida.", "alta"),
+        ("bicis_listas", "Bicis listas hace 7 días", "Conviene avisar o insistir para el retiro.", "media"),
+        ("reservas_vencidas", "Reservas vencidas", "Revisar si se convierten o cancelan.", "alta"),
+        ("deudas_vencidas", "Deudas vencidas", "Hay saldos con vencimiento cumplido.", "alta"),
+        ("stock_critico", "Stock crítico", "Repuestos por debajo del umbral operativo.", "media"),
+        ("ventas_cobradas_no_entregadas", "Ventas cobradas sin entregar", "Mercadería cobrada pendiente de entrega.", "alta"),
+        ("ventas_saldo_sin_deuda", "Saldo sin deuda formal", "Ventas con saldo pendiente sin deuda asociada.", "alta"),
+        ("ventas_saldo_desincronizado", "Saldo desactualizado", "Venta y deuda asociada conservan saldos distintos.", "alta"),
+        ("pagos_revertidos_hoy", "Pagos revertidos hoy", "Revisar que saldos y caja hayan quedado correctos.", "media"),
+        ("cajas_abiertas_anteriores", "Cajas anteriores abiertas", "Hay cajas de días anteriores sin cierre.", "alta"),
+        ("productos_maestros_incompletos", "Productos incompletos", "Faltan datos importantes del catálogo.", "media"),
+        ("maestros_inactivos_en_uso", "Maestros inactivos en uso", "Hay datos inactivos vinculados a operaciones.", "media"),
+    )
 
-    if bicis_listas:
-        alertas.append(
-            _alerta(
-                "bicis_listas",
-                "Bicis listas hace 7 dias",
-                "Avisar o insistir para retiro.",
-                bicis_listas,
-                "media",
-                "/alertas-operativas",
+    for tipo, titulo, detalle, severidad in configuracion:
+        cantidad = len(salud.get(tipo) or [])
+        if cantidad:
+            alertas.append(
+                _alerta(
+                    tipo,
+                    titulo,
+                    detalle,
+                    cantidad,
+                    severidad,
+                    "/salud-operativa",
+                )
             )
-        )
-
-    if reservas_vencidas:
-        alertas.append(
-            _alerta(
-                "reservas_vencidas",
-                "Reservas vencidas",
-                "Revisar si se convierten, cancelan o vencen formalmente.",
-                reservas_vencidas,
-                "alta",
-                "/alertas-operativas",
-            )
-        )
-
-    deuda_count = int(deudas_vencidas.get("cantidad") or 0)
-    deuda_total = Decimal(str(deudas_vencidas.get("total") or 0))
-    if deuda_count:
-        alertas.append(
-            _alerta(
-                "deudas_vencidas",
-                "Deudas vencidas",
-                f"{deuda_count} deuda(s), total ${deuda_total:,.2f}",
-                deuda_count,
-                "alta",
-                "/alertas-operativas",
-            )
-        )
-
-    if stock_critico:
-        alertas.append(
-            _alerta(
-                "stock_critico",
-                "Stock critico",
-                "Repuestos por debajo del umbral operativo.",
-                stock_critico,
-                "media",
-                "/stock?estado_stock=stock_bajo",
-            )
-        )
 
     return alertas
 
@@ -149,15 +106,31 @@ def obtener_dashboard_resumen(
     dias_sin_movimiento: int = 90,
     umbral_repuestos_criticos: int = 2,
     limit: int = 10,
+    id_usuario: int | None = None,
 ):
     periodo_mes, fecha_desde, fecha_hasta = _periodo_bounds(periodo_mes)
 
     conn = get_connection()
     try:
+        if id_usuario is not None:
+            exigir_rol_admin(conn, id_usuario)
+
         ventas_mes = get_ventas_mes(conn, fecha_desde, fecha_hasta, id_sucursal)
         gastos_mes = get_gastos_mes(conn, fecha_desde, fecha_hasta, id_sucursal)
         rent = get_resultado_estimado(conn, fecha_desde, fecha_hasta, id_sucursal)
         resultado_estimado = Decimal(str(rent["margen_bruto"] or 0)) - Decimal(str(gastos_mes or 0))
+        cantidad_ventas_mes = int(rent.get("cantidad_ventas") or 0)
+        ticket_promedio_mes = (
+            Decimal(str(ventas_mes)) / Decimal(cantidad_ventas_mes)
+            if cantidad_ventas_mes
+            else Decimal("0")
+        )
+        margen_bruto_mes = Decimal(str(rent["margen_bruto"] or 0))
+        margen_bruto_porcentaje = (
+            margen_bruto_mes / Decimal(str(ventas_mes)) * Decimal("100")
+            if Decimal(str(ventas_mes or 0)) > 0
+            else Decimal("0")
+        )
         hoy = date.today()
         resultado_hoy = get_resultado_dia(conn, hoy, id_sucursal=id_sucursal)
         caja = get_caja_actual(conn, id_sucursal)
@@ -172,19 +145,9 @@ def obtener_dashboard_resumen(
             id_sucursal=id_sucursal,
             dias=dias_sin_movimiento,
         )
-        bicis_listas_count = get_bicis_listas_retiro_count(
-            conn,
-            id_sucursal=id_sucursal,
-            dias=7,
-        )
-        reservas_vencidas_count = get_reservas_vencidas_count(
-            conn,
-            id_sucursal=id_sucursal,
-        )
-        deudas_vencidas = get_deudas_vencidas_resumen(conn)
-        taller_atrasado_count = get_taller_atrasado_count(
-            conn,
-            id_sucursal=id_sucursal,
+        salud = obtener_alertas_operativas(
+            dias_lista_retiro=7,
+            stock_umbral=umbral_repuestos_criticos,
         )
 
         ventas_ultimos_meses = get_ventas_ultimos_meses(
@@ -240,6 +203,10 @@ def obtener_dashboard_resumen(
                 "ventas_mes": ventas_mes,
                 "gastos_mes": gastos_mes,
                 "resultado_estimado": resultado_estimado,
+                "margen_bruto_mes": margen_bruto_mes,
+                "margen_bruto_porcentaje": margen_bruto_porcentaje,
+                "cantidad_ventas_mes": cantidad_ventas_mes,
+                "ticket_promedio_mes": ticket_promedio_mes,
                 "caja_actual": caja["saldo_teorico"],
                 "deudas_abiertas": deudas_abiertas,
                 "creditos_abiertos": creditos_abiertos,
@@ -255,11 +222,7 @@ def obtener_dashboard_resumen(
             },
             "alertas_operativas": _build_alertas_operativas(
                 caja=caja,
-                bicis_listas=bicis_listas_count,
-                reservas_vencidas=reservas_vencidas_count,
-                deudas_vencidas=deudas_vencidas,
-                taller_atrasado=taller_atrasado_count,
-                stock_critico=repuestos_criticos_count,
+                salud=salud,
             ),
             "ventas_ultimos_meses": ventas_ultimos_meses,
             "top_clientes": top_clientes,

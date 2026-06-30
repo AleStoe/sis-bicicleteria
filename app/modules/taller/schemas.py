@@ -75,6 +75,9 @@ class OrdenTallerItemCreate(BaseModel):
     id_servicio_taller: int | None = Field(default=None, gt=0)
     cantidad: Decimal = Field(gt=0)
     precio_unitario: Decimal = Field(ge=0)
+    valor_cobertura_unitario: Decimal = Field(default=Decimal("0"), ge=0)
+    motivo_cobertura: str | None = Field(default=None, max_length=80)
+    observacion_cobertura: str | None = Field(default=None, max_length=500)
     id_usuario: int = Field(gt=0)
 
     @model_validator(mode="after")
@@ -91,6 +94,14 @@ class OrdenTallerItemCreate(BaseModel):
             if self.id_variante is not None:
                 raise ValueError("Un servicio no debe tener id_variante")
 
+        if self.valor_cobertura_unitario > self.precio_unitario:
+            raise ValueError("La cobertura no puede superar el precio del ítem")
+
+        if self.valor_cobertura_unitario > 0 and not (
+            self.motivo_cobertura and self.motivo_cobertura.strip()
+        ):
+            raise ValueError("La cobertura por garantía requiere un motivo")
+
         return self
 
 
@@ -100,6 +111,8 @@ class OrdenTallerResponse(BaseModel):
     id_sucursal: int
     id_cliente: int
     id_bicicleta_cliente: int
+    id_bicicleta_serializada: int | None = None
+    id_venta_origen: int | None = None
     cliente_nombre: str | None = None
     cliente_telefono: str | None = None
     cliente_dni: str | None = None
@@ -154,6 +167,9 @@ class OrdenTallerItemResponse(BaseModel):
     descripcion_snapshot: str
     cantidad: Decimal
     precio_unitario: Decimal
+    valor_cobertura_unitario: Decimal = Decimal("0")
+    motivo_cobertura: str | None = None
+    observacion_cobertura: str | None = None
     costo_unitario_aplicado: Decimal | None = None
     aprobado: bool
     subtotal: Decimal
@@ -161,9 +177,50 @@ class OrdenTallerItemResponse(BaseModel):
     updated_at: datetime
 
 
+class OrdenTallerNotaCreate(BaseModel):
+    tipo: Literal[
+        "interna",
+        "cliente",
+        "recomendacion_futura",
+        "alerta_tecnica",
+    ]
+    contenido: str = Field(min_length=2, max_length=2000)
+    id_usuario: int = Field(gt=0)
+
+
+class OrdenTallerNotaUpdate(BaseModel):
+    contenido: str | None = Field(default=None, min_length=2, max_length=2000)
+    estado: Literal["activa", "resuelta", "archivada"] | None = None
+    id_usuario: int = Field(gt=0)
+
+    @model_validator(mode="after")
+    def validar_cambio(self):
+        if self.contenido is None and self.estado is None:
+            raise ValueError("Informá contenido o estado para actualizar la nota")
+        return self
+
+
+class OrdenTallerNotaResponse(BaseModel):
+    id: int
+    id_orden_taller: int
+    id_bicicleta_cliente: int
+    tipo: str
+    contenido: str
+    estado: str
+    id_usuario_creador: int
+    usuario_creador_nombre: str | None = None
+    id_usuario_actualiza: int | None = None
+    usuario_actualiza_nombre: str | None = None
+    fecha_resolucion: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
 class OrdenTallerDetalleResponse(OrdenTallerResponse):
     eventos: list[OrdenTallerEventoResponse] = Field(default_factory=list)
     items: list[OrdenTallerItemResponse] = Field(default_factory=list)
+    notas: list[OrdenTallerNotaResponse] = Field(default_factory=list)
+    alertas_bicicleta: list[OrdenTallerNotaResponse] = Field(default_factory=list)
 
 class OrdenTallerItemAprobacionUpdate(BaseModel):
     aprobado: bool

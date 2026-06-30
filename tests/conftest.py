@@ -102,6 +102,7 @@ def clean_db(db_conn):
                 proveedores,
                 marcas,
                 sucursales,
+                ordenes_taller_notas,
                 ordenes_taller_eventos,
                 ordenes_taller,
                 bicicletas_clientes,

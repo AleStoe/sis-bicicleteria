@@ -1,10 +1,15 @@
 from decimal import Decimal
+from io import BytesIO
 
+from PIL import Image
 from app.modules.documentos.pdf import _detalle_pago_financiero
 from app.modules.documentos.pdf_etiquetas import _build_opciones_pago
 from app.modules.documentos.repository import (
     get_pagos_comprobante_by_venta_id,
     get_venta_items_comprobante_by_venta_id,
+)
+from app.modules.documentos.repository_taller_presupuesto import (
+    get_notas_visibles_presupuesto_taller,
 )
 
 
@@ -131,7 +136,12 @@ def test_comprobante_x_usa_descuento_efectivo_del_motor_financiero(
     assert response.content.startswith(b"%PDF")
 
 
-def test_presupuesto_taller_devuelve_pdf(client, seed_taller_basico, seed_venta_basica):
+def test_presupuesto_taller_devuelve_pdf(
+    client,
+    db_conn,
+    seed_taller_basico,
+    seed_venta_basica,
+):
     crear_orden = client.post(
         "/ordenes_taller/",
         json={
@@ -156,6 +166,30 @@ def test_presupuesto_taller_devuelve_pdf(client, seed_taller_basico, seed_venta_
         },
     )
     assert item.status_code == 201, item.text
+
+    interna = client.post(
+        f"/ordenes_taller/{orden_id}/notas",
+        json={
+            "tipo": "interna",
+            "contenido": "Diagnóstico reservado del equipo",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    cliente = client.post(
+        f"/ordenes_taller/{orden_id}/notas",
+        json={
+            "tipo": "cliente",
+            "contenido": "Lubricar la cadena cada quince días",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert interna.status_code == 201, interna.text
+    assert cliente.status_code == 201, cliente.text
+
+    notas_pdf = get_notas_visibles_presupuesto_taller(db_conn, orden_id)
+    assert [nota["contenido"] for nota in notas_pdf] == [
+        "Lubricar la cadena cada quince días"
+    ]
 
     response = client.get(f"/documentos/taller/{orden_id}/presupuesto")
 
@@ -248,7 +282,24 @@ def test_cartel_precio_variante_devuelve_pdf(client, seed_venta_basica):
 
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/pdf"
+    assert response.headers["cache-control"] == "no-store, no-cache, must-revalidate"
     assert response.content.startswith(b"%PDF")
+
+
+def test_historia_precio_variante_devuelve_png_9_16(client, seed_venta_basica):
+    variante_id = seed_venta_basica["variante_id"]
+
+    response = client.get(
+        f"/documentos/etiquetas/variantes/{variante_id}/historia"
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"] == "image/png"
+    assert "attachment;" in response.headers["content-disposition"]
+    assert response.content.startswith(b"\x89PNG")
+
+    with Image.open(BytesIO(response.content)) as image:
+        assert image.size == (1080, 1920)
 
 
 def test_cartel_precio_ordena_opciones_comerciales_sin_inventar_planes():
@@ -316,6 +367,14 @@ def test_etiqueta_deposito_bicicleta_serializada_devuelve_pdf(
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/pdf"
     assert response.content.startswith(b"%PDF")
+
+    historia = client.get(
+        f"/documentos/etiquetas/bicicletas/{bicicleta_id}/historia"
+    )
+    assert historia.status_code == 200, historia.text
+    assert historia.headers["content-type"] == "image/png"
+    with Image.open(BytesIO(historia.content)) as image:
+        assert image.size == (1080, 1920)
 
 
 def test_comprobante_x_venta_inexistente_devuelve_404(client):

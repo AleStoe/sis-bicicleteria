@@ -1,14 +1,7 @@
 from decimal import Decimal, ROUND_HALF_UP
 from psycopg.rows import dict_row
 
-
-VENTAS_ESTADOS_RENTABILIDAD = (
-    "pagada_parcial",
-    "pagada_total",
-    "entregada",
-    "devuelta_parcial",
-    "devuelta",
-)
+from app.shared.constants import VENTA_ESTADOS_REPORTING
 
 
 def get_participante_by_id(conn, participante_id: int):
@@ -200,7 +193,7 @@ def get_ventas_rentabilidad(conn, fecha_desde, fecha_hasta, id_sucursal=None):
             CROSS JOIN devoluciones
             CROSS JOIN costos
             """,
-            (*params[:2], list(VENTAS_ESTADOS_RENTABILIDAD), *params[2:]),
+            (*params[:2], list(VENTA_ESTADOS_REPORTING), *params[2:]),
         )
         return cur.fetchone()
 

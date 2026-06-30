@@ -30,6 +30,7 @@ from .repository import (
     get_bicicleta_cliente_detalle,
     update_bicicleta_cliente,
     get_historial_taller_bicicleta_cliente,
+    get_notas_tecnicas_bicicleta_cliente,
     get_timeline_bicicleta_cliente,
     get_venta_origen_bicicleta_cliente,
     autorizar_service_vencido_bicicleta_cliente,
@@ -469,12 +470,17 @@ def obtener_historial_bicicleta_cliente_service(cliente_id: int, bicicleta_id: i
             bicicleta_id=bicicleta_id,
         )
         timeline = get_timeline_bicicleta_cliente(conn, bicicleta_id)
+        notas_tecnicas = get_notas_tecnicas_bicicleta_cliente(
+            conn,
+            bicicleta_id,
+        )
 
         return {
             "bicicleta": bicicleta,
             "venta_origen": venta_origen,
             "historial_taller": historial_taller,
             "timeline": timeline,
+            "notas_tecnicas": notas_tecnicas,
         }
     finally:
         conn.close()

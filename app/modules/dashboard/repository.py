@@ -1,6 +1,6 @@
 from psycopg.rows import dict_row
 
-VENTAS_EXCLUIDAS = ("anulada", "devuelta")
+from app.shared.constants import VENTA_ESTADOS_REPORTING
 
 NO_BICICLETAS_SQL = """
   AND p.serializable = FALSE
@@ -10,7 +10,7 @@ NO_BICICLETAS_SQL = """
 
 
 def get_ventas_mes(conn, fecha_desde, fecha_hasta, id_sucursal=None):
-    params = [fecha_desde, fecha_hasta]
+    params = [fecha_desde, fecha_hasta, list(VENTA_ESTADOS_REPORTING)]
     sucursal_sql = ""
     if id_sucursal is not None:
         sucursal_sql = "AND v.id_sucursal = %s"
@@ -19,11 +19,23 @@ def get_ventas_mes(conn, fecha_desde, fecha_hasta, id_sucursal=None):
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             f"""
-            SELECT COALESCE(SUM(v.total_final), 0)::numeric(14,2) AS total
+            WITH devoluciones AS (
+              SELECT
+                vi.id_venta,
+                COALESCE(SUM(vid.monto_credito_generado), 0) AS monto
+              FROM venta_item_devoluciones vid
+              INNER JOIN venta_items vi ON vi.id = vid.id_venta_item
+              GROUP BY vi.id_venta
+            )
+            SELECT COALESCE(
+              SUM(v.total_final - COALESCE(d.monto, 0)),
+              0
+            )::numeric(14,2) AS total
             FROM ventas v
+            LEFT JOIN devoluciones d ON d.id_venta = v.id
             WHERE v.fecha::date >= %s
               AND v.fecha::date <= %s
-              AND v.estado NOT IN ('anulada', 'devuelta')
+              AND v.estado = ANY(%s)
               {sucursal_sql}
             """,
             params,
@@ -54,7 +66,7 @@ def get_gastos_mes(conn, fecha_desde, fecha_hasta, id_sucursal=None):
 
 
 def get_resultado_estimado(conn, fecha_desde, fecha_hasta, id_sucursal=None):
-    params = [fecha_desde, fecha_hasta]
+    params = [fecha_desde, fecha_hasta, list(VENTA_ESTADOS_REPORTING)]
     sucursal_sql = ""
     if id_sucursal is not None:
         sucursal_sql = "AND v.id_sucursal = %s"
@@ -63,19 +75,60 @@ def get_resultado_estimado(conn, fecha_desde, fecha_hasta, id_sucursal=None):
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             f"""
+            WITH ventas_filtradas AS (
+              SELECT v.id, v.total_final
+              FROM ventas v
+              WHERE v.fecha::date >= %s
+                AND v.fecha::date <= %s
+                AND v.estado = ANY(%s)
+                {sucursal_sql}
+            ),
+            devoluciones_item AS (
+              SELECT
+                vid.id_venta_item,
+                COALESCE(SUM(vid.cantidad_devuelta), 0) AS cantidad_devuelta,
+                COALESCE(SUM(vid.monto_credito_generado), 0) AS monto_devuelto
+              FROM venta_item_devoluciones vid
+              GROUP BY vid.id_venta_item
+            ),
+            items AS (
+              SELECT
+                vi.cantidad,
+                vi.costo_unitario_aplicado,
+                COALESCE(di.cantidad_devuelta, 0) AS cantidad_devuelta,
+                COALESCE(di.monto_devuelto, 0) AS monto_devuelto
+              FROM ventas_filtradas vf
+              INNER JOIN venta_items vi ON vi.id_venta = vf.id
+              LEFT JOIN devoluciones_item di ON di.id_venta_item = vi.id
+            ),
+            ventas AS (
+              SELECT
+                COALESCE(SUM(total_final), 0) AS ventas_brutas,
+                COUNT(*)::int AS cantidad_ventas
+              FROM ventas_filtradas
+            ),
+            ajustes AS (
+              SELECT
+                COALESCE(SUM(monto_devuelto), 0) AS devoluciones_total,
+                COALESCE(
+                  SUM(costo_unitario_aplicado * (cantidad - cantidad_devuelta)),
+                  0
+                ) AS cmv_neto
+              FROM items
+            )
             SELECT
-              COALESCE(SUM(vi.subtotal), 0)::numeric(14,2) AS ventas_items_total,
-              COALESCE(SUM(vi.costo_unitario_aplicado * vi.cantidad), 0)::numeric(14,2) AS cmv,
+              ventas.ventas_brutas::numeric(14,2) AS ventas_brutas,
+              ventas.cantidad_ventas,
+              ajustes.devoluciones_total::numeric(14,2) AS devoluciones_total,
+              (ventas.ventas_brutas - ajustes.devoluciones_total)::numeric(14,2) AS ventas_netas,
+              ajustes.cmv_neto::numeric(14,2) AS cmv,
               (
-                COALESCE(SUM(vi.subtotal), 0)
-                - COALESCE(SUM(vi.costo_unitario_aplicado * vi.cantidad), 0)
+                ventas.ventas_brutas
+                - ajustes.devoluciones_total
+                - ajustes.cmv_neto
               )::numeric(14,2) AS margen_bruto
-            FROM ventas v
-            INNER JOIN venta_items vi ON vi.id_venta = v.id
-            WHERE v.fecha::date >= %s
-              AND v.fecha::date <= %s
-              AND v.estado NOT IN ('anulada', 'devuelta')
-              {sucursal_sql}
+            FROM ventas
+            CROSS JOIN ajustes
             """,
             params,
         )
@@ -83,41 +136,31 @@ def get_resultado_estimado(conn, fecha_desde, fecha_hasta, id_sucursal=None):
 
 
 def get_resultado_dia(conn, fecha, id_sucursal=None):
-    estados_operativos = ["pagada_parcial", "pagada_total", "entregada"]
-    params = [fecha, estados_operativos]
-    ventas_sucursal_sql = ""
-    gastos_sucursal_sql = ""
+    rentabilidad = get_resultado_estimado(conn, fecha, fecha, id_sucursal)
+    params = [fecha, list(VENTA_ESTADOS_REPORTING)]
+    sucursal_sql = ""
     if id_sucursal is not None:
-        ventas_sucursal_sql = "AND v.id_sucursal = %s"
-        gastos_sucursal_sql = "AND go.id_sucursal = %s"
+        sucursal_sql = "AND v.id_sucursal = %s"
         params.append(id_sucursal)
-
-    gastos_params = [fecha]
-    if id_sucursal is not None:
-        gastos_params.append(id_sucursal)
 
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             f"""
-            SELECT
-              COALESCE(SUM(v.total_final), 0)::numeric(14,2) AS ventas_total,
-              COUNT(DISTINCT v.id)::int AS cantidad_ventas,
-              COALESCE(SUM(vi.subtotal), 0)::numeric(14,2) AS ventas_items_total,
-              COALESCE(SUM(vi.costo_unitario_aplicado * vi.cantidad), 0)::numeric(14,2) AS cmv,
-              (
-                COALESCE(SUM(vi.subtotal), 0)
-                - COALESCE(SUM(vi.costo_unitario_aplicado * vi.cantidad), 0)
-              )::numeric(14,2) AS margen_bruto
+            SELECT COUNT(*)::int AS cantidad
             FROM ventas v
-            LEFT JOIN venta_items vi ON vi.id_venta = v.id
             WHERE v.fecha::date = %s
               AND v.estado = ANY(%s)
-              {ventas_sucursal_sql}
+              {sucursal_sql}
             """,
             params,
         )
-        ventas = cur.fetchone()
+        cantidad_ventas = cur.fetchone()["cantidad"]
 
+        gastos_params = [fecha]
+        gastos_sucursal_sql = ""
+        if id_sucursal is not None:
+            gastos_sucursal_sql = "AND go.id_sucursal = %s"
+            gastos_params.append(id_sucursal)
         cur.execute(
             f"""
             SELECT COALESCE(SUM(go.monto), 0)::numeric(14,2) AS gastos_operativos
@@ -131,9 +174,13 @@ def get_resultado_dia(conn, fecha, id_sucursal=None):
         gastos = cur.fetchone()["gastos_operativos"]
 
     return {
-        **ventas,
+        "ventas_total": rentabilidad["ventas_netas"],
+        "cantidad_ventas": cantidad_ventas,
+        "ventas_items_total": rentabilidad["ventas_brutas"],
+        "cmv": rentabilidad["cmv"],
+        "margen_bruto": rentabilidad["margen_bruto"],
         "gastos_operativos": gastos,
-        "resultado_estimado": ventas["margen_bruto"] - gastos,
+        "resultado_estimado": rentabilidad["margen_bruto"] - gastos,
     }
 
 
@@ -260,7 +307,7 @@ def get_taller_pendiente_count(conn, id_sucursal=None):
             f"""
             SELECT COUNT(*)::int AS cantidad
             FROM ordenes_taller
-            WHERE estado NOT IN ('retirada', 'cancelada', 'facturada')
+            WHERE estado NOT IN ('retirada', 'cancelada')
               {sucursal_sql}
             """,
             params,
@@ -357,7 +404,7 @@ def get_top_productos(conn, fecha_desde, fecha_hasta, *, id_sucursal=None, order
         "margen": "margen_bruto DESC",
     }
     order_sql = order_map.get(order_by, order_map["cantidad"])
-    params = [fecha_desde, fecha_hasta]
+    params = [fecha_desde, fecha_hasta, list(VENTA_ESTADOS_REPORTING)]
     sucursal_sql = ""
     if id_sucursal is not None:
         sucursal_sql = "AND v.id_sucursal = %s"
@@ -367,27 +414,57 @@ def get_top_productos(conn, fecha_desde, fecha_hasta, *, id_sucursal=None, order
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             f"""
+            WITH devoluciones AS (
+              SELECT
+                vid.id_venta_item,
+                COALESCE(SUM(vid.cantidad_devuelta), 0) AS cantidad_devuelta,
+                COALESCE(SUM(vid.monto_credito_generado), 0) AS monto_devuelto
+              FROM venta_item_devoluciones vid
+              GROUP BY vid.id_venta_item
+            ),
+            items_netos AS (
+              SELECT
+                vi.id_variante,
+                COALESCE(p.nombre, vi.descripcion_snapshot) AS producto,
+                var.nombre_variante AS variante,
+                GREATEST(vi.cantidad - COALESCE(d.cantidad_devuelta, 0), 0) AS cantidad_neta,
+                (
+                  vi.subtotal
+                  * CASE
+                      WHEN COALESCE(v.subtotal_base, 0) > 0
+                        THEN v.total_final / v.subtotal_base
+                      ELSE 1
+                    END
+                  - COALESCE(d.monto_devuelto, 0)
+                ) AS venta_neta,
+                (
+                  vi.costo_unitario_aplicado
+                  * GREATEST(vi.cantidad - COALESCE(d.cantidad_devuelta, 0), 0)
+                ) AS costo_neto
+              FROM venta_items vi
+              INNER JOIN ventas v ON v.id = vi.id_venta
+              LEFT JOIN devoluciones d ON d.id_venta_item = vi.id
+              LEFT JOIN variantes var ON var.id = vi.id_variante
+              LEFT JOIN productos p ON p.id = var.id_producto
+              WHERE v.fecha::date >= %s
+                AND v.fecha::date <= %s
+                AND v.estado = ANY(%s)
+                AND vi.tipo_item = 'producto'
+                {sucursal_sql}
+            )
             SELECT
-              vi.id_variante,
-              COALESCE(p.nombre, vi.descripcion_snapshot) AS producto,
-              var.nombre_variante AS variante,
-              COALESCE(SUM(vi.cantidad), 0)::numeric(14,3) AS cantidad_vendida,
-              COALESCE(SUM(vi.subtotal), 0)::numeric(14,2) AS venta_total,
-              COALESCE(SUM(vi.costo_unitario_aplicado * vi.cantidad), 0)::numeric(14,2) AS costo_total,
+              id_variante,
+              producto,
+              variante,
+              COALESCE(SUM(cantidad_neta), 0)::numeric(14,3) AS cantidad_vendida,
+              COALESCE(SUM(venta_neta), 0)::numeric(14,2) AS venta_total,
+              COALESCE(SUM(costo_neto), 0)::numeric(14,2) AS costo_total,
               (
-                COALESCE(SUM(vi.subtotal), 0)
-                - COALESCE(SUM(vi.costo_unitario_aplicado * vi.cantidad), 0)
+                COALESCE(SUM(venta_neta), 0)
+                - COALESCE(SUM(costo_neto), 0)
               )::numeric(14,2) AS margen_bruto
-            FROM venta_items vi
-            INNER JOIN ventas v ON v.id = vi.id_venta
-            LEFT JOIN variantes var ON var.id = vi.id_variante
-            LEFT JOIN productos p ON p.id = var.id_producto
-            WHERE v.fecha::date >= %s
-              AND v.fecha::date <= %s
-              AND v.estado NOT IN ('anulada', 'devuelta')
-              AND vi.tipo_item = 'producto'
-              {sucursal_sql}
-            GROUP BY vi.id_variante, COALESCE(p.nombre, vi.descripcion_snapshot), var.nombre_variante
+            FROM items_netos
+            GROUP BY id_variante, producto, variante
             ORDER BY {order_sql}
             LIMIT %s
             """,
@@ -459,15 +536,17 @@ def count_repuestos_criticos(conn, *, id_sucursal=None, umbral=2):
 
 
 def get_productos_sin_movimiento(conn, *, id_sucursal=None, dias=90, limit=20):
-    params = []
+    params = [list(VENTA_ESTADOS_REPORTING)]
     ventas_sucursal_sql = ""
     sucursal_sql = ""
     if id_sucursal is not None:
         ventas_sucursal_sql = "AND v.id_sucursal = %s"
         params.append(id_sucursal)
+    params.append(dias)
+    if id_sucursal is not None:
         sucursal_sql = "AND ss.id_sucursal = %s"
         params.append(id_sucursal)
-    params.extend([dias, limit])
+    params.append(limit)
 
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
@@ -478,7 +557,7 @@ def get_productos_sin_movimiento(conn, *, id_sucursal=None, dias=90, limit=20):
                 MAX(v.fecha) AS ultima_venta
               FROM venta_items vi
               INNER JOIN ventas v ON v.id = vi.id_venta
-              WHERE v.estado NOT IN ('anulada', 'devuelta')
+              WHERE v.estado = ANY(%s)
                 AND vi.tipo_item = 'producto'
                 {ventas_sucursal_sql}
               GROUP BY vi.id_variante
@@ -518,15 +597,16 @@ def get_productos_sin_movimiento(conn, *, id_sucursal=None, dias=90, limit=20):
 
 
 def count_productos_sin_movimiento(conn, *, id_sucursal=None, dias=90):
-    params = []
+    params = [list(VENTA_ESTADOS_REPORTING)]
     ventas_sucursal_sql = ""
     sucursal_sql = ""
     if id_sucursal is not None:
         ventas_sucursal_sql = "AND v.id_sucursal = %s"
         params.append(id_sucursal)
+    params.append(dias)
+    if id_sucursal is not None:
         sucursal_sql = "AND ss.id_sucursal = %s"
         params.append(id_sucursal)
-    params.append(dias)
 
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
@@ -537,7 +617,7 @@ def count_productos_sin_movimiento(conn, *, id_sucursal=None, dias=90):
                 MAX(v.fecha) AS ultima_venta
               FROM venta_items vi
               INNER JOIN ventas v ON v.id = vi.id_venta
-              WHERE v.estado NOT IN ('anulada', 'devuelta')
+              WHERE v.estado = ANY(%s)
                 AND vi.tipo_item = 'producto'
                 {ventas_sucursal_sql}
               GROUP BY vi.id_variante
@@ -599,7 +679,15 @@ def get_capital_inmovilizado(conn, *, id_sucursal=None, limit=10):
 
 
 def get_ventas_ultimos_meses(conn, fecha_hasta, *, id_sucursal=None, meses=6):
-    params = [fecha_hasta, meses, fecha_hasta, fecha_hasta, meses, fecha_hasta]
+    params = [
+        fecha_hasta,
+        meses,
+        fecha_hasta,
+        fecha_hasta,
+        meses,
+        fecha_hasta,
+        list(VENTA_ESTADOS_REPORTING),
+    ]
     sucursal_sql = ""
     if id_sucursal is not None:
         sucursal_sql = "AND v.id_sucursal = %s"
@@ -614,15 +702,26 @@ def get_ventas_ultimos_meses(conn, fecha_hasta, *, id_sucursal=None, meses=6):
                 date_trunc('month', %s::date),
                 interval '1 month'
               )::date AS periodo
+            ), devoluciones AS (
+              SELECT
+                vi.id_venta,
+                COALESCE(SUM(vid.monto_credito_generado), 0) AS monto
+              FROM venta_item_devoluciones vid
+              INNER JOIN venta_items vi ON vi.id = vid.id_venta_item
+              GROUP BY vi.id_venta
             ), ventas_mes AS (
               SELECT
                 date_trunc('month', v.fecha)::date AS periodo,
-                COALESCE(SUM(v.total_final), 0)::numeric(14,2) AS ventas_total,
+                COALESCE(
+                  SUM(v.total_final - COALESCE(d.monto, 0)),
+                  0
+                )::numeric(14,2) AS ventas_total,
                 COUNT(*)::int AS cantidad_ventas
               FROM ventas v
+              LEFT JOIN devoluciones d ON d.id_venta = v.id
               WHERE v.fecha::date >= date_trunc('month', %s::date) - ((%s::int - 1) * interval '1 month')
                 AND v.fecha::date <= %s::date
-                AND v.estado NOT IN ('anulada', 'devuelta')
+                AND v.estado = ANY(%s)
                 {sucursal_sql}
               GROUP BY date_trunc('month', v.fecha)::date
             )
@@ -641,7 +740,7 @@ def get_ventas_ultimos_meses(conn, fecha_hasta, *, id_sucursal=None, meses=6):
 
 
 def get_top_clientes(conn, fecha_desde, fecha_hasta, *, id_sucursal=None, limit=10):
-    params = [fecha_desde, fecha_hasta]
+    params = [fecha_desde, fecha_hasta, list(VENTA_ESTADOS_REPORTING)]
     sucursal_sql = ""
     if id_sucursal is not None:
         sucursal_sql = "AND v.id_sucursal = %s"
@@ -651,19 +750,36 @@ def get_top_clientes(conn, fecha_desde, fecha_hasta, *, id_sucursal=None, limit=
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             f"""
+            WITH devoluciones AS (
+              SELECT
+                vi.id_venta,
+                COALESCE(SUM(vid.monto_credito_generado), 0) AS monto
+              FROM venta_item_devoluciones vid
+              INNER JOIN venta_items vi ON vi.id = vid.id_venta_item
+              GROUP BY vi.id_venta
+            ),
+            ventas_netas AS (
+              SELECT
+                v.id,
+                v.id_cliente,
+                v.fecha,
+                v.total_final - COALESCE(d.monto, 0) AS total_neto
+              FROM ventas v
+              LEFT JOIN devoluciones d ON d.id_venta = v.id
+              WHERE v.fecha::date >= %s
+                AND v.fecha::date <= %s
+                AND v.estado = ANY(%s)
+                {sucursal_sql}
+            )
             SELECT
               c.id AS id_cliente,
               COALESCE(NULLIF(c.razon_social, ''), c.nombre) AS cliente_nombre,
-              COUNT(v.id)::int AS cantidad_compras,
-              COALESCE(SUM(v.total_final), 0)::numeric(14,2) AS total_comprado,
-              COALESCE(AVG(v.total_final), 0)::numeric(14,2) AS ticket_promedio,
-              MAX(v.fecha) AS ultima_compra
-            FROM ventas v
-            INNER JOIN clientes c ON c.id = v.id_cliente
-            WHERE v.fecha::date >= %s
-              AND v.fecha::date <= %s
-              AND v.estado NOT IN ('anulada', 'devuelta')
-              {sucursal_sql}
+              COUNT(vn.id)::int AS cantidad_compras,
+              COALESCE(SUM(vn.total_neto), 0)::numeric(14,2) AS total_comprado,
+              COALESCE(AVG(vn.total_neto), 0)::numeric(14,2) AS ticket_promedio,
+              MAX(vn.fecha) AS ultima_compra
+            FROM ventas_netas vn
+            INNER JOIN clientes c ON c.id = vn.id_cliente
             GROUP BY c.id, COALESCE(NULLIF(c.razon_social, ''), c.nombre)
             ORDER BY total_comprado DESC, cantidad_compras DESC, cliente_nombre ASC
             LIMIT %s
@@ -727,7 +843,7 @@ def get_taller_pendiente(conn, *, id_sucursal=None, limit=10):
               ot.saldo_pendiente
             FROM ordenes_taller ot
             INNER JOIN clientes c ON c.id = ot.id_cliente
-            WHERE ot.estado NOT IN ('retirada', 'cancelada', 'facturada')
+            WHERE ot.estado NOT IN ('retirada', 'cancelada')
               {sucursal_sql}
             ORDER BY ot.fecha_ingreso ASC, ot.id ASC
             LIMIT %s

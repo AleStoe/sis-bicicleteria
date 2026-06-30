@@ -74,6 +74,9 @@ def get_orden_taller_items_presupuesto_by_orden_id(conn, orden_id: int):
                 oti.descripcion_snapshot,
                 oti.cantidad,
                 oti.precio_unitario,
+                oti.valor_cobertura_unitario,
+                oti.motivo_cobertura,
+                oti.observacion_cobertura,
                 oti.subtotal,
                 oti.etapa,
                 oti.aprobado,
@@ -102,6 +105,22 @@ def get_orden_taller_items_presupuesto_by_orden_id(conn, orden_id: int):
             WHERE oti.id_orden_taller = %s
               AND oti.etapa <> 'cancelado'
             ORDER BY oti.id
+            """,
+            (orden_id,),
+        )
+        return cur.fetchall()
+
+
+def get_notas_visibles_presupuesto_taller(conn, orden_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT tipo, contenido
+            FROM ordenes_taller_notas
+            WHERE id_orden_taller = %s
+              AND tipo IN ('cliente', 'recomendacion_futura')
+              AND estado <> 'archivada'
+            ORDER BY created_at ASC, id ASC
             """,
             (orden_id,),
         )

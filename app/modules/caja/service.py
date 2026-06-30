@@ -33,6 +33,7 @@ from app.shared.business_rules import (
 )
 from app.shared.constants import (
     AUDITORIA_ENTIDAD_CAJA,
+    AUDITORIA_ACCION_CAJA_ABIERTA,
     AUDITORIA_ACCION_CAJA_EGRESO,
     AUDITORIA_ACCION_CAJA_CERRADA,
     AUDITORIA_ACCION_CAJA_AJUSTE,
@@ -92,6 +93,22 @@ def abrir_caja(data):
                 data.id_sucursal,
                 data.monto_apertura,
                 data.id_usuario,
+            )
+            auditoria_service.registrar_evento(
+                conn,
+                id_usuario=data.id_usuario,
+                id_sucursal=data.id_sucursal,
+                entidad=AUDITORIA_ENTIDAD_CAJA,
+                entidad_id=caja_id,
+                accion=AUDITORIA_ACCION_CAJA_ABIERTA,
+                detalle=f"Caja abierta. monto_apertura={data.monto_apertura}",
+                metadata={
+                    "tipo": "caja_apertura",
+                    "caja_id": caja_id,
+                    "monto_apertura": str(data.monto_apertura),
+                },
+                origen_tipo="caja",
+                origen_id=caja_id,
             )
 
         return {"ok": True, "caja_id": caja_id, "estado": CAJA_ESTADO_ABIERTA}

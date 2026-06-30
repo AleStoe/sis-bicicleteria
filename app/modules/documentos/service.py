@@ -19,6 +19,7 @@ from .repository import (
 from .repository_taller_presupuesto import (
     get_orden_taller_presupuesto_by_id,
     get_orden_taller_items_presupuesto_by_orden_id,
+    get_notas_visibles_presupuesto_taller,
 )
 from app.modules.cotizaciones.repository import (
     get_cotizacion_by_id,
@@ -164,6 +165,7 @@ def obtener_datos_presupuesto_taller(orden_id: int):
             )
 
         items = get_orden_taller_items_presupuesto_by_orden_id(conn, orden_id)
+        notas = get_notas_visibles_presupuesto_taller(conn, orden_id)
 
         if not items:
             raise HTTPException(
@@ -174,6 +176,7 @@ def obtener_datos_presupuesto_taller(orden_id: int):
         return {
             "orden": orden,
             "items": items,
+            "notas": notas,
         }
 
     finally:

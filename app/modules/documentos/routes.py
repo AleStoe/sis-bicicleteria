@@ -17,6 +17,7 @@ from .pdf_resumen_cobros import generar_resumen_cobros_pdf
 from .pdf_taller_presupuesto import generar_presupuesto_taller_pdf
 from .pdf_cotizacion import generar_cotizacion_pdf
 from .pdf_etiquetas import generar_cartel_precio_a4_pdf, generar_etiqueta_deposito_pdf
+from .imagen_historia import generar_historia_precio_png
 
 router = APIRouter()
 
@@ -126,7 +127,27 @@ def cartel_precio_variante(variante_id: int):
         headers={
             "Content-Disposition": (
                 f'inline; filename="precio-variante-{variante_id}.pdf"'
-            )
+            ),
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
+
+
+@router.get("/etiquetas/variantes/{variante_id}/historia")
+def historia_precio_variante(variante_id: int):
+    data = obtener_datos_etiqueta_variante(variante_id)
+    image_bytes = generar_historia_precio_png(data)
+
+    return Response(
+        content=image_bytes,
+        media_type="image/png",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="historia-variante-{variante_id}.png"'
+            ),
+            "Cache-Control": "no-store, no-cache, must-revalidate",
         },
     )
 
@@ -147,6 +168,23 @@ def etiqueta_deposito_bicicleta(bicicleta_id: int, copias: int = 1):
     )
 
 
+@router.get("/etiquetas/bicicletas/{bicicleta_id}/historia")
+def historia_precio_bicicleta(bicicleta_id: int):
+    data = obtener_datos_etiqueta_bicicleta(bicicleta_id)
+    image_bytes = generar_historia_precio_png(data)
+
+    return Response(
+        content=image_bytes,
+        media_type="image/png",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="historia-bicicleta-{bicicleta_id}.png"'
+            ),
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+        },
+    )
+
+
 @router.get("/etiquetas/bicicletas/{bicicleta_id}/precio-a4")
 def cartel_precio_bicicleta(bicicleta_id: int):
     data = obtener_datos_etiqueta_bicicleta(bicicleta_id)
@@ -158,6 +196,9 @@ def cartel_precio_bicicleta(bicicleta_id: int):
         headers={
             "Content-Disposition": (
                 f'inline; filename="precio-bicicleta-{bicicleta_id}.pdf"'
-            )
+            ),
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
         },
     )

@@ -47,6 +47,35 @@ table {
   max-width: 100%;
 }
 
+.app-sidebar-nav {
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(208, 213, 221, 0.48) transparent;
+}
+
+.app-sidebar-nav::-webkit-scrollbar {
+  width: 6px;
+}
+
+.app-sidebar-nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.app-sidebar-nav::-webkit-scrollbar-thumb {
+  background: rgba(208, 213, 221, 0.42);
+  border-radius: 999px;
+}
+
+.app-sidebar-nav::-webkit-scrollbar-thumb:hover {
+  background: rgba(208, 213, 221, 0.68);
+}
+
+.app-sidebar-nav::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
 td,
 th {
   overflow-wrap: anywhere;

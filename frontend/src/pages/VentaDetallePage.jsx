@@ -273,20 +273,19 @@ export default function VentaDetallePage() {
     let modoDevolucion = "credito_comercial";
 
     if (tienePagosExternosConfirmados()) {
-      const usarReversionExterna = await pedirConfirmacion({
-        title: "Tipo de devolución",
+      const pagoExternoCancelado = await pedirConfirmacion({
+        title: "Confirmar cancelación externa",
         message:
           "La venta tiene pagos con tarjeta o MercadoPago.\n\n" +
-          "Aceptar = registrar reversión de pago externo (NO genera crédito).\n\n" +
-          "Cancelar = generar crédito comercial.",
-        confirmText: "Reversión externa",
-        cancelText: "Crédito comercial",
+          "Continuá únicamente si ya cancelaste esos importes en la terminal o plataforma.\n\n" +
+          "El sistema generará crédito sólo por efectivo/transferencia y restaurará cualquier crédito usado.",
+        confirmText: "Ya lo cancelé",
+        cancelText: "Volver",
         variant: "warning",
       });
 
-      modoDevolucion = usarReversionExterna
-        ? "reversion_pago_externo"
-        : "credito_comercial";
+      if (!pagoExternoCancelado) return;
+      modoDevolucion = "reversion_pago_externo";
     }
     const motivo = await pedirPrompt({
       title: "Devolución total",
@@ -330,7 +329,7 @@ export default function VentaDetallePage() {
 
       setMensaje(
         modoDevolucion === "reversion_pago_externo"
-          ? "Venta devuelta correctamente. Los pagos externos fueron marcados como devueltos."
+          ? `Venta devuelta correctamente. Pago externo marcado como devuelto. Crédito por efectivo/transferencia: ${formatMoney(result.credito_generado)}.`
           : `Venta devuelta correctamente. Crédito generado: ${formatMoney(result.credito_generado)}`
       );
     } catch (err) {
@@ -364,6 +363,13 @@ export default function VentaDetallePage() {
   }
 
   async function handleDevolverItem(item) {
+    if (tienePagosExternosConfirmados()) {
+      setError(
+        "No se puede hacer una devolución parcial mientras existan pagos confirmados con tarjeta o Mercado Pago. Hacé una devolución total o resolvé primero el pago externo."
+      );
+      return;
+    }
+
     const cantidadMaxima = getCantidadDisponibleDevolucion(item);
 
     if (cantidadMaxima <= 0) {
@@ -467,20 +473,19 @@ async function handleDevolverSerializada(item) {
     let modoDevolucion = "credito_comercial";
 
     if (tienePagosExternosConfirmados()) {
-      const usarReversionExterna = await pedirConfirmacion({
-        title: "Tipo de devolución",
+      const pagoExternoCancelado = await pedirConfirmacion({
+        title: "Confirmar cancelación externa",
         message:
           "Esta venta tiene pagos con tarjeta o MercadoPago.\n\n" +
-          "Reversión externa: usala solo si ya devolviste/cancelaste el pago en Posnet, banco o MercadoPago. No genera crédito comercial ni egreso de caja.\n\n" +
-          "Crédito comercial: genera saldo a favor del cliente para usar o reintegrar después.",
-        confirmText: "Reversión externa",
-        cancelText: "Crédito comercial",
+          "Continuá únicamente si ya cancelaste el pago en Posnet, banco o Mercado Pago.\n\n" +
+          "El sistema no generará crédito comercial por esa parte electrónica.",
+        confirmText: "Ya lo cancelé",
+        cancelText: "Volver",
         variant: "warning",
       });
 
-      modoDevolucion = usarReversionExterna
-        ? "reversion_pago_externo"
-        : "credito_comercial";
+      if (!pagoExternoCancelado) return;
+      modoDevolucion = "reversion_pago_externo";
     }
 
     const mensajeMotivo =

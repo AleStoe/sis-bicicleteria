@@ -54,12 +54,18 @@ def get_bicicleta_cliente(conn, id_bicicleta_cliente: int):
             SELECT
                 id,
                 id_cliente,
+                id_bicicleta_serializada,
+                id_venta_origen,
                 marca,
                 modelo,
                 rodado,
                 color,
                 numero_cuadro,
-                notas
+                notas,
+                plan_postventa,
+                fecha_limite_service_gratis,
+                service_gratis_usado,
+                service_gratis_autorizado_fuera_plazo
             FROM bicicletas_clientes
             WHERE id = %s
             """,
@@ -150,6 +156,8 @@ def _ordenes_taller_select_sql():
                 ot.id_sucursal,
                 ot.id_cliente,
                 ot.id_bicicleta_cliente,
+                bc.id_bicicleta_serializada,
+                bc.id_venta_origen,
                 c.nombre AS cliente_nombre,
                 c.nombre_persona AS cliente_nombre_persona,
                 c.apellido AS cliente_apellido,
@@ -304,6 +312,8 @@ def get_orden_taller_by_id(conn, orden_id: int):
                 ot.id_sucursal,
                 ot.id_cliente,
                 ot.id_bicicleta_cliente,
+                bc.id_bicicleta_serializada,
+                bc.id_venta_origen,
                 c.nombre AS cliente_nombre,
                 c.nombre_persona AS cliente_nombre_persona,
                 c.apellido AS cliente_apellido,
@@ -375,6 +385,8 @@ def get_orden_taller_by_id_for_update(conn, orden_id: int):
                 ot.id_sucursal,
                 ot.id_cliente,
                 ot.id_bicicleta_cliente,
+                bc.id_bicicleta_serializada,
+                bc.id_venta_origen,
                 c.nombre AS cliente_nombre,
                 c.nombre_persona AS cliente_nombre_persona,
                 c.apellido AS cliente_apellido,
@@ -499,9 +511,12 @@ def insert_orden_taller_item(conn, data: dict):
                 descripcion_snapshot,
                 cantidad,
                 precio_unitario,
+                valor_cobertura_unitario,
+                motivo_cobertura,
+                observacion_cobertura,
                 subtotal
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING
                 id,
                 id_orden_taller,
@@ -511,6 +526,9 @@ def insert_orden_taller_item(conn, data: dict):
                 descripcion_snapshot,
                 cantidad,
                 precio_unitario,
+                valor_cobertura_unitario,
+                motivo_cobertura,
+                observacion_cobertura,
                 subtotal,
                 created_at,
                 etapa,
@@ -526,6 +544,9 @@ def insert_orden_taller_item(conn, data: dict):
                 data["descripcion_snapshot"],
                 data["cantidad"],
                 data["precio_unitario"],
+                data.get("valor_cobertura_unitario", 0),
+                data.get("motivo_cobertura"),
+                data.get("observacion_cobertura"),
                 data["subtotal"],
             ),
         )
@@ -544,6 +565,9 @@ def get_items_orden_taller(conn, orden_id: int):
                 descripcion_snapshot,
                 cantidad,
                 precio_unitario,
+                valor_cobertura_unitario,
+                motivo_cobertura,
+                observacion_cobertura,
                 subtotal,
                 created_at,
                 etapa,
@@ -632,6 +656,175 @@ def get_eventos_orden_taller(conn, orden_id: int):
         )
         return cur.fetchall()
 
+
+def _nota_taller_select_sql():
+    return """
+        SELECT
+            n.id,
+            n.id_orden_taller,
+            n.id_bicicleta_cliente,
+            n.tipo,
+            n.contenido,
+            n.estado,
+            n.id_usuario_creador,
+            uc.nombre AS usuario_creador_nombre,
+            n.id_usuario_actualiza,
+            ua.nombre AS usuario_actualiza_nombre,
+            n.fecha_resolucion,
+            n.created_at,
+            n.updated_at
+        FROM ordenes_taller_notas n
+        LEFT JOIN usuarios uc ON uc.id = n.id_usuario_creador
+        LEFT JOIN usuarios ua ON ua.id = n.id_usuario_actualiza
+    """
+
+
+def insert_nota_orden_taller(
+    conn,
+    *,
+    orden_id,
+    bicicleta_id,
+    tipo,
+    contenido,
+    id_usuario,
+):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            INSERT INTO ordenes_taller_notas (
+                id_orden_taller,
+                id_bicicleta_cliente,
+                tipo,
+                contenido,
+                id_usuario_creador
+            )
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING id
+            """,
+            (orden_id, bicicleta_id, tipo, contenido, id_usuario),
+        )
+        nota_id = cur.fetchone()["id"]
+    return get_nota_orden_taller_by_id(conn, orden_id, nota_id)
+
+
+def get_notas_orden_taller(conn, orden_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            _nota_taller_select_sql()
+            + """
+            WHERE n.id_orden_taller = %s
+            ORDER BY
+                CASE n.estado
+                    WHEN 'activa' THEN 0
+                    WHEN 'resuelta' THEN 1
+                    ELSE 2
+                END,
+                n.created_at DESC,
+                n.id DESC
+            """,
+            (orden_id,),
+        )
+        return cur.fetchall()
+
+
+def get_alertas_activas_bicicleta(
+    conn,
+    bicicleta_id: int,
+    *,
+    excluir_orden_id: int | None = None,
+):
+    sql = (
+        _nota_taller_select_sql()
+        + """
+        WHERE n.id_bicicleta_cliente = %s
+          AND n.tipo = 'alerta_tecnica'
+          AND n.estado = 'activa'
+        """
+    )
+    params = [bicicleta_id]
+    if excluir_orden_id is not None:
+        sql += " AND n.id_orden_taller <> %s"
+        params.append(excluir_orden_id)
+    sql += " ORDER BY n.created_at DESC, n.id DESC"
+
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(sql, params)
+        return cur.fetchall()
+
+
+def get_nota_orden_taller_by_id(conn, orden_id: int, nota_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            _nota_taller_select_sql()
+            + """
+            WHERE n.id_orden_taller = %s
+              AND n.id = %s
+            """,
+            (orden_id, nota_id),
+        )
+        return cur.fetchone()
+
+
+def update_nota_orden_taller(
+    conn,
+    *,
+    orden_id,
+    nota_id,
+    contenido,
+    estado,
+    id_usuario,
+):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            UPDATE ordenes_taller_notas
+            SET
+                contenido = COALESCE(%s, contenido),
+                estado = COALESCE(%s, estado),
+                id_usuario_actualiza = %s,
+                fecha_resolucion = CASE
+                    WHEN %s = 'resuelta' THEN now()
+                    WHEN %s = 'activa' THEN NULL
+                    ELSE fecha_resolucion
+                END,
+                updated_at = now()
+            WHERE id_orden_taller = %s
+              AND id = %s
+            RETURNING id
+            """,
+            (
+                contenido,
+                estado,
+                id_usuario,
+                estado,
+                estado,
+                orden_id,
+                nota_id,
+            ),
+        )
+        row = cur.fetchone()
+
+    if row is None:
+        return None
+    return get_nota_orden_taller_by_id(conn, orden_id, nota_id)
+
+
+def get_notas_cliente_orden_taller(conn, orden_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT id, tipo, contenido, estado, created_at
+            FROM ordenes_taller_notas
+            WHERE id_orden_taller = %s
+              AND tipo IN ('cliente', 'recomendacion_futura')
+              AND estado <> 'archivada'
+            ORDER BY created_at ASC, id ASC
+            """,
+            (orden_id,),
+        )
+        return cur.fetchall()
+
+
 def get_item_orden_taller_by_id_for_update(conn, item_id: int):
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
@@ -646,6 +839,9 @@ def get_item_orden_taller_by_id_for_update(conn, item_id: int):
                 oti.descripcion_snapshot,
                 oti.cantidad,
                 oti.precio_unitario,
+                oti.valor_cobertura_unitario,
+                oti.motivo_cobertura,
+                oti.observacion_cobertura,
                 oti.costo_unitario_aplicado,
                 oti.aprobado,
                 oti.subtotal,

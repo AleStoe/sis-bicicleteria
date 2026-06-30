@@ -7,6 +7,7 @@ from app.modules.servicios_taller.repository import get_servicio_taller_by_id
 from app.modules.authz.service import (
     exigir_permiso_anular_venta,
     exigir_permiso_entregar_con_deuda,
+    exigir_permiso_generar_deuda,
 )
 from app.modules.reglas_comerciales.service import (
     simular_reglas_comerciales,
@@ -106,6 +107,7 @@ def _consolidar_items(items):
                 id_servicio_taller,
                 item.get("precio_unitario_manual"),
                 bool(item.get("bonificado", False)),
+                item.get("bonificacion_unitaria_manual"),
                 item.get("motivo_precio_manual"),
                 item.get("motivo_bonificacion"),
                 item.get("id_orden_taller_item"),
@@ -121,6 +123,9 @@ def _consolidar_items(items):
                     "id_bicicleta_serializada": None,
                     "precio_unitario_manual": item.get("precio_unitario_manual"),
                     "bonificado": bool(item.get("bonificado", False)),
+                    "bonificacion_unitaria_manual": item.get(
+                        "bonificacion_unitaria_manual"
+                    ),
                     "motivo_precio_manual": item.get("motivo_precio_manual"),
                     "motivo_bonificacion": item.get("motivo_bonificacion"),
                     "id_orden_taller_item": item.get("id_orden_taller_item"),
@@ -166,6 +171,14 @@ def _consolidar_items(items):
                 "id_servicio_taller": None,
                 "cantidad": cantidad,
                 "id_bicicleta_serializada": id_bicicleta_serializada,
+                "precio_unitario_manual": item.get("precio_unitario_manual"),
+                "bonificado": bool(item.get("bonificado", False)),
+                "bonificacion_unitaria_manual": item.get(
+                    "bonificacion_unitaria_manual"
+                ),
+                "motivo_precio_manual": item.get("motivo_precio_manual"),
+                "motivo_bonificacion": item.get("motivo_bonificacion"),
+                "id_orden_taller_item": item.get("id_orden_taller_item"),
             }
             continue
 
@@ -175,6 +188,7 @@ def _consolidar_items(items):
             None,
             item.get("precio_unitario_manual"),
             bool(item.get("bonificado", False)),
+            item.get("bonificacion_unitaria_manual"),
             item.get("motivo_precio_manual"),
             item.get("motivo_bonificacion"),
             item.get("id_orden_taller_item"),
@@ -189,6 +203,9 @@ def _consolidar_items(items):
                 "id_bicicleta_serializada": None,
                 "precio_unitario_manual": item.get("precio_unitario_manual"),
                 "bonificado": bool(item.get("bonificado", False)),
+                "bonificacion_unitaria_manual": item.get(
+                    "bonificacion_unitaria_manual"
+                ),
                 "motivo_precio_manual": item.get("motivo_precio_manual"),
                 "motivo_bonificacion": item.get("motivo_bonificacion"),
                 "id_orden_taller_item": item.get("id_orden_taller_item"),
@@ -197,6 +214,43 @@ def _consolidar_items(items):
             consolidados[clave]["cantidad"] += cantidad
 
     return list(consolidados.values())
+
+
+def _resolver_precio_item(
+    *,
+    precio_lista,
+    precio_manual,
+    bonificado,
+    bonificacion_unitaria_manual,
+):
+    precio_lista = redondear_monto(to_decimal(precio_lista))
+
+    if bonificacion_unitaria_manual is not None:
+        precio_referencia = redondear_monto(to_decimal(precio_manual))
+        bonificacion = redondear_monto(
+            to_decimal(bonificacion_unitaria_manual)
+        )
+        if bonificacion > precio_referencia:
+            raise HTTPException(
+                status_code=400,
+                detail="La bonificación no puede superar el precio del ítem",
+            )
+        return (
+            precio_referencia,
+            redondear_monto(precio_referencia - bonificacion),
+            bonificacion,
+        )
+
+    if bonificado:
+        return precio_lista, Decimal("0"), precio_lista
+
+    precio_final = (
+        redondear_monto(to_decimal(precio_manual))
+        if precio_manual is not None
+        else precio_lista
+    )
+    return precio_lista, precio_final, Decimal("0")
+
 
 def _obtener_modo_devolucion(data) -> str:
     modo = getattr(data, "modo_devolucion", MODO_DEVOLUCION_CREDITO_COMERCIAL)
@@ -211,8 +265,10 @@ def _obtener_modo_devolucion(data) -> str:
 def _registrar_reversion_pago_externo_por_devolucion(
     conn,
     *,
+    venta,
     venta_id: int,
     id_usuario: int,
+    monto_disponible: Decimal,
 ):
     pagos = get_pagos_confirmados_por_venta(conn, venta_id)
 
@@ -222,9 +278,26 @@ def _registrar_reversion_pago_externo_por_devolucion(
     ]
 
     if not pagos_externos:
+        return Decimal("0")
+
+    total_externo = redondear_monto(
+        sum(
+            (
+                redondear_monto(pago["monto_total_cobrado"])
+                for pago in pagos_externos
+            ),
+            Decimal("0"),
+        )
+    )
+
+    if abs(total_externo - monto_disponible) > Decimal("0.01"):
         raise HTTPException(
-            status_code=400,
-            detail="La venta no tiene pagos externos confirmados para marcar como devueltos",
+            status_code=409,
+            detail=(
+                "La devolución tocaría sólo una parte del pago electrónico. "
+                "No se puede marcar una tarjeta o Mercado Pago parcialmente "
+                "devuelto sin una asignación expresa del operador."
+            ),
         )
 
     for pago in pagos_externos:
@@ -233,40 +306,152 @@ def _registrar_reversion_pago_externo_por_devolucion(
             pago["id"],
             PAGO_ESTADO_DEVUELTO_EXTERNO,
         )
+        auditoria_service.registrar_evento(
+            conn,
+            id_usuario=id_usuario,
+            id_sucursal=venta["id_sucursal"],
+            entidad="pago",
+            entidad_id=pago["id"],
+            accion="pago_devuelto_externo",
+            detalle=(
+                f"Pago externo marcado como devuelto por devolución de "
+                f"venta #{venta_id}. medio={pago['medio_pago']}, "
+                f"monto={pago['monto_total_cobrado']}"
+            ),
+            metadata={
+                "tipo": "pago_devuelto_externo",
+                "venta_id": venta_id,
+                "pago_id": pago["id"],
+                "medio_pago": pago["medio_pago"],
+                "monto_total_cobrado": str(
+                    pago["monto_total_cobrado"]
+                ),
+            },
+            origen_tipo=ORIGEN_VENTA,
+            origen_id=venta_id,
+        )
 
-def _resolver_credito_por_devolucion(
+    return total_externo
+
+
+def _resolver_valor_devolucion(
     conn,
     *,
     venta,
     venta_id: int,
-    monto_credito: Decimal,
+    monto_devolucion: Decimal,
     id_usuario: int,
     modo_devolucion: str,
 ):
-    if monto_credito <= Decimal("0"):
-        return None
+    monto_devolucion = redondear_monto(monto_devolucion)
+    if monto_devolucion <= Decimal("0"):
+        return {
+            "monto_deuda_cancelada": Decimal("0"),
+            "monto_credito_restaurado": Decimal("0"),
+            "monto_credito_generado": Decimal("0"),
+            "monto_externo_devuelto": Decimal("0"),
+        }
 
-    if modo_devolucion == MODO_DEVOLUCION_CREDITO_COMERCIAL:
-        return creditos_service.crear_credito_por_devolucion_venta(
+    restante = monto_devolucion
+
+    resultado_deuda = deudas_service.cancelar_deuda_por_devolucion_venta(
+        conn,
+        id_venta=venta_id,
+        id_usuario=id_usuario,
+        monto_maximo=restante,
+    )
+    restante = redondear_monto(
+        restante - resultado_deuda["monto_cancelado"]
+    )
+
+    resultado_restauracion = (
+        creditos_service.restaurar_credito_aplicado_a_venta(
+            conn,
+            id_venta=venta_id,
+            id_usuario=id_usuario,
+            monto_maximo=restante,
+            motivo="Crédito restaurado por devolución",
+        )
+        if restante > Decimal("0")
+        else {"monto_restaurado": Decimal("0")}
+    )
+    restante = redondear_monto(
+        restante - resultado_restauracion["monto_restaurado"]
+    )
+
+    pagos_confirmados = get_pagos_confirmados_por_venta(conn, venta_id)
+    total_contado_confirmado = redondear_monto(
+        sum(
+            (
+                redondear_monto(pago["monto_total_cobrado"])
+                for pago in pagos_confirmados
+                if pago["medio_pago"] in {"efectivo", "transferencia"}
+            ),
+            Decimal("0"),
+        )
+    )
+    credito_contado_ya_generado = redondear_monto(
+        creditos_repository.get_total_credito_generado_por_venta(
+            conn,
+            venta_id,
+        )
+    )
+    contado_disponible = max(
+        redondear_monto(
+            total_contado_confirmado - credito_contado_ya_generado
+        ),
+        Decimal("0"),
+    )
+    monto_credito = min(restante, contado_disponible)
+
+    if monto_credito > Decimal("0"):
+        creditos_service.crear_credito_por_devolucion_venta(
             conn,
             id_cliente=venta["id_cliente"],
             id_venta=venta_id,
             monto_credito=monto_credito,
             id_usuario=id_usuario,
         )
+        restante = redondear_monto(restante - monto_credito)
 
-    if modo_devolucion == MODO_DEVOLUCION_REVERSION_PAGO_EXTERNO:
-        _registrar_reversion_pago_externo_por_devolucion(
+    monto_externo = Decimal("0")
+    if restante > Decimal("0"):
+        if modo_devolucion != MODO_DEVOLUCION_REVERSION_PAGO_EXTERNO:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "La devolución incluye dinero pagado con tarjeta o "
+                    "Mercado Pago. Cancelá primero ese importe en la terminal "
+                    "o plataforma y elegí reversión externa."
+                ),
+            )
+
+        monto_externo = _registrar_reversion_pago_externo_por_devolucion(
             conn,
+            venta=venta,
             venta_id=venta_id,
             id_usuario=id_usuario,
+            monto_disponible=restante,
         )
-        return None
+        restante = redondear_monto(restante - monto_externo)
 
-    raise HTTPException(
-        status_code=400,
-        detail=f"Modo de devolución inválido: {modo_devolucion}",
-    )
+    if abs(restante) > Decimal("0.01"):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "No se pudo asignar completamente el valor de la devolución "
+                "a deuda, crédito, efectivo/transferencia o pagos externos. "
+                f"Diferencia pendiente: {restante}"
+            ),
+        )
+
+    return {
+        "monto_deuda_cancelada": resultado_deuda["monto_cancelado"],
+        "saldo_deuda_restante": resultado_deuda["saldo_restante"],
+        "monto_credito_restaurado": resultado_restauracion["monto_restaurado"],
+        "monto_credito_generado": monto_credito,
+        "monto_externo_devuelto": monto_externo,
+    }
 
 def _validar_cliente(conn, id_cliente: int):
     cliente = get_cliente_by_id(conn, id_cliente)
@@ -561,6 +746,7 @@ def crear_venta(data):
                     "id_bicicleta_serializada": item.id_bicicleta_serializada,
                     "precio_unitario_manual": item.precio_unitario_manual,
                     "bonificado": item.bonificado,
+                    "bonificacion_unitaria_manual": item.bonificacion_unitaria_manual,
                     "motivo_precio_manual": item.motivo_precio_manual,
                     "motivo_bonificacion": item.motivo_bonificacion,
                     "id_orden_taller_item": item.id_orden_taller_item,
@@ -589,6 +775,9 @@ def crear_venta(data):
                 cantidad = to_decimal(item["cantidad"])
                 bonificado = item.get("bonificado", False)
                 precio_manual = item.get("precio_unitario_manual")
+                bonificacion_manual = item.get(
+                    "bonificacion_unitaria_manual"
+                )
 
                 if item.get("tipo_item", "producto") == "servicio_taller":
                     servicio = get_servicio_taller_by_id(conn, item["id_servicio_taller"])
@@ -605,9 +794,14 @@ def crear_venta(data):
                             detail="No se puede vender un servicio de taller inactivo",
                         )
 
-                    precio_lista = redondear_monto(precio_manual)
-
-                    precio_final = Decimal("0") if bonificado else precio_lista
+                    precio_lista, precio_final, bonificacion_unitaria = (
+                        _resolver_precio_item(
+                            precio_lista=precio_manual,
+                            precio_manual=precio_manual,
+                            bonificado=bonificado,
+                            bonificacion_unitaria_manual=bonificacion_manual,
+                        )
+                    )
                     subtotal = redondear_monto(precio_final * cantidad)
                     subtotal_total = redondear_monto(subtotal_total + subtotal)
 
@@ -622,6 +816,7 @@ def crear_venta(data):
                             "precio_final": precio_final,
                             "precio_lista": precio_lista,
                             "bonificado": bonificado,
+                            "bonificacion_unitaria": bonificacion_unitaria,
                             "motivo_precio_manual": item.get("motivo_precio_manual"),
                             "motivo_bonificacion": item.get("motivo_bonificacion"),
                         }
@@ -646,14 +841,14 @@ def crear_venta(data):
                         ),
                     )
 
-                if bonificado:
-                    precio_final = Decimal("0")
-                else:
-                    precio_final = (
-                        redondear_monto(to_decimal(precio_manual))
-                        if precio_manual is not None
-                        else precio_lista
+                precio_lista, precio_final, bonificacion_unitaria = (
+                    _resolver_precio_item(
+                        precio_lista=precio_lista,
+                        precio_manual=precio_manual,
+                        bonificado=bonificado,
+                        bonificacion_unitaria_manual=bonificacion_manual,
                     )
+                )
 
                 subtotal = redondear_monto(precio_final * cantidad)
                 subtotal_total = redondear_monto(subtotal_total + subtotal)
@@ -676,6 +871,7 @@ def crear_venta(data):
                         "precio_final": precio_final,
                         "precio_lista": precio_lista,
                         "bonificado": bonificado,
+                        "bonificacion_unitaria": bonificacion_unitaria,
                         "motivo_precio_manual": item.get("motivo_precio_manual"),
                         "motivo_bonificacion": item.get("motivo_bonificacion"),
                     }
@@ -715,6 +911,8 @@ def crear_venta(data):
                 )
 
             credito_aplicado = Decimal("0")
+            credito_base_cubierta = Decimal("0")
+            credito_descuento_aplicado = Decimal("0")
 
             venta_id = insert_venta(
                 conn,
@@ -773,6 +971,9 @@ def crear_venta(data):
                             "precio_unitario_original": fila["precio_lista"],
                             "precio_unitario_final": fila["precio_final"],
                             "bonificado": fila.get("bonificado", False),
+                            "bonificacion_unitaria": fila.get(
+                                "bonificacion_unitaria", 0
+                            ),
                             "motivo_bonificacion": fila.get("motivo_bonificacion"),
                             "motivo_precio_manual": fila.get("motivo_precio_manual"),
                             "costo_unitario_aplicado": Decimal("0"),
@@ -804,6 +1005,9 @@ def crear_venta(data):
                         "precio_unitario_original": fila.get("precio_lista") or fila.get("precio_final"),
                         "precio_unitario_final": fila.get("precio_final") or fila.get("precio_lista"),
                         "bonificado": fila.get("bonificado", False),
+                        "bonificacion_unitaria": fila.get(
+                            "bonificacion_unitaria", 0
+                        ),
                         "motivo_bonificacion": fila.get("motivo_bonificacion"),
                         "motivo_precio_manual": fila.get("motivo_precio_manual"),
                         "costo_unitario_aplicado": costo_promedio,
@@ -876,13 +1080,24 @@ def crear_venta(data):
                     conn,
                     id_cliente=data.id_cliente,
                     id_venta=venta_id,
-                    total_venta=redondear_monto(resultado_reglas["saldo_estimado"]),
+                    total_venta=redondear_monto(
+                        resultado_reglas["saldo_base_estimado"]
+                    ),
                     usar_credito=usar_credito,
                     monto_credito_a_aplicar=monto_credito_a_aplicar,
                     id_usuario=data.id_usuario,
                 )
                 credito_aplicado = redondear_monto(resultado_credito["credito_aplicado_total"])
-                saldo_despues_credito = redondear_monto(total_final - credito_aplicado)
+                credito_base_cubierta = redondear_monto(
+                    resultado_credito["monto_base_cubierto"]
+                )
+                credito_descuento_aplicado = redondear_monto(
+                    resultado_credito["descuento_aplicado"]
+                )
+                saldo_despues_credito = redondear_monto(
+                    resultado_reglas["saldo_base_estimado"]
+                    - credito_base_cubierta
+                )
 
                 if saldo_despues_credito == Decimal("0"):
                     estado_venta = "pagada_total"
@@ -928,7 +1143,7 @@ def crear_venta(data):
                 pagos_service.registrar_pago(conn, payload_pago)
 
 
-            if pagos:
+            if pagos or credito_aplicado > Decimal("0"):
                 venta_actualizada = sincronizar_venta_financiera_desde_pagos(conn, venta_id)
                 saldo_pendiente = redondear_monto(
                     venta_actualizada["saldo_pendiente"]
@@ -966,6 +1181,8 @@ def crear_venta(data):
                     f"Venta creada. cliente={data.id_cliente}, "
                     f"total_final={total_final}, "
                     f"credito_aplicado={credito_aplicado}, "
+                    f"credito_base_cubierta={credito_base_cubierta}, "
+                    f"credito_descuento={credito_descuento_aplicado}, "
                     f"saldo_pendiente={saldo_pendiente}, "
                     f"estado={estado_venta}"
                 ),
@@ -976,6 +1193,10 @@ def crear_venta(data):
                     "sucursal_id": data.id_sucursal,
                     "total_final": str(total_final),
                     "credito_aplicado": str(credito_aplicado),
+                    "credito_base_cubierta": str(credito_base_cubierta),
+                    "credito_descuento_aplicado": str(
+                        credito_descuento_aplicado
+                    ),
                     "saldo_pendiente": str(saldo_pendiente),
                     "estado": estado_venta,
                 },
@@ -989,6 +1210,8 @@ def crear_venta(data):
             "venta_id": venta_id,
             "estado": estado_venta,
             "credito_aplicado": credito_aplicado,
+            "credito_base_cubierta": credito_base_cubierta,
+            "credito_descuento_aplicado": credito_descuento_aplicado,
             "saldo_pendiente": saldo_pendiente,
         }
 
@@ -1163,6 +1386,7 @@ def entregar_venta(venta_id: int, data):
 
             if entrega_con_deuda:
                 exigir_permiso_entregar_con_deuda(conn, data.id_usuario)
+                exigir_permiso_generar_deuda(conn, data.id_usuario)
 
             items = get_venta_items_detallados_by_venta_id(conn, venta_id)
 
@@ -1416,6 +1640,18 @@ def anular_venta(venta_id: int, data):
                         ),
                     ) from exc
 
+            restauracion_credito = (
+                creditos_service.restaurar_credito_aplicado_a_venta(
+                    conn,
+                    id_venta=venta_id,
+                    id_usuario=data.id_usuario,
+                    motivo="Crédito restaurado por anulación de venta",
+                )
+            )
+            credito_restaurado = redondear_monto(
+                restauracion_credito["monto_restaurado"]
+            )
+
             total_pagado = get_total_pagado_confirmado_por_venta(conn, venta_id)
 
             if total_pagado > 0:
@@ -1449,6 +1685,7 @@ def anular_venta(venta_id: int, data):
                     f"Venta anulada. anulacion_id={anulacion_id}, "
                     f"motivo={data.motivo}, "
                     f"total_pagado={total_pagado}, "
+                    f"credito_restaurado={credito_restaurado}, "
                     f"credito_generado={'si' if total_pagado > 0 else 'no'}"
                 ),
                 metadata={
@@ -1457,6 +1694,7 @@ def anular_venta(venta_id: int, data):
                     "anulacion_id": anulacion_id,
                     "motivo": data.motivo,
                     "total_pagado": str(total_pagado),
+                    "credito_restaurado": str(credito_restaurado),
                     "credito_generado": total_pagado > 0,
                     # si lo tenés en scope:
                     "credito_monto": str(total_pagado) if total_pagado > 0 else "0.00",
@@ -1477,6 +1715,7 @@ def anular_venta(venta_id: int, data):
             "anulacion_id": anulacion_id,
             "credito_generado": total_pagado > 0,
             "monto_credito": total_pagado,
+            "credito_restaurado": credito_restaurado,
         }
 
     finally:
@@ -1599,11 +1838,11 @@ def devolver_item_serializado_entregado(venta_id: int, data):
                     ),
                 },
             )
-            _resolver_credito_por_devolucion(
+            _resolver_valor_devolucion(
                 conn,
                 venta=venta,
                 venta_id=venta_id,
-                monto_credito=_calcular_monto_credito_devolucion_item(
+                monto_devolucion=_calcular_monto_credito_devolucion_item(
                     venta,
                     item_objetivo,
                     Decimal("1"),
@@ -1743,23 +1982,11 @@ def devolver_venta(venta_id: int, data):
                     )
 
                 total_devolucion = redondear_monto(total_devolucion + monto_item)
-            # generar crédito
-            resultado_deuda = deudas_service.cancelar_deuda_por_devolucion_venta(
-                conn,
-                id_venta=venta_id,
-                id_usuario=data.id_usuario,
-            )
-
-            monto_credito = _calcular_credito_neto_por_devolucion(
-                total_devolucion,
-                resultado_deuda["monto_cancelado"],
-            )
-
-            _resolver_credito_por_devolucion(
+            resultado_financiero = _resolver_valor_devolucion(
                 conn,
                 venta=venta,
                 venta_id=venta_id,
-                monto_credito=monto_credito,
+                monto_devolucion=total_devolucion,
                 id_usuario=data.id_usuario,
                 modo_devolucion=modo_devolucion,
             )
@@ -1794,7 +2021,9 @@ def devolver_venta(venta_id: int, data):
         return {
             "ok": True,
             "venta_id": venta_id,
-            "credito_generado": total_devolucion,
+            "credito_generado": resultado_financiero[
+                "monto_credito_generado"
+            ],
         }
 
     finally:
@@ -1810,10 +2039,16 @@ def devolver_items(venta_id: int, data):
             if not venta:
                 raise HTTPException(status_code=404, detail="Venta no encontrada")
 
-            if venta["estado"] != VENTA_ESTADO_ENTREGADA:
+            if venta["estado"] not in {
+                VENTA_ESTADO_ENTREGADA,
+                "devuelta_parcial",
+            }:
                 raise HTTPException(
                     status_code=400,
-                    detail="Solo se pueden devolver items de ventas entregadas",
+                    detail=(
+                        "Solo se pueden devolver items de ventas entregadas "
+                        "o con una devolución parcial previa"
+                    ),
                 )
 
             modo_devolucion = _obtener_modo_devolucion(data)
@@ -1824,6 +2059,21 @@ def devolver_items(venta_id: int, data):
                     detail=(
                         "La reversión de pago externo no está habilitada para devoluciones parciales. "
                         "Usá devolución total o crédito comercial."
+                    ),
+                )
+
+            pagos_externos_confirmados = [
+                pago
+                for pago in get_pagos_confirmados_por_venta(conn, venta_id)
+                if pago["medio_pago"] in {"tarjeta", "mercadopago"}
+            ]
+            if pagos_externos_confirmados:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "La devolución parcial no está habilitada para ventas "
+                        "con tarjeta o Mercado Pago confirmado. Realizá una "
+                        "devolución total o resolvé primero el pago externo."
                     ),
                 )
 
@@ -1953,11 +2203,11 @@ def devolver_items(venta_id: int, data):
 
                 total_devolucion = redondear_monto(total_devolucion + monto_item)
 
-            _resolver_credito_por_devolucion(
+            resultado_financiero = _resolver_valor_devolucion(
                 conn,
                 venta=venta,
                 venta_id=venta_id,
-                monto_credito=total_devolucion,
+                monto_devolucion=total_devolucion,
                 id_usuario=data.id_usuario,
                 modo_devolucion=modo_devolucion,
             )
@@ -1984,7 +2234,10 @@ def devolver_items(venta_id: int, data):
             update_venta_saldo_y_estado(
                 conn,
                 venta_id,
-                Decimal("0"),
+                resultado_financiero.get(
+                    "saldo_deuda_restante",
+                    Decimal("0"),
+                ),
                 nuevo_estado,
             )
 
@@ -2020,7 +2273,9 @@ def devolver_items(venta_id: int, data):
         return {
             "ok": True,
             "venta_id": venta_id,
-            "credito_generado": total_devolucion,
+            "credito_generado": resultado_financiero[
+                "monto_credito_generado"
+            ],
         }
 
     finally:
@@ -2045,6 +2300,7 @@ def simular_venta(data):
                 "id_bicicleta_serializada": item.id_bicicleta_serializada,
                 "precio_unitario_manual": item.precio_unitario_manual,
                 "bonificado": item.bonificado,
+                "bonificacion_unitaria_manual": item.bonificacion_unitaria_manual,
                 "motivo_precio_manual": item.motivo_precio_manual,
                 "motivo_bonificacion": item.motivo_bonificacion,
                 "id_orden_taller_item": item.id_orden_taller_item,
@@ -2072,6 +2328,9 @@ def simular_venta(data):
             cantidad = to_decimal(item["cantidad"])
             bonificado = item.get("bonificado", False)
             precio_manual = item.get("precio_unitario_manual")
+            bonificacion_manual = item.get(
+                "bonificacion_unitaria_manual"
+            )
 
             if item.get("tipo_item", "producto") == "servicio_taller":
                 servicio = get_servicio_taller_by_id(conn, item["id_servicio_taller"])
@@ -2088,9 +2347,12 @@ def simular_venta(data):
                         detail="No se puede vender un servicio de taller inactivo",
                     )
 
-                precio_lista = redondear_monto(precio_manual)
-
-                precio_final = Decimal("0") if bonificado else precio_lista
+                precio_lista, precio_final, _ = _resolver_precio_item(
+                    precio_lista=precio_manual,
+                    precio_manual=precio_manual,
+                    bonificado=bonificado,
+                    bonificacion_unitaria_manual=bonificacion_manual,
+                )
 
                 subtotal_total = redondear_monto(
                     subtotal_total + redondear_monto(precio_final * cantidad)
@@ -2117,14 +2379,12 @@ def simular_venta(data):
                     ),
                 )
 
-            if bonificado:
-                precio_final = Decimal("0")
-            else:
-                precio_final = (
-                    redondear_monto(to_decimal(precio_manual))
-                    if precio_manual is not None
-                    else precio_lista
-                )
+            precio_lista, precio_final, _ = _resolver_precio_item(
+                precio_lista=precio_lista,
+                precio_manual=precio_manual,
+                bonificado=bonificado,
+                bonificacion_unitaria_manual=bonificacion_manual,
+            )
 
             subtotal_total = redondear_monto(
                 subtotal_total + redondear_monto(precio_final * cantidad)
@@ -2152,6 +2412,8 @@ def simular_venta(data):
 
         credito_disponible = Decimal("0")
         credito_aplicado = Decimal("0")
+        credito_base_cubierta = Decimal("0")
+        credito_descuento_aplicado = Decimal("0")
         total_a_cobrar = saldo_estimado
         saldo_credito_restante = Decimal("0")
 
@@ -2174,6 +2436,12 @@ def simular_venta(data):
             credito_aplicado = redondear_monto(
                 resultado_credito["credito_aplicado"]
             )
+            credito_base_cubierta = redondear_monto(
+                resultado_credito["monto_base_cubierto"]
+            )
+            credito_descuento_aplicado = redondear_monto(
+                resultado_credito["descuento_aplicado"]
+            )
             total_a_cobrar = redondear_monto(
                 resultado_credito["total_a_cobrar"]
             )
@@ -2183,9 +2451,15 @@ def simular_venta(data):
 
         return {
             "subtotal_base": redondear_monto(resultado_reglas["subtotal_base"]),
-            "descuento_total": redondear_monto(resultado_reglas["descuento_total"]),
+            "descuento_total": redondear_monto(
+                resultado_reglas["descuento_total"]
+                + credito_descuento_aplicado
+            ),
             "recargo_total": redondear_monto(resultado_reglas["recargo_total"]),
-            "total_final": redondear_monto(resultado_reglas["total_final"]),
+            "total_final": redondear_monto(
+                resultado_reglas["total_final"]
+                - credito_descuento_aplicado
+            ),
 
             "total_base_asignada": redondear_monto(
                 resultado_reglas["total_base_asignada"]
@@ -2200,6 +2474,8 @@ def simular_venta(data):
 
             "credito_disponible": credito_disponible,
             "credito_aplicado": credito_aplicado,
+            "credito_base_cubierta": credito_base_cubierta,
+            "credito_descuento_aplicado": credito_descuento_aplicado,
             "total_a_cobrar": total_a_cobrar,
             "saldo_credito_restante": saldo_credito_restante,
 
@@ -2235,20 +2511,6 @@ def _calcular_monto_credito_devolucion_item(venta: dict, item: dict, cantidad_de
     monto = precio_unitario * to_decimal(cantidad_devuelta) * factor
 
     return redondear_monto(monto)
-
-def _calcular_credito_neto_por_devolucion(
-    monto_devolucion: Decimal,
-    monto_deuda_cancelada: Decimal,
-) -> Decimal:
-    monto_devolucion = redondear_monto(to_decimal(monto_devolucion))
-    monto_deuda_cancelada = redondear_monto(to_decimal(monto_deuda_cancelada))
-
-    credito_neto = monto_devolucion - monto_deuda_cancelada
-
-    if credito_neto <= Decimal("0"):
-        return Decimal("0")
-
-    return redondear_monto(credito_neto)
 
 def _resolver_postventa_bicicleta(condicion_entrega: str, plan_postventa: str | None) -> str:
     if condicion_entrega == "en_caja":

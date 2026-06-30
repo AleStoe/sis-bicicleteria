@@ -2,25 +2,25 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, CheckCircle2, RefreshCw, TrendingDown, TrendingUp } from "lucide-react";
 import { getDashboardResumen } from "../services/dashboardService";
-import { formatMoney, formatInteger, formatNumber } from "../utils/formatters";
+import { formatMoney, formatInteger, formatNumber, formatPercent } from "../utils/formatters";
 import useMediaQuery from "../hooks/useMediaQuery";
 
 function mesActual() {
   const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
 const card = {
   background: "#fff",
   border: "1px solid #e5e7eb",
-  borderRadius: 18,
+  borderRadius: 8,
   boxShadow: "0 10px 28px rgba(15,23,42,.06)",
 };
 
 const input = {
   width: "100%",
   border: "1px solid #d0d5dd",
-  borderRadius: 12,
+  borderRadius: 8,
   padding: "10px 12px",
   fontSize: 14,
   outline: "none",
@@ -28,7 +28,7 @@ const input = {
 
 const secondaryButton = {
   border: "1px solid #d0d5dd",
-  borderRadius: 12,
+  borderRadius: 8,
   padding: "10px 12px",
   background: "#fff",
   color: "#344054",
@@ -37,6 +37,13 @@ const secondaryButton = {
   display: "inline-flex",
   alignItems: "center",
   gap: 8,
+};
+
+const tableWrap = {
+  width: "100%",
+  minWidth: 0,
+  overflowX: "auto",
+  WebkitOverflowScrolling: "touch",
 };
 
 const severityStyles = {
@@ -84,7 +91,7 @@ export default function DashboardPage() {
     setError("");
     try {
       const res = await getDashboardResumen({
-        periodo_mes: periodoMes,
+        periodo_mes: periodoMes ? `${periodoMes}-01` : undefined,
         dias_sin_movimiento: diasSinMovimiento,
         umbral_repuestos_criticos: umbralRepuestosCriticos,
         limit: 10,
@@ -113,27 +120,70 @@ export default function DashboardPage() {
         <div style={{ minWidth: 0 }}>
           <h1 style={{ margin: 0, color: "#101828", fontSize: isMobile ? 26 : 32, lineHeight: 1.1 }}>Dashboard Administrativo</h1>
           <p style={{ margin: "6px 0 0", color: "#667085" }}>
-            Métricas sensibles de negocio: ventas, caja, margen, stock, deudas y taller.
+            Lectura ejecutiva de ventas, resultado, caja y pendientes del negocio.
           </p>
         </div>
-        <button style={{ ...secondaryButton, width: isMobile ? "100%" : undefined, justifyContent: "center" }} onClick={cargarDashboard} disabled={loading}>
-          <RefreshCw size={16} />
-          Refrescar
-        </button>
+        <div style={{ display: isMobile ? "grid" : "flex", gridTemplateColumns: "1fr", gap: 8, width: isMobile ? "100%" : undefined }}>
+          <label style={{ display: "grid", gap: 4, color: "#475467", fontSize: 12, fontWeight: 800 }}>
+            Mes analizado
+            <input
+              style={{ ...input, minWidth: isMobile ? 0 : 170 }}
+              type="month"
+              value={periodoMes}
+              onChange={(e) => setPeriodoMes(e.target.value)}
+            />
+          </label>
+          <button style={{ ...secondaryButton, alignSelf: "end", width: isMobile ? "100%" : undefined, justifyContent: "center" }} onClick={cargarDashboard} disabled={loading}>
+            <RefreshCw size={16} />
+            Refrescar
+          </button>
+        </div>
       </header>
 
       {error && <div style={{ ...card, padding: 14, borderColor: "#fecaca", color: "#b91c1c", background: "#fef2f2" }}>{error}</div>}
+
+      <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: isMobile ? 8 : 12, minWidth: 0 }}>
+        <Metric title="Ventas netas del mes" value={money(k.ventas_mes)} strong loading={loading} />
+        <Metric
+          title="Resultado del mes"
+          value={money(k.resultado_estimado)}
+          tone={Number(k.resultado_estimado || 0) >= 0 ? "positive" : "negative"}
+          loading={loading}
+        />
+        <Metric
+          title="Margen bruto"
+          value={money(k.margen_bruto_mes)}
+          detail={formatPercent(k.margen_bruto_porcentaje || 0, {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 1,
+          })}
+          loading={loading}
+        />
+        <Metric title="Gastos del mes" value={money(k.gastos_mes)} loading={loading} />
+        <Metric
+          title="Ticket promedio"
+          value={money(k.ticket_promedio_mes)}
+          detail={`${formatInteger(k.cantidad_ventas_mes)} venta(s)`}
+          loading={loading}
+        />
+        <Metric title="Caja actual" value={money(k.caja_actual)} loading={loading} />
+      </section>
 
       <section style={{ display: "grid", gridTemplateColumns: isNarrow ? "1fr" : "minmax(280px, .75fr) minmax(0, 1.25fr)", gap: isMobile ? 12 : 18, alignItems: "stretch", minWidth: 0 }}>
         <ResultadoHoyCard resultado={resultadoHoy} loading={loading} />
         <OperacionHoyCard alertas={alertas} loading={loading} caja={data?.caja} isMobile={isMobile} />
       </section>
 
-      <section style={{ ...card, padding: isMobile ? 12 : 16, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(180px, 240px))", gap: 12, minWidth: 0 }}>
-        <label style={{ display: "grid", gap: 6, fontWeight: 800, color: "#344054" }}>
-          Mes
-          <input style={input} type="date" value={periodoMes} onChange={(e) => setPeriodoMes(e.target.value)} />
-        </label>
+      <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: isMobile ? 8 : 12, minWidth: 0 }}>
+        <Metric title="Deudas abiertas" value={money(k.deudas_abiertas)} loading={loading} />
+        <Metric title="Créditos disponibles" value={money(k.creditos_abiertos)} loading={loading} />
+        <Metric title="Pendientes de entrega" value={formatInteger(k.ventas_pendientes_entrega)} loading={loading} />
+        <Metric title="Órdenes en taller" value={formatInteger(k.taller_pendiente)} loading={loading} />
+        <Metric title="Repuestos críticos" value={formatInteger(k.repuestos_criticos)} loading={loading} />
+        <Metric title="Sin movimiento" value={formatInteger(k.productos_sin_movimiento)} loading={loading} />
+      </section>
+
+      <section style={{ ...card, padding: isMobile ? 12 : 14, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(180px, 240px))", gap: 12, minWidth: 0 }}>
         <label style={{ display: "grid", gap: 6, fontWeight: 800, color: "#344054" }}>
           Sin movimiento desde
           <select style={input} value={diasSinMovimiento} onChange={(e) => setDiasSinMovimiento(Number(e.target.value))}>
@@ -148,17 +198,6 @@ export default function DashboardPage() {
           Umbral repuestos críticos
           <input style={input} type="number" min="0" value={umbralRepuestosCriticos} onChange={(e) => setUmbralRepuestosCriticos(Number(e.target.value))} />
         </label>
-      </section>
-
-      <section style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))", gap: isMobile ? 8 : 12, minWidth: 0 }}>
-        <Metric title="Ventas mes" value={money(k.ventas_mes)} strong />
-        <Metric title="Caja actual" value={money(k.caja_actual)} />
-        <Metric title="Gastos mes" value={money(k.gastos_mes)} />
-        <Metric title="Deudas clientes" value={money(k.deudas_abiertas)} />
-        <Metric title="Créditos clientes" value={money(k.creditos_abiertos)} />
-        <Metric title="Ventas pendientes entrega" value={formatInteger(k.ventas_pendientes_entrega)} />
-        <Metric title="Taller pendiente" value={formatInteger(k.taller_pendiente)} />
-        <Metric title="Repuestos críticos" value={formatInteger(k.repuestos_criticos)} />
       </section>
 
       <section style={{ display: "grid", gridTemplateColumns: isNarrow ? "1fr" : "minmax(0, 1.25fr) minmax(340px, .75fr)", gap: isMobile ? 12 : 18, alignItems: "start", minWidth: 0 }}>
@@ -326,11 +365,22 @@ function StatusPill({ label, tone }) {
   );
 }
 
-function Metric({ title, value, strong = false }) {
+function Metric({ title, value, strong = false, tone = "default", detail = "", loading = false }) {
+  const valueColor = strong
+    ? "#f97316"
+    : tone === "positive"
+      ? "#047857"
+      : tone === "negative"
+        ? "#b42318"
+        : "#101828";
+
   return (
-    <div style={{ ...card, padding: 16 }}>
+    <div style={{ ...card, padding: 14, minWidth: 0 }}>
       <div style={{ color: "#667085", fontSize: 13, fontWeight: 800 }}>{title}</div>
-      <div style={{ color: strong ? "#f97316" : "#101828", fontSize: 22, fontWeight: 950, marginTop: 6 }}>{value}</div>
+      <div style={{ color: loading ? "#98a2b3" : valueColor, fontSize: 22, fontWeight: 950, marginTop: 6, overflowWrap: "anywhere" }}>
+        {loading ? "..." : value}
+      </div>
+      {detail ? <div style={{ marginTop: 4, color: "#667085", fontSize: 12, fontWeight: 750 }}>{detail}</div> : null}
     </div>
   );
 }
@@ -414,24 +464,26 @@ function TopProductosCard({ title, rows, loading }) {
       <h2 style={{ margin: "0 0 12px" }}>{title}</h2>
       <TableState loading={loading} empty={rows.length === 0} colSpan={3} />
       {!loading && rows.length > 0 ? (
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-          <thead>
-            <tr style={{ color: "#667085", textAlign: "left", borderBottom: "1px solid #eaecf0" }}>
-              <th style={{ padding: 10 }}>Producto</th>
-              <th style={{ padding: 10 }}>Cantidad</th>
-              <th style={{ padding: 10 }}>Venta</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((p) => (
-              <tr key={`${p.id_variante}-${p.producto}`} style={{ borderBottom: "1px solid #f2f4f7" }}>
-                <td style={{ padding: 10 }}><strong>{p.producto}</strong><div style={{ color: "#667085", fontSize: 12 }}>{p.variante || "-"}</div></td>
-                <td style={{ padding: 10, fontWeight: 900 }}>{formatNumber(p.cantidad_vendida)}</td>
-                <td style={{ padding: 10, fontWeight: 900 }}>{money(p.venta_total)}</td>
+        <div style={tableWrap}>
+          <table style={{ width: "100%", minWidth: 520, borderCollapse: "collapse", fontSize: 14 }}>
+            <thead>
+              <tr style={{ color: "#667085", textAlign: "left", borderBottom: "1px solid #eaecf0" }}>
+                <th style={{ padding: 10 }}>Producto</th>
+                <th style={{ padding: 10 }}>Cantidad</th>
+                <th style={{ padding: 10 }}>Venta neta</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {rows.map((p) => (
+                <tr key={`${p.id_variante}-${p.producto}`} style={{ borderBottom: "1px solid #f2f4f7" }}>
+                  <td style={{ padding: 10 }}><strong>{p.producto}</strong><div style={{ color: "#667085", fontSize: 12 }}>{p.variante || "-"}</div></td>
+                  <td style={{ padding: 10, fontWeight: 900 }}>{formatNumber(p.cantidad_vendida)}</td>
+                  <td style={{ padding: 10, fontWeight: 900 }}>{money(p.venta_total)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       ) : null}
     </div>
   );
@@ -444,10 +496,12 @@ function RepuestosCriticosCard({ rows, loading }) {
       <p style={{ margin: "0 0 12px", color: "#667085", fontSize: 13 }}>Excluye bicicletas para evitar falsas alertas por unidades de exhibición o depósito.</p>
       <TableState loading={loading} empty={rows.length === 0} colSpan={3} />
       {!loading && rows.length > 0 ? (
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-          <thead><tr style={{ color: "#667085", textAlign: "left", borderBottom: "1px solid #eaecf0" }}><th style={{ padding: 10 }}>Producto</th><th style={{ padding: 10 }}>Stock</th><th style={{ padding: 10 }}>Costo</th></tr></thead>
-          <tbody>{rows.map((p) => <tr key={p.id_variante} style={{ borderBottom: "1px solid #f2f4f7" }}><td style={{ padding: 10 }}><strong>{p.producto}</strong><div style={{ color: "#667085", fontSize: 12 }}>{p.variante || "-"}</div></td><td style={{ padding: 10, fontWeight: 900 }}>{formatNumber(p.stock_fisico)}</td><td style={{ padding: 10 }}>{money(p.costo_promedio_vigente)}</td></tr>)}</tbody>
-        </table>
+        <div style={tableWrap}>
+          <table style={{ width: "100%", minWidth: 500, borderCollapse: "collapse", fontSize: 14 }}>
+            <thead><tr style={{ color: "#667085", textAlign: "left", borderBottom: "1px solid #eaecf0" }}><th style={{ padding: 10 }}>Producto</th><th style={{ padding: 10 }}>Stock</th><th style={{ padding: 10 }}>Costo</th></tr></thead>
+            <tbody>{rows.map((p) => <tr key={p.id_variante} style={{ borderBottom: "1px solid #f2f4f7" }}><td style={{ padding: 10 }}><strong>{p.producto}</strong><div style={{ color: "#667085", fontSize: 12 }}>{p.variante || "-"}</div></td><td style={{ padding: 10, fontWeight: 900 }}>{formatNumber(p.stock_fisico)}</td><td style={{ padding: 10 }}>{money(p.costo_promedio_vigente)}</td></tr>)}</tbody>
+          </table>
+        </div>
       ) : null}
     </div>
   );
@@ -460,10 +514,12 @@ function CapitalInmovilizadoCard({ rows, loading }) {
       <p style={{ margin: "0 0 12px", color: "#667085", fontSize: 13 }}>Productos no bicicleta ordenados por plata quieta en stock.</p>
       <TableState loading={loading} empty={rows.length === 0} colSpan={3} />
       {!loading && rows.length > 0 ? (
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-          <thead><tr style={{ color: "#667085", textAlign: "left", borderBottom: "1px solid #eaecf0" }}><th style={{ padding: 10 }}>Producto</th><th style={{ padding: 10 }}>Stock</th><th style={{ padding: 10 }}>Capital</th></tr></thead>
-          <tbody>{rows.map((p) => <tr key={p.id_variante} style={{ borderBottom: "1px solid #f2f4f7" }}><td style={{ padding: 10 }}><strong>{p.producto}</strong><div style={{ color: "#667085", fontSize: 12 }}>{p.variante || "-"}</div></td><td style={{ padding: 10 }}>{formatNumber(p.stock_fisico)}</td><td style={{ padding: 10, fontWeight: 900 }}>{money(p.capital_inmovilizado)}</td></tr>)}</tbody>
-        </table>
+        <div style={tableWrap}>
+          <table style={{ width: "100%", minWidth: 500, borderCollapse: "collapse", fontSize: 14 }}>
+            <thead><tr style={{ color: "#667085", textAlign: "left", borderBottom: "1px solid #eaecf0" }}><th style={{ padding: 10 }}>Producto</th><th style={{ padding: 10 }}>Stock</th><th style={{ padding: 10 }}>Capital</th></tr></thead>
+            <tbody>{rows.map((p) => <tr key={p.id_variante} style={{ borderBottom: "1px solid #f2f4f7" }}><td style={{ padding: 10 }}><strong>{p.producto}</strong><div style={{ color: "#667085", fontSize: 12 }}>{p.variante || "-"}</div></td><td style={{ padding: 10 }}>{formatNumber(p.stock_fisico)}</td><td style={{ padding: 10, fontWeight: 900 }}>{money(p.capital_inmovilizado)}</td></tr>)}</tbody>
+          </table>
+        </div>
       ) : null}
     </div>
   );
@@ -506,31 +562,44 @@ function TallerPendienteCard({ rows, loading }) {
 }
 
 function ProductosSinMovimientoCard({ rows, loading }) {
+  const headerCellStyle = {
+    padding: "10px 8px",
+    whiteSpace: "nowrap",
+  };
+
   return (
     <section style={{ ...card, padding: 16 }}>
       <h2 style={{ margin: "0 0 4px" }}>Productos sin movimiento</h2>
       <p style={{ margin: "0 0 12px", color: "#667085", fontSize: 13 }}>Excluye bicicletas. Muestra stock físico inmovilizado según última venta registrada.</p>
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+      <div style={tableWrap}>
+        <table style={{ width: "100%", minWidth: 650, tableLayout: "fixed", borderCollapse: "collapse", fontSize: 14 }}>
+          <colgroup>
+            <col style={{ width: "48%" }} />
+            <col style={{ width: "11%" }} />
+            <col style={{ width: "7%" }} />
+            <col style={{ width: "13%" }} />
+            <col style={{ width: "7%" }} />
+            <col style={{ width: "14%" }} />
+          </colgroup>
           <thead>
             <tr style={{ color: "#667085", textAlign: "left", borderBottom: "1px solid #eaecf0" }}>
-              <th style={{ padding: 10 }}>Producto</th>
-              <th style={{ padding: 10 }}>Variante</th>
-              <th style={{ padding: 10 }}>Stock</th>
-              <th style={{ padding: 10 }}>Última venta</th>
-              <th style={{ padding: 10 }}>Días</th>
-              <th style={{ padding: 10 }}>Capital inmovilizado</th>
+              <th style={headerCellStyle}>Producto</th>
+              <th style={headerCellStyle}>Variante</th>
+              <th style={headerCellStyle}>Stock</th>
+              <th style={headerCellStyle}>Últ. venta</th>
+              <th style={headerCellStyle}>Días</th>
+              <th style={{ ...headerCellStyle, textAlign: "right" }}>Capital</th>
             </tr>
           </thead>
           <tbody>
             {loading ? <tr><td colSpan="6" style={{ padding: 18 }}>Cargando...</td></tr> : rows.length === 0 ? <tr><td colSpan="6" style={{ padding: 18, color: "#667085" }}>Sin productos para mostrar</td></tr> : rows.map((p) => (
               <tr key={p.id_variante} style={{ borderBottom: "1px solid #f2f4f7" }}>
-                <td style={{ padding: 10, fontWeight: 800 }}>{p.producto}</td>
-                <td style={{ padding: 10 }}>{p.variante || "-"}</td>
-                <td style={{ padding: 10 }}>{formatNumber(p.stock_fisico)}</td>
-                <td style={{ padding: 10 }}>{dateShort(p.ultima_venta) || "Nunca"}</td>
-                <td style={{ padding: 10 }}>{p.dias_sin_movimiento ?? "-"}</td>
-                <td style={{ padding: 10, fontWeight: 900 }}>{money(p.capital_inmovilizado)}</td>
+                <td style={{ padding: "12px 8px", fontWeight: 800, overflowWrap: "anywhere" }}>{p.producto}</td>
+                <td style={{ padding: "12px 8px", overflowWrap: "anywhere" }}>{p.variante || "-"}</td>
+                <td style={{ padding: "12px 8px" }}>{formatNumber(p.stock_fisico)}</td>
+                <td style={{ padding: "12px 8px", whiteSpace: "nowrap" }}>{dateShort(p.ultima_venta) || "Nunca"}</td>
+                <td style={{ padding: "12px 8px" }}>{p.dias_sin_movimiento ?? "-"}</td>
+                <td style={{ padding: "12px 8px", fontWeight: 900, textAlign: "right", whiteSpace: "nowrap" }}>{money(p.capital_inmovilizado)}</td>
               </tr>
             ))}
           </tbody>

@@ -1,7 +1,11 @@
 from typing import List, Optional
 from datetime import date
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
+
+from app.core.security import CurrentUser, aplicar_actor_actual
+from app.modules.authz.service import requerir_permiso
+from app.shared.constants import PERMISO_GESTIONAR_GASTOS
 
 from .schema import (
     GastoCategoriaCreateInput,
@@ -33,6 +37,7 @@ from .service import (
 )
 
 router = APIRouter()
+puede_gestionar_gastos = requerir_permiso(PERMISO_GESTIONAR_GASTOS)
 
 
 @router.post("/categorias", response_model=GastoCategoriaOutput)
@@ -56,7 +61,11 @@ def cambiar_estado_categoria_route(categoria_id: int, data: GastoCategoriaEstado
 
 
 @router.post("/", response_model=GastoCreateOutput)
-def crear_gasto_route(data: GastoCreateInput):
+def crear_gasto_route(
+    data: GastoCreateInput,
+    usuario: CurrentUser = Depends(puede_gestionar_gastos),
+):
+    aplicar_actor_actual(data, usuario)
     return crear_gasto(data)
 
 
@@ -128,10 +137,20 @@ def gasto_detalle_route(gasto_id: int):
 
 
 @router.post("/{gasto_id}/anular", response_model=GastoEstadoOutput)
-def anular_gasto_route(gasto_id: int, data: GastoAnularInput):
+def anular_gasto_route(
+    gasto_id: int,
+    data: GastoAnularInput,
+    usuario: CurrentUser = Depends(puede_gestionar_gastos),
+):
+    aplicar_actor_actual(data, usuario)
     return anular_gasto(gasto_id, data)
 
 
 @router.post("/{gasto_id}/corregir", response_model=GastoEstadoOutput)
-def corregir_gasto_route(gasto_id: int, data: GastoCorregirInput):
+def corregir_gasto_route(
+    gasto_id: int,
+    data: GastoCorregirInput,
+    usuario: CurrentUser = Depends(puede_gestionar_gastos),
+):
+    aplicar_actor_actual(data, usuario)
     return corregir_gasto(gasto_id, data)

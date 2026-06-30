@@ -10,11 +10,11 @@ function getImageUrl(url) {
   return `${API_BASE_URL}${url}`;
 }
 
-export default function ProductImage({ url, size = 58 }) {
+export default function ProductImage({ url, size = 58, width, height }) {
   const boxStyle = {
     ...styles.box,
-    width: size,
-    height: size,
+    width: width ?? size,
+    height: height ?? size,
   };
 
   if (!url) {
@@ -40,13 +40,17 @@ const styles = {
     background: "#ffffff",
     display: "grid",
     placeItems: "center",
+    position: "relative",
     overflow: "hidden",
     padding: 6,
     boxSizing: "border-box",
+    minWidth: 0,
   },
   image: {
-    width: "100%",
-    height: "100%",
+    position: "absolute",
+    inset: 6,
+    width: "calc(100% - 12px)",
+    height: "calc(100% - 12px)",
     objectFit: "contain",
     objectPosition: "center",
     display: "block",

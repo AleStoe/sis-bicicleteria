@@ -10,13 +10,18 @@ export function getOrigenFinancieroLabel(origenTipo, origenId) {
     caja: "Caja",
     pago: "Pago",
     pago_reversion: "Reversión de pago",
+    credito_aplicacion_restaurada: "Aplicación de crédito",
   };
 
   const label = labels[origenTipo] || origenTipo;
   return origenId ? `${label} #${origenId}` : label;
 }
 
-export function getMovimientoCreditoLabel(tipo) {
+export function getMovimientoCreditoLabel(tipo, origenTipo = "") {
+  if (tipo === "ajuste" && origenTipo === "credito_aplicacion_restaurada") {
+    return "Crédito restaurado";
+  }
+
   const labels = {
     credito_generado: "Crédito generado",
     generado: "Crédito generado",

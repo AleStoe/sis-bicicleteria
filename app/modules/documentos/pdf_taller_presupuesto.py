@@ -161,6 +161,7 @@ def _draw_row(c, *, y, width, margin_x, detalle, cantidad, precio, subtotal, ima
 def generar_presupuesto_taller_pdf(data: dict) -> bytes:
     orden = data["orden"]
     items = data.get("items", [])
+    notas = data.get("notas", [])
     config = obtener_configuracion_negocio()
 
     buffer = BytesIO()
@@ -274,6 +275,22 @@ def generar_presupuesto_taller_pdf(data: dict) -> bytes:
             first = False
             y -= 5 * mm
 
+    if notas:
+        y -= 2 * mm
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(left_x, y, "Notas y recomendaciones:")
+        y -= 5 * mm
+        c.setFont("Helvetica", 9)
+        for nota in notas:
+            prefijo = (
+                "Recomendación"
+                if nota.get("tipo") == "recomendacion_futura"
+                else "Nota"
+            )
+            for line in _wrap_text(f"{prefijo}: {nota.get('contenido')}", 92)[:3]:
+                c.drawString(left_x + 3 * mm, y, f"• {line}")
+                y -= 4.5 * mm
+
     y -= 5 * mm
     y = _line(c, y, width, margin_x)
 
@@ -287,10 +304,19 @@ def generar_presupuesto_taller_pdf(data: dict) -> bytes:
     for item in items:
         cantidad = Decimal(str(item.get("cantidad") or 0))
         precio = Decimal(str(item.get("precio_unitario") or 0))
+        cobertura = Decimal(
+            str(item.get("valor_cobertura_unitario") or 0)
+        )
         subtotal = Decimal(str(item.get("subtotal") or 0))
         total += subtotal
+        detalle = _text(item.get("descripcion_snapshot"))
+        if cobertura > 0:
+            detalle += (
+                f" | Cobertura {item.get('motivo_cobertura')}: "
+                f"-{_money(cobertura * cantidad)}"
+            )
 
-        lines_count = len(_wrap_text(item.get("descripcion_snapshot"), 58)[:4])
+        lines_count = len(_wrap_text(detalle, 58)[:4])
         needed = max(17 * mm, 1.5 * mm + lines_count * 4.6 * mm + 3.2 * mm) + 8 * mm
         y = _ensure_space(c, y, needed, width, height, margin_x)
 
@@ -299,7 +325,7 @@ def generar_presupuesto_taller_pdf(data: dict) -> bytes:
             y=y,
             width=width,
             margin_x=margin_x,
-            detalle=item.get("descripcion_snapshot"),
+            detalle=detalle,
             cantidad=cantidad,
             precio=precio,
             subtotal=subtotal,

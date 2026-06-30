@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { listarClientes } from "../services/clientesService";
-import { formatMoney } from "../utils/formatters";
+import { formatMoneyPrecise } from "../utils/formatters";
 import { getCreditoContexto, getOrigenFinancieroLabel, getPoliticaCreditoGeneral } from "../utils/financials";
 import {
   listarCreditosCliente,
@@ -92,6 +92,21 @@ export default function CreditosListPage() {
 
       {error && <div style={alertStyle}>Error: {error}</div>}
 
+      <section style={operationGuideStyle}>
+        <div style={operationRuleStyle}>
+          <strong style={{ color: "#047857" }}>Efectivo y transferencia</strong>
+          <span>
+            La anulación genera un saldo a favor por el dinero realmente cobrado. Desde Créditos podés aplicarlo a otra venta o reintegrarlo.
+          </span>
+        </div>
+        <div style={electronicRuleStyle}>
+          <strong style={{ color: "#1d4ed8" }}>Tarjeta y Mercado Pago</strong>
+          <span>
+            Se cancelan desde la terminal o plataforma correspondiente. No deben convertirse en crédito comercial automático.
+          </span>
+        </div>
+      </section>
+
       <section style={cardStyle}>
         <form onSubmit={handleSubmit} style={isMobile ? filtersMobileStyle : filtersStyle}>
           <label style={fieldStyle}>
@@ -134,7 +149,7 @@ export default function CreditosListPage() {
 
         <div style={metricStyle}>
           <span style={mutedStyle}>Saldo total mostrado</span>
-          <strong style={metricValueStyle}>{formatMoney(totalSaldo)}</strong>
+          <strong style={metricValueStyle}>{formatMoneyPrecise(totalSaldo)}</strong>
         </div>
 
         <div style={policyStyle}>
@@ -176,7 +191,7 @@ export default function CreditosListPage() {
                     <td style={tdStyle}>
                       {getOrigenFinancieroLabel(credito.origen_tipo, credito.origen_id)}
                     </td>
-                    <td style={tdStyle}>{formatMoney(credito.saldo_actual)}</td>
+                    <td style={tdStyle}>{formatMoneyPrecise(credito.saldo_actual)}</td>
                     <td style={tdStyle}>
                       <EstadoCreditoBadge estado={credito.estado} />
                     </td>
@@ -185,7 +200,7 @@ export default function CreditosListPage() {
                     </td>
                     <td style={tdStyle}>
                       <Link to={`/creditos/${credito.id}`} style={linkBtnStyle}>
-                        Ver detalle
+                        Revisar / reintegrar
                       </Link>
                     </td>
                   </tr>
@@ -251,6 +266,9 @@ const labelStyle = { fontWeight: "bold", fontSize: "14px" };
 const inputStyle = { width: "100%", padding: "10px 12px", borderRadius: "10px", border: "1px solid #d0d5dd", fontSize: "15px" };
 const checkStyle = { display: "flex", alignItems: "center", gap: "8px", paddingBottom: "9px" };
 const alertStyle = { background: "#fff1f0", color: "#b42318", padding: "12px", borderRadius: "10px", border: "1px solid #f4c7c3", marginBottom: "16px" };
+const operationGuideStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "12px", marginBottom: "16px" };
+const operationRuleStyle = { background: "#ecfdf5", border: "1px solid #bbf7d0", borderRadius: "10px", padding: "14px", display: "grid", gap: "5px", color: "#344054" };
+const electronicRuleStyle = { background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "10px", padding: "14px", display: "grid", gap: "5px", color: "#344054" };
 const summaryGridStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px", marginBottom: "16px" };
 const summaryGridMobileStyle = { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "10px", marginBottom: "16px" };
 const metricStyle = { background: "white", borderRadius: "14px", boxShadow: "0 2px 10px rgba(0,0,0,.08)", padding: "16px", display: "grid", gap: "6px" };

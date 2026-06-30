@@ -22,6 +22,7 @@ class VentaItemCreateInput(BaseModel):
     )
 
     bonificado: bool = False
+    bonificacion_unitaria_manual: Optional[Decimal] = Field(default=None, ge=0)
 
     motivo_precio_manual: Optional[str] = Field(
         default=None,
@@ -62,6 +63,20 @@ class VentaItemCreateInput(BaseModel):
 
         if self.bonificado and not self.motivo_bonificacion:
             raise ValueError("La bonificación requiere motivo")
+
+        if self.bonificacion_unitaria_manual is not None:
+            if not self.bonificado:
+                raise ValueError(
+                    "La bonificación parcial debe marcar el ítem como bonificado"
+                )
+            if self.precio_unitario_manual is None:
+                raise ValueError(
+                    "La bonificación parcial requiere precio unitario manual"
+                )
+            if self.bonificacion_unitaria_manual > self.precio_unitario_manual:
+                raise ValueError(
+                    "La bonificación no puede superar el precio unitario"
+                )
 
         if (
             self.precio_unitario_manual is not None
@@ -128,6 +143,8 @@ class VentaCreateOutput(BaseModel):
     venta_id: int
     estado: str
     credito_aplicado: Decimal
+    credito_base_cubierta: Decimal = Decimal("0")
+    credito_descuento_aplicado: Decimal = Decimal("0")
     saldo_pendiente: Decimal
 
 
@@ -144,6 +161,7 @@ class VentaAnulacionOutput(BaseModel):
     anulacion_id: int
     credito_generado: bool
     monto_credito: Decimal
+    credito_restaurado: Decimal = Decimal("0")
 
 
 class VentaResumenOutput(BaseModel):
@@ -195,9 +213,10 @@ class VentaDetalleItemOutput(BaseModel):
     cantidad: Decimal
     precio_lista: Decimal
     precio_final: Decimal
-    costo_unitario_aplicado: Decimal
+    costo_unitario_aplicado: Optional[Decimal] = None
     subtotal: Decimal
     bonificado: bool = False
+    bonificacion_unitaria: Decimal = Decimal("0")
 
     motivo_bonificacion: Optional[str] = None
 
@@ -302,6 +321,8 @@ class VentaSimulacionOut(BaseModel):
 
     credito_disponible: Decimal = Decimal("0")
     credito_aplicado: Decimal = Decimal("0")
+    credito_base_cubierta: Decimal = Decimal("0")
+    credito_descuento_aplicado: Decimal = Decimal("0")
     total_a_cobrar: Decimal
     saldo_credito_restante: Decimal = Decimal("0")
 

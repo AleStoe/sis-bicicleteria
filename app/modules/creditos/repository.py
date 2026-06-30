@@ -42,6 +42,8 @@ def insert_credito_movimiento(
     id_credito: int,
     tipo_movimiento: str,
     monto: Decimal,
+    monto_base_aplicado: Decimal | None = None,
+    monto_descuento_aplicado: Decimal | None = None,
     origen_tipo: str | None,
     origen_id: int | None,
     nota: str | None,
@@ -54,18 +56,22 @@ def insert_credito_movimiento(
                 id_credito,
                 tipo_movimiento,
                 monto,
+                monto_base_aplicado,
+                monto_descuento_aplicado,
                 origen_tipo,
                 origen_id,
                 nota,
                 id_usuario
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING *
             """,
             (
                 id_credito,
                 tipo_movimiento,
                 monto,
+                monto_base_aplicado,
+                monto_descuento_aplicado,
                 origen_tipo,
                 origen_id,
                 nota,
@@ -111,6 +117,8 @@ def get_credito_movimientos(conn, credito_id: int):
                 cm.id_credito,
                 cm.tipo_movimiento,
                 cm.monto,
+                cm.monto_base_aplicado,
+                cm.monto_descuento_aplicado,
                 cm.origen_tipo,
                 cm.origen_id,
                 cm.nota,
@@ -138,6 +146,29 @@ def get_credito_abierto_by_origen(conn, *, origen_tipo: str, origen_id: int):
               AND estado IN ('abierto', 'aplicado_parcial')
             ORDER BY id DESC
             LIMIT 1
+            """,
+            (origen_tipo, origen_id),
+        )
+        return cur.fetchone()
+
+
+def get_credito_abierto_by_origen_for_update(
+    conn,
+    *,
+    origen_tipo: str,
+    origen_id: int,
+):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT *
+            FROM creditos_cliente
+            WHERE origen_tipo = %s
+              AND origen_id = %s
+              AND estado IN ('abierto', 'aplicado_parcial')
+            ORDER BY id DESC
+            LIMIT 1
+            FOR UPDATE
             """,
             (origen_tipo, origen_id),
         )
@@ -227,6 +258,33 @@ def get_total_credito_aplicado_a_venta(conn, venta_id: int) -> Decimal:
         )
         row = cur.fetchone()
         return Decimal(str(row["total"] or 0))
+
+
+def get_aplicaciones_credito_venta(conn, venta_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT
+                aplicacion.*,
+                COALESCE(
+                    (
+                        SELECT SUM(restauracion.monto)
+                        FROM credito_movimientos restauracion
+                        WHERE restauracion.tipo_movimiento = 'ajuste'
+                          AND restauracion.origen_tipo = 'credito_aplicacion_restaurada'
+                          AND restauracion.origen_id = aplicacion.id
+                    ),
+                    0
+                ) AS monto_restaurado
+            FROM credito_movimientos aplicacion
+            WHERE aplicacion.origen_tipo = 'venta'
+              AND aplicacion.origen_id = %s
+              AND aplicacion.tipo_movimiento = 'aplicacion_a_venta'
+            ORDER BY aplicacion.id
+            """,
+            (venta_id,),
+        )
+        return cur.fetchall()
 
 def get_total_credito_generado_por_venta(conn, venta_id: int) -> Decimal:
     with conn.cursor(row_factory=dict_row) as cur:

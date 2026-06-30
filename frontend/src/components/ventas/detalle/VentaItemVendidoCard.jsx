@@ -20,6 +20,10 @@ export default function VentaItemVendidoCard({
 
   const tienePrecioDiferente =
     Number(item.precio_lista) !== Number(item.precio_final);
+  const bonificacionUnitaria = Number(
+    item.bonificacion_unitaria ||
+      Math.max(0, Number(item.precio_lista) - Number(item.precio_final)),
+  );
 
   return (
     <article style={{ ...itemCardStyle, ...(isMobile ? itemCardMobileStyle : {}) }}>
@@ -28,7 +32,13 @@ export default function VentaItemVendidoCard({
           <div style={titleRowStyle}>
             <h3 style={{ ...titleStyle, ...(isMobile ? titleMobileStyle : {}) }}>{item.descripcion_snapshot}</h3>
 
-            {item.bonificado && <Badge tone="success">Bonificado</Badge>}
+            {item.bonificado && (
+              <Badge tone="success">
+                {Number(item.precio_final) > 0
+                  ? "Bonificación parcial"
+                  : "Bonificado"}
+              </Badge>
+            )}
             {item.motivo_precio_manual && <Badge tone="warning">Precio manual</Badge>}
             {devueltoTotal && <Badge tone="info">Devuelto</Badge>}
             {devueltoParcial && (
@@ -58,6 +68,13 @@ export default function VentaItemVendidoCard({
           {tienePrecioDiferente ? (
             <>
               <Metric label="Precio lista" value={formatMoney(item.precio_lista)} isMobile={isMobile} />
+              {bonificacionUnitaria > 0 ? (
+                <Metric
+                  label="Bonificación garantía"
+                  value={`-${formatMoney(bonificacionUnitaria)}`}
+                  isMobile={isMobile}
+                />
+              ) : null}
               <Metric label="Precio final" value={formatMoney(item.precio_final)} isMobile={isMobile} />
             </>
           ) : (
@@ -72,6 +89,10 @@ export default function VentaItemVendidoCard({
             />
           )}
         </div>
+
+        {item.motivo_bonificacion ? (
+          <div style={bonusReasonStyle}>{item.motivo_bonificacion}</div>
+        ) : null}
 
         <VentaItemVendidoAcciones
           venta={venta}
@@ -207,6 +228,17 @@ const moneyGridMobileStyle = {
   gridTemplateColumns: "1fr 1fr",
   width: "100%",
   gap: 8,
+};
+
+const bonusReasonStyle = {
+  flex: "1 1 260px",
+  color: "#067647",
+  background: "#ecfdf3",
+  border: "1px solid #abefc6",
+  borderRadius: 10,
+  padding: "8px 10px",
+  fontSize: 12,
+  fontWeight: 800,
 };
 
 const metricStyle = {

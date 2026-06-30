@@ -178,6 +178,7 @@ export default function ClienteBicicletaDetallePage() {
   const ventaOrigen = data?.venta_origen;
   const historialTaller = data?.historial_taller || [];
   const timeline = data?.timeline || [];
+  const notasTecnicas = data?.notas_tecnicas || [];
   const estadoPostventa = calcularEstadoPostventa(bicicleta);
   const ultimoEvento = getUltimoEventoBicicleta(timeline, historialTaller, ventaOrigen);
 
@@ -403,6 +404,51 @@ export default function ClienteBicicletaDetallePage() {
             onCrearService={handleCrearServicePostventa}
           />
         </div>
+      </section>
+
+      <section style={cardStyle}>
+        <div style={sectionHeaderStyle}>
+          <div>
+            <h2 style={cardTitleStyle}>Recomendaciones y alertas técnicas</h2>
+            <span style={mutedStyle}>
+              Información que conviene revisar en próximos ingresos al taller.
+            </span>
+          </div>
+        </div>
+
+        {notasTecnicas.length === 0 ? (
+          <div style={emptyStyle}>No hay recomendaciones ni alertas activas.</div>
+        ) : (
+          <div style={technicalNotesGridStyle}>
+            {notasTecnicas.map((nota) => (
+              <article
+                key={nota.id}
+                style={
+                  nota.tipo === "alerta_tecnica"
+                    ? technicalAlertStyle
+                    : technicalRecommendationStyle
+                }
+              >
+                <div style={timelineHeaderStyle}>
+                  <strong>
+                    {nota.tipo === "alerta_tecnica"
+                      ? "Alerta técnica"
+                      : "Recomendación futura"}
+                  </strong>
+                  <span style={badgeEstado(nota.estado)}>{nota.estado}</span>
+                </div>
+                <p style={technicalNoteTextStyle}>{nota.contenido}</p>
+                <div style={mutedStyle}>
+                  OT #{nota.id_orden_taller} · {formatDate(nota.created_at)}
+                  {nota.usuario_nombre ? ` · ${nota.usuario_nombre}` : ""}
+                </div>
+                <Link to={`/taller/${nota.id_orden_taller}`} style={detailLinkStyle}>
+                  Ver orden
+                </Link>
+              </article>
+            ))}
+          </div>
+        )}
       </section>
 
       <section style={cardStyle}>
@@ -1091,6 +1137,38 @@ const postventaActionBoxStyle = {
   alignItems: "center",
   flexWrap: "wrap",
   fontWeight: 800,
+};
+
+const technicalNotesGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+  gap: 12,
+};
+
+const technicalRecommendationStyle = {
+  display: "grid",
+  gap: 10,
+  padding: 14,
+  border: "1px solid #bbf7d0",
+  borderRadius: 14,
+  background: "#f0fdf4",
+};
+
+const technicalAlertStyle = {
+  display: "grid",
+  gap: 10,
+  padding: 14,
+  border: "1px solid #fed7aa",
+  borderRadius: 14,
+  background: "#fff7ed",
+};
+
+const technicalNoteTextStyle = {
+  margin: 0,
+  color: "#1e293b",
+  lineHeight: 1.5,
+  fontWeight: 750,
+  whiteSpace: "pre-wrap",
 };
 
 const postventaActionTextStyle = {
