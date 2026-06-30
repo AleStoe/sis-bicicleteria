@@ -1,4 +1,12 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
+
+from app.core.security import CurrentUser, aplicar_actor_actual
+from app.modules.authz.service import exigir_permiso_actual, requerir_permiso
+from app.shared.constants import (
+    PERMISO_GESTIONAR_GARANTIAS,
+    PERMISO_GESTIONAR_POSTVENTA,
+    PERMISO_GESTIONAR_TALLER,
+)
 
 from .schema import ClienteCreateInput, ClienteUpdateInput, BicicletaClienteCreateInput, BicicletaClienteUpdateInput, AutorizarServiceVencidoInput, CrearOrdenServicePostventaInput 
 from .service import (
@@ -20,6 +28,7 @@ from .service import (
     )
 
 router = APIRouter()
+puede_gestionar_postventa = requerir_permiso(PERMISO_GESTIONAR_POSTVENTA)
 
 
 @router.get("/")
@@ -97,7 +106,10 @@ def autorizar_service_vencido_bicicleta(
     cliente_id: int,
     bicicleta_id: int,
     data: AutorizarServiceVencidoInput,
+    usuario: CurrentUser = Depends(puede_gestionar_postventa),
 ):
+    aplicar_actor_actual(data, usuario)
+    exigir_permiso_actual(usuario, PERMISO_GESTIONAR_GARANTIAS)
     return autorizar_service_vencido_bicicleta_cliente_service(
         cliente_id=cliente_id,
         bicicleta_id=bicicleta_id,
@@ -109,7 +121,10 @@ def crear_service_postventa_bicicleta(
     cliente_id: int,
     bicicleta_id: int,
     data: CrearOrdenServicePostventaInput,
+    usuario: CurrentUser = Depends(puede_gestionar_postventa),
 ):
+    aplicar_actor_actual(data, usuario)
+    exigir_permiso_actual(usuario, PERMISO_GESTIONAR_TALLER)
     return crear_orden_service_postventa_bicicleta_cliente_service(
         cliente_id=cliente_id,
         bicicleta_id=bicicleta_id,

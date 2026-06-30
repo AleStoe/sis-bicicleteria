@@ -507,7 +507,7 @@ def convertir_turno_a_orden(turno_id: int, data):
         conn.close()
 
 
-def registrar_recordatorio_enviado(turno_id: int):
+def registrar_recordatorio_enviado(turno_id: int, id_usuario: int | None = None):
     conn = get_connection()
 
     try:
@@ -530,6 +530,7 @@ def registrar_recordatorio_enviado(turno_id: int):
                 detalle="Recordatorio de turno enviado",
                 estado_anterior=turno_anterior.get("estado"),
                 estado_nuevo=turno.get("estado"),
+                id_usuario=id_usuario,
             )
 
             return turno

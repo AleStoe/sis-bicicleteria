@@ -194,6 +194,10 @@ PERMISO_MODIFICAR_PRECIO_VENTA = "modificar_precio_venta"
 PERMISO_APLICAR_CREDITO_VENTA = "aplicar_credito_venta"
 PERMISO_GESTIONAR_DEVOLUCIONES = "gestionar_devoluciones"
 PERMISO_VER_RENTABILIDAD = "ver_rentabilidad"
+PERMISO_GESTIONAR_TALLER = "gestionar_taller"
+PERMISO_GESTIONAR_AGENDA_TALLER = "gestionar_agenda_taller"
+PERMISO_GESTIONAR_POSTVENTA = "gestionar_postventa"
+PERMISO_GESTIONAR_GARANTIAS = "gestionar_garantias"
 
 CREDITO_MOVIMIENTO_REINTEGRO = "reintegro"
 

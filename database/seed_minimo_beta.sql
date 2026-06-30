@@ -24,6 +24,10 @@ VALUES
     ('gestionar_capital_retiros', 'Administrar movimientos de capital y retiros'),
     ('gestionar_devoluciones', 'Registrar devoluciones de ventas'),
     ('gestionar_gastos', 'Crear, corregir y anular gastos'),
+    ('gestionar_taller', 'Crear y operar órdenes de taller'),
+    ('gestionar_agenda_taller', 'Crear, editar y administrar turnos de taller'),
+    ('gestionar_postventa', 'Crear y consumir services de postventa'),
+    ('gestionar_garantias', 'Autorizar garantías y coberturas de postventa'),
     ('gestionar_usuarios', 'Administrar usuarios y roles'),
     ('modificar_precio_venta', 'Aplicar precios manuales o bonificaciones en ventas'),
     ('registrar_egreso', 'Registrar egresos manuales de caja'),
@@ -59,6 +63,10 @@ JOIN public.permisos p
       'generar_deuda',
       'gestionar_gastos',
       'gestionar_devoluciones',
+      'gestionar_taller',
+      'gestionar_agenda_taller',
+      'gestionar_postventa',
+      'gestionar_garantias',
       'modificar_precio_venta',
       'registrar_egreso',
       'registrar_pago',
@@ -79,6 +87,14 @@ JOIN public.permisos p
       'registrar_pago'
   )
 WHERE r.nombre = 'operador'
+ON CONFLICT (id_rol, id_permiso) DO NOTHING;
+
+INSERT INTO public.rol_permisos (id_rol, id_permiso)
+SELECT r.id, p.id
+FROM public.roles r
+JOIN public.permisos p
+  ON p.codigo = 'gestionar_taller'
+WHERE r.nombre = 'mecanico'
 ON CONFLICT (id_rol, id_permiso) DO NOTHING;
 
 INSERT INTO public.sucursales (nombre, direccion, activa)
