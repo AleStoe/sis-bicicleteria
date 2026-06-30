@@ -245,4 +245,4 @@ def test_dashboard_backend_restringe_metricas_a_administrador(
         headers={"Authorization": f"Bearer {operador_token}"},
     )
     assert operador.status_code == 403
-    assert "rol_administrador" in operador.json()["detail"]
+    assert "ver_rentabilidad" in operador.json()["detail"]

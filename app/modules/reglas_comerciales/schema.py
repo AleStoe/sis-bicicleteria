@@ -136,7 +136,7 @@ class TarjetaPlanOutput(BaseModel):
     entidad: str | None = None
     cuotas: int
     porcentaje_recargo_cliente: Decimal
-    porcentaje_costo_financiero: Decimal
+    porcentaje_costo_financiero: Decimal | None = None
     activa: bool
     fecha_desde: datetime | None = None
     fecha_hasta: datetime | None = None

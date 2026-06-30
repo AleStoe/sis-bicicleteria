@@ -198,6 +198,10 @@ PERMISO_GESTIONAR_TALLER = "gestionar_taller"
 PERMISO_GESTIONAR_AGENDA_TALLER = "gestionar_agenda_taller"
 PERMISO_GESTIONAR_POSTVENTA = "gestionar_postventa"
 PERMISO_GESTIONAR_GARANTIAS = "gestionar_garantias"
+PERMISO_GESTIONAR_CATALOGO = "gestionar_catalogo"
+PERMISO_GESTIONAR_PRECIOS = "gestionar_precios"
+PERMISO_CONFIGURACION_COMERCIAL = "configuracion_comercial"
+PERMISO_VER_AUDITORIA = "ver_auditoria"
 
 CREDITO_MOVIMIENTO_REINTEGRO = "reintegro"
 

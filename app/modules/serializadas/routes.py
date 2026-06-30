@@ -1,6 +1,10 @@
 from typing import List
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
+
+from app.core.security import CurrentUser, aplicar_actor_actual
+from app.modules.authz.service import requerir_permiso
+from app.shared.constants import PERMISO_GESTIONAR_CATALOGO
 
 from .schema import (
     BicicletaSerializadaCreateInput,
@@ -14,6 +18,7 @@ from .service import (
 )
 
 router = APIRouter()
+puede_gestionar_catalogo = requerir_permiso(PERMISO_GESTIONAR_CATALOGO)
 
 
 @router.get("/", response_model=List[BicicletaSerializadaDetalleOutput])
@@ -41,5 +46,9 @@ def listar_serializadas_disponibles(
 
 
 @router.post("/", response_model=BicicletaSerializadaCreateOutput)
-def armar_bicicleta_serializada_route(data: BicicletaSerializadaCreateInput):
+def armar_bicicleta_serializada_route(
+    data: BicicletaSerializadaCreateInput,
+    usuario: CurrentUser = Depends(puede_gestionar_catalogo),
+):
+    aplicar_actor_actual(data, usuario)
     return armar_bicicleta_serializada(data)

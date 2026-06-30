@@ -1,5 +1,9 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from typing import List
+
+from app.core.security import CurrentUser, aplicar_actor_actual
+from app.modules.authz.service import requerir_permiso
+from app.shared.constants import PERMISO_GESTIONAR_PRECIOS
 from .schema import (
     VariantePrecioOutput,
     PrecioActualizarInput,
@@ -32,6 +36,7 @@ from .service import (
 )
 
 router = APIRouter()
+puede_gestionar_precios = requerir_permiso(PERMISO_GESTIONAR_PRECIOS)
 
 @router.get("/desfasados", response_model=PreciosDesfasadosResponse)
 def precios_desfasados_route(
@@ -39,6 +44,7 @@ def precios_desfasados_route(
     id_proveedor: int | None = None,
     id_categoria: int | None = None,
     id_marca: int | None = None,
+    _usuario: CurrentUser = Depends(puede_gestionar_precios),
 ):
     return listar_precios_desfasados(
         tipo_cliente=tipo_cliente,
@@ -48,7 +54,10 @@ def precios_desfasados_route(
     )
 
 @router.get("/variantes/{id_variante}", response_model=VariantePrecioOutput)
-def precio_variante_route(id_variante: int):
+def precio_variante_route(
+    id_variante: int,
+    _usuario: CurrentUser = Depends(puede_gestionar_precios),
+):
     return obtener_precio_variante(id_variante)
 
 
@@ -59,7 +68,9 @@ def precio_variante_route(id_variante: int):
 def actualizar_precio_variante_route(
     id_variante: int,
     data: PrecioActualizarInput,
+    usuario: CurrentUser = Depends(puede_gestionar_precios),
 ):
+    aplicar_actor_actual(data, usuario)
     return actualizar_precio_variante(id_variante, data)
 
 
@@ -67,16 +78,25 @@ def actualizar_precio_variante_route(
     "/variantes/{id_variante}/historial",
     response_model=PrecioHistorialOutput,
 )
-def historial_precio_variante_route(id_variante: int):
+def historial_precio_variante_route(
+    id_variante: int,
+    _usuario: CurrentUser = Depends(puede_gestionar_precios),
+):
     return obtener_historial_precio_variante(id_variante)
 
 @router.post("/reglas", response_model=ReglaPrecioOutput)
-def crear_regla_precio_route(data: ReglaPrecioCreateInput):
+def crear_regla_precio_route(
+    data: ReglaPrecioCreateInput,
+    _usuario: CurrentUser = Depends(puede_gestionar_precios),
+):
     return crear_regla_precio(data)
 
 
 @router.get("/reglas", response_model=List[ReglaPrecioOutput])
-def reglas_precio_route(solo_activas: bool = True):
+def reglas_precio_route(
+    solo_activas: bool = True,
+    _usuario: CurrentUser = Depends(puede_gestionar_precios),
+):
     return listar_reglas_precio(solo_activas=solo_activas)
 
 
@@ -84,7 +104,9 @@ def reglas_precio_route(solo_activas: bool = True):
 def desactivar_regla_precio_route(
     regla_id: int,
     data: ReglaPrecioEstadoInput,
+    usuario: CurrentUser = Depends(puede_gestionar_precios),
 ):
+    aplicar_actor_actual(data, usuario)
     return desactivar_regla_precio(regla_id, data)
 
 
@@ -95,6 +117,7 @@ def desactivar_regla_precio_route(
 def sugerir_precio_variante_route(
     id_variante: int,
     data: PrecioSugeridoInput,
+    _usuario: CurrentUser = Depends(puede_gestionar_precios),
 ):
     return sugerir_precio_variante(id_variante, data)
 
@@ -102,7 +125,11 @@ def sugerir_precio_variante_route(
     "/recalcular-proveedor",
     response_model=RecalculoProveedorOutput,
 )
-def recalcular_precios_por_proveedor_route(data: RecalculoProveedorInput):
+def recalcular_precios_por_proveedor_route(
+    data: RecalculoProveedorInput,
+    usuario: CurrentUser = Depends(puede_gestionar_precios),
+):
+    aplicar_actor_actual(data, usuario)
     return recalcular_precios_por_proveedor(data)
 
 
@@ -110,10 +137,16 @@ def recalcular_precios_por_proveedor_route(data: RecalculoProveedorInput):
     "/ajuste-proveedor",
     response_model=AjusteProveedorOutput,
 )
-def ajustar_precios_por_proveedor_route(data: AjusteProveedorInput):
+def ajustar_precios_por_proveedor_route(
+    data: AjusteProveedorInput,
+    usuario: CurrentUser = Depends(puede_gestionar_precios),
+):
+    aplicar_actor_actual(data, usuario)
     return ajustar_precios_por_proveedor(data)
 
 
 @router.get("/familias", response_model=List[FamiliaPrecioOut])
-def familias_precio_route():
+def familias_precio_route(
+    _usuario: CurrentUser = Depends(puede_gestionar_precios),
+):
     return listar_familias_precio()

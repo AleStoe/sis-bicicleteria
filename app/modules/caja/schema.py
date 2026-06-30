@@ -157,10 +157,10 @@ class CajaResumenDiarioRentabilidadOutput(BaseModel):
     cantidad_ventas: int = 0
     ventas_total: Decimal = Decimal("0")
     ventas_items_total: Decimal = Decimal("0")
-    costo_mercaderia_vendida: Decimal = Decimal("0")
-    margen_bruto: Decimal = Decimal("0")
+    costo_mercaderia_vendida: Decimal | None = None
+    margen_bruto: Decimal | None = None
     gastos_operativos: Decimal = Decimal("0")
-    ganancia_dia: Decimal = Decimal("0")
+    ganancia_dia: Decimal | None = None
 
 
 class CajaResumenDiarioDocumentosOutput(BaseModel):

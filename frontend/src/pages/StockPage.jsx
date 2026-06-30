@@ -429,7 +429,14 @@ export default function StockPage() {
         <Metric label="Disponible" value={formatNumber(resumen.stockDisponible)} strong />
         <Metric label="Sin disponible" value={resumen.sinDisponible} danger={resumen.sinDisponible > 0} />
         <Metric label="Stock bajo" value={resumen.stockBajo ?? resumen.reservados ?? 0} danger={(resumen.stockBajo ?? 0) > 0} />
-        <Metric label="Capital inmovilizado" value={formatMoney(resumen.capitalInmovilizado || 0)} strong />
+        {resumen.capitalInmovilizado !== null &&
+        resumen.capitalInmovilizado !== undefined ? (
+          <Metric
+            label="Capital inmovilizado"
+            value={formatMoney(resumen.capitalInmovilizado)}
+            strong
+          />
+        ) : null}
         <Metric label="Inconsistencias" value={resumen.inconsistentes} danger={resumen.inconsistentes > 0} />
       </section>
 

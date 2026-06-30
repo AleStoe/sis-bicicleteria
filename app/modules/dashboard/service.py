@@ -4,7 +4,8 @@ from decimal import Decimal
 
 from app.db.connection import get_connection
 from app.modules.alertas_operativas.service import obtener_alertas_operativas
-from app.modules.authz.service import exigir_rol_admin
+from app.modules.authz.service import exigir_permiso
+from app.shared.constants import PERMISO_VER_RENTABILIDAD
 
 from .repository import (
     get_ventas_mes,
@@ -113,7 +114,7 @@ def obtener_dashboard_resumen(
     conn = get_connection()
     try:
         if id_usuario is not None:
-            exigir_rol_admin(conn, id_usuario)
+            exigir_permiso(conn, id_usuario, PERMISO_VER_RENTABILIDAD)
 
         ventas_mes = get_ventas_mes(conn, fecha_desde, fecha_hasta, id_sucursal)
         gastos_mes = get_gastos_mes(conn, fecha_desde, fecha_hasta, id_sucursal)

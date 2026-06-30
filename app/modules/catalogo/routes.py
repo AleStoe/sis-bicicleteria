@@ -1,9 +1,15 @@
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
 from fastapi.responses import Response
 
+from app.core.security import CurrentUser, aplicar_actor_actual
+from app.modules.authz.service import exigir_permiso_actual, requerir_permiso
+from app.shared.constants import (
+    PERMISO_GESTIONAR_CATALOGO,
+    PERMISO_GESTIONAR_PRECIOS,
+)
 from .service import (
     listar_categorias,
     crear_categoria,
@@ -66,6 +72,7 @@ from .schema import (
 )
 
 router = APIRouter()
+puede_gestionar_catalogo = requerir_permiso(PERMISO_GESTIONAR_CATALOGO)
 
 
 @router.get("/categorias", response_model=list[CategoriaOut])
@@ -74,31 +81,50 @@ def categorias(incluir_inactivas: bool = False):
 
 
 @router.post("/categorias", response_model=CategoriaOut)
-def crear_categoria_route(data: CategoriaCreate):
+def crear_categoria_route(
+    data: CategoriaCreate,
+    _usuario: CurrentUser = Depends(puede_gestionar_catalogo),
+):
     return crear_categoria(data)
 
 
 @router.put("/categorias/{categoria_id}", response_model=CategoriaOut)
-def editar_categoria_route(categoria_id: int, data: CategoriaUpdate):
+def editar_categoria_route(
+    categoria_id: int,
+    data: CategoriaUpdate,
+    _usuario: CurrentUser = Depends(puede_gestionar_catalogo),
+):
     return editar_categoria(categoria_id, data)
 
 
 @router.patch("/categorias/{categoria_id}/estado", response_model=CategoriaOut)
-def cambiar_estado_categoria_route(categoria_id: int, data: CategoriaEstadoUpdate):
+def cambiar_estado_categoria_route(
+    categoria_id: int,
+    data: CategoriaEstadoUpdate,
+    _usuario: CurrentUser = Depends(puede_gestionar_catalogo),
+):
     return cambiar_estado_categoria(categoria_id, data)
 
 
 @router.get("/productos", response_model=list[ProductoOut])
-def productos():
+def productos(
+    _usuario: CurrentUser = Depends(puede_gestionar_catalogo),
+):
     return listar_productos()
 
 
 @router.get("/variantes", response_model=list[VarianteOut])
-def variantes():
+def variantes(
+    usuario: CurrentUser = Depends(puede_gestionar_catalogo),
+):
+    exigir_permiso_actual(usuario, PERMISO_GESTIONAR_PRECIOS)
     return listar_variantes()
 
 @router.post("/imagenes", response_model=CatalogoImagenOut)
-def crear_imagen_catalogo(data: CatalogoImagenCreate):
+def crear_imagen_catalogo(
+    data: CatalogoImagenCreate,
+    _usuario: CurrentUser = Depends(puede_gestionar_catalogo),
+):
     return crear_imagen(data)
 
 
@@ -113,12 +139,19 @@ def imagenes_variante(id_variante: int):
 
 
 @router.put("/imagenes/{imagen_id}", response_model=CatalogoImagenOut)
-def actualizar_imagen(imagen_id: int, data: CatalogoImagenUpdate):
+def actualizar_imagen(
+    imagen_id: int,
+    data: CatalogoImagenUpdate,
+    _usuario: CurrentUser = Depends(puede_gestionar_catalogo),
+):
     return editar_imagen(imagen_id, data)
 
 
 @router.delete("/imagenes/{imagen_id}", response_model=CatalogoImagenOut)
-def borrar_imagen(imagen_id: int):
+def borrar_imagen(
+    imagen_id: int,
+    _usuario: CurrentUser = Depends(puede_gestionar_catalogo),
+):
     return eliminar_imagen(imagen_id)
 
 @router.get("/pos", response_model=CatalogoPOSPaginatedOut)
@@ -181,12 +214,19 @@ def catalogo_bicicletas_pdf(
 
 
 @router.post("/productos", response_model=ProductoCreateOut)
-def crear_producto_route(data: ProductoCreate):
+def crear_producto_route(
+    data: ProductoCreate,
+    _usuario: CurrentUser = Depends(puede_gestionar_catalogo),
+):
     return crear_producto(data)
 
 
 @router.post("/variantes", response_model=VarianteCreateOut)
-def crear_variante_route(data: VarianteCreate):
+def crear_variante_route(
+    data: VarianteCreate,
+    usuario: CurrentUser = Depends(puede_gestionar_catalogo),
+):
+    exigir_permiso_actual(usuario, PERMISO_GESTIONAR_PRECIOS)
     return crear_variante(data)
 
 @router.get("/marcas", response_model=list[MarcaOut])
@@ -195,46 +235,82 @@ def marcas(solo_activas: bool = True):
 
 
 @router.post("/marcas", response_model=MarcaOut)
-def crear_marca_route(data: MarcaCreate):
+def crear_marca_route(
+    data: MarcaCreate,
+    _usuario: CurrentUser = Depends(puede_gestionar_catalogo),
+):
     return crear_marca(data)
 
 
 @router.put("/marcas/{marca_id}", response_model=MarcaOut)
-def editar_marca_route(marca_id: int, data: MarcaUpdate):
+def editar_marca_route(
+    marca_id: int,
+    data: MarcaUpdate,
+    _usuario: CurrentUser = Depends(puede_gestionar_catalogo),
+):
     return editar_marca(marca_id, data)
 
 
 @router.patch("/marcas/{marca_id}/estado", response_model=MarcaOut)
-def cambiar_estado_marca_route(marca_id: int, data: MarcaEstadoUpdate):
+def cambiar_estado_marca_route(
+    marca_id: int,
+    data: MarcaEstadoUpdate,
+    _usuario: CurrentUser = Depends(puede_gestionar_catalogo),
+):
     return cambiar_estado_marca(marca_id, data)
 
 @router.get("/productos/{producto_id}", response_model=ProductoCreateOut)
-def producto_detalle_route(producto_id: int):
+def producto_detalle_route(
+    producto_id: int,
+    _usuario: CurrentUser = Depends(puede_gestionar_catalogo),
+):
     return obtener_producto(producto_id)
 
 
 @router.put("/productos/{producto_id}", response_model=ProductoCreateOut)
-def editar_producto_route(producto_id: int, data: ProductoUpdate):
+def editar_producto_route(
+    producto_id: int,
+    data: ProductoUpdate,
+    _usuario: CurrentUser = Depends(puede_gestionar_catalogo),
+):
     return editar_producto(producto_id, data)
 
 
 @router.post("/productos/{producto_id}/estado", response_model=ProductoCreateOut)
-def cambiar_estado_producto_route(producto_id: int, data: ProductoEstadoUpdate):
+def cambiar_estado_producto_route(
+    producto_id: int,
+    data: ProductoEstadoUpdate,
+    usuario: CurrentUser = Depends(puede_gestionar_catalogo),
+):
+    aplicar_actor_actual(data, usuario)
     return cambiar_estado_producto(producto_id, data)
 
 
 @router.get("/variantes/{variante_id}", response_model=VarianteOut)
-def variante_detalle_route(variante_id: int):
+def variante_detalle_route(
+    variante_id: int,
+    usuario: CurrentUser = Depends(puede_gestionar_catalogo),
+):
+    exigir_permiso_actual(usuario, PERMISO_GESTIONAR_PRECIOS)
     return obtener_variante(variante_id)
 
 
 @router.put("/variantes/{variante_id}", response_model=VarianteOut)
-def editar_variante_route(variante_id: int, data: VarianteUpdate):
+def editar_variante_route(
+    variante_id: int,
+    data: VarianteUpdate,
+    _usuario: CurrentUser = Depends(puede_gestionar_catalogo),
+):
     return editar_variante(variante_id, data)
 
 
 @router.post("/variantes/{variante_id}/estado", response_model=VarianteOut)
-def cambiar_estado_variante_route(variante_id: int, data: VarianteEstadoUpdate):
+def cambiar_estado_variante_route(
+    variante_id: int,
+    data: VarianteEstadoUpdate,
+    usuario: CurrentUser = Depends(puede_gestionar_catalogo),
+):
+    aplicar_actor_actual(data, usuario)
     return cambiar_estado_variante(variante_id, data)
 
 @router.get("/pos/buscar-exacto", response_model=CatalogoPOSItemOut)
@@ -259,6 +335,7 @@ async def subir_imagen_catalogo(
     id_variante: int | None = Form(default=None),
     es_principal: bool = Form(default=True),
     orden: int = Form(default=0),
+    _usuario: CurrentUser = Depends(puede_gestionar_catalogo),
 ):
     if id_producto is None and id_variante is None:
         raise HTTPException(
@@ -320,5 +397,6 @@ def ficha_tecnica_producto(producto_id: int):
 def reemplazar_ficha_tecnica_producto_route(
     producto_id: int,
     data: ProductoFichaTecnicaReplaceInput,
+    _usuario: CurrentUser = Depends(puede_gestionar_catalogo),
 ):
     return reemplazar_ficha_tecnica_producto_service(producto_id, data)

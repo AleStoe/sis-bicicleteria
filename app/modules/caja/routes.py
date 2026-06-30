@@ -2,13 +2,14 @@ from typing import List
 from datetime import date
 from fastapi import APIRouter, Depends, Query
 
-from app.core.security import CurrentUser, aplicar_actor_actual
+from app.core.security import CurrentUser, aplicar_actor_actual, obtener_usuario_actual
 from app.modules.authz.service import requerir_permiso
 from app.shared.constants import (
     PERMISO_ABRIR_CAJA,
     PERMISO_AJUSTAR_CAJA,
     PERMISO_CERRAR_CAJA,
     PERMISO_REGISTRAR_EGRESO,
+    PERMISO_VER_RENTABILIDAD,
 )
 
 from .schema import (
@@ -68,8 +69,27 @@ def caja_historial_route(
 def caja_resumen_diario_route(
     fecha: date | None = None,
     id_sucursal: int | None = Query(default=None, gt=0),
+    usuario: CurrentUser = Depends(obtener_usuario_actual),
 ):
-    return obtener_resumen_diario_caja(fecha=fecha, id_sucursal=id_sucursal)
+    resumen = obtener_resumen_diario_caja(
+        fecha=fecha,
+        id_sucursal=id_sucursal,
+    )
+    puede_ver_rentabilidad = (
+        usuario.auth_disabled
+        or "*" in usuario.permisos
+        or PERMISO_VER_RENTABILIDAD in usuario.permisos
+    )
+    if puede_ver_rentabilidad:
+        return resumen
+
+    rentabilidad = {
+        **dict(resumen["rentabilidad"]),
+        "costo_mercaderia_vendida": None,
+        "margen_bruto": None,
+        "ganancia_dia": None,
+    }
+    return {**dict(resumen), "rentabilidad": rentabilidad}
 
 @router.get("/{caja_id}", response_model=CajaDetalleOutput)
 def caja_detalle(caja_id: int):

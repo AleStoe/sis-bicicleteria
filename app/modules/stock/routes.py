@@ -1,4 +1,10 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+
+from app.core.security import CurrentUser, obtener_usuario_actual
+from app.shared.constants import (
+    PERMISO_GESTIONAR_PRECIOS,
+    PERMISO_VER_RENTABILIDAD,
+)
 from .service import listar_stock, obtener_resumen_stock, crear_ingreso_stock, crear_ajuste_stock
 from .schema import (
     StockSucursalOut,
@@ -10,6 +16,15 @@ from .schema import (
 )
 
 router = APIRouter()
+
+
+def _puede_ver_costos(usuario: CurrentUser) -> bool:
+    return (
+        usuario.auth_disabled
+        or "*" in usuario.permisos
+        or PERMISO_GESTIONAR_PRECIOS in usuario.permisos
+        or PERMISO_VER_RENTABILIDAD in usuario.permisos
+    )
 
 
 def _stock_filtros(
@@ -59,8 +74,9 @@ def stock(
     orden: str = Query(default="asc", pattern="^(asc|desc)$"),
     limit: int = Query(default=500, ge=1, le=2000),
     offset: int = Query(default=0, ge=0),
+    usuario: CurrentUser = Depends(obtener_usuario_actual),
 ):
-    return listar_stock(
+    items = listar_stock(
         _stock_filtros(
             q=q,
             id_sucursal=id_sucursal,
@@ -77,6 +93,17 @@ def stock(
             offset=offset,
         )
     )
+    if _puede_ver_costos(usuario):
+        return items
+
+    return [
+        {
+            **dict(item),
+            "costo_promedio_vigente": None,
+            "capital_inmovilizado": None,
+        }
+        for item in items
+    ]
 
 
 @router.get("/resumen", response_model=StockResumenOut)
@@ -90,8 +117,9 @@ def stock_resumen(
     estado_stock: str | None = Query(default=None, pattern="^(todos|con_stock|sin_stock|sin_disponible|stock_bajo|bajo|reservado|pendiente|inconsistente)$"),
     stock_bajo_umbral: int = Query(default=2, ge=0, le=999999),
     dias_sin_movimiento: int | None = Query(default=None, ge=1, le=3650),
+    usuario: CurrentUser = Depends(obtener_usuario_actual),
 ):
-    return obtener_resumen_stock(
+    resumen = obtener_resumen_stock(
         _stock_filtros(
             q=q,
             id_sucursal=id_sucursal,
@@ -104,6 +132,10 @@ def stock_resumen(
             dias_sin_movimiento=dias_sin_movimiento,
         )
     )
+    if _puede_ver_costos(usuario):
+        return resumen
+
+    return {**dict(resumen), "capital_inmovilizado_total": None}
 
 
 @router.post("/ingresos", response_model=IngresoStockResponse)

@@ -49,12 +49,18 @@ def crear_participante_route(
 
 
 @router.get("/participantes", response_model=List[ParticipanteCapitalOutput])
-def participantes_route(incluir_inactivos: bool = False):
+def participantes_route(
+    incluir_inactivos: bool = False,
+    _usuario: CurrentUser = Depends(puede_gestionar_capital),
+):
     return listar_participantes(incluir_inactivos=incluir_inactivos)
 
 
 @router.get("/participantes/{participante_id}/perfil", response_model=ParticipanteCapitalPerfilOutput)
-def participante_perfil_route(participante_id: int):
+def participante_perfil_route(
+    participante_id: int,
+    _usuario: CurrentUser = Depends(puede_gestionar_capital),
+):
     return obtener_perfil_participante(participante_id)
 
 
@@ -98,6 +104,7 @@ def movimientos_route(
     q: Optional[str] = Query(default=None, min_length=2, max_length=100),
     limit: int = Query(default=200, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
+    _usuario: CurrentUser = Depends(puede_gestionar_capital),
 ):
     filtros = CapitalFiltros(
         id_participante=id_participante,
@@ -121,6 +128,7 @@ def resumen_route(
     id_sucursal: Optional[int] = Query(default=None, gt=0),
     fecha_desde: Optional[date] = None,
     fecha_hasta: Optional[date] = None,
+    _usuario: CurrentUser = Depends(puede_gestionar_capital),
 ):
     filtros = CapitalFiltros(
         id_participante=id_participante,
@@ -134,7 +142,10 @@ def resumen_route(
 
 
 @router.get("/movimientos/{movimiento_id}", response_model=MovimientoCapitalDetalleOutput)
-def movimiento_detalle_route(movimiento_id: int):
+def movimiento_detalle_route(
+    movimiento_id: int,
+    _usuario: CurrentUser = Depends(puede_gestionar_capital),
+):
     return obtener_movimiento(movimiento_id)
 
 

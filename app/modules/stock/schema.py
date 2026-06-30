@@ -28,8 +28,8 @@ class StockSucursalOut(BaseModel):
     serializable: bool | None = None
     tipo_operativo: str | None = None
 
-    costo_promedio_vigente: Decimal = Decimal("0")
-    capital_inmovilizado: Decimal = Decimal("0")
+    costo_promedio_vigente: Decimal | None = None
+    capital_inmovilizado: Decimal | None = None
     ultima_venta: datetime | None = None
     dias_sin_movimiento: int | None = None
 
@@ -44,7 +44,7 @@ class StockResumenOut(BaseModel):
     inconsistentes: int
     stock_fisico_total: Decimal
     stock_disponible_total: Decimal
-    capital_inmovilizado_total: Decimal
+    capital_inmovilizado_total: Decimal | None = None
 
 
 class IngresoStockCreate(BaseModel):
