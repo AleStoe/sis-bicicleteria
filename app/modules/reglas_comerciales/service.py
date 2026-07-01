@@ -8,6 +8,8 @@ from app.shared.money import redondear_monto
 
 from .repository import (
     get_reglas_comerciales,
+    get_regla_comercial,
+    existe_regla_comercial_con_nombre,
     get_reglas_activas_por_medios,
     insert_regla_comercial,
     get_tarjeta_plan_activo,
@@ -342,13 +344,42 @@ def editar_regla_comercial(regla_id: int, data):
 
     try:
         payload = data.model_dump(exclude_unset=True)
+        actual = get_regla_comercial(conn, regla_id)
 
-        regla = update_regla_comercial(conn, regla_id, payload)
-
-        if regla is None:
+        if actual is None:
             raise HTTPException(
                 status_code=404,
                 detail="Regla comercial no encontrada",
+            )
+
+        if not payload:
+            raise HTTPException(
+                status_code=400,
+                detail="No se informaron cambios para la regla comercial",
+            )
+
+        nombre = str(payload.get("nombre", actual["nombre"])).strip()
+
+        if existe_regla_comercial_con_nombre(
+            conn,
+            nombre,
+            excluir_id=regla_id,
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Ya existe una regla comercial con ese nombre",
+            )
+
+        payload["nombre"] = nombre
+        _validar_valor_regla({**dict(actual), **payload})
+
+        try:
+            regla = update_regla_comercial(conn, regla_id, payload)
+        except UniqueViolation:
+            conn.rollback()
+            raise HTTPException(
+                status_code=400,
+                detail="Ya existe una regla comercial con esos datos",
             )
 
         conn.commit()
@@ -362,10 +393,19 @@ def crear_regla_comercial(data):
     conn = get_connection()
 
     try:
+        payload = data.model_dump()
+        payload["nombre"] = payload["nombre"].strip()
+
+        if existe_regla_comercial_con_nombre(conn, payload["nombre"]):
+            raise HTTPException(
+                status_code=400,
+                detail="Ya existe una regla comercial con ese nombre",
+            )
+
         try:
             regla = insert_regla_comercial(
                 conn,
-                data.model_dump(),
+                payload,
             )
         except UniqueViolation:
             conn.rollback()
@@ -379,6 +419,24 @@ def crear_regla_comercial(data):
 
     finally:
         conn.close()
+
+
+def _validar_valor_regla(regla: dict) -> None:
+    porcentaje = regla.get("porcentaje")
+    monto_fijo = regla.get("monto_fijo")
+    informados = [valor for valor in (porcentaje, monto_fijo) if valor is not None]
+
+    if len(informados) != 1:
+        raise HTTPException(
+            status_code=400,
+            detail="La regla debe usar porcentaje o monto fijo, pero no ambos",
+        )
+
+    if _dec(informados[0]) <= Decimal("0"):
+        raise HTTPException(
+            status_code=400,
+            detail="El valor de la regla debe ser mayor a cero",
+        )
 
 
 def listar_tarjeta_planes(solo_activos: bool = False):

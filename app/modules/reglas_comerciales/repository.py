@@ -37,6 +37,60 @@ def get_reglas_comerciales(conn, solo_activas: bool = True):
         return cur.fetchall()
 
 
+def get_regla_comercial(conn, regla_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT
+                id,
+                nombre,
+                tipo,
+                medio_pago,
+                porcentaje,
+                monto_fijo,
+                requiere_pago_total,
+                combinable,
+                prioridad,
+                activa,
+                fecha_desde,
+                fecha_hasta,
+                created_at,
+                updated_at
+            FROM reglas_comerciales
+            WHERE id = %s
+            """,
+            (regla_id,),
+        )
+        return cur.fetchone()
+
+
+def existe_regla_comercial_con_nombre(
+    conn,
+    nombre: str,
+    *,
+    excluir_id: int | None = None,
+) -> bool:
+    params = [nombre]
+    excluir_sql = ""
+
+    if excluir_id is not None:
+        excluir_sql = "AND id <> %s"
+        params.append(excluir_id)
+
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT 1
+            FROM reglas_comerciales
+            WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(%s))
+            {excluir_sql}
+            LIMIT 1
+            """,
+            params,
+        )
+        return cur.fetchone() is not None
+
+
 def get_reglas_activas_por_medios(conn, medios_pago: list[str]):
     if not medios_pago:
         return []
@@ -108,8 +162,10 @@ def update_regla_comercial(conn, regla_id: int, data: dict):
     campos = []
     params = []
 
+    campos_nullable = {"medio_pago", "porcentaje", "monto_fijo"}
+
     for campo, valor in data.items():
-        if valor is not None:
+        if valor is not None or campo in campos_nullable:
             campos.append(f"{campo} = %s")
             params.append(valor)
 

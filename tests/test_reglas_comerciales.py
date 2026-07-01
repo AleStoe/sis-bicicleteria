@@ -81,6 +81,301 @@ def test_crear_regla_comercial_requiere_porcentaje_o_monto(client):
     assert response.status_code == 422
 
 
+def test_regla_comercial_rechaza_porcentaje_y_monto_fijo_juntos(client):
+    response = client.post(
+        "/reglas-comerciales",
+        json={
+            "nombre": "Regla ambigua test",
+            "tipo": "descuento",
+            "medio_pago": "efectivo",
+            "porcentaje": "10",
+            "monto_fijo": "1000",
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_regla_comercial_rechaza_valor_cero(client):
+    response = client.post(
+        "/reglas-comerciales",
+        json={
+            "nombre": "Regla cero test",
+            "tipo": "descuento",
+            "medio_pago": "efectivo",
+            "porcentaje": "0",
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_edita_regla_y_cambia_porcentaje_por_monto_fijo(
+    client,
+    db_conn,
+    request,
+):
+    nombre = "Regla edición ABM test"
+
+    def limpiar():
+        db_conn.rollback()
+        with db_conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM reglas_comerciales WHERE nombre = %s",
+                (nombre,),
+            )
+        db_conn.commit()
+
+    limpiar()
+    request.addfinalizer(limpiar)
+
+    creada = client.post(
+        "/reglas-comerciales",
+        json={
+            "nombre": nombre,
+            "tipo": "descuento",
+            "medio_pago": "efectivo",
+            "porcentaje": "10",
+            "requiere_pago_total": False,
+            "combinable": False,
+            "prioridad": 50,
+            "activa": True,
+        },
+    )
+    assert creada.status_code == 200, creada.text
+    regla_id = creada.json()["id"]
+
+    editada = client.patch(
+        f"/reglas-comerciales/{regla_id}",
+        json={
+            "tipo": "recargo",
+            "medio_pago": "transferencia",
+            "porcentaje": None,
+            "monto_fijo": "1500",
+            "requiere_pago_total": True,
+            "combinable": True,
+            "prioridad": 15,
+        },
+    )
+
+    assert editada.status_code == 200, editada.text
+    data = editada.json()
+    assert data["tipo"] == "recargo"
+    assert data["medio_pago"] == "transferencia"
+    assert data["porcentaje"] is None
+    assert _dec(data["monto_fijo"]) == Decimal("1500")
+    assert data["requiere_pago_total"] is True
+    assert data["combinable"] is True
+    assert data["prioridad"] == 15
+
+
+def test_activa_y_desactiva_regla_comercial(client, db_conn, request):
+    nombre = "Regla estado ABM test"
+
+    def limpiar():
+        db_conn.rollback()
+        with db_conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM reglas_comerciales WHERE nombre = %s",
+                (nombre,),
+            )
+        db_conn.commit()
+
+    limpiar()
+    request.addfinalizer(limpiar)
+
+    creada = client.post(
+        "/reglas-comerciales",
+        json={
+            "nombre": nombre,
+            "tipo": "descuento",
+            "medio_pago": "mercadopago",
+            "porcentaje": "3",
+        },
+    )
+    regla_id = creada.json()["id"]
+
+    desactivada = client.patch(
+        f"/reglas-comerciales/{regla_id}",
+        json={"activa": False},
+    )
+    assert desactivada.status_code == 200, desactivada.text
+    assert desactivada.json()["activa"] is False
+
+    activada = client.patch(
+        f"/reglas-comerciales/{regla_id}",
+        json={"activa": True},
+    )
+    assert activada.status_code == 200, activada.text
+    assert activada.json()["activa"] is True
+
+
+def test_no_permite_nombre_duplicado_normalizado(client, db_conn, request):
+    nombre = "Regla nombre único ABM"
+
+    def limpiar():
+        db_conn.rollback()
+        with db_conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM reglas_comerciales WHERE LOWER(nombre) = LOWER(%s)",
+                (nombre,),
+            )
+        db_conn.commit()
+
+    limpiar()
+    request.addfinalizer(limpiar)
+
+    primera = client.post(
+        "/reglas-comerciales",
+        json={
+            "nombre": nombre,
+            "tipo": "descuento",
+            "medio_pago": "efectivo",
+            "porcentaje": "5",
+        },
+    )
+    assert primera.status_code == 200, primera.text
+
+    duplicada = client.post(
+        "/reglas-comerciales",
+        json={
+            "nombre": f"  {nombre.upper()}  ",
+            "tipo": "recargo",
+            "medio_pago": "transferencia",
+            "porcentaje": "7",
+        },
+    )
+
+    assert duplicada.status_code == 400
+    assert "nombre" in duplicada.json()["detail"].lower()
+
+
+def test_pago_total_y_combinabilidad_conservan_semantica_actual(
+    client,
+    db_conn,
+    request,
+):
+    nombres = (
+        "Regla pago total ABM test",
+        "Regla combinable uno ABM test",
+        "Regla combinable dos ABM test",
+    )
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id, activa
+            FROM reglas_comerciales
+            WHERE activa = TRUE
+              AND (medio_pago IS NULL OR medio_pago = 'mercadopago')
+            """
+        )
+        estados_originales = {
+            row["id"]: row["activa"]
+            for row in cur.fetchall()
+        }
+        cur.execute(
+            """
+            UPDATE reglas_comerciales
+            SET activa = FALSE
+            WHERE activa = TRUE
+              AND (medio_pago IS NULL OR medio_pago = 'mercadopago')
+            """
+        )
+        cur.execute(
+            "DELETE FROM reglas_comerciales WHERE nombre = ANY(%s)",
+            (list(nombres),),
+        )
+    db_conn.commit()
+
+    def restaurar():
+        db_conn.rollback()
+        with db_conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM reglas_comerciales WHERE nombre = ANY(%s)",
+                (list(nombres),),
+            )
+            for regla_id, activa in estados_originales.items():
+                cur.execute(
+                    "UPDATE reglas_comerciales SET activa = %s WHERE id = %s",
+                    (activa, regla_id),
+                )
+        db_conn.commit()
+
+    request.addfinalizer(restaurar)
+
+    pago_total = client.post(
+        "/reglas-comerciales",
+        json={
+            "nombre": nombres[0],
+            "tipo": "descuento",
+            "medio_pago": "mercadopago",
+            "porcentaje": "10",
+            "requiere_pago_total": True,
+            "combinable": False,
+            "prioridad": 1,
+        },
+    )
+    assert pago_total.status_code == 200, pago_total.text
+
+    parcial = client.post(
+        "/reglas-comerciales/simular",
+        json={
+            "subtotal_base": "1000",
+            "medios_pago": [{"medio_pago": "mercadopago", "monto_base": "500"}],
+        },
+    )
+    assert _dec(parcial.json()["descuento_total"]) == Decimal("0")
+
+    total = client.post(
+        "/reglas-comerciales/simular",
+        json={
+            "subtotal_base": "1000",
+            "medios_pago": [{"medio_pago": "mercadopago", "monto_base": "1000"}],
+        },
+    )
+    assert _dec(total.json()["descuento_total"]) == Decimal("100")
+
+    client.patch(
+        f"/reglas-comerciales/{pago_total.json()['id']}",
+        json={"activa": False},
+    )
+
+    primera = client.post(
+        "/reglas-comerciales",
+        json={
+            "nombre": nombres[1],
+            "tipo": "descuento",
+            "medio_pago": "mercadopago",
+            "porcentaje": "10",
+            "combinable": True,
+            "prioridad": 1,
+        },
+    )
+    segunda = client.post(
+        "/reglas-comerciales",
+        json={
+            "nombre": nombres[2],
+            "tipo": "descuento",
+            "medio_pago": "mercadopago",
+            "porcentaje": "5",
+            "combinable": False,
+            "prioridad": 2,
+        },
+    )
+    assert primera.status_code == 200, primera.text
+    assert segunda.status_code == 200, segunda.text
+
+    combinadas = client.post(
+        "/reglas-comerciales/simular",
+        json={
+            "subtotal_base": "1000",
+            "medios_pago": [{"medio_pago": "mercadopago", "monto_base": "1000"}],
+        },
+    )
+    assert _dec(combinadas.json()["descuento_total"]) == Decimal("150")
+
+
 def test_simula_descuento_efectivo_sobre_monto_pagado(client):
     response = client.post(
         "/reglas-comerciales/simular",

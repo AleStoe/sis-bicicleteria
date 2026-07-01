@@ -202,6 +202,69 @@ def test_planes_activos_ocultan_costo_financiero_al_operador(
     assert Decimal(plan_admin["porcentaje_costo_financiero"]) == Decimal("7")
 
 
+def test_editar_regla_comercial_requiere_permiso(
+    client,
+    db_conn,
+    clean_db,
+    auth_habilitada,
+    request,
+):
+    nombre = "REGLA SEGURIDAD EDICION 1E"
+
+    def limpiar_regla():
+        db_conn.rollback()
+        with db_conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM reglas_comerciales WHERE nombre = %s",
+                (nombre,),
+            )
+        db_conn.commit()
+
+    limpiar_regla()
+    request.addfinalizer(limpiar_regla)
+
+    _, token_operador = _crear_actor(
+        db_conn,
+        username="operador_reglas_1e",
+        rol="test_operador_reglas_1e",
+    )
+    _, token_admin = _crear_actor(
+        db_conn,
+        username="admin_reglas_1e",
+        rol="test_admin_reglas_1e",
+        permisos=("configuracion_comercial",),
+    )
+
+    creada = client.post(
+        "/reglas-comerciales",
+        headers=_headers(token_admin),
+        json={
+            "nombre": nombre,
+            "tipo": "descuento",
+            "medio_pago": "efectivo",
+            "porcentaje": "4",
+        },
+    )
+    assert creada.status_code == 200, creada.text
+    regla_id = creada.json()["id"]
+
+    bloqueada = client.patch(
+        f"/reglas-comerciales/{regla_id}",
+        headers=_headers(token_operador),
+        json={"prioridad": 20},
+    )
+    assert bloqueada.status_code == 403
+    assert "configuracion_comercial" in bloqueada.json()["detail"]
+
+    permitida = client.patch(
+        f"/reglas-comerciales/{regla_id}",
+        headers=_headers(token_admin),
+        json={"prioridad": 20},
+    )
+    assert permitida.status_code == 200, permitida.text
+    assert permitida.json()["prioridad"] == 20
+
+
 def test_operador_no_modifica_precios_y_actor_real_queda_en_historial(
     client,
     db_conn,

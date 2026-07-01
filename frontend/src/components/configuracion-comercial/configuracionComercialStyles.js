@@ -38,11 +38,16 @@ export const styles = {
 
   table: {
     display: "grid",
+    minWidth: 1180,
+  },
+
+  tableScroll: {
+    overflowX: "auto",
   },
 
   tableHeadReglas: {
     display: "grid",
-    gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr",
+    gridTemplateColumns: "minmax(190px, 2fr) repeat(7, minmax(90px, 1fr)) minmax(180px, 1.4fr)",
     gap: 12,
     padding: 14,
     background: "#f9fafb",
@@ -53,12 +58,23 @@ export const styles = {
 
   rowReglas: {
     display: "grid",
-    gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr",
+    gridTemplateColumns: "minmax(190px, 2fr) repeat(7, minmax(90px, 1fr)) minmax(180px, 1.4fr)",
     gap: 12,
     padding: 14,
     borderTop: "1px solid #f2f4f7",
     alignItems: "center",
     fontSize: 14,
+  },
+
+  rowReglasActiva: {
+    display: "grid",
+    gridTemplateColumns: "minmax(190px, 2fr) repeat(7, minmax(90px, 1fr)) minmax(180px, 1.4fr)",
+    gap: 12,
+    padding: 14,
+    borderTop: "1px solid #fed7aa",
+    alignItems: "center",
+    fontSize: 14,
+    background: "#fff7ed",
   },
 
   tableHeadPlanes: {
@@ -102,7 +118,7 @@ export const styles = {
 
   inlineForm: {
     display: "grid",
-    gridTemplateColumns: "minmax(180px, 2fr) repeat(5, minmax(110px, 1fr))",
+    gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
     gap: 10,
     padding: 16,
     borderBottom: "1px solid #eaecf0",
@@ -152,10 +168,61 @@ export const styles = {
     cursor: "pointer",
   },
 
+  activateBtn: {
+    border: "1px solid #86efac",
+    background: "#ecfdf3",
+    color: "#067647",
+    borderRadius: 8,
+    padding: "6px 9px",
+    fontWeight: 800,
+    cursor: "pointer",
+  },
+
+  deactivateBtn: {
+    border: "1px solid #fecdca",
+    background: "#fff1f0",
+    color: "#b42318",
+    borderRadius: 8,
+    padding: "6px 9px",
+    fontWeight: 800,
+    cursor: "pointer",
+  },
+
+  badgeActivo: {
+    background: "#ecfdf3",
+    color: "#067647",
+  },
+
+  badgeInactivo: {
+    background: "#f2f4f7",
+    color: "#667085",
+  },
+
+  helpBox: {
+    margin: 16,
+    padding: 12,
+    border: "1px solid #bfdbfe",
+    borderRadius: 10,
+    background: "#eff6ff",
+    color: "#1d4ed8",
+    fontSize: 13,
+    fontWeight: 700,
+    lineHeight: 1.4,
+  },
+
   errorBox: {
     border: "1px solid #fecdca",
     background: "#fff1f0",
     color: "#b42318",
+    borderRadius: 10,
+    padding: 10,
+    fontSize: 14,
+  },
+
+  successBox: {
+    border: "1px solid #86efac",
+    background: "#ecfdf3",
+    color: "#067647",
     borderRadius: 10,
     padding: 10,
     fontSize: 14,

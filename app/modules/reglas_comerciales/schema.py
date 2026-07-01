@@ -101,6 +101,8 @@ class SimularReglasOutput(BaseModel):
 
 class ReglaComercialUpdateInput(BaseModel):
     nombre: str | None = Field(default=None, min_length=3, max_length=120)
+    tipo: TipoReglaComercial | None = None
+    medio_pago: MedioPagoRegla | None = None
     porcentaje: Decimal | None = Field(default=None, ge=0)
     monto_fijo: Decimal | None = Field(default=None, ge=0)
     requiere_pago_total: bool | None = None
@@ -122,8 +124,15 @@ class ReglaComercialCreateInput(BaseModel):
 
     @model_validator(mode="after")
     def validar_valor(self):
-        if self.porcentaje is None and self.monto_fijo is None:
-            raise ValueError("Debe informar porcentaje o monto fijo")
+        valores = [self.porcentaje, self.monto_fijo]
+        informados = [valor for valor in valores if valor is not None]
+
+        if len(informados) != 1:
+            raise ValueError("Debe informar porcentaje o monto fijo, pero no ambos")
+
+        if informados[0] <= 0:
+            raise ValueError("El valor de la regla debe ser mayor a cero")
+
         return self
 
 
