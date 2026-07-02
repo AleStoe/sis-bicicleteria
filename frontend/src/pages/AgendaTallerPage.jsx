@@ -21,6 +21,24 @@ import { normalizeTextUpper } from "../utils/textNormalization";
 import { DEFAULT_CONFIGURACION_NEGOCIO } from "../config/defaultConfiguracionNegocio";
 import { obtenerConfiguracionNegocio } from "../services/configuracionNegocioService";
 import { renderMessageTemplate } from "../utils/messageTemplate";
+import {
+  Button,
+  Card,
+  EmptyState,
+  MetricCard,
+  PageHeader,
+  ResponsiveMetricsGrid,
+  ResponsiveTabs,
+} from "../components/ui";
+import { CalendarDays, Filter, Plus, RefreshCw, Save } from "lucide-react";
+import {
+  colors,
+  controls,
+  radius,
+  shadows,
+  spacing,
+  typography,
+} from "../theme";
 
 const ESTADOS = [
   "pendiente",
@@ -36,6 +54,13 @@ const VISTAS = {
   PARA_MANANA: "para_manana",
   ATRASADAS: "atrasadas",
 };
+
+const AGENDA_TABS = [
+  { id: VISTAS.HOY, label: "Hoy" },
+  { id: VISTAS.GENERAL, label: "General" },
+  { id: VISTAS.PARA_MANANA, label: "Para mañana" },
+  { id: VISTAS.ATRASADAS, label: "Atrasadas" },
+];
 
 const TIPOS_TURNO = [
   { value: "reparacion_comun", label: "Reparación común" },
@@ -599,81 +624,58 @@ export default function AgendaTallerPage() {
 
   return (
     <div style={styles.page}>
-      <div style={isCompact ? styles.pageHeaderCompact : styles.pageHeader}>
-        <div>
-          <h1 style={styles.title}>Agenda Taller</h1>
-          <p style={styles.subtitle}>
-            Turnos, ingresos previstos, promesas de entrega y avisos al cliente.
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={cargarTurnos}
-          style={styles.secondaryButton}
-          disabled={loading}
-        >
-          Refrescar
-        </button>
-      </div>
+      <PageHeader
+        title="Agenda Taller"
+        subtitle="Turnos, ingresos previstos, promesas de entrega y avisos al cliente."
+        style={{ marginBottom: 0 }}
+        actions={(
+          <Button
+            type="button"
+            onClick={cargarTurnos}
+            variant="outline"
+            disabled={loading}
+          >
+            <RefreshCw size={16} aria-hidden="true" />
+            Refrescar
+          </Button>
+        )}
+      />
 
       {error ? <div style={styles.alertError}>{error}</div> : null}
       {mensaje ? <div style={styles.alertSuccess}>{mensaje}</div> : null}
 
-      <div style={isCompact ? styles.statsGridCompact : styles.statsGrid}>
-        <Stat label="Turnos" value={resumen.total} />
-        <Stat label="Pendientes" value={resumen.pendientes} />
-        <Stat label="Confirmados" value={resumen.confirmados} />
-        <Stat label="En taller" value={resumen.enTaller} />
-        <Stat label="Avisados" value={resumen.avisados} />
-      </div>
+      <ResponsiveMetricsGrid minWidth={132} mobileColumns={2}>
+        <MetricCard label="Turnos" value={resumen.total} />
+        <MetricCard label="Pendientes" value={resumen.pendientes} tone="warning" />
+        <MetricCard label="Confirmados" value={resumen.confirmados} tone="primary" />
+        <MetricCard label="En taller" value={resumen.enTaller} tone="primary" />
+        <MetricCard label="Avisados" value={resumen.avisados} tone="success" />
+      </ResponsiveMetricsGrid>
 
-      <div style={styles.viewTabs}>
-        <button
-          type="button"
-          onClick={() => setVista(VISTAS.HOY)}
-          style={vista === VISTAS.HOY ? styles.tabActive : styles.tab}
-        >
-          Hoy
-        </button>
-        <button
-          type="button"
-          onClick={() => setVista(VISTAS.GENERAL)}
-          style={vista === VISTAS.GENERAL ? styles.tabActive : styles.tab}
-        >
-          General
-        </button>
-        <button
-          type="button"
-          onClick={() => setVista(VISTAS.PARA_MANANA)}
-          style={vista === VISTAS.PARA_MANANA ? styles.tabActive : styles.tab}
-        >
-          Para mañana
-        </button>
-        <button
-          type="button"
-          onClick={() => setVista(VISTAS.ATRASADAS)}
-          style={vista === VISTAS.ATRASADAS ? styles.tabActive : styles.tab}
-        >
-          Atrasadas
-        </button>
-      </div>
+      <ResponsiveTabs
+        tabs={AGENDA_TABS}
+        activeTab={vista}
+        onChange={setVista}
+      />
 
       <div style={isCompact ? styles.gridCompact : styles.grid}>
-        <section style={styles.card}>
-          <div style={isCompact ? styles.headerRowCompact : styles.headerRow}>
-            <h2 style={styles.cardTitle}>{modoEdicion ? "Editar turno" : "Nuevo turno"}</h2>
-            {modoEdicion ? (
-              <button
+        <Card
+          title={modoEdicion ? "Editar turno" : "Nuevo turno"}
+          subtitle="Datos necesarios para reservar el ingreso al taller."
+          actions={
+            modoEdicion ? (
+              <Button
                 type="button"
                 onClick={resetFormulario}
-                style={styles.secondaryButtonSmall}
+                variant="outline"
+                style={styles.compactButton}
                 disabled={procesando}
               >
                 Cancelar edición
-              </button>
-            ) : null}
-          </div>
+              </Button>
+            ) : null
+          }
+        >
 
           <form onSubmit={handleSubmit}>
             <label style={styles.label}>Tipo de turno</label>
@@ -985,19 +987,21 @@ export default function AgendaTallerPage() {
               style={styles.textareaSmall}
             />
 
-            <button type="submit" style={styles.primaryButton} disabled={procesando}>
+            <Button type="submit" fullWidth disabled={procesando}>
+              {modoEdicion ? (
+                <Save size={17} aria-hidden="true" />
+              ) : (
+                <Plus size={17} aria-hidden="true" />
+              )}
               {modoEdicion ? "Guardar cambios" : "Crear turno"}
-            </button>
+            </Button>
           </form>
-        </section>
+        </Card>
 
-        <section style={styles.card}>
-          <div style={isCompact ? styles.headerRowCompact : styles.headerRow}>
-            <div>
-              <h2 style={styles.cardTitle}>{labelVista(vista)}</h2>
-              <p style={styles.muted}>{turnos.length} turno(s) encontrados</p>
-            </div>
-          </div>
+        <Card
+          title={labelVista(vista)}
+          subtitle={`${turnos.length} turno(s) encontrados`}
+        >
 
           {vista === VISTAS.GENERAL ? (
             <div style={isCompact ? styles.filtersCompact : styles.filters}>
@@ -1056,16 +1060,26 @@ export default function AgendaTallerPage() {
                 Mostrar convertidos
               </label>
 
-              <button type="button" onClick={cargarTurnos} style={styles.primaryButton}>
+              <Button type="button" onClick={cargarTurnos}>
+                <Filter size={16} aria-hidden="true" />
                 Filtrar
-              </button>
+              </Button>
             </div>
           ) : null}
 
           {loading ? (
-            <div style={styles.empty}>Cargando...</div>
+            <EmptyState
+              compact
+              icon={CalendarDays}
+              title="Cargando agenda..."
+              description="Estamos actualizando los turnos del taller."
+            />
           ) : Object.keys(turnosPorDia).length === 0 ? (
-            <div style={styles.empty}>No hay turnos para mostrar.</div>
+            <EmptyState
+              icon={CalendarDays}
+              title="No hay turnos para mostrar"
+              description="Probá otra vista o ajustá los filtros de fecha y estado."
+            />
           ) : (
             Object.entries(turnosPorDia).map(([fecha, items]) => (
               <div key={fecha} style={styles.dayGroup}>
@@ -1265,17 +1279,8 @@ export default function AgendaTallerPage() {
               </div>
             ))
           )}
-        </section>
+        </Card>
       </div>
-    </div>
-  );
-}
-
-function Stat({ label, value }) {
-  return (
-    <div style={styles.statCard}>
-      <div style={styles.statValue}>{value}</div>
-      <div style={styles.statLabel}>{label}</div>
     </div>
   );
 }
@@ -1564,23 +1569,23 @@ function labelTipoTurno(tipoTurno) {
 
 function getEstadoStyle(estado) {
   if (estado === "pendiente") {
-    return { background: "#fef3c7", color: "#92400e" };
+    return { background: colors.warningSoft, color: colors.warningDark };
   }
 
   if (estado === "confirmado") {
-    return { background: "#dcfce7", color: "#166534" };
+    return { background: colors.successSoft, color: colors.successDark };
   }
 
   if (estado === "en_taller") {
-    return { background: "#e0f2fe", color: "#075985" };
+    return { background: colors.infoSoft, color: colors.info };
   }
 
   if (estado === "convertido_orden") {
-    return { background: "#dbeafe", color: "#1d4ed8" };
+    return { background: colors.secondarySoft, color: colors.secondaryHover };
   }
 
   if (estado === "cancelado") {
-    return { background: "#fee2e2", color: "#991b1b" };
+    return { background: colors.dangerSoft, color: colors.dangerDark };
   }
 
   return {};
@@ -1619,170 +1624,120 @@ function esBicicletaElegiblePostventa(bici) {
 }
 
 const styles = {
-  page: { display: "grid", gap: 20, minWidth: 0 },
-  pageHeader: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  pageHeaderCompact: {
+  page: {
     display: "grid",
-    gap: 12,
+    gap: spacing.xl,
+    minWidth: 0,
+    color: colors.text,
+    fontFamily: typography.fontFamily,
   },
-  title: { margin: 0, color: "#0f172a" },
-  subtitle: { margin: "4px 0 0", color: "#64748b", fontWeight: 700 },
   grid: {
     display: "grid",
     gridTemplateColumns: "minmax(340px, 420px) minmax(0, 1fr)",
-    gap: 20,
+    gap: spacing.lg,
     alignItems: "start",
     minWidth: 0,
   },
   gridCompact: {
     display: "grid",
     gridTemplateColumns: "minmax(0, 1fr)",
-    gap: 16,
+    gap: spacing.lg,
     minWidth: 0,
   },
-  statsGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
-    gap: 12,
-  },
-  statsGridCompact: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
-    gap: 10,
-  },
-  statCard: {
-    background: "#fff",
-    border: "1px solid #e2e8f0",
-    borderRadius: 14,
-    padding: 14,
-  },
-  statValue: { fontSize: 24, fontWeight: 950, color: "#0f172a" },
-  statLabel: { marginTop: 2, color: "#64748b", fontWeight: 800, fontSize: 13 },
-  viewTabs: { display: "flex", gap: 8, flexWrap: "wrap" },
-  tab: {
-    padding: "10px 14px",
-    cursor: "pointer",
-    border: "1px solid #cbd5e1",
-    borderRadius: 999,
-    background: "white",
-    color: "#334155",
-    fontWeight: 900,
-  },
-  tabActive: {
-    padding: "10px 14px",
-    cursor: "pointer",
-    border: "1px solid #ea580c",
-    borderRadius: 999,
-    background: "#ea580c",
-    color: "white",
-    fontWeight: 950,
-  },
-  card: {
-    background: "#fff",
-    border: "1px solid #e2e8f0",
-    borderRadius: 16,
-    padding: 20,
-    minWidth: 0,
-  },
-  cardTitle: { margin: 0, color: "#0f172a" },
   label: {
     display: "block",
     margin: "12px 0 6px",
-    color: "#334155",
-    fontWeight: 900,
+    color: colors.text,
+    fontSize: typography.label.fontSize,
+    fontWeight: typography.label.fontWeight,
+    lineHeight: typography.label.lineHeight,
   },
   input: {
     width: "100%",
-    marginBottom: 10,
-    padding: 10,
-    border: "1px solid #cbd5e1",
-    borderRadius: 10,
+    minHeight: controls.minHeight,
+    marginBottom: spacing.sm,
+    padding: controls.padding,
+    border: `1px solid ${colors.border}`,
+    borderRadius: radius.md,
+    background: colors.surface,
+    color: colors.text,
+    fontSize: typography.body.fontSize,
     boxSizing: "border-box",
   },
   textarea: {
     width: "100%",
     minHeight: 90,
-    marginBottom: 10,
-    padding: 10,
-    border: "1px solid #cbd5e1",
-    borderRadius: 10,
+    marginBottom: spacing.sm,
+    padding: controls.padding,
+    border: `1px solid ${colors.border}`,
+    borderRadius: radius.md,
+    background: colors.surface,
+    color: colors.text,
+    fontSize: typography.body.fontSize,
     boxSizing: "border-box",
   },
   textareaSmall: {
     width: "100%",
     minHeight: 66,
-    marginBottom: 10,
-    padding: 10,
-    border: "1px solid #cbd5e1",
-    borderRadius: 10,
+    marginBottom: spacing.sm,
+    padding: controls.padding,
+    border: `1px solid ${colors.border}`,
+    borderRadius: radius.md,
+    background: colors.surface,
+    color: colors.text,
+    fontSize: typography.body.fontSize,
     boxSizing: "border-box",
   },
-  twoCols: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 },
-  twoColsCompact: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 },
-  singleCol: { display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 10 },
+  twoCols: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: spacing.sm },
+  twoColsCompact: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: spacing.sm },
+  singleCol: { display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: spacing.sm },
   filters: {
     display: "grid",
     gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-    gap: 10,
-    marginTop: 14,
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
     alignItems: "center",
   },
   filtersCompact: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-    gap: 10,
-    marginTop: 14,
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
     alignItems: "center",
   },
   checkLabel: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
-    marginBottom: 10,
-    color: "#334155",
-    fontWeight: 900,
-    fontSize: 13,
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+    color: colors.text,
+    fontWeight: typography.label.fontWeight,
+    fontSize: typography.label.fontSize,
   },
   primaryButton: {
-    padding: "10px 14px",
+    minHeight: controls.minHeight,
+    padding: controls.padding,
     cursor: "pointer",
     border: 0,
-    borderRadius: 10,
-    background: "#ea580c",
-    color: "white",
-    fontWeight: 900,
-  },
-  secondaryButton: {
-    padding: "10px 14px",
-    cursor: "pointer",
-    border: "1px solid #cbd5e1",
-    borderRadius: 10,
-    background: "white",
-    fontWeight: 900,
+    borderRadius: radius.md,
+    background: colors.primary,
+    color: colors.surface,
+    fontWeight: typography.button.fontWeight,
   },
   secondaryButtonSmall: {
-    padding: "8px 10px",
+    padding: controls.compactPadding,
     cursor: "pointer",
-    border: "1px solid #cbd5e1",
-    borderRadius: 10,
-    background: "white",
-    fontWeight: 900,
-    fontSize: 12,
+    border: `1px solid ${colors.border}`,
+    borderRadius: radius.md,
+    background: colors.surface,
+    color: colors.text,
+    fontWeight: typography.button.fontWeight,
+    fontSize: typography.small.fontSize,
   },
-  headerRow: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  headerRowCompact: {
-    display: "grid",
-    gap: 10,
+  compactButton: {
+    minHeight: 36,
+    padding: controls.compactPadding,
+    fontSize: typography.small.fontSize,
   },
   inlineActions: {
     display: "flex",
@@ -1791,84 +1746,91 @@ const styles = {
     alignItems: "center",
     marginBottom: 10,
   },
-  resultsBox: { display: "grid", gap: 8, marginBottom: 12 },
+  resultsBox: { display: "grid", gap: spacing.sm, marginBottom: spacing.md },
   searchHint: {
     marginTop: -4,
-    marginBottom: 10,
-    color: "#64748b",
-    fontWeight: 800,
-    fontSize: 13,
+    marginBottom: spacing.sm,
+    color: colors.textMuted,
+    fontWeight: typography.label.fontWeight,
+    fontSize: typography.small.fontSize,
   },
   resultButton: {
     display: "grid",
     gap: 2,
     textAlign: "left",
-    border: "1px solid #e2e8f0",
-    background: "#f8fafc",
-    borderRadius: 10,
-    padding: 10,
+    border: `1px solid ${colors.borderSoft}`,
+    background: colors.surfaceMuted,
+    borderRadius: radius.md,
+    padding: spacing.md,
     cursor: "pointer",
   },
   selectedBox: {
     display: "grid",
     gap: 2,
-    marginBottom: 12,
-    border: "1px solid #bbf7d0",
-    background: "#f0fdf4",
-    borderRadius: 10,
-    padding: 10,
-    color: "#166534",
+    marginBottom: spacing.md,
+    border: `1px solid ${colors.success}`,
+    background: colors.successSoft,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    color: colors.successDark,
   },
   postventaNotice: {
     display: "grid",
     gap: 3,
-    marginBottom: 12,
-    border: "1px solid #86efac",
-    background: "#f0fdf4",
-    borderRadius: 10,
-    padding: 11,
-    color: "#166534",
+    marginBottom: spacing.md,
+    border: `1px solid ${colors.success}`,
+    background: colors.successSoft,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    color: colors.successDark,
   },
   linkedSaleBox: {
     display: "grid",
     gap: 3,
-    margin: "-2px 0 12px",
-    border: "1px solid #bfdbfe",
-    background: "#eff6ff",
-    borderRadius: 10,
-    padding: 11,
-    color: "#1e3a8a",
-    fontSize: 13,
+    margin: `-2px 0 ${spacing.md}`,
+    border: `1px solid ${colors.secondary}`,
+    background: colors.secondarySoft,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    color: colors.secondaryHover,
+    fontSize: typography.small.fontSize,
   },
   quickBikeBox: {
     display: "grid",
     gap: 2,
-    marginBottom: 14,
-    border: "1px solid #bfdbfe",
-    background: "#eff6ff",
-    borderRadius: 12,
-    padding: 12,
+    marginBottom: spacing.lg,
+    border: `1px solid ${colors.borderSoft}`,
+    background: colors.surfaceMuted,
+    borderRadius: radius.lg,
+    padding: spacing.md,
   },
   quickBikeHeader: {
     display: "grid",
     gap: 2,
     marginBottom: 6,
-    color: "#1e3a8a",
+    color: colors.textStrong,
   },
   warningText: {
     marginTop: -4,
-    marginBottom: 10,
-    color: "#9a3412",
-    fontWeight: 800,
-    fontSize: 13,
+    marginBottom: spacing.sm,
+    color: colors.warningDark,
+    fontWeight: typography.label.fontWeight,
+    fontSize: typography.small.fontSize,
   },
-  dayGroup: { marginTop: 18 },
-  dayTitle: { margin: "0 0 10px", color: "#334155" },
+  dayGroup: { marginTop: spacing.lg },
+  dayTitle: {
+    margin: `0 0 ${spacing.sm}`,
+    color: colors.textStrong,
+    fontSize: typography.sectionTitle.fontSize,
+    fontWeight: typography.sectionTitle.fontWeight,
+  },
   turno: {
-    border: "1px solid #e2e8f0",
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 12,
+    border: `1px solid ${colors.borderSoft}`,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    background: colors.surface,
+    boxShadow: shadows.sm,
     minWidth: 0,
   },
   turnoTop: { display: "flex", justifyContent: "space-between", gap: 12 },
@@ -1877,16 +1839,20 @@ const styles = {
     gap: 8,
   },
   estado: {
-    background: "#f1f5f9",
-    color: "#334155",
+    background: colors.surfaceSubtle,
+    color: colors.text,
     borderRadius: 999,
     padding: "5px 9px",
     fontWeight: 900,
-    fontSize: 12,
+    fontSize: typography.small.fontSize,
     height: "fit-content",
     whiteSpace: "nowrap",
   },
-  service: { marginTop: 10, fontWeight: 900, color: "#0f172a" },
+  service: {
+    marginTop: spacing.sm,
+    fontWeight: typography.sectionTitle.fontWeight,
+    color: colors.textStrong,
+  },
   turnoTypeRow: {
     display: "flex",
     gap: 7,
@@ -1896,38 +1862,50 @@ const styles = {
   turnoTypeBadge: {
     borderRadius: 999,
     padding: "4px 8px",
-    background: "#f1f5f9",
-    color: "#475569",
+    background: colors.surfaceSubtle,
+    color: colors.textMuted,
     fontWeight: 900,
-    fontSize: 11,
+    fontSize: typography.small.fontSize,
   },
   postventaBadge: {
     borderRadius: 999,
     padding: "4px 8px",
-    background: "#dcfce7",
-    color: "#166534",
+    background: colors.successSoft,
+    color: colors.successDark,
     fontWeight: 950,
-    fontSize: 11,
+    fontSize: typography.small.fontSize,
   },
   saleOriginBadge: {
     borderRadius: 999,
     padding: "4px 8px",
-    background: "#dbeafe",
-    color: "#1d4ed8",
+    background: colors.secondarySoft,
+    color: colors.secondaryHover,
     fontWeight: 900,
-    fontSize: 11,
+    fontSize: typography.small.fontSize,
   },
-  descripcion: { marginTop: 6, color: "#475569" },
+  descripcion: { marginTop: 6, color: colors.textMuted },
   metaBlock: { display: "grid", gap: 4, marginTop: 8 },
-  metaLine: { color: "#64748b", fontWeight: 800, fontSize: 13 },
-  metaLineWarning: { color: "#9a3412", fontWeight: 900, fontSize: 13 },
-  muted: { color: "#64748b", fontWeight: 700, fontSize: 13 },
+  metaLine: {
+    color: colors.textMuted,
+    fontWeight: typography.label.fontWeight,
+    fontSize: typography.small.fontSize,
+  },
+  metaLineWarning: {
+    color: colors.warningDark,
+    fontWeight: typography.label.fontWeight,
+    fontSize: typography.small.fontSize,
+  },
+  muted: {
+    color: colors.textMuted,
+    fontWeight: typography.label.fontWeight,
+    fontSize: typography.small.fontSize,
+  },
   mainActionBox: {
     marginTop: 12,
-    border: "1px solid #fed7aa",
-    background: "#fff7ed",
-    borderRadius: 14,
-    padding: 12,
+    border: `1px solid ${colors.primaryBorder}`,
+    background: colors.primarySoft,
+    borderRadius: radius.lg,
+    padding: spacing.md,
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
     gap: 12,
@@ -1936,34 +1914,34 @@ const styles = {
   mainActionLabel: {
     display: "block",
     marginBottom: 4,
-    color: "#c2410c",
-    fontSize: 12,
-    fontWeight: 950,
+    color: colors.primaryHover,
+    fontSize: typography.small.fontSize,
+    fontWeight: typography.label.fontWeight,
     textTransform: "uppercase",
   },
   mainActionText: {
     margin: "4px 0 0",
-    color: "#7c2d12",
-    fontWeight: 750,
-    fontSize: 13,
+    color: colors.warningDark,
+    fontWeight: typography.label.fontWeight,
+    fontSize: typography.small.fontSize,
   },
   mainActionButton: {
     border: 0,
-    background: "#ea580c",
-    color: "white",
-    borderRadius: 12,
-    padding: "11px 14px",
-    fontWeight: 950,
+    background: colors.primary,
+    color: colors.surface,
+    borderRadius: radius.md,
+    padding: controls.padding,
+    fontWeight: typography.button.fontWeight,
     whiteSpace: "nowrap",
   },
   actions: { display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" },
   actionButton: {
     border: "1px solid transparent",
-    borderRadius: 10,
+    borderRadius: radius.md,
     padding: "9px 11px",
     cursor: "pointer",
-    fontWeight: 900,
-    fontSize: 13,
+    fontWeight: typography.button.fontWeight,
+    fontSize: typography.button.fontSize,
     minHeight: 38,
     flex: "1 1 150px",
     whiteSpace: "normal",
@@ -1971,45 +1949,45 @@ const styles = {
     transition: "transform .12s ease, box-shadow .12s ease, opacity .12s ease",
   },
   actionOpenButton: {
-    background: "#eef2ff",
-    borderColor: "#c7d2fe",
-    color: "#3730a3",
+    background: colors.secondarySoft,
+    borderColor: colors.secondary,
+    color: colors.secondaryHover,
   },
   actionConfirmButton: {
-    background: "#fff7ed",
-    borderColor: "#fed7aa",
-    color: "#c2410c",
+    background: colors.primarySoft,
+    borderColor: colors.primaryBorder,
+    color: colors.primaryHover,
   },
   actionProgressButton: {
-    background: "#ecfeff",
-    borderColor: "#a5f3fc",
-    color: "#0e7490",
+    background: colors.secondarySoft,
+    borderColor: colors.secondary,
+    color: colors.secondaryHover,
   },
   actionEditButton: {
-    background: "#eff6ff",
-    borderColor: "#bfdbfe",
-    color: "#1d4ed8",
+    background: colors.surfaceMuted,
+    borderColor: colors.border,
+    color: colors.text,
   },
   actionDangerButton: {
-    background: "#fef2f2",
-    borderColor: "#fecaca",
-    color: "#b91c1c",
+    background: colors.dangerSoft,
+    borderColor: colors.danger,
+    color: colors.dangerDark,
   },
   actionWhatsAppButton: {
-    background: "#ecfdf5",
-    borderColor: "#bbf7d0",
-    color: "#047857",
+    background: colors.successSoft,
+    borderColor: colors.success,
+    color: colors.successDark,
   },
   actionCreateButton: {
-    background: "#ea580c",
-    borderColor: "#ea580c",
-    color: "white",
+    background: colors.primary,
+    borderColor: colors.primary,
+    color: colors.surface,
     boxShadow: "0 8px 18px rgba(234, 88, 12, .18)",
   },
   actionNeutralButton: {
-    background: "#f8fafc",
-    borderColor: "#e2e8f0",
-    color: "#334155",
+    background: colors.surfaceMuted,
+    borderColor: colors.borderSoft,
+    color: colors.text,
   },
   actionButtonDisabled: {
     opacity: 0.45,
@@ -2018,36 +1996,35 @@ const styles = {
   },
   badgesRow: { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 },
   badgeOk: {
-    color: "#166534",
-    background: "#dcfce7",
+    color: colors.successDark,
+    background: colors.successSoft,
     borderRadius: 999,
     padding: "5px 9px",
-    fontWeight: 900,
-    fontSize: 12,
+    fontWeight: typography.label.fontWeight,
+    fontSize: typography.small.fontSize,
     width: "fit-content",
   },
   badgeWarn: {
-    color: "#92400e",
-    background: "#fef3c7",
+    color: colors.warningDark,
+    background: colors.warningSoft,
     borderRadius: 999,
     padding: "5px 9px",
-    fontWeight: 900,
-    fontSize: 12,
+    fontWeight: typography.label.fontWeight,
+    fontSize: typography.small.fontSize,
     width: "fit-content",
   },
   alertError: {
-    padding: 12,
-    borderRadius: 12,
-    background: "#fef2f2",
-    color: "#991b1b",
-    fontWeight: 800,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    background: colors.dangerSoft,
+    color: colors.dangerDark,
+    fontWeight: typography.label.fontWeight,
   },
   alertSuccess: {
-    padding: 12,
-    borderRadius: 12,
-    background: "#ecfdf5",
-    color: "#047857",
-    fontWeight: 800,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    background: colors.successSoft,
+    color: colors.successDark,
+    fontWeight: typography.label.fontWeight,
   },
-  empty: { padding: 18, color: "#64748b", fontWeight: 800 },
 };

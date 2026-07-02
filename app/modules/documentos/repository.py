@@ -45,6 +45,7 @@ def get_venta_items_comprobante_by_venta_id(conn, venta_id: int):
                 vi.id_variante,
                 vi.tipo_item,
                 vi.id_servicio_taller,
+                p.tipo_item AS producto_tipo_item,
                 vi.descripcion_snapshot,
                 vi.cantidad,
                 vi.precio_lista,

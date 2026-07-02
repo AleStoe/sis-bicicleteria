@@ -1,5 +1,6 @@
 import { formatMoney, formatNumber } from "../../utils/formatters";
 import { getEstadoStock } from "../../utils/stockUtils";
+import { colors } from "../../theme";
 
 export default function StockTable({
   stockFiltrado,
@@ -29,11 +30,13 @@ export default function StockTable({
           justifyContent: align === "right" ? "flex-end" : "flex-start",
           alignItems: "center",
           gap: 6,
-          color: activo ? "#1d4ed8" : "#6b7280",
+          color: activo ? colors.primary : colors.textMuted,
           font: "inherit",
           fontWeight: activo ? 950 : 900,
           textTransform: "inherit",
           letterSpacing: "inherit",
+          whiteSpace: "nowrap",
+          wordBreak: "normal",
           cursor: "pointer",
         }}
         title={`Ordenar por ${String(children).toLowerCase()}`}
@@ -50,6 +53,19 @@ export default function StockTable({
 
       <div className="stock-desktop-table">
         <table style={styles.table}>
+          <colgroup>
+            <col style={{ width: 290 }} />
+            <col style={{ width: 110 }} />
+            <col style={{ width: 180 }} />
+            <col style={{ width: 76 }} />
+            <col style={{ width: 92 }} />
+            <col style={{ width: 90 }} />
+            <col style={{ width: 92 }} />
+            <col style={{ width: 120 }} />
+            <col style={{ width: 118 }} />
+            <col style={{ width: 110 }} />
+            <col style={{ width: 180 }} />
+          </colgroup>
           <thead style={styles.thead}>
             <tr>
               <th style={styles.th}><SortHeader campo="producto">Producto</SortHeader></th>

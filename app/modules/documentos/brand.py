@@ -1,0 +1,20 @@
+"""Identidad visual compartida para documentos generados."""
+
+ORANGE = (1.0, 0.39, 0.0)
+ORANGE_DARK = (0.78, 0.25, 0.0)
+ORANGE_SOFT = (1.0, 0.95, 0.91)
+BROWN = (0.14, 0.065, 0.035)
+INK = (0.08, 0.07, 0.06)
+MUTED = (0.39, 0.35, 0.32)
+BORDER = (0.86, 0.82, 0.79)
+PAPER = (0.98, 0.97, 0.96)
+BLUE_SUPPORT = (0.18, 0.54, 0.75)
+
+ORANGE_HEX = "#FF6400"
+ORANGE_DARK_HEX = "#C73F00"
+ORANGE_SOFT_HEX = "#FFF0E6"
+BROWN_HEX = "#24110A"
+INK_HEX = "#17110E"
+MUTED_HEX = "#655A54"
+BORDER_HEX = "#DED2CA"
+PAPER_HEX = "#F8F5F2"

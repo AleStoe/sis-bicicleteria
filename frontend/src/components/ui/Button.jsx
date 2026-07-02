@@ -1,4 +1,4 @@
-import { colors, radius, shadows } from "../../theme";
+import { colors, controls, radius, shadows, typography } from "../../theme";
 
 const variants = {
   primary: {
@@ -42,10 +42,16 @@ export default function Button({
       style={{
         width: fullWidth ? "100%" : undefined,
         minWidth: 0,
+        minHeight: controls.minHeight,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 8,
         borderRadius: radius.md,
-        padding: "10px 14px",
-        fontWeight: 700,
-        lineHeight: 1.2,
+        padding: controls.padding,
+        fontSize: typography.button.fontSize,
+        fontWeight: typography.button.fontWeight,
+        lineHeight: typography.button.lineHeight,
         whiteSpace: "normal",
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.45 : 1,

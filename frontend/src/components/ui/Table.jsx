@@ -8,6 +8,7 @@ export default function Table({
   renderRow,
 }) {
   const isMobile = useBreakpoint(760);
+  const tableMinWidth = Math.max(760, columns.length * 120);
 
   return (
     <div
@@ -24,8 +25,9 @@ export default function Table({
       <table
         style={{
           width: "100%",
-          minWidth: isMobile ? 760 : undefined,
+          minWidth: tableMinWidth,
           borderCollapse: "collapse",
+          tableLayout: "auto",
         }}
       >
         <thead
@@ -44,6 +46,8 @@ export default function Table({
                   color: colors.textMuted,
                   borderBottom: `1px solid ${colors.border}`,
                   whiteSpace: "nowrap",
+                  wordBreak: "normal",
+                  overflowWrap: "normal",
                 }}
               >
                 {column.label}

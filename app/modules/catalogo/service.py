@@ -325,8 +325,14 @@ def generar_catalogo_mayorista_pdf_service(
             categoria_id=categoria_id,
             marca_id=marca_id,
         )
+        opciones_pago = _opciones_pago_catalogo_bicicletas(conn)
 
-        return generar_catalogo_mayorista_pdf({"items": items})
+        return generar_catalogo_mayorista_pdf(
+            {
+                "items": items,
+                "opciones_pago": opciones_pago,
+            }
+        )
     finally:
         conn.close()
 

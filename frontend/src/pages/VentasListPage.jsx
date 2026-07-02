@@ -5,6 +5,7 @@ import { formatDateTime, formatMoney } from "../utils/formatters";
 import {
   Button,
   Card,
+  EmptyState,
   Input,
   MetricCard,
   OperationalStatusBadge,
@@ -143,7 +144,7 @@ export default function VentasListPage() {
   }, [mostrarSucursal]);
 
   if (loading) {
-    return <div style={{ padding: "24px" }}>Cargando ventas...</div>;
+    return <EmptyState title="Cargando ventas..." description="Actualizando estados, saldos y entregas." />;
   }
 
   return (
@@ -273,7 +274,7 @@ export default function VentasListPage() {
 
 function VentasMobileList({ ventas, mostrarSucursal }) {
   if (!ventas.length) {
-    return <div style={styles.emptyMobile}>No hay ventas para mostrar.</div>;
+    return <EmptyState title="No hay ventas para mostrar" description="Probá otro estado o cambiá la búsqueda." />;
   }
 
   return (

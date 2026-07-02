@@ -8,6 +8,8 @@ from reportlab.lib.units import mm
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
+from .brand import INK, ORANGE_DARK, ORANGE_SOFT
+from .pdf_layout import collapse_repeated_words, draw_wrapped_text, wrap_text
 
 BASE_DIR = Path(__file__).resolve().parents[3]
 UPLOADS_DIR = BASE_DIR / "uploads"
@@ -116,6 +118,139 @@ def _draw_image_fit(c, path: Path, x, y, max_w, max_h):
         return False
 
 
+def _es_item_servicio(item: dict) -> bool:
+    tipo = str(item.get("tipo_item") or "").strip().lower()
+    producto_tipo = str(item.get("producto_tipo_item") or "").strip().lower()
+    return bool(item.get("id_servicio_taller")) or tipo in {
+        "servicio",
+        "servicio_taller",
+    } or producto_tipo in {
+        "servicio",
+        "servicio_taller",
+    }
+
+
+def _draw_service_placeholder(c, x, y, width, height):
+    c.saveState()
+    try:
+        c.setFillColorRGB(*ORANGE_SOFT)
+        c.setStrokeColorRGB(*ORANGE_DARK)
+        c.setLineWidth(0.45)
+        c.roundRect(x, y, width, height, 2.4 * mm, fill=1, stroke=1)
+
+        center_x = x + width / 2
+        scale = min(width, height) / (15 * mm)
+        icon_y = y + 8.1 * mm * scale
+        wrench_bottom_x = center_x - 2.8 * mm * scale
+        wrench_bottom_y = icon_y - 2.8 * mm * scale
+        wrench_top_x = center_x + 2.8 * mm * scale
+        wrench_top_y = icon_y + 2.8 * mm * scale
+
+        c.setStrokeColorRGB(*INK)
+        c.setFillColorRGB(*INK)
+        c.setLineCap(1)
+        c.setLineWidth(1.25 * mm * scale)
+        c.line(
+            wrench_bottom_x,
+            wrench_bottom_y,
+            wrench_top_x,
+            wrench_top_y,
+        )
+
+        ring_radius = 1.25 * mm * scale
+        c.circle(
+            wrench_bottom_x,
+            wrench_bottom_y,
+            ring_radius,
+            fill=1,
+            stroke=0,
+        )
+        c.setFillColorRGB(*ORANGE_SOFT)
+        c.circle(
+            wrench_bottom_x,
+            wrench_bottom_y,
+            0.52 * mm * scale,
+            fill=1,
+            stroke=0,
+        )
+
+        jaw_radius = 1.5 * mm * scale
+        c.setFillColorRGB(*INK)
+        c.circle(wrench_top_x, wrench_top_y, jaw_radius, fill=1, stroke=0)
+        c.setFillColorRGB(*ORANGE_SOFT)
+        jaw_cut = c.beginPath()
+        jaw_cut.moveTo(
+            wrench_top_x + 1.75 * mm * scale,
+            wrench_top_y + 1.75 * mm * scale,
+        )
+        jaw_cut.lineTo(
+            wrench_top_x - 0.15 * mm * scale,
+            wrench_top_y + 0.62 * mm * scale,
+        )
+        jaw_cut.lineTo(
+            wrench_top_x + 0.62 * mm * scale,
+            wrench_top_y - 0.15 * mm * scale,
+        )
+        jaw_cut.close()
+        c.drawPath(jaw_cut, fill=1, stroke=0)
+
+        second_bottom_x = center_x + 2.8 * mm * scale
+        second_bottom_y = icon_y - 2.8 * mm * scale
+        second_top_x = center_x - 2.8 * mm * scale
+        second_top_y = icon_y + 2.8 * mm * scale
+
+        c.setStrokeColorRGB(*INK)
+        c.setFillColorRGB(*INK)
+        c.setLineWidth(1.25 * mm * scale)
+        c.line(
+            second_bottom_x,
+            second_bottom_y,
+            second_top_x,
+            second_top_y,
+        )
+        c.circle(
+            second_bottom_x,
+            second_bottom_y,
+            ring_radius,
+            fill=1,
+            stroke=0,
+        )
+        c.setFillColorRGB(*ORANGE_SOFT)
+        c.circle(
+            second_bottom_x,
+            second_bottom_y,
+            0.52 * mm * scale,
+            fill=1,
+            stroke=0,
+        )
+
+        c.setFillColorRGB(*INK)
+        c.circle(second_top_x, second_top_y, jaw_radius, fill=1, stroke=0)
+        c.setFillColorRGB(*ORANGE_SOFT)
+        second_jaw_cut = c.beginPath()
+        second_jaw_cut.moveTo(
+            second_top_x - 1.75 * mm * scale,
+            second_top_y + 1.75 * mm * scale,
+        )
+        second_jaw_cut.lineTo(
+            second_top_x + 0.15 * mm * scale,
+            second_top_y + 0.62 * mm * scale,
+        )
+        second_jaw_cut.lineTo(
+            second_top_x - 0.62 * mm * scale,
+            second_top_y - 0.15 * mm * scale,
+        )
+        second_jaw_cut.close()
+        c.drawPath(second_jaw_cut, fill=1, stroke=0)
+
+        label_size = max(4.2, min(6.2, width / mm * 0.32))
+        c.setFillColorRGB(*ORANGE_DARK)
+        c.setFont("Helvetica-Bold", label_size)
+        c.drawCentredString(center_x, y + 1.45 * mm, "SERVICIO")
+    finally:
+        c.restoreState()
+
+
 def _draw_header(c, venta, width, height, margin_x):
     y = height - 18 * mm
 
@@ -158,22 +293,37 @@ def _draw_header(c, venta, width, height, margin_x):
     return y - 12 * mm
 
 
-def _draw_cliente(c, venta, y, margin_x):
+def _draw_cliente(c, venta, y, margin_x, width):
+    value_x = margin_x + 22 * mm
+    value_width = width - margin_x - value_x
+
     c.setFont("Helvetica-Bold", 10)
     c.drawString(margin_x, y, "Cliente:")
-
-    c.setFont("Helvetica", 10)
-    c.drawString(margin_x + 22 * mm, y, _text(venta.get("cliente_nombre")))
-
-    y -= 6 * mm
+    y = draw_wrapped_text(
+        c,
+        collapse_repeated_words(venta.get("cliente_nombre")),
+        x=value_x,
+        y=y,
+        max_width=value_width,
+        font_name="Helvetica",
+        font_size=10,
+        leading=5 * mm,
+    )
+    y -= 1 * mm
 
     c.setFont("Helvetica-Bold", 10)
     c.drawString(margin_x, y, "Sucursal:")
-
-    c.setFont("Helvetica", 10)
-    c.drawString(margin_x + 22 * mm, y, _text(venta.get("sucursal_nombre")))
-
-    return y - 12 * mm
+    y = draw_wrapped_text(
+        c,
+        collapse_repeated_words(venta.get("sucursal_nombre")),
+        x=value_x,
+        y=y,
+        max_width=value_width,
+        font_name="Helvetica",
+        font_size=10,
+        leading=5 * mm,
+    )
+    return y - 7 * mm
 
 
 def _draw_table_header(c, y, width, margin_x):
@@ -212,6 +362,43 @@ def _bonificacion_item(item: dict) -> Decimal:
     return bonificacion if bonificacion > 0 else Decimal("0")
 
 
+def _comprobante_continuation_page(c, width, height, margin_x, venta):
+    c.showPage()
+    y = height - 16 * mm
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(margin_x, y, "COMPROBANTE X")
+    c.setFont("Helvetica", 8)
+    c.drawRightString(
+        width - margin_x,
+        y,
+        f"Venta #{venta['id']} - Continuacion",
+    )
+    y -= 4 * mm
+    c.setLineWidth(0.35)
+    c.line(margin_x, y, width - margin_x, y)
+    return y - 7 * mm
+
+
+def _ensure_comprobante_space(
+    c,
+    y,
+    needed,
+    *,
+    width,
+    height,
+    margin_x,
+    venta,
+    table_header=False,
+):
+    if y - needed >= 24 * mm:
+        return y
+
+    y = _comprobante_continuation_page(c, width, height, margin_x, venta)
+    if table_header:
+        y = _draw_table_header(c, y, width, margin_x)
+    return y
+
+
 def generar_comprobante_x_pdf(data: dict) -> bytes:
     venta = data["venta"]
     items = data["items"]
@@ -240,17 +427,48 @@ def generar_comprobante_x_pdf(data: dict) -> bytes:
 
     margin_x = 15 * mm
     y = _draw_header(c, venta, width, height, margin_x)
-    y = _draw_cliente(c, venta, y, margin_x)
+    y = _draw_cliente(c, venta, y, margin_x, width)
     y = _draw_table_header(c, y, width, margin_x)
 
-    row_h = 20 * mm
     img_size = 15 * mm
+    description_x = margin_x + 24 * mm
+    description_right = width - margin_x - 66 * mm
+    description_width = description_right - description_x
+    description_leading = 4.2 * mm
 
     for item in items:
-        if y < 45 * mm:
-            c.showPage()
-            y = height - 18 * mm
-            y = _draw_table_header(c, y, width, margin_x)
+        descripcion = collapse_repeated_words(item.get("descripcion_snapshot"))
+        description_lines = wrap_text(
+            descripcion,
+            description_width,
+            "Helvetica-Bold",
+            8,
+        )
+        bonification_lines = []
+        if item.get("bonificado") and item.get("motivo_bonificacion"):
+            bonification_lines = wrap_text(
+                "Bonificacion: "
+                + collapse_repeated_words(item.get("motivo_bonificacion")),
+                description_width,
+                "Helvetica",
+                6.5,
+            )
+
+        text_height = (
+            len(description_lines) * description_leading
+            + len(bonification_lines) * 3.7 * mm
+        )
+        row_h = max(20 * mm, 4 * mm + text_height + 4 * mm)
+        y = _ensure_comprobante_space(
+            c,
+            y,
+            row_h + 4 * mm,
+            width=width,
+            height=height,
+            margin_x=margin_x,
+            venta=venta,
+            table_header=True,
+        )
 
         row_top = y
         row_bottom = y - row_h + 3 * mm
@@ -269,6 +487,14 @@ def generar_comprobante_x_pdf(data: dict) -> bytes:
                 img_size,
                 img_size,
             )
+        elif _es_item_servicio(item):
+            _draw_service_placeholder(
+                c,
+                margin_x,
+                y - img_size + 1 * mm,
+                img_size,
+                img_size,
+            )
         else:
             c.setFont("Helvetica", 6)
             c.drawCentredString(
@@ -277,23 +503,19 @@ def generar_comprobante_x_pdf(data: dict) -> bytes:
                 "Sin imagen",
             )
 
-        descripcion = _text(item.get("descripcion_snapshot"))
-        if len(descripcion) > 45:
-            descripcion = descripcion[:42] + "..."
-
         precio_unitario = _precio_unitario_visible(item)
         bonificacion_item = _bonificacion_item(item)
 
+        text_y = row_top - 4 * mm
         c.setFont("Helvetica-Bold", 8)
-        c.drawString(margin_x + 24 * mm, row_top - 4 * mm, descripcion)
+        for line in description_lines:
+            c.drawString(description_x, text_y, line)
+            text_y -= description_leading
 
-        if item.get("bonificado") and item.get("motivo_bonificacion"):
-            c.setFont("Helvetica", 6.5)
-            c.drawString(
-                margin_x + 24 * mm,
-                row_top - 8 * mm,
-                f"Bonificación: {_text(item.get('motivo_bonificacion'))[:38]}",
-            )
+        c.setFont("Helvetica", 6.5)
+        for line in bonification_lines:
+            c.drawString(description_x, text_y, line)
+            text_y -= 3.7 * mm
 
         c.setFont("Helvetica", 7.5)
         c.drawRightString(
@@ -324,6 +546,15 @@ def generar_comprobante_x_pdf(data: dict) -> bytes:
 
         y -= row_h
 
+    y = _ensure_comprobante_space(
+        c,
+        y,
+        46 * mm,
+        width=width,
+        height=height,
+        margin_x=margin_x,
+        venta=venta,
+    )
     y -= 4 * mm
 
     c.setFont("Helvetica", 9)
@@ -373,12 +604,24 @@ def generar_comprobante_x_pdf(data: dict) -> bytes:
         y -= 6 * mm
 
         for pago in pagos:
-            if y < 35 * mm:
-                c.showPage()
-                y = height - 18 * mm
-
             medio = _text(pago.get("medio_pago")).capitalize()
             monto_cobrado = pago.get("monto_total_cobrado")
+            detalle = _detalle_pago_financiero(pago)
+            detalle_lines = wrap_text(
+                detalle,
+                width - 2 * margin_x - 8 * mm,
+                "Helvetica",
+                8,
+            )
+            y = _ensure_comprobante_space(
+                c,
+                y,
+                7 * mm + len(detalle_lines) * 4 * mm,
+                width=width,
+                height=height,
+                margin_x=margin_x,
+                venta=venta,
+            )
 
             c.setFont("Helvetica-Bold", 9)
             c.drawString(margin_x, y, medio)
@@ -390,21 +633,48 @@ def generar_comprobante_x_pdf(data: dict) -> bytes:
             )
 
             y -= 5 * mm
-            c.setFont("Helvetica", 8)
-
-            detalle = _detalle_pago_financiero(pago)
-
-            c.drawString(margin_x + 4 * mm, y, detalle[:105])
-
-            y -= 7 * mm
+            y = draw_wrapped_text(
+                c,
+                detalle,
+                x=margin_x + 4 * mm,
+                y=y,
+                max_width=width - 2 * margin_x - 8 * mm,
+                font_name="Helvetica",
+                font_size=8,
+                leading=4 * mm,
+            )
+            y -= 3 * mm
 
     if venta.get("observaciones"):
+        observation_lines = wrap_text(
+            venta.get("observaciones"),
+            width - 2 * margin_x,
+            "Helvetica",
+            9,
+        )
+        y = _ensure_comprobante_space(
+            c,
+            y,
+            20 * mm + len(observation_lines) * 4.5 * mm,
+            width=width,
+            height=height,
+            margin_x=margin_x,
+            venta=venta,
+        )
         y -= 12 * mm
         c.setFont("Helvetica-Bold", 9)
         c.drawString(margin_x, y, "Observaciones:")
         y -= 5 * mm
-        c.setFont("Helvetica", 9)
-        c.drawString(margin_x, y, _text(venta.get("observaciones"))[:110])
+        y = draw_wrapped_text(
+            c,
+            venta.get("observaciones"),
+            x=margin_x,
+            y=y,
+            max_width=width - 2 * margin_x,
+            font_name="Helvetica",
+            font_size=9,
+            leading=4.5 * mm,
+        )
 
     if LOGO_ICONO.exists():
         _draw_image_fit(

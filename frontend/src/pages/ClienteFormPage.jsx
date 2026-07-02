@@ -6,6 +6,9 @@ import {
   actualizarCliente,
 } from "../services/clientesService";
 import { normalizeTextUpper } from "../utils/textNormalization";
+import { Button, EmptyState, PageHeader } from "../components/ui";
+import { ArrowLeft, UserRound } from "lucide-react";
+import { colors, controls, radius, shadows, spacing, typography } from "../theme";
 
 const FORM_INICIAL = {
   nombre: "",
@@ -120,22 +123,19 @@ export default function ClienteFormPage() {
     }
   }
 
-  if (loading) return <p style={{ padding: "24px" }}>Cargando...</p>;
+  if (loading) return <EmptyState icon={UserRound} title="Cargando cliente..." description="Preparando los datos personales y comerciales." />;
 
   return (
     <div style={pageStyle}>
-      <header style={headerStyle}>
-        <div>
-          <h1 style={titleStyle}>{esEdicion ? "Editar cliente" : "Nuevo cliente"}</h1>
-          <p style={subtitleStyle}>
-            Cargá datos básicos, comerciales y fiscales del cliente.
-          </p>
-        </div>
-
-        <Link to={esEdicion ? `/clientes/${clienteId}` : "/clientes"} style={secondaryLinkStyle}>
-          Volver
-        </Link>
-      </header>
+      <PageHeader
+        title={esEdicion ? "Editar cliente" : "Nuevo cliente"}
+        subtitle="Cargá datos básicos, comerciales y fiscales del cliente."
+        actions={(
+          <Link to={esEdicion ? `/clientes/${clienteId}` : "/clientes"} style={{ textDecoration: "none" }}>
+            <Button type="button" variant="outline"><ArrowLeft size={16} /> Volver</Button>
+          </Link>
+        )}
+      />
 
       {error && <div style={alertStyle}>Error: {error}</div>}
 
@@ -298,9 +298,11 @@ function Field({ label, children }) {
 }
 
 const pageStyle = {
-  padding: "24px",
-  background: "#f6f7fb",
   minHeight: "100vh",
+  display: "grid",
+  gap: spacing.xl,
+  color: colors.text,
+  fontFamily: typography.fontFamily,
 };
 
 const headerStyle = {
@@ -324,15 +326,15 @@ const subtitleStyle = {
 const formStyle = {
   maxWidth: "960px",
   display: "grid",
-  gap: "16px",
+  gap: spacing.lg,
 };
 
 const sectionStyle = {
   background: "white",
-  border: "1px solid #eaecf0",
-  borderRadius: "14px",
-  padding: "16px",
-  boxShadow: "0 2px 10px rgba(0,0,0,0.06)",
+  border: `1px solid ${colors.borderSoft}`,
+  borderRadius: radius.lg,
+  padding: spacing.lg,
+  boxShadow: shadows.sm,
 };
 
 const sectionTitleStyle = {
@@ -354,20 +356,21 @@ const fieldStyle = {
 };
 
 const inputStyle = {
-  border: "1px solid #d0d5dd",
-  borderRadius: "10px",
-  padding: "10px 11px",
-  fontSize: "14px",
-  background: "white",
+  minHeight: controls.minHeight,
+  border: `1px solid ${colors.border}`,
+  borderRadius: radius.md,
+  padding: controls.padding,
+  fontSize: typography.body.fontSize,
+  background: colors.surface,
 };
 
 const textareaStyle = {
   width: "100%",
   minHeight: "100px",
-  border: "1px solid #d0d5dd",
-  borderRadius: "10px",
-  padding: "10px 11px",
-  fontSize: "14px",
+  border: `1px solid ${colors.border}`,
+  borderRadius: radius.md,
+  padding: controls.padding,
+  fontSize: typography.body.fontSize,
   resize: "vertical",
   boxSizing: "border-box",
 };
@@ -379,13 +382,15 @@ const actionsStyle = {
 };
 
 const primaryBtnStyle = {
+  minHeight: controls.minHeight,
   border: "none",
-  background: "#0b5bd3",
-  color: "white",
-  borderRadius: "10px",
-  padding: "11px 15px",
-  fontWeight: 900,
+  background: colors.primary,
+  color: colors.surface,
+  borderRadius: radius.md,
+  padding: controls.padding,
+  fontWeight: typography.button.fontWeight,
   cursor: "pointer",
+  boxShadow: shadows.sm,
 };
 
 const secondaryLinkStyle = {

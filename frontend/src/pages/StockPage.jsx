@@ -9,6 +9,15 @@ import { buildIngresoStockPayload, buildAjusteStockPayload } from "../builders/s
 import StockTable from "../components/stock/StockTable";
 import StockDrawer from "../components/stock/StockDrawer";
 import useMediaQuery from "../hooks/useMediaQuery";
+import {
+  Button,
+  EmptyState,
+  MetricCard,
+  PageHeader,
+  ResponsiveMetricsGrid,
+} from "../components/ui";
+import { Boxes, PackagePlus, RefreshCw, Tags } from "lucide-react";
+import { colors, controls, radius, shadows, spacing, typography } from "../theme";
 
 
 export default function StockPage() {
@@ -367,39 +376,24 @@ export default function StockPage() {
     Number(ultimoIngreso.costo_promedio_anterior) !== Number(ultimoIngreso.costo_promedio_nuevo);
 
   if (loading) {
-    return (
-      <div className="erp-page erp-stock-page" style={styles.page}>
-        <section style={styles.loadingCard}>Cargando stock...</section>
-      </div>
-    );
+    return <EmptyState icon={Boxes} title="Cargando stock..." description="Actualizando existencias y disponibilidad." />;
   }
 
   return (
     <div className="erp-page erp-stock-page" style={styles.page}>
-      <header className="erp-page-header" style={styles.header}>
-        <div>
-          <p style={styles.eyebrow}>Inventario / Control operativo</p>
-          <h1 style={styles.title}>Stock</h1>
-          <p className="erp-mobile-compact-text" style={styles.subtitle}>
-            Control de físico, reservado, pendiente de entrega y disponible.
-          </p>
-        </div>
-
-        <div className="erp-page-actions" style={styles.actionsHeader}>
-          <button type="button" onClick={() => navigate("/inventario-fisico")} style={styles.secondaryButton}>
-            Inventario físico
-          </button>
-          <button type="button" onClick={() => navigate("/etiquetas")} style={styles.secondaryButton}>
-            Etiquetas
-          </button>
-          <button type="button" onClick={cargarTodo} style={styles.secondaryButton}>
-            Refrescar
-          </button>
-          <button type="button" onClick={() => navigate("/mercaderia/alta")} style={styles.primaryButton}>
-            Alta mercadería
-          </button>
-        </div>
-      </header>
+      <PageHeader
+        title="Stock"
+        subtitle="Control de físico, reservado, pendiente de entrega y disponible."
+        eyebrow="Inventario / Control operativo"
+        actions={(
+          <>
+            <Button type="button" variant="outline" onClick={() => navigate("/inventario-fisico")}><Boxes size={16} /> Inventario físico</Button>
+            <Button type="button" variant="outline" onClick={() => navigate("/etiquetas")}><Tags size={16} /> Etiquetas</Button>
+            <Button type="button" variant="outline" onClick={cargarTodo}><RefreshCw size={16} /> Refrescar</Button>
+            <Button type="button" onClick={() => navigate("/mercaderia/alta")}><PackagePlus size={16} /> Alta mercadería</Button>
+          </>
+        )}
+      />
 
       {mensaje && <div style={styles.success}>{mensaje}</div>}
       {error && <div style={styles.error}>Error: {error}</div>}
@@ -421,24 +415,24 @@ export default function StockPage() {
         </div>
       )}
 
-      <section className="erp-metric-grid" style={styles.metricGrid}>
-        <Metric label="Variantes" value={resumen.variantes} />
-        <Metric label="Físico" value={formatNumber(resumen.stockFisico)} />
-        <Metric label="Reservado" value={formatNumber(resumen.stockReservado)} />
-        <Metric label="Pendiente entrega" value={formatNumber(resumen.stockPendiente)} />
-        <Metric label="Disponible" value={formatNumber(resumen.stockDisponible)} strong />
-        <Metric label="Sin disponible" value={resumen.sinDisponible} danger={resumen.sinDisponible > 0} />
-        <Metric label="Stock bajo" value={resumen.stockBajo ?? resumen.reservados ?? 0} danger={(resumen.stockBajo ?? 0) > 0} />
+      <ResponsiveMetricsGrid minWidth={145} mobileColumns={2}>
+        <MetricCard label="Variantes" value={resumen.variantes} />
+        <MetricCard label="Físico" value={formatNumber(resumen.stockFisico)} />
+        <MetricCard label="Reservado" value={formatNumber(resumen.stockReservado)} />
+        <MetricCard label="Pendiente entrega" value={formatNumber(resumen.stockPendiente)} />
+        <MetricCard label="Disponible" value={formatNumber(resumen.stockDisponible)} tone="success" emphasize />
+        <MetricCard label="Sin disponible" value={resumen.sinDisponible} tone={resumen.sinDisponible > 0 ? "danger" : "default"} />
+        <MetricCard label="Stock bajo" value={resumen.stockBajo ?? resumen.reservados ?? 0} tone={(resumen.stockBajo ?? 0) > 0 ? "warning" : "default"} />
         {resumen.capitalInmovilizado !== null &&
         resumen.capitalInmovilizado !== undefined ? (
-          <Metric
+          <MetricCard
             label="Capital inmovilizado"
             value={formatMoney(resumen.capitalInmovilizado)}
-            strong
+            emphasize
           />
         ) : null}
-        <Metric label="Inconsistencias" value={resumen.inconsistentes} danger={resumen.inconsistentes > 0} />
-      </section>
+        <MetricCard label="Inconsistencias" value={resumen.inconsistentes} tone={resumen.inconsistentes > 0 ? "danger" : "default"} />
+      </ResponsiveMetricsGrid>
 
       <section className="erp-card erp-search-card" style={styles.searchCard}>
         <div>
@@ -596,7 +590,7 @@ export default function StockPage() {
         </div>
 
         {stockFiltrado.length === 0 ? (
-          <div style={styles.empty}>No hay stock para mostrar con esos filtros.</div>
+          <EmptyState icon={Boxes} title="No hay stock para mostrar" description="Probá otros filtros o limpiá la búsqueda." />
         ) : (
           <div className="erp-responsive-table-shell" style={styles.tableWrap}>
             <StockTable
@@ -742,9 +736,10 @@ function TextInput({ label, value, onChange, type = "text" }) {
 const styles = {
   page: {
     minHeight: "100vh",
-    padding: "24px",
-    background: "#f3f4f6",
-    color: "#111827",
+    display: "grid",
+    gap: spacing.xl,
+    color: colors.text,
+    fontFamily: typography.fontFamily,
   },
   header: {
     display: "flex",
@@ -766,22 +761,25 @@ const styles = {
   subtitle: { margin: "6px 0 0", color: "#6b7280", fontSize: "14px" },
   actionsHeader: { display: "flex", gap: "10px", flexWrap: "wrap" },
   primaryButton: {
+    minHeight: controls.minHeight,
     border: "none",
-    background: "#2563eb",
-    color: "#ffffff",
-    borderRadius: "12px",
-    padding: "12px 16px",
-    fontWeight: 900,
+    background: colors.primary,
+    color: colors.surface,
+    borderRadius: radius.md,
+    padding: controls.padding,
+    fontWeight: typography.button.fontWeight,
     cursor: "pointer",
     whiteSpace: "nowrap",
+    boxShadow: shadows.sm,
   },
   secondaryButton: {
-    border: "1px solid #d1d5db",
-    background: "#ffffff",
-    color: "#111827",
-    borderRadius: "12px",
-    padding: "12px 16px",
-    fontWeight: 900,
+    minHeight: controls.minHeight,
+    border: `1px solid ${colors.border}`,
+    background: colors.surface,
+    color: colors.text,
+    borderRadius: radius.md,
+    padding: controls.padding,
+    fontWeight: typography.button.fontWeight,
     cursor: "pointer",
     whiteSpace: "nowrap",
   },
@@ -796,22 +794,20 @@ const styles = {
     whiteSpace: "nowrap",
   },
   error: {
-    background: "#fef2f2",
-    color: "#991b1b",
-    padding: "12px 14px",
-    borderRadius: "12px",
-    border: "1px solid #fecaca",
-    marginBottom: "14px",
-    fontWeight: 700,
+    background: colors.dangerSoft,
+    color: colors.dangerDark,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    border: `1px solid ${colors.danger}`,
+    fontWeight: typography.label.fontWeight,
   },
   success: {
-    background: "#ecfdf5",
-    color: "#166534",
-    padding: "12px 14px",
-    borderRadius: "12px",
-    border: "1px solid #bbf7d0",
-    marginBottom: "14px",
-    fontWeight: 700,
+    background: colors.successSoft,
+    color: colors.successDark,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    border: `1px solid ${colors.success}`,
+    fontWeight: typography.label.fontWeight,
   },
   priceWarning: {
     background: "#fffbeb",
@@ -852,14 +848,13 @@ const styles = {
   },
   metricValue: { fontSize: "24px" },
   searchCard: {
-    background: "#ffffff",
-    border: "1px solid #e5e7eb",
-    borderRadius: "18px",
-    padding: "18px",
-    boxShadow: "0 8px 24px rgba(15, 23, 42, 0.06)",
-    marginBottom: "18px",
+    background: colors.surface,
+    border: `1px solid ${colors.borderSoft}`,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    boxShadow: shadows.sm,
     display: "grid",
-    gap: "12px",
+    gap: spacing.md,
   },
   searchTitle: { margin: 0, fontSize: "20px", fontWeight: 900 },
   searchHelp: { margin: "4px 0 0", color: "#6b7280", fontSize: "14px" },
@@ -888,10 +883,11 @@ const styles = {
   },
   searchInput: {
     width: "100%",
-    padding: "14px 16px",
-    border: "2px solid #2563eb",
-    borderRadius: "14px",
-    fontSize: "18px",
+    minHeight: controls.minHeight,
+    padding: controls.padding,
+    border: `1px solid ${colors.border}`,
+    borderRadius: radius.md,
+    fontSize: typography.body.fontSize,
     boxSizing: "border-box",
     outline: "none",
     background: "#ffffff",
@@ -905,11 +901,12 @@ const styles = {
   filterLabel: { color: "#374151", fontSize: "12px", fontWeight: 900, textTransform: "uppercase" },
   select: {
     width: "100%",
-    border: "1px solid #d1d5db",
-    borderRadius: "12px",
-    padding: "10px 11px",
-    fontSize: "14px",
-    background: "#ffffff",
+    minHeight: controls.minHeight,
+    border: `1px solid ${colors.border}`,
+    borderRadius: radius.md,
+    padding: controls.padding,
+    fontSize: typography.body.fontSize,
+    background: colors.surface,
     boxSizing: "border-box",
   },
   filterButtons: { display: "flex", gap: "8px", flexWrap: "wrap" },
@@ -922,19 +919,19 @@ const styles = {
     cursor: "pointer",
   },
   activeFilter: {
-    border: "1px solid #2563eb",
-    background: "#2563eb",
-    color: "#ffffff",
+    border: `1px solid ${colors.primary}`,
+    background: colors.primary,
+    color: colors.surface,
     borderRadius: "999px",
     padding: "8px 12px",
     fontWeight: 800,
     cursor: "pointer",
   },
   tableCard: {
-    background: "#ffffff",
-    border: "1px solid #e5e7eb",
-    borderRadius: "18px",
-    boxShadow: "0 8px 24px rgba(15, 23, 42, 0.06)",
+    background: colors.surface,
+    border: `1px solid ${colors.borderSoft}`,
+    borderRadius: radius.lg,
+    boxShadow: shadows.sm,
     overflow: "hidden",
   },
   tableHeader: { padding: "16px 18px", borderBottom: "1px solid #e5e7eb" },
@@ -942,7 +939,7 @@ const styles = {
   muted: { color: "#6b7280", margin: "4px 0 0" },
   mutedSmall: { color: "#6b7280", fontSize: "13px", marginTop: "4px" },
   tableWrap: { overflowX: "auto" },
-  table: { width: "100%", borderCollapse: "collapse", minWidth: "1040px" },
+  table: { width: "100%", borderCollapse: "collapse", minWidth: "1460px", tableLayout: "auto" },
   thead: { background: "#f9fafb" },
   th: {
     textAlign: "left",
@@ -952,6 +949,9 @@ const styles = {
     color: "#6b7280",
     textTransform: "uppercase",
     letterSpacing: "0.04em",
+    whiteSpace: "nowrap",
+    wordBreak: "normal",
+    overflowWrap: "normal",
   },
   thNumber: {
     textAlign: "right",
@@ -961,6 +961,9 @@ const styles = {
     color: "#6b7280",
     textTransform: "uppercase",
     letterSpacing: "0.04em",
+    whiteSpace: "nowrap",
+    wordBreak: "normal",
+    overflowWrap: "normal",
   },
   tr: { borderTop: "1px solid #f3f4f6", cursor: "pointer", background: "#ffffff" },
   trActive: { borderTop: "1px solid #bfdbfe", cursor: "pointer", background: "#eff6ff" },
@@ -1009,23 +1012,23 @@ const styles = {
   },
   drawer: {
     width: "min(500px, 100%)",
-    background: "#ffffff",
+    background: colors.surface,
     height: "100%",
-    boxShadow: "-8px 0 30px rgba(0,0,0,.22)",
+    boxShadow: shadows.lg,
     overflowY: "auto",
   },
   drawerHeader: {
-    padding: "18px",
-    borderBottom: "1px solid #e5e7eb",
+    padding: spacing.lg,
+    borderBottom: `1px solid ${colors.borderSoft}`,
     display: "flex",
     justifyContent: "space-between",
     gap: "12px",
   },
-  drawerTitle: { margin: "2px 0 0", fontSize: "22px", fontWeight: 900 },
+  drawerTitle: { margin: "2px 0 0", fontSize: typography.sectionTitle.fontSize, fontWeight: typography.sectionTitle.fontWeight },
   closeButton: {
-    border: "1px solid #e5e7eb",
-    background: "#ffffff",
-    borderRadius: "10px",
+    border: `1px solid ${colors.border}`,
+    background: colors.surface,
+    borderRadius: radius.md,
     width: "36px",
     height: "36px",
     fontSize: "22px",
@@ -1034,50 +1037,51 @@ const styles = {
   drawerTabs: {
     display: "grid",
     gridTemplateColumns: "1fr 1fr 1fr",
-    borderBottom: "1px solid #e5e7eb",
+    borderBottom: `1px solid ${colors.borderSoft}`,
   },
   tab: {
     border: "none",
-    background: "#ffffff",
+    background: colors.surface,
     padding: "13px",
     fontWeight: 900,
     cursor: "pointer",
   },
   activeTab: {
     border: "none",
-    background: "#eff6ff",
-    color: "#1d4ed8",
+    background: colors.primarySoft,
+    color: colors.primaryHover,
     padding: "13px",
     fontWeight: 900,
     cursor: "pointer",
   },
-  drawerContent: { padding: "18px", display: "grid", gap: "12px" },
+  drawerContent: { padding: spacing.lg, display: "grid", gap: spacing.md },
   stockHero: {
     display: "grid",
     gap: "4px",
     padding: "16px",
-    border: "1px solid #bfdbfe",
-    borderRadius: "16px",
-    background: "#eff6ff",
+    border: `1px solid ${colors.primaryBorder}`,
+    borderRadius: radius.lg,
+    background: colors.primarySoft,
   },
   drawerActions: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginTop: "8px" },
   field: { display: "flex", flexDirection: "column", gap: "7px" },
   label: { fontWeight: 900, fontSize: "14px" },
   input: {
     width: "100%",
-    padding: "11px 12px",
-    borderRadius: "12px",
-    border: "1px solid #d1d5db",
-    fontSize: "15px",
+    minHeight: controls.minHeight,
+    padding: controls.padding,
+    borderRadius: radius.md,
+    border: `1px solid ${colors.border}`,
+    fontSize: typography.body.fontSize,
     boxSizing: "border-box",
     background: "#ffffff",
   },
   textarea: {
     width: "100%",
-    padding: "11px 12px",
-    borderRadius: "12px",
-    border: "1px solid #d1d5db",
-    fontSize: "15px",
+    padding: controls.padding,
+    borderRadius: radius.md,
+    border: `1px solid ${colors.border}`,
+    fontSize: typography.body.fontSize,
     boxSizing: "border-box",
     background: "#ffffff",
     minHeight: "80px",

@@ -2,23 +2,23 @@ import { colors, radius } from "../../theme";
 
 const variants = {
   default: {
-    background: "#eef4ff",
+    background: colors.secondarySoft,
     color: colors.secondary,
   },
 
   success: {
-    background: "#ecfdf3",
-    color: "#067647",
+    background: colors.successSoft,
+    color: colors.successDark,
   },
 
   warning: {
-    background: "#fff8e1",
-    color: "#8a6d00",
+    background: colors.warningSoft,
+    color: colors.warningDark,
   },
 
   danger: {
-    background: "#fee4e2",
-    color: "#b42318",
+    background: colors.dangerSoft,
+    color: colors.dangerDark,
   },
 
   primary: {

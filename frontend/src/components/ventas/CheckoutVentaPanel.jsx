@@ -43,6 +43,18 @@ export default function CheckoutVentaPanel({
   const ventaSaldada = Number(checkout.pendiente || 0) <= 0;
   const hayPagos = checkout.pagosDraft.length > 0;
   const entregaConSaldo = checkout.entregarAhora && !ventaSaldada;
+  const montoCreditoManual = Number(checkout.montoCreditoAAplicar);
+  const creditoElegido =
+    String(checkout.montoCreditoAAplicar ?? "").trim() &&
+    Number.isFinite(montoCreditoManual)
+      ? Math.min(montoCreditoManual, checkout.creditoDisponible)
+      : checkout.creditoDisponible;
+  const creditoCubreSaldo =
+    checkout.usarCredito &&
+    checkout.saldoBasePendiente > 0 &&
+    creditoElegido + 0.01 >= checkout.saldoBasePendiente;
+  const finalizaConCredito =
+    ventaSaldada && Number(checkout.creditoAplicado || 0) > 0;
   const montoCobroSugerido =
     checkout.previewSaldar?.monto_sugerido_para_saldar ?? null;
   const [confirmConfig, setConfirmConfig] = useState(null);
@@ -232,6 +244,8 @@ export default function CheckoutVentaPanel({
         creditoDisponible={checkout.creditoDisponible}
         creditoAplicado={checkout.creditoAplicado}
         saldoCreditoRestante={checkout.saldoCreditoRestante}
+        creditoCubreSaldo={creditoCubreSaldo}
+        saldoAntesCredito={checkout.saldoBasePendiente}
       />
 
       {!ventaSaldada && (
@@ -250,6 +264,7 @@ export default function CheckoutVentaPanel({
           planesTarjeta={checkout.planesTarjeta}
           planTarjetaId={checkout.planTarjetaId}
           setPlanTarjetaId={checkout.setPlanTarjetaId}
+          creditoCubreSaldo={creditoCubreSaldo}
         />
       )}
 
@@ -322,6 +337,7 @@ export default function CheckoutVentaPanel({
             ventaSaldada,
             entregaConSaldo,
             hayPagos,
+            finalizaConCredito,
           })}
         </button>
       </div>
@@ -329,9 +345,16 @@ export default function CheckoutVentaPanel({
   );
 }
 
-function getFinalizarLabel({ guardando, ventaSaldada, entregaConSaldo, hayPagos }) {
+function getFinalizarLabel({
+  guardando,
+  ventaSaldada,
+  entregaConSaldo,
+  hayPagos,
+  finalizaConCredito,
+}) {
   if (guardando) return "Procesando...";
   if (entregaConSaldo) return "Finalizar y entregar con deuda";
+  if (finalizaConCredito) return "Finalizar con crédito";
   if (ventaSaldada) return "Finalizar venta saldada";
   if (hayPagos) return "Finalizar venta parcial";
   return "Finalizar sin pagos";

@@ -8,7 +8,9 @@ import { listarServiciosTaller } from "../services/serviciosTallerService";
 import { crearCotizacion, listarCotizaciones } from "../services/cotizacionesService";
 import { normalizeTextUpper } from "../utils/textNormalization";
 import { formatDate, formatMoney } from "../utils/formatters";
-import { useBreakpoint } from "../components/ui";
+import { Button, EmptyState, PageHeader, useBreakpoint } from "../components/ui";
+import { colors, controls, radius, shadows, spacing, typography } from "../theme";
+import ServicePlaceholder from "../components/servicios/ServicePlaceholder";
 
 const ESTADOS = [
   { value: "", label: "Todas" },
@@ -310,21 +312,15 @@ export default function CotizacionesListPage() {
     }
   }
 
-  if (loading) return <div style={styles.state}>Cargando cotizaciones...</div>;
+  if (loading) return <EmptyState icon={FileText} title="Cargando cotizaciones..." description="Preparando presupuestos y listas comerciales." />;
 
   return (
     <div style={{ ...styles.page, ...(isMobile ? styles.pageMobile : {}) }}>
-      <header style={{ ...styles.hero, ...(isMobile ? styles.heroMobile : {}) }}>
-        <div>
-          <p style={styles.kicker}>Mostrador / taller</p>
-          <h1 style={styles.title}>Cotizaciones</h1>
-          <p style={styles.subtitle}>Presupuestos previos sin mover stock, caja ni deuda.</p>
-        </div>
-
-        <button type="button" onClick={cargarTodo} style={styles.heroButton}>
-          <RefreshCw size={17} /> Refrescar
-        </button>
-      </header>
+      <PageHeader
+        title="Cotizaciones"
+        subtitle="Presupuestos previos sin mover stock, caja ni deuda."
+        actions={<Button type="button" variant="outline" onClick={cargarTodo}><RefreshCw size={17} /> Refrescar</Button>}
+      />
 
       {error && <div style={styles.error}>{error}</div>}
 
@@ -454,6 +450,7 @@ export default function CotizacionesListPage() {
                             meta={servicio.descripcion || "Servicio de taller"}
                             price={servicio.precio_sugerido}
                             badge="Servicio"
+                            serviceVisual
                             selected={serviciosAgregados.has(String(servicio.id))}
                             onAdd={() => agregarServicio(servicio)}
                           />
@@ -558,7 +555,15 @@ export default function CotizacionesListPage() {
   );
 }
 
-function CotizacionCatalogCard({ title, meta, price, badge, selected = false, onAdd }) {
+function CotizacionCatalogCard({
+  title,
+  meta,
+  price,
+  badge,
+  selected = false,
+  serviceVisual = false,
+  onAdd,
+}) {
   return (
     <button
       type="button"
@@ -566,7 +571,8 @@ function CotizacionCatalogCard({ title, meta, price, badge, selected = false, on
       style={{ ...styles.catalogCard, ...(selected ? styles.catalogCardSelected : {}) }}
       title={selected ? "Ya esta agregado. Click para sumar otra unidad" : "Click para agregar"}
     >
-      <div>
+      {serviceVisual && <ServicePlaceholder size="sm" />}
+      <div style={styles.catalogInfo}>
         <strong>{title}</strong>
         <p style={styles.catalogMeta}>{meta || "-"}</p>
       </div>
@@ -760,7 +766,7 @@ function badgeTipo(tipo) {
 }
 
 const styles = {
-  page: { minHeight: "100vh", padding: 20, background: "#f1f5f9", color: "#0f172a" },
+  page: { minHeight: "100vh", display: "grid", gap: spacing.xl, color: colors.text, fontFamily: typography.fontFamily },
   pageMobile: { padding: 10 },
   hero: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, padding: 22, borderRadius: 22, background: "#0f172a", color: "white", marginBottom: 16, boxShadow: "0 18px 40px rgba(15,23,42,.18)" },
   heroMobile: { display: "grid", gridTemplateColumns: "1fr", padding: 16 },
@@ -768,24 +774,24 @@ const styles = {
   title: { margin: "3px 0 0", fontSize: 34, fontWeight: 1000 },
   subtitle: { margin: "8px 0 0", color: "#cbd5e1", fontWeight: 700 },
   heroButton: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, border: "1px solid rgba(255,255,255,.22)", background: "rgba(255,255,255,.08)", color: "white", borderRadius: 13, padding: "12px 14px", fontWeight: 1000, cursor: "pointer" },
-  layout: { display: "grid", gridTemplateColumns: "minmax(460px, 560px) minmax(0, 1fr)", gap: 16, alignItems: "start" },
+  layout: { display: "grid", gridTemplateColumns: "minmax(460px, 560px) minmax(0, 1fr)", gap: spacing.lg, alignItems: "start" },
   layoutMobile: { gridTemplateColumns: "1fr" },
-  panel: { background: "white", border: "1px solid #e2e8f0", borderRadius: 20, overflow: "hidden", boxShadow: "0 14px 30px rgba(15,23,42,.06)" },
-  panelHeader: { padding: 16, borderBottom: "1px solid #e2e8f0" },
-  panelTitle: { margin: 0, fontSize: 22 },
-  panelSubtitle: { margin: "4px 0 0", color: "#64748b", fontWeight: 700, fontSize: 13 },
-  form: { display: "grid", gap: 12, padding: 16 },
+  panel: { background: colors.surface, border: `1px solid ${colors.borderSoft}`, borderRadius: radius.lg, overflow: "hidden", boxShadow: shadows.sm },
+  panelHeader: { padding: spacing.lg, borderBottom: `1px solid ${colors.borderSoft}` },
+  panelTitle: { margin: 0, fontSize: typography.sectionTitle.fontSize, fontWeight: typography.sectionTitle.fontWeight },
+  panelSubtitle: { margin: "4px 0 0", color: colors.textMuted, fontSize: typography.small.fontSize },
+  form: { display: "grid", gap: spacing.md, padding: spacing.lg },
   segmented: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 },
   segment: { border: "1px solid #cbd5e1", background: "white", color: "#334155", borderRadius: 12, padding: "11px 12px", fontWeight: 1000, cursor: "pointer" },
   segmentActive: { border: "1px solid #f97316", background: "#fff7ed", color: "#c2410c", borderRadius: 12, padding: "11px 12px", fontWeight: 1000, cursor: "pointer" },
-  field: { display: "grid", gap: 6, fontWeight: 900, color: "#334155" },
-  input: { width: "100%", border: "1px solid #cbd5e1", borderRadius: 12, padding: "11px 12px", fontWeight: 750, boxSizing: "border-box", background: "white", color: "#0f172a" },
+  field: { display: "grid", gap: spacing.sm, fontSize: typography.label.fontSize, fontWeight: typography.label.fontWeight, color: colors.text },
+  input: { width: "100%", minHeight: controls.minHeight, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: controls.padding, boxSizing: "border-box", background: colors.surface, color: colors.text },
   compactSelect: { border: "1px solid #cbd5e1", borderRadius: 999, padding: "8px 10px", fontWeight: 900, background: "white" },
   textarea: { width: "100%", minHeight: 76, border: "1px solid #cbd5e1", borderRadius: 12, padding: "11px 12px", fontWeight: 700, resize: "vertical", boxSizing: "border-box" },
   twoCols: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 },
   itemBox: { display: "grid", gap: 10, border: "1px solid #e2e8f0", borderRadius: 16, padding: 12, background: "#f8fafc" },
   itemHeader: { display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" },
-  primaryButton: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, border: "none", background: "#f97316", color: "white", borderRadius: 13, padding: "12px 16px", fontWeight: 1000, cursor: "pointer" },
+  primaryButton: { minHeight: controls.minHeight, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: spacing.sm, border: "none", background: colors.primary, color: colors.surface, borderRadius: radius.md, padding: controls.padding, fontWeight: typography.button.fontWeight, cursor: "pointer", boxShadow: shadows.sm },
   secondaryButton: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, border: "1px solid #cbd5e1", background: "#0f172a", color: "white", borderRadius: 12, padding: "11px 12px", fontWeight: 1000, cursor: "pointer", whiteSpace: "nowrap" },
   quoteBuilder: { display: "grid", gap: 12, border: "1px solid #e2e8f0", borderRadius: 16, padding: 12, background: "#f8fafc" },
   builderHint: { margin: "4px 0 0", color: "#64748b", fontSize: 12, fontWeight: 750 },
@@ -794,7 +800,8 @@ const styles = {
   catalogColumn: { display: "grid", gap: 8, minWidth: 0 },
   catalogHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, color: "#334155", fontSize: 13, fontWeight: 1000 },
   catalogList: { display: "grid", gap: 8, maxHeight: 310, overflow: "auto", paddingRight: 2 },
-  catalogCard: { width: "100%", display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 10, alignItems: "center", textAlign: "left", border: "1px solid #dbe3ef", background: "white", color: "#0f172a", borderRadius: 12, padding: 10, cursor: "pointer" },
+  catalogCard: { width: "100%", display: "flex", gap: 10, alignItems: "center", textAlign: "left", border: "1px solid #dbe3ef", background: "white", color: "#0f172a", borderRadius: 12, padding: 10, cursor: "pointer" },
+  catalogInfo: { flex: 1, minWidth: 0 },
   catalogCardSelected: { border: "1px solid #34d399", background: "#ecfdf5", boxShadow: "inset 4px 0 0 #10b981" },
   catalogMeta: { margin: "4px 0 0", color: "#64748b", fontSize: 12, fontWeight: 750, overflowWrap: "anywhere" },
   catalogRight: { display: "grid", justifyItems: "end", gap: 5, whiteSpace: "nowrap" },
@@ -827,6 +834,6 @@ const styles = {
   detailButton: { textDecoration: "none", textAlign: "center", background: "#0f172a", color: "white", borderRadius: 12, padding: "10px 12px", fontWeight: 1000 },
   badge: { display: "inline-flex", alignItems: "center", width: "fit-content", borderRadius: 999, padding: "5px 8px", fontSize: 12, fontWeight: 1000 },
   empty: { padding: 18, color: "#64748b", fontWeight: 900 },
-  error: { background: "#fff1f0", color: "#b42318", border: "1px solid #fecdca", borderRadius: 14, padding: 12, marginBottom: 14, fontWeight: 850 },
+  error: { background: colors.dangerSoft, color: colors.dangerDark, border: `1px solid ${colors.danger}`, borderRadius: radius.md, padding: spacing.md, fontWeight: typography.label.fontWeight },
   state: { padding: 24, fontWeight: 900 },
 };

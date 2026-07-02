@@ -1,4 +1,4 @@
-import { colors, radius, shadows, spacing } from "../../theme";
+import { colors, radius, shadows, spacing, typography } from "../../theme";
 
 const tones = {
   default: {
@@ -7,13 +7,18 @@ const tones = {
   },
 
   success: {
-    value: "#067647",
+    value: colors.successDark,
     border: "rgba(6,118,71,.12)",
   },
 
   danger: {
-    value: "#b42318",
+    value: colors.dangerDark,
     border: "rgba(180,35,24,.12)",
+  },
+
+  warning: {
+    value: colors.warningDark,
+    border: "rgba(217,119,6,.16)",
   },
 
   primary: {
@@ -39,17 +44,20 @@ export default function MetricCard({
         borderRadius: radius.lg,
         border: `1px solid ${current.border}`,
         boxShadow: shadows.sm,
+        minWidth: 0,
         padding: spacing.md,
         display: "grid",
-        gap: 6,
+        alignContent: "start",
+        gap: spacing.xs,
         ...style,
       }}
     >
       <div
         style={{
-          fontSize: 20,
+          fontSize: typography.label.fontSize,
           color: colors.textMuted,
-          fontWeight: 600,
+          fontWeight: typography.label.fontWeight,
+          lineHeight: typography.label.lineHeight,
         }}
       >
         {label}
@@ -57,10 +65,11 @@ export default function MetricCard({
 
       <div
         style={{
-          fontWeight: emphasize ? 800 : 700,
-          fontSize: emphasize ? 30 : 24,
-          lineHeight: 1.1,
+          fontWeight: typography.metric.fontWeight,
+          fontSize: emphasize ? 28 : typography.metric.fontSize,
+          lineHeight: typography.metric.lineHeight,
           color: current.value,
+          overflowWrap: "anywhere",
         }}
       >
         {value}
@@ -70,7 +79,7 @@ export default function MetricCard({
         <div
           style={{
             marginTop: 2,
-            fontSize: 12,
+            fontSize: typography.small.fontSize,
             color: colors.textMuted,
           }}
         >

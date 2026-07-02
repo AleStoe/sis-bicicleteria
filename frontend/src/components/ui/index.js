@@ -7,4 +7,5 @@ export { default as Input } from "./Input";
 export { default as Select } from "./Select";
 export { default as MetricCard } from "./MetricCard";
 export { default as Table } from "./Table";
+export { default as EmptyState } from "./EmptyState";
 export * from "./responsive";

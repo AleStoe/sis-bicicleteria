@@ -11,6 +11,8 @@ export default function CheckoutResumenPago({
   creditoDisponible,
   creditoAplicado,
   saldoCreditoRestante,
+  creditoCubreSaldo = false,
+  saldoAntesCredito = 0,
 
   cantidadItems,
   formatMoney,
@@ -72,6 +74,17 @@ export default function CheckoutResumenPago({
 
           {usarCredito && (
             <>
+              {creditoCubreSaldo && (
+                <div style={styles.creditCoverageNotice}>
+                  <strong>El crédito cubre completamente la venta.</strong>
+                  <span>
+                    {estaSaldada
+                      ? "No necesitás cargar otro medio de pago. Podés finalizar la venta."
+                      : `Alcanza para cubrir los ${formatMoney(saldoAntesCredito)} pendientes. Tocá “Aplicar crédito y completar saldo” para continuar.`}
+                  </span>
+                </div>
+              )}
+
               <div style={styles.creditApplied}>
                 <span>Aplicado</span>
                 <strong>- {formatMoney(creditoAplicado)}</strong>
@@ -295,6 +308,18 @@ creditApplied: {
   fontSize: 14,
   fontWeight: 900,
   color: "#047857",
+},
+
+creditCoverageNotice: {
+  display: "grid",
+  gap: 4,
+  padding: "11px 12px",
+  borderRadius: 12,
+  border: "1px solid #86efac",
+  background: "#ecfdf5",
+  color: "#166534",
+  fontSize: 13,
+  lineHeight: 1.4,
 },
 
 creditManualBox: {

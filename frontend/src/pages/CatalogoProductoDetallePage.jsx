@@ -18,6 +18,9 @@ import { actualizarPrecioVariante } from "../services/preciosService";
 import { listarProveedores } from "../services/proveedoresService";
 import { useSession } from "../context/SessionContext";
 import { formatMoney, formatNumber } from "../utils/formatters";
+import { Button, EmptyState, PageHeader } from "../components/ui";
+import { ArrowLeft, PackageSearch, RefreshCw } from "lucide-react";
+import { colors, controls, radius, shadows, spacing, typography } from "../theme";
 
 const ID_SUCURSAL_DEFAULT = 1;
 const TAB_OPERATIVO = "operativo";
@@ -412,7 +415,7 @@ export default function CatalogoProductoDetallePage() {
   }, [producto, resumenOperativo]);
 
   if (loading) {
-    return <div style={styles.state}>Cargando producto...</div>;
+    return <EmptyState icon={PackageSearch} title="Cargando producto..." description="Actualizando ficha, variantes y stock." />;
   }
 
   if (error) {
@@ -420,26 +423,23 @@ export default function CatalogoProductoDetallePage() {
   }
 
   if (!producto) {
-    return <div style={styles.error}>Producto no encontrado</div>;
+    return <EmptyState icon={PackageSearch} title="Producto no encontrado" description="Volvé al catálogo e intentá nuevamente." />;
   }
 
   return (
     <div style={{ ...styles.page, ...(isMobile ? styles.pageMobile : {}) }}>
-      <header style={{ ...styles.header, ...(isMobile ? styles.headerMobile : {}) }}>
-        <div>
-          <button type="button" onClick={() => navigate("/catalogo")} style={styles.backButton}>
-            ← Volver al catálogo
-          </button>
-          <p style={styles.kicker}>Detalle operativo</p>
-          <h1 style={{ ...styles.title, ...(isMobile ? styles.titleMobile : {}) }}>{producto.nombre}</h1>
-          <p style={{ ...styles.subtitle, ...(isMobile ? styles.subtitleMobile : {}) }}>Producto #{producto.id} · {valorMostrar(categoriaNombre)} · {valorMostrar(marcaNombre)}</p>
-        </div>
-
-        <div style={{ ...styles.headerActions, ...(isMobile ? styles.headerActionsMobile : {}) }}>
-          <button type="button" onClick={() => setTabActiva(TAB_OPERATIVO)} style={styles.primaryButton}>Editar producto</button>
-          <button type="button" onClick={cargar} style={styles.secondaryButton}>Refrescar</button>
-        </div>
-      </header>
+      <PageHeader
+        title={producto.nombre}
+        subtitle={`Producto #${producto.id} · ${valorMostrar(categoriaNombre)} · ${valorMostrar(marcaNombre)}`}
+        eyebrow="Detalle operativo"
+        actions={(
+          <>
+            <Button type="button" variant="outline" onClick={() => navigate("/catalogo")}><ArrowLeft size={16} /> Volver</Button>
+            <Button type="button" onClick={() => setTabActiva(TAB_OPERATIVO)}>Editar producto</Button>
+            <Button type="button" variant="outline" onClick={cargar}><RefreshCw size={16} /> Refrescar</Button>
+          </>
+        )}
+      />
 
       {mensaje && <div style={styles.successBox}>{mensaje}</div>}
 
@@ -740,21 +740,21 @@ function Info({ label, value }) {
 }
 
 const tabBase = {
-  border: "1px solid #cbd5e1",
-  borderRadius: "14px",
-  padding: "11px 14px",
-  fontWeight: 1000,
+  minHeight: controls.minHeight,
+  border: `1px solid ${colors.border}`,
+  borderRadius: radius.md,
+  padding: controls.padding,
+  fontWeight: typography.button.fontWeight,
   cursor: "pointer",
 };
 
 const styles = {
   page: {
     display: "grid",
-    gap: 18,
-    padding: 22,
-    background: "#f1f5f9",
+    gap: spacing.xl,
     minHeight: "100vh",
-    color: "#0f172a",
+    color: colors.text,
+    fontFamily: typography.fontFamily,
   },
   header: {
     display: "flex",
@@ -825,11 +825,11 @@ const styles = {
     alignItems: "stretch",
   },
   imageCard: {
-    background: "white",
-    border: "1px solid #e2e8f0",
-    borderRadius: 22,
-    padding: 16,
-    boxShadow: "0 14px 30px rgba(15, 23, 42, 0.06)",
+    background: colors.surface,
+    border: `1px solid ${colors.borderSoft}`,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    boxShadow: shadows.sm,
     minHeight: 300,
   },
   heroImage: {
@@ -852,11 +852,11 @@ const styles = {
     fontWeight: 900,
   },
   summaryCard: {
-    background: "white",
-    border: "1px solid #e2e8f0",
-    borderRadius: 22,
-    padding: 18,
-    boxShadow: "0 14px 30px rgba(15, 23, 42, 0.06)",
+    background: colors.surface,
+    border: `1px solid ${colors.borderSoft}`,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    boxShadow: shadows.sm,
     display: "grid",
     gap: 14,
   },
@@ -868,13 +868,13 @@ const styles = {
   },
   sectionTitle: {
     margin: 0,
-    fontSize: 22,
-    letterSpacing: "-0.02em",
+    fontSize: typography.sectionTitle.fontSize,
+    fontWeight: typography.sectionTitle.fontWeight,
   },
   muted: {
-    color: "#64748b",
+    color: colors.textMuted,
     margin: "4px 0 0",
-    fontWeight: 700,
+    lineHeight: typography.body.lineHeight,
   },
   stockGrid: {
     display: "grid",

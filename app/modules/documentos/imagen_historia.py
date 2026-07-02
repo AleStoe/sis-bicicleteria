@@ -9,16 +9,25 @@ from .pdf_etiquetas import (
     _label_title,
     _variant_parts,
 )
+from .brand import (
+    BORDER_HEX,
+    BROWN_HEX,
+    INK_HEX,
+    MUTED_HEX,
+    ORANGE_HEX,
+    ORANGE_SOFT_HEX,
+    PAPER_HEX,
+)
 
 
 STORY_SIZE = (1080, 1920)
-NAVY = "#111c32"
-GREEN = "#067647"
-GREEN_SOFT = "#e9f9ef"
-INK = "#101828"
-MUTED = "#667085"
-BORDER = "#d0d5dd"
-BACKGROUND = "#f4f7f9"
+NAVY = BROWN_HEX
+GREEN = ORANGE_HEX
+GREEN_SOFT = ORANGE_SOFT_HEX
+INK = INK_HEX
+MUTED = MUTED_HEX
+BORDER = BORDER_HEX
+BACKGROUND = PAPER_HEX
 
 
 def _font(size: int, bold: bool = False):
@@ -266,7 +275,7 @@ def generar_historia_precio_png(data: dict) -> bytes:
             (92, next_top + 75),
             efectivo["badge"],
             font=_font(38, bold=True),
-            fill="#b7f7ce",
+            fill="#FFE1CC",
         )
         efectivo_font, efectivo_lines = _fit_lines(
             draw,

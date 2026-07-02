@@ -5,6 +5,7 @@ export default function PageHeader({
   title,
   subtitle,
   actions,
+  style = {},
 }) {
   const isMobile = useBreakpoint(760);
 
@@ -17,15 +18,18 @@ export default function PageHeader({
         gap: isMobile ? spacing.md : spacing.lg,
         marginBottom: isMobile ? spacing.md : spacing.xl,
         minWidth: 0,
+        ...style,
       }}
     >
       <div style={{ minWidth: 0 }}>
         <h1
           style={{
             margin: 0,
-            fontSize: isMobile ? 25 : typography.title.fontSize,
+            color: colors.textStrong,
+            fontFamily: typography.fontFamily,
+            fontSize: isMobile ? 24 : typography.title.fontSize,
             fontWeight: typography.title.fontWeight,
-            lineHeight: 1.1,
+            lineHeight: typography.title.lineHeight,
             overflowWrap: "anywhere",
           }}
         >
@@ -37,7 +41,8 @@ export default function PageHeader({
             style={{
               marginTop: 6,
               color: colors.textMuted,
-              lineHeight: 1.35,
+              fontSize: typography.body.fontSize,
+              lineHeight: typography.body.lineHeight,
               overflowWrap: "anywhere",
             }}
           >

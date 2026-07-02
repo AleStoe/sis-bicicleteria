@@ -202,6 +202,11 @@ PERMISO_GESTIONAR_CATALOGO = "gestionar_catalogo"
 PERMISO_GESTIONAR_PRECIOS = "gestionar_precios"
 PERMISO_CONFIGURACION_COMERCIAL = "configuracion_comercial"
 PERMISO_VER_AUDITORIA = "ver_auditoria"
+PERMISO_GESTIONAR_BACKUPS = "gestionar_backups"
+
+AUDITORIA_ENTIDAD_BACKUP = "backup"
+AUDITORIA_ACCION_BACKUP_GENERADO = "backup_generado"
+AUDITORIA_ACCION_BACKUP_DESCARGADO = "backup_descargado"
 
 CREDITO_MOVIMIENTO_REINTEGRO = "reintegro"
 

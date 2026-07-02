@@ -30,6 +30,7 @@ VALUES
     ('gestionar_garantias', 'Autorizar garantías y coberturas de postventa'),
     ('gestionar_catalogo', 'Administrar catálogo y maestros comerciales'),
     ('gestionar_precios', 'Consultar costos y administrar precios'),
+    ('gestionar_backups', 'Generar, listar y descargar backups del sistema'),
     ('gestionar_usuarios', 'Administrar usuarios y roles'),
     ('modificar_precio_venta', 'Aplicar precios manuales o bonificaciones en ventas'),
     ('registrar_egreso', 'Registrar egresos manuales de caja'),

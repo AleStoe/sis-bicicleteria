@@ -2,7 +2,18 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { listarOrdenesTaller, obtenerDashboardTaller } from "../services/tallerService";
 import { formatDate, formatMoney, formatNumber } from "../utils/formatters";
-import { OperationalStatusBadge, useBreakpoint } from "../components/ui";
+import {
+  Button,
+  Card,
+  EmptyState,
+  MetricCard,
+  OperationalStatusBadge,
+  PageHeader,
+  ResponsiveMetricsGrid,
+  useBreakpoint,
+} from "../components/ui";
+import { CalendarDays, Plus, RefreshCw, Search } from "lucide-react";
+import { colors, controls, radius, shadows, spacing, typography } from "../theme";
 
 const ESTADOS_ACTIVOS = new Set([
   "ingresada",
@@ -149,37 +160,50 @@ export default function TallerListPage() {
 
   const mostrarTablero = estadoFiltro === "activas";
 
-  if (loading) return <div style={styles.state}>Cargando taller...</div>;
+  if (loading) {
+    return (
+      <EmptyState
+        icon={CalendarDays}
+        title="Cargando taller..."
+        description="Estamos actualizando las órdenes activas."
+      />
+    );
+  }
 
   return (
     <div style={{ ...styles.page, ...(isMobile ? styles.pageMobile : {}) }}>
-      <header style={{ ...styles.hero, ...(isMobile ? styles.heroMobile : {}) }}>
-        <div>
-          <p style={styles.kicker}>Taller / reparaciones</p>
-          <h1 style={{ ...styles.title, ...(isMobile ? styles.titleMobile : {}) }}>Taller</h1>
-          <p style={{ ...styles.subtitle, ...(isMobile ? styles.subtitleMobile : {}) }}>Órdenes activas, reparación, repuestos y retiro de bicicletas.</p>
-        </div>
-
-        <div style={{ ...styles.heroActions, ...(isMobile ? styles.heroActionsMobile : {}) }}>
-          <button type="button" onClick={() => cargarOrdenes(estadoFiltro)} style={{ ...styles.secondaryHeroButton, ...(isMobile ? styles.heroButtonMobile : {}) }}>↻ Refrescar</button>
-          <Link to="/taller/nueva" style={{ ...styles.primaryHeroButton, ...(isMobile ? styles.heroButtonMobile : {}) }}>＋ Nueva orden</Link>
-        </div>
-      </header>
+      <PageHeader
+        title="Taller"
+        subtitle="Órdenes activas, reparación, repuestos y retiro de bicicletas."
+        style={{ marginBottom: 0 }}
+        actions={(
+          <>
+            <Button type="button" variant="outline" onClick={() => cargarOrdenes(estadoFiltro)}>
+              <RefreshCw size={16} aria-hidden="true" />
+              Refrescar
+            </Button>
+            <Link to="/taller/nueva" style={styles.primaryLink}>
+              <Plus size={17} aria-hidden="true" />
+              Nueva orden
+            </Link>
+          </>
+        )}
+      />
 
       {error && <div style={styles.error}>Error: {error}</div>}
 
-      <section style={{ ...styles.metricsGrid, ...(isMobile ? styles.metricsGridMobile : {}) }}>
-        <Metric label="Pendientes" value={resumen.activas} tone="dark" />
-        <Metric label="Ingresadas" value={resumen.ingresadas} tone="info" />
-        <Metric label="En reparación" value={resumen.enReparacion} tone="orange" />
-        <Metric label="Listas retiro" value={resumen.listas} tone="ok" />
-        <Metric label="Esperando repuestos" value={resumen.esperandoRepuestos} tone="warning" />
-        <Metric label="Total taller" value={formatMoney(resumen.totalImporte)} tone="muted" />
-      </section>
+      <ResponsiveMetricsGrid minWidth={145} mobileColumns={2}>
+        <MetricCard label="Pendientes" value={resumen.activas} />
+        <MetricCard label="Ingresadas" value={resumen.ingresadas} tone="primary" />
+        <MetricCard label="En reparación" value={resumen.enReparacion} tone="primary" />
+        <MetricCard label="Listas retiro" value={resumen.listas} tone="success" />
+        <MetricCard label="Esperando repuestos" value={resumen.esperandoRepuestos} tone="warning" />
+        <MetricCard label="Total taller" value={formatMoney(resumen.totalImporte)} />
+      </ResponsiveMetricsGrid>
 
-      <section style={{ ...styles.filtersCard, ...(isMobile ? styles.filtersCardMobile : {}) }}>
+      <Card bodyStyle={styles.filtersCard} style={{ boxShadow: shadows.sm }}>
         <div style={{ ...styles.searchBox, ...(isMobile ? styles.searchBoxMobile : {}) }}>
-          <span>🔎</span>
+          <Search size={18} color={colors.textMuted} aria-hidden="true" />
           <input
             ref={searchRef}
             value={busqueda}
@@ -195,19 +219,21 @@ export default function TallerListPage() {
             <option key={estado.value} value={estado.value}>{estado.label}</option>
           ))}
         </select>
-      </section>
+      </Card>
 
       <main style={{ ...styles.layout, ...(isMobile ? styles.layoutMobile : {}) }}>
-        <section style={{ ...styles.panel, ...(isMobile ? styles.panelMobile : {}) }}>
-          <div style={styles.panelHeader}>
-            <div>
-              <h2 style={styles.panelTitle}>Órdenes</h2>
-              <p style={styles.panelSubtitle}>{ordenesFiltradas.length} resultado(s) · filtro: {labelEstadoFiltro(estadoFiltro)}</p>
-            </div>
-          </div>
-
+        <Card
+          title="Órdenes"
+          subtitle={`${ordenesFiltradas.length} resultado(s) · filtro: ${labelEstadoFiltro(estadoFiltro)}`}
+          bodyStyle={{ padding: 0 }}
+        >
           {ordenesFiltradas.length === 0 ? (
-            <div style={styles.empty}>No hay órdenes para mostrar.</div>
+            <EmptyState
+              icon={CalendarDays}
+              title="No hay órdenes para mostrar"
+              description="Probá otro estado o cambiá el texto de búsqueda."
+              style={{ margin: spacing.lg }}
+            />
           ) : mostrarTablero ? (
             <TallerBoard tablero={tablero} />
           ) : (
@@ -217,11 +243,10 @@ export default function TallerListPage() {
               ))}
             </div>
           )}
-        </section>
+        </Card>
 
         {!isMobile && <aside style={styles.sidePanel}>
-          <section style={styles.sideCard}>
-            <h2 style={styles.sideTitle}>Modo taller</h2>
+          <Card title="Modo taller">
             <p style={styles.sideMuted}>La vista abre en órdenes activas porque lo importante es no perder bicicletas pendientes.</p>
             <div style={styles.sideSteps}>
               <span>1. Ingresar bici</span>
@@ -229,7 +254,7 @@ export default function TallerListPage() {
               <span>3. Aprobar y ejecutar</span>
               <span>4. Dejar lista para retirar</span>
             </div>
-          </section>
+          </Card>
         </aside>}
       </main>
     </div>
@@ -341,16 +366,6 @@ export function EstadoBadge({ estado }) {
   return <OperationalStatusBadge domain="taller" status={estado} />;
 }
 
-function Metric({ label, value, tone }) {
-  const isMobile = useBreakpoint();
-  return (
-    <div style={{ ...styles.metric, ...(styles.metricTones[tone] || {}), ...(isMobile ? styles.metricMobile : {}) }}>
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
 function Info({ label, value }) {
   const isMobile = useBreakpoint();
   return (
@@ -424,61 +439,116 @@ const ESTADO_CONFIG = {
 };
 
 const styles = {
-  page: { minHeight: "100vh", padding: 20, background: "#f1f5f9", color: "#0f172a" },
-  hero: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, padding: 22, borderRadius: 24, background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)", color: "white", boxShadow: "0 18px 40px rgba(15,23,42,.18)", marginBottom: 16 },
-  kicker: { margin: 0, color: "#fb923c", fontSize: 12, fontWeight: 1000, textTransform: "uppercase", letterSpacing: ".08em" },
-  title: { margin: "3px 0 0", fontSize: 34, fontWeight: 1000, letterSpacing: "-.03em" },
-  subtitle: { margin: "8px 0 0", color: "#cbd5e1", fontWeight: 700 },
-  heroActions: { display: "flex", gap: 10, flexWrap: "wrap" },
-  primaryHeroButton: { textDecoration: "none", border: "none", background: "#f97316", color: "white", borderRadius: 14, padding: "12px 16px", fontWeight: 1000, cursor: "pointer", boxShadow: "0 12px 24px rgba(249,115,22,.28)" },
-  secondaryHeroButton: { border: "1px solid rgba(255,255,255,.22)", background: "rgba(255,255,255,.08)", color: "white", borderRadius: 14, padding: "12px 16px", fontWeight: 1000, cursor: "pointer" },
-  error: { background: "#fff1f0", color: "#b42318", border: "1px solid #fecdca", borderRadius: 14, padding: 12, marginBottom: 14, fontWeight: 800 },
-  metricsGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 16 },
-  metric: { background: "white", border: "1px solid #e2e8f0", borderRadius: 18, padding: 14, display: "grid", gap: 5, boxShadow: "0 10px 22px rgba(15,23,42,.06)" },
-  metricTones: { dark: { color: "#0f172a" }, ok: { color: "#047857", background: "#ecfdf5", borderColor: "#bbf7d0" }, info: { color: "#1d4ed8", background: "#eff6ff", borderColor: "#bfdbfe" }, warning: { color: "#b45309", background: "#fffbeb", borderColor: "#fde68a" }, muted: { color: "#475569", background: "#f8fafc" }, orange: { color: "#c2410c", background: "#fff7ed", borderColor: "#fed7aa" } },
-  filtersCard: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) 260px", gap: 12, background: "white", border: "1px solid #e2e8f0", borderRadius: 20, padding: 14, marginBottom: 16, boxShadow: "0 12px 28px rgba(15,23,42,.06)" },
-  searchBox: { display: "flex", alignItems: "center", gap: 10, border: "1px solid #cbd5e1", borderRadius: 14, padding: "0 12px", background: "#f8fafc" },
-  searchInput: { flex: 1, border: "none", background: "transparent", outline: "none", padding: "13px 0", fontSize: 15, fontWeight: 700, minWidth: 0 },
-  kbd: { border: "1px solid #cbd5e1", borderRadius: 8, padding: "3px 7px", color: "#64748b", background: "white", fontWeight: 900 },
-  select: { width: "100%", border: "1px solid #cbd5e1", borderRadius: 14, background: "white", padding: "12px 13px", fontWeight: 800, color: "#0f172a" },
-  layout: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) 330px", gap: 16, alignItems: "start" },
-  panel: { background: "white", border: "1px solid #e2e8f0", borderRadius: 22, overflow: "hidden", boxShadow: "0 16px 34px rgba(15,23,42,.08)" },
-  panelHeader: { padding: 16, borderBottom: "1px solid #e2e8f0" },
-  panelTitle: { margin: 0, fontSize: 22 },
-  panelSubtitle: { margin: "4px 0 0", color: "#64748b", fontWeight: 700, fontSize: 13 },
-  boardScroll: { overflowX: "auto", padding: 14, WebkitOverflowScrolling: "touch" },
-  boardGrid: { display: "grid", gridTemplateColumns: "repeat(7, minmax(245px, 1fr))", gap: 12, minWidth: 1780 },
-  boardColumn: { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 18, minHeight: 360, display: "grid", gridTemplateRows: "auto 1fr" },
-  boardColumnHeader: { padding: 12, borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "start", gap: 8 },
-  boardColumnTitle: { marginTop: 7, color: "#334155", fontWeight: 950, fontSize: 13 },
-  boardCount: { minWidth: 28, height: 28, borderRadius: 999, background: "white", border: "1px solid #e2e8f0", display: "grid", placeItems: "center", color: "#0f172a" },
+  page: {
+    minHeight: "100vh",
+    display: "grid",
+    gap: spacing.xl,
+    color: colors.text,
+    fontFamily: typography.fontFamily,
+  },
+  primaryLink: {
+    minHeight: controls.minHeight,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    borderRadius: radius.md,
+    padding: controls.padding,
+    background: colors.primary,
+    color: colors.surface,
+    fontSize: typography.button.fontSize,
+    fontWeight: typography.button.fontWeight,
+    boxShadow: shadows.sm,
+  },
+  error: {
+    background: colors.dangerSoft,
+    color: colors.dangerDark,
+    border: `1px solid ${colors.danger}`,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    fontWeight: typography.label.fontWeight,
+  },
+  filtersCard: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) 260px",
+    gap: spacing.md,
+    alignItems: "center",
+  },
+  searchBox: {
+    minHeight: controls.minHeight,
+    display: "flex",
+    alignItems: "center",
+    gap: spacing.sm,
+    border: `1px solid ${colors.border}`,
+    borderRadius: radius.md,
+    padding: "0 12px",
+    background: colors.surfaceMuted,
+  },
+  searchInput: {
+    flex: 1,
+    border: "none",
+    background: "transparent",
+    outline: "none",
+    padding: "10px 0",
+    fontSize: typography.body.fontSize,
+    color: colors.text,
+    minWidth: 0,
+  },
+  kbd: {
+    border: `1px solid ${colors.border}`,
+    borderRadius: radius.sm,
+    padding: "3px 7px",
+    color: colors.textMuted,
+    background: colors.surface,
+    fontWeight: typography.label.fontWeight,
+  },
+  select: {
+    width: "100%",
+    minHeight: controls.minHeight,
+    border: `1px solid ${colors.border}`,
+    borderRadius: radius.md,
+    background: colors.surface,
+    padding: controls.padding,
+    fontWeight: typography.label.fontWeight,
+    color: colors.text,
+  },
+  layout: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) 330px",
+    gap: spacing.lg,
+    alignItems: "start",
+  },
+  boardScroll: { overflowX: "auto", padding: spacing.lg, WebkitOverflowScrolling: "touch" },
+  boardGrid: { display: "grid", gridTemplateColumns: "repeat(7, minmax(245px, 1fr))", gap: spacing.md, minWidth: 1780 },
+  boardColumn: { background: colors.surfaceMuted, border: `1px solid ${colors.borderSoft}`, borderRadius: radius.lg, minHeight: 360, display: "grid", gridTemplateRows: "auto 1fr" },
+  boardColumnHeader: { padding: spacing.md, borderBottom: `1px solid ${colors.borderSoft}`, display: "flex", justifyContent: "space-between", alignItems: "start", gap: spacing.sm },
+  boardColumnTitle: { marginTop: 7, color: colors.text, fontWeight: typography.label.fontWeight, fontSize: typography.small.fontSize },
+  boardCount: { minWidth: 28, height: 28, borderRadius: radius.pill, background: colors.surface, border: `1px solid ${colors.borderSoft}`, display: "grid", placeItems: "center", color: colors.textStrong },
   boardColumnBody: { padding: 10, display: "grid", alignContent: "start", gap: 10 },
-  boardEmpty: { border: "1px dashed #cbd5e1", background: "white", color: "#64748b", borderRadius: 14, padding: 14, fontWeight: 900, textAlign: "center" },
-  boardCard: { textDecoration: "none", color: "#0f172a", background: "white", border: "1px solid #e2e8f0", borderRadius: 16, padding: 11, display: "grid", gap: 9, boxShadow: "0 8px 16px rgba(15,23,42,.05)" },
+  boardEmpty: { border: `1px dashed ${colors.border}`, background: colors.surface, color: colors.textMuted, borderRadius: radius.md, padding: spacing.md, fontWeight: typography.label.fontWeight, textAlign: "center" },
+  boardCard: { textDecoration: "none", color: colors.textStrong, background: colors.surface, border: `1px solid ${colors.borderSoft}`, borderRadius: radius.md, padding: spacing.md, display: "grid", gap: spacing.sm, boxShadow: shadows.sm },
   boardCardTop: { display: "flex", justifyContent: "space-between", gap: 8, alignItems: "start" },
   boardBadges: { display: "flex", gap: 5, flexWrap: "wrap", justifyContent: "flex-end" },
-  urgentBadge: { background: "#fff1f0", color: "#b42318", border: "1px solid #fecaca", borderRadius: 999, padding: "4px 7px", fontSize: 10, fontWeight: 1000, textTransform: "uppercase" },
-  boardProblem: { fontWeight: 950, lineHeight: 1.25 },
-  boardMeta: { display: "grid", gap: 4, color: "#64748b", fontSize: 12, fontWeight: 800 },
-  boardFooter: { display: "flex", justifyContent: "space-between", gap: 8, borderTop: "1px solid #f1f5f9", paddingTop: 8, color: "#334155", fontWeight: 950, fontSize: 12 },
-  ordersGrid: { display: "grid", gap: 12, padding: 16 },
-  orderCard: { border: "1px solid #e2e8f0", borderRadius: 20, background: "white", padding: 14, display: "grid", gap: 12, boxShadow: "0 8px 18px rgba(15,23,42,.04)" },
-  orderCardMuted: { border: "1px solid #e2e8f0", borderRadius: 20, background: "#f8fafc", padding: 14, display: "grid", gap: 12, opacity: 0.82 },
+  urgentBadge: { background: colors.dangerSoft, color: colors.dangerDark, border: `1px solid ${colors.danger}`, borderRadius: radius.pill, padding: "4px 7px", fontSize: 10, fontWeight: typography.label.fontWeight, textTransform: "uppercase" },
+  boardProblem: { fontWeight: typography.sectionTitle.fontWeight, lineHeight: 1.25 },
+  boardMeta: { display: "grid", gap: 4, color: colors.textMuted, fontSize: typography.small.fontSize, fontWeight: typography.label.fontWeight },
+  boardFooter: { display: "flex", justifyContent: "space-between", gap: spacing.sm, borderTop: `1px solid ${colors.borderSoft}`, paddingTop: spacing.sm, color: colors.text, fontWeight: typography.label.fontWeight, fontSize: typography.small.fontSize },
+  ordersGrid: { display: "grid", gap: spacing.md, padding: spacing.lg },
+  orderCard: { border: `1px solid ${colors.borderSoft}`, borderRadius: radius.lg, background: colors.surface, padding: spacing.lg, display: "grid", gap: spacing.md, boxShadow: shadows.sm },
+  orderCardMuted: { border: `1px solid ${colors.borderSoft}`, borderRadius: radius.lg, background: colors.surfaceMuted, padding: spacing.lg, display: "grid", gap: spacing.md, opacity: 0.82 },
   orderTop: { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start" },
   orderNumberRow: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" },
-  orderNumber: { margin: 0, color: "#f97316", fontSize: 12, fontWeight: 1000, textTransform: "uppercase" },
-  postventaBadge: { background: "#ecfdf5", color: "#047857", border: "1px solid #bbf7d0", borderRadius: 999, padding: "4px 8px", fontSize: 11, fontWeight: 1000, textTransform: "uppercase" },
+  orderNumber: { margin: 0, color: colors.primary, fontSize: typography.small.fontSize, fontWeight: typography.label.fontWeight, textTransform: "uppercase" },
+  postventaBadge: { background: colors.successSoft, color: colors.successDark, border: `1px solid ${colors.success}`, borderRadius: radius.pill, padding: "4px 8px", fontSize: typography.small.fontSize, fontWeight: typography.label.fontWeight, textTransform: "uppercase" },
   orderProblem: { margin: "4px 0 0", fontSize: 18, lineHeight: 1.3 },
   orderMetaGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 },
   orderFooter: { display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", borderTop: "1px solid #f1f5f9", paddingTop: 10 },
-  smallMuted: { color: "#64748b", fontWeight: 800 },
-  detailButton: { textDecoration: "none", border: "none", background: "#0f172a", color: "white", borderRadius: 12, padding: "10px 12px", fontWeight: 1000 },
+  smallMuted: { color: colors.textMuted, fontWeight: typography.label.fontWeight },
+  detailButton: { textDecoration: "none", border: "none", background: colors.topbar, color: colors.surface, borderRadius: radius.md, padding: controls.padding, fontWeight: typography.button.fontWeight },
   sidePanel: { position: "sticky", top: 16 },
-  sideCard: { background: "#0f172a", color: "white", borderRadius: 22, padding: 18, boxShadow: "0 18px 40px rgba(15,23,42,.22)" },
-  sideTitle: { margin: "0 0 8px", fontSize: 24 },
-  sideMuted: { color: "#cbd5e1", margin: 0, fontWeight: 700 },
-  sideSteps: { display: "grid", gap: 8, marginTop: 16, color: "#e2e8f0", fontWeight: 800 },
-  infoBox: { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 14, padding: 10, display: "grid", gap: 4, color: "#64748b" },
+  sideMuted: { color: colors.textMuted, margin: 0, lineHeight: typography.body.lineHeight },
+  sideSteps: { display: "grid", gap: spacing.sm, marginTop: spacing.lg, color: colors.text, fontWeight: typography.label.fontWeight },
+  infoBox: { background: colors.surfaceMuted, border: `1px solid ${colors.borderSoft}`, borderRadius: radius.md, padding: spacing.sm, display: "grid", gap: 4, color: colors.textMuted },
   badge: { borderRadius: 999, padding: "7px 10px", fontWeight: 1000, fontSize: 12, whiteSpace: "nowrap", border: "1px solid transparent" },
   badgeTones: { ok: { background: "#dcfce7", color: "#166534", borderColor: "#bbf7d0" }, info: { background: "#eff6ff", color: "#1d4ed8", borderColor: "#bfdbfe" }, warning: { background: "#fef3c7", color: "#92400e", borderColor: "#fde68a" }, orange: { background: "#fff7ed", color: "#c2410c", borderColor: "#fed7aa" }, violet: { background: "#f5f3ff", color: "#6d28d9", borderColor: "#ddd6fe" }, danger: { background: "#fee2e2", color: "#991b1b", borderColor: "#fecaca" }, muted: { background: "#f1f5f9", color: "#475569", borderColor: "#e2e8f0" } },
   empty: { padding: 22, color: "#64748b", fontWeight: 900 },

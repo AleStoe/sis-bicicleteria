@@ -1,4 +1,4 @@
-import { colors, radius, shadows, spacing } from "../../theme";
+import { colors, radius, shadows, spacing, typography } from "../../theme";
 import useBreakpoint from "./responsive/useBreakpoint";
 
 export default function Card({
@@ -16,8 +16,8 @@ export default function Card({
       style={{
         background: colors.surface,
         borderRadius: isMobile ? radius.md : radius.lg,
-        boxShadow: "0 2px 10px rgba(16,24,40,.04)",
-        border: `1px solid rgba(16,24,40,.06)`,
+        boxShadow: shadows.sm,
+        border: `1px solid ${colors.borderSoft}`,
         overflow: "hidden",
         minWidth: 0,
         ...style,
@@ -37,7 +37,15 @@ export default function Card({
         >
           <div style={{ minWidth: 0 }}>
             {title && (
-              <h3 style={{ margin: 0, fontSize: isMobile ? 16 : 18, lineHeight: 1.2, overflowWrap: "anywhere" }}>
+              <h3 style={{
+                margin: 0,
+                color: colors.textStrong,
+                fontFamily: typography.fontFamily,
+                fontSize: isMobile ? 16 : typography.sectionTitle.fontSize,
+                fontWeight: typography.sectionTitle.fontWeight,
+                lineHeight: typography.sectionTitle.lineHeight,
+                overflowWrap: "anywhere",
+              }}>
                 {title}
               </h3>
             )}
@@ -47,8 +55,8 @@ export default function Card({
                 style={{
                   marginTop: 4,
                   color: colors.textMuted,
-                  fontSize: 13,
-                  lineHeight: 1.35,
+                  fontSize: typography.small.fontSize,
+                  lineHeight: typography.small.lineHeight,
                 }}
               >
                 {subtitle}

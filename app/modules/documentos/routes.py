@@ -18,6 +18,12 @@ from .pdf_taller_presupuesto import generar_presupuesto_taller_pdf
 from .pdf_cotizacion import generar_cotizacion_pdf
 from .pdf_etiquetas import generar_cartel_precio_a4_pdf, generar_etiqueta_deposito_pdf
 from .imagen_historia import generar_historia_precio_png
+from .download_names import (
+    compact_date,
+    dated_document_name,
+    item_download_code,
+    numeric_code,
+)
 
 router = APIRouter()
 
@@ -31,7 +37,9 @@ def comprobante_x_venta(venta_id: int):
         content=pdf_bytes,
         media_type="application/pdf",
         headers={
-            "Content-Disposition": f'inline; filename="comprobante-x-venta-{venta_id}.pdf"'
+            "Content-Disposition": (
+                f'inline; filename="{dated_document_name("FAC", venta_id)}"'
+            )
         },
     )
 
@@ -46,7 +54,7 @@ def recibo_pago(pago_id: int):
         media_type="application/pdf",
         headers={
             "Content-Disposition": (
-                f'inline; filename="recibo-pago-{pago_id}.pdf"'
+                f'inline; filename="{dated_document_name("REC", pago_id)}"'
             )
         },
     )
@@ -61,7 +69,7 @@ def resumen_cobros_venta(venta_id: int):
         media_type="application/pdf",
         headers={
             "Content-Disposition": (
-                f'inline; filename="resumen-cobros-venta-{venta_id}.pdf"'
+                f'inline; filename="{dated_document_name("COB", venta_id)}"'
             )
         },
     )
@@ -77,7 +85,7 @@ def presupuesto_taller(orden_id: int):
         media_type="application/pdf",
         headers={
             "Content-Disposition": (
-                f'inline; filename="presupuesto-taller-{orden_id}.pdf"'
+                f'inline; filename="{dated_document_name("PRE-OT", orden_id)}"'
             )
         },
     )
@@ -89,12 +97,13 @@ def cotizacion_pdf(cotizacion_id: int):
     pdf_bytes = generar_cotizacion_pdf(data)
 
     numero = data["cotizacion"].get("numero") or cotizacion_id
+    filename = dated_document_name("COT", numero)
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={
             "Content-Disposition": (
-                f'inline; filename="cotizacion-{numero}.pdf"'
+                f'inline; filename="{filename}"'
             )
         },
     )
@@ -104,13 +113,14 @@ def cotizacion_pdf(cotizacion_id: int):
 def etiqueta_deposito_variante(variante_id: int, copias: int = 1):
     data = obtener_datos_etiqueta_variante(variante_id)
     pdf_bytes = generar_etiqueta_deposito_pdf(data, copias=copias)
+    code = item_download_code(data, f"VAR{numeric_code(variante_id)}")
 
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={
             "Content-Disposition": (
-                f'inline; filename="etiqueta-variante-{variante_id}.pdf"'
+                f'inline; filename="Etiqueta-{code}.pdf"'
             )
         },
     )
@@ -120,13 +130,14 @@ def etiqueta_deposito_variante(variante_id: int, copias: int = 1):
 def cartel_precio_variante(variante_id: int):
     data = obtener_datos_etiqueta_variante(variante_id)
     pdf_bytes = generar_cartel_precio_a4_pdf(data)
+    code = item_download_code(data, f"VAR{numeric_code(variante_id)}")
 
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={
             "Content-Disposition": (
-                f'inline; filename="precio-variante-{variante_id}.pdf"'
+                f'inline; filename="Precio-{code}-{compact_date()}.pdf"'
             ),
             "Cache-Control": "no-store, no-cache, must-revalidate",
             "Pragma": "no-cache",
@@ -139,13 +150,14 @@ def cartel_precio_variante(variante_id: int):
 def historia_precio_variante(variante_id: int):
     data = obtener_datos_etiqueta_variante(variante_id)
     image_bytes = generar_historia_precio_png(data)
+    code = item_download_code(data, f"VAR{numeric_code(variante_id)}")
 
     return Response(
         content=image_bytes,
         media_type="image/png",
         headers={
             "Content-Disposition": (
-                f'attachment; filename="historia-variante-{variante_id}.png"'
+                f'attachment; filename="Etiqueta-{code}.png"'
             ),
             "Cache-Control": "no-store, no-cache, must-revalidate",
         },
@@ -156,13 +168,14 @@ def historia_precio_variante(variante_id: int):
 def etiqueta_deposito_bicicleta(bicicleta_id: int, copias: int = 1):
     data = obtener_datos_etiqueta_bicicleta(bicicleta_id)
     pdf_bytes = generar_etiqueta_deposito_pdf(data, copias=copias)
+    code = item_download_code(data, numeric_code(bicicleta_id))
 
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={
             "Content-Disposition": (
-                f'inline; filename="etiqueta-bicicleta-{bicicleta_id}.pdf"'
+                f'inline; filename="Etiqueta-BIC-{code}.pdf"'
             )
         },
     )
@@ -172,13 +185,14 @@ def etiqueta_deposito_bicicleta(bicicleta_id: int, copias: int = 1):
 def historia_precio_bicicleta(bicicleta_id: int):
     data = obtener_datos_etiqueta_bicicleta(bicicleta_id)
     image_bytes = generar_historia_precio_png(data)
+    code = item_download_code(data, numeric_code(bicicleta_id))
 
     return Response(
         content=image_bytes,
         media_type="image/png",
         headers={
             "Content-Disposition": (
-                f'attachment; filename="historia-bicicleta-{bicicleta_id}.png"'
+                f'attachment; filename="Etiqueta-BIC-{code}.png"'
             ),
             "Cache-Control": "no-store, no-cache, must-revalidate",
         },
@@ -189,13 +203,14 @@ def historia_precio_bicicleta(bicicleta_id: int):
 def cartel_precio_bicicleta(bicicleta_id: int):
     data = obtener_datos_etiqueta_bicicleta(bicicleta_id)
     pdf_bytes = generar_cartel_precio_a4_pdf(data)
+    code = item_download_code(data, numeric_code(bicicleta_id))
 
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={
             "Content-Disposition": (
-                f'inline; filename="precio-bicicleta-{bicicleta_id}.pdf"'
+                f'inline; filename="Precio-BIC-{code}-{compact_date()}.pdf"'
             ),
             "Cache-Control": "no-store, no-cache, must-revalidate",
             "Pragma": "no-cache",

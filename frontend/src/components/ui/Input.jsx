@@ -1,4 +1,4 @@
-import { colors, radius, spacing } from "../../theme";
+import { colors, controls, radius, typography } from "../../theme";
 
 export default function Input({
   label,
@@ -12,7 +12,9 @@ export default function Input({
       style={{
         display: "grid",
         gap: 6,
-        fontWeight: 600,
+        fontSize: typography.label.fontSize,
+        fontWeight: typography.label.fontWeight,
+        lineHeight: typography.label.lineHeight,
         color: colors.text,
         minWidth: 0,
         ...style,
@@ -24,14 +26,15 @@ export default function Input({
         style={{
           width: "100%",
           minWidth: 0,
+          minHeight: controls.minHeight,
           boxSizing: "border-box",
           border: `1px solid ${error ? colors.danger : colors.border}`,
           borderRadius: radius.md,
-          padding: "10px 12px",
+          padding: controls.padding,
           outline: "none",
           background: colors.surface,
           color: colors.text,
-          fontSize: 14,
+          fontSize: typography.body.fontSize,
           ...inputStyle,
         }}
         {...props}
@@ -41,7 +44,7 @@ export default function Input({
         <span
           style={{
             color: colors.danger,
-            fontSize: 12,
+            fontSize: typography.small.fontSize,
           }}
         >
           {error}

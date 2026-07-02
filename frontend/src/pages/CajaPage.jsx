@@ -10,7 +10,7 @@ import {
   listarHistorialCajas,
 } from "../services/cajaService";
 import { formatCurrency } from "../utils/formatters";
-import { PageHeader, Button, useBreakpoint } from "../components/ui";
+import { PageHeader, Button, EmptyState, useBreakpoint } from "../components/ui";
 import CajaAlert from "../components/caja/CajaAlert";
 import CajaAperturaCard from "../components/caja/CajaAperturaCard";
 import CajaResumenCards from "../components/caja/CajaResumenCards";
@@ -371,7 +371,7 @@ export default function CajaPage() {
   });
 
   if (loading) {
-    return <div style={{ padding: "24px" }}>Cargando caja...</div>;
+    return <EmptyState title="Cargando caja..." description="Actualizando apertura, movimientos y cierre." />;
   }
 
   return (
@@ -826,7 +826,8 @@ const styles = {
   table: {
     width: "100%",
     borderCollapse: "collapse",
-    minWidth: 920,
+    minWidth: 1040,
+    tableLayout: "auto",
   },
   th: {
     textAlign: "left",
@@ -835,6 +836,9 @@ const styles = {
     color: "#64748b",
     fontSize: 13,
     fontWeight: 900,
+    whiteSpace: "nowrap",
+    wordBreak: "normal",
+    overflowWrap: "normal",
   },
   td: {
     padding: "11px 8px",

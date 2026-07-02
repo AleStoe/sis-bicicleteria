@@ -9,6 +9,9 @@ import {
 } from "../services/clientesService";
 import { formatMoney } from "../utils/formatters";
 import { formatDate } from "../utils/formatters";
+import { Button, EmptyState, PageHeader } from "../components/ui";
+import { ArrowLeft, Bike, RefreshCw, Wrench } from "lucide-react";
+import { colors, controls, radius, shadows, spacing, typography } from "../theme";
 export default function ClienteBicicletaDetallePage() {
   const { clienteId, bicicletaId } = useParams();
   const navigate = useNavigate();
@@ -160,7 +163,7 @@ export default function ClienteBicicletaDetallePage() {
   }
 
   if (loading) {
-    return <p style={{ padding: "24px" }}>Cargando historial de bicicleta...</p>;
+    return <EmptyState icon={Bike} title="Cargando bicicleta..." description="Actualizando historial, taller y postventa." />;
   }
 
   if (error) {
@@ -183,42 +186,24 @@ export default function ClienteBicicletaDetallePage() {
   const ultimoEvento = getUltimoEventoBicicleta(timeline, historialTaller, ventaOrigen);
 
   if (!bicicleta) {
-    return <p style={{ padding: "24px" }}>No se encontró la bicicleta.</p>;
+    return <EmptyState icon={Bike} title="No se encontró la bicicleta" description="Volvé a la ficha del cliente e intentá nuevamente." />;
   }
 
   return (
     <div style={pageStyle}>
-      <header style={headerStyle}>
-        <div>
-          <h1 style={titleStyle}>
-            {bicicleta.marca} {bicicleta.modelo}
-          </h1>
-          <p style={subtitleStyle}>
-            Bicicleta #{bicicleta.id} · Cliente #{bicicleta.id_cliente}
-          </p>
-        </div>
-
-        <div style={actionsStyle}>
-          <button type="button" onClick={cargarHistorial} style={secondaryBtnStyle}>
-            Refrescar
-          </button>
-
-          <button type="button" onClick={abrirEdicionBicicleta} style={secondaryBtnStyle}>
-            Editar bicicleta
-          </button>
-
-          <Link to={`/clientes/${clienteId}`} style={secondaryLinkStyle}>
-            Volver al cliente
-          </Link>
-
-          <Link
-            to={`/taller/nueva?cliente_id=${clienteId}&bicicleta_id=${bicicletaId}`}
-            style={primaryLinkStyle}
-          >
-            Nueva orden taller
-          </Link>
-        </div>
-      </header>
+      <PageHeader
+        title={`${bicicleta.marca} ${bicicleta.modelo || ""}`.trim()}
+        subtitle={`Bicicleta #${bicicleta.id} · Cliente #${bicicleta.id_cliente}`}
+        eyebrow="Ficha de bicicleta"
+        actions={(
+          <>
+            <Button type="button" variant="outline" onClick={cargarHistorial}><RefreshCw size={16} /> Refrescar</Button>
+            <Button type="button" variant="outline" onClick={abrirEdicionBicicleta}>Editar bicicleta</Button>
+            <Link to={`/clientes/${clienteId}`} style={{ textDecoration: "none" }}><Button type="button" variant="outline"><ArrowLeft size={16} /> Volver</Button></Link>
+            <Link to={`/taller/nueva?cliente_id=${clienteId}&bicicleta_id=${bicicletaId}`} style={primaryLinkStyle}><Wrench size={16} /> Nueva orden taller</Link>
+          </>
+        )}
+      />
 
       <BicicletaLecturaRapida
         bicicleta={bicicleta}
@@ -861,9 +846,11 @@ function badgeEstado(estado) {
 }
 
 const pageStyle = {
-  padding: "24px",
-  background: "#f6f7fb",
   minHeight: "100vh",
+  display: "grid",
+  gap: spacing.xl,
+  color: colors.text,
+  fontFamily: typography.fontFamily,
 };
 
 const headerStyle = {
@@ -937,12 +924,11 @@ const quickDetailStyle = {
 };
 
 const cardStyle = {
-  background: "white",
-  borderRadius: "14px",
-  border: "1px solid #eaecf0",
-  padding: "16px",
-  boxShadow: "0 2px 10px rgba(0,0,0,0.05)",
-  marginBottom: "16px",
+  background: colors.surface,
+  borderRadius: radius.lg,
+  border: `1px solid ${colors.borderSoft}`,
+  padding: spacing.lg,
+  boxShadow: shadows.sm,
 };
 
 const cardTitleStyle = {
@@ -994,10 +980,11 @@ const fieldStyle = {
 const inputStyle = {
   width: "100%",
   boxSizing: "border-box",
-  border: "1px solid #d0d5dd",
-  borderRadius: "10px",
-  padding: "10px 12px",
-  fontWeight: 800,
+  minHeight: controls.minHeight,
+  border: `1px solid ${colors.border}`,
+  borderRadius: radius.md,
+  padding: controls.padding,
+  fontWeight: typography.label.fontWeight,
 };
 
 const textareaStyle = {
@@ -1097,12 +1084,18 @@ const detailLinkStyle = {
 };
 
 const primaryLinkStyle = {
+  minHeight: controls.minHeight,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: spacing.sm,
   textDecoration: "none",
-  background: "#0b5bd3",
-  color: "white",
-  borderRadius: "10px",
-  padding: "10px 13px",
-  fontWeight: 900,
+  background: colors.primary,
+  color: colors.surface,
+  borderRadius: radius.md,
+  padding: controls.padding,
+  fontWeight: typography.button.fontWeight,
+  boxShadow: shadows.sm,
 };
 
 const secondaryLinkStyle = {

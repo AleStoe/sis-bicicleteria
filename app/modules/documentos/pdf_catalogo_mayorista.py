@@ -6,6 +6,17 @@ from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
 
 from .pdf import _draw_image_fit, _money, _resolver_imagen_local, _text
+from .pdf_etiquetas import _build_opciones_pago
+from .brand import (
+    BORDER,
+    BROWN,
+    INK,
+    MUTED,
+    ORANGE,
+    ORANGE_DARK,
+    ORANGE_SOFT,
+    PAPER,
+)
 
 
 def _clip(value, max_len):
@@ -28,16 +39,17 @@ def _draw_cover(c, fecha_actualizacion: datetime):
     width, height = A4
     margin = 22 * mm
 
-    c.setFillColorRGB(0.05, 0.08, 0.16)
+    c.setFillColorRGB(*PAPER)
     c.rect(0, 0, width, height, fill=1, stroke=0)
 
-    c.setFillColorRGB(1, 1, 1)
+    c.setFillColorRGB(*BROWN)
     c.setFont("Helvetica-Bold", 30)
     c.drawString(margin, height - 72 * mm, "Catálogo Mayorista")
 
     c.setFont("Helvetica-Bold", 18)
     c.drawString(margin, height - 86 * mm, "Emprendimiento Agus")
 
+    c.setFillColorRGB(*MUTED)
     c.setFont("Helvetica", 11)
     c.drawString(
         margin,
@@ -45,10 +57,11 @@ def _draw_cover(c, fecha_actualizacion: datetime):
         f"Actualizado al {fecha_actualizacion.strftime('%d/%m/%Y')}",
     )
 
-    c.setStrokeColorRGB(0.25, 0.75, 0.55)
+    c.setStrokeColorRGB(*ORANGE)
     c.setLineWidth(1.5)
     c.line(margin, height - 116 * mm, width - margin, height - 116 * mm)
 
+    c.setFillColorRGB(*MUTED)
     c.setFont("Helvetica", 10)
     c.drawString(
         margin,
@@ -64,7 +77,7 @@ def _draw_header(c, page_number):
     width, height = A4
     margin = 14 * mm
 
-    c.setFillColorRGB(0.05, 0.08, 0.16)
+    c.setFillColorRGB(*BROWN)
     c.rect(0, height - 18 * mm, width, 18 * mm, fill=1, stroke=0)
 
     c.setFillColorRGB(1, 1, 1)
@@ -72,12 +85,14 @@ def _draw_header(c, page_number):
     c.drawString(margin, height - 11.5 * mm, "Catálogo Mayorista - Emprendimiento Agus")
     c.setFont("Helvetica", 8)
     c.drawRightString(width - margin, height - 11.5 * mm, f"Pag. {page_number}")
+    c.setFillColorRGB(*ORANGE)
+    c.rect(0, height - 18.8 * mm, width, 0.8 * mm, fill=1, stroke=0)
 
 
 def _draw_footer(c):
     width, _height = A4
     margin = 14 * mm
-    c.setFillColorRGB(0.35, 0.39, 0.47)
+    c.setFillColorRGB(*MUTED)
     c.setFont("Helvetica", 7.5)
     c.drawCentredString(
         width / 2,
@@ -86,30 +101,30 @@ def _draw_footer(c):
     )
 
 
-def _draw_product_card(c, item, x, y, w, h):
+def _draw_product_card(c, item, opciones_pago, x, y, w, h):
     c.setFillColorRGB(1, 1, 1)
-    c.setStrokeColorRGB(0.84, 0.87, 0.91)
+    c.setStrokeColorRGB(*BORDER)
     c.roundRect(x, y, w, h, 4 * mm, fill=1, stroke=1)
 
-    image_box_h = 34 * mm
+    image_box_h = 27 * mm
     image_path = _resolver_imagen_local(item.get("imagen_principal"))
     if image_path:
         _draw_image_fit(c, image_path, x + 4 * mm, y + h - image_box_h - 4 * mm, w - 8 * mm, image_box_h)
     else:
-        c.setFillColorRGB(0.96, 0.97, 0.98)
+        c.setFillColorRGB(*ORANGE_SOFT)
         c.roundRect(x + 4 * mm, y + h - image_box_h - 4 * mm, w - 8 * mm, image_box_h, 3 * mm, fill=1, stroke=0)
-        c.setFillColorRGB(0.48, 0.54, 0.62)
+        c.setFillColorRGB(*MUTED)
         c.setFont("Helvetica", 8)
-        c.drawCentredString(x + w / 2, y + h - 23 * mm, "Sin imagen")
+        c.drawCentredString(x + w / 2, y + h - 19 * mm, "Sin imagen")
 
-    text_y = y + h - image_box_h - 10 * mm
-    c.setFillColorRGB(0.05, 0.08, 0.16)
-    c.setFont("Helvetica-Bold", 8.5)
-    c.drawString(x + 4 * mm, text_y, _clip(_variant_title(item), 36))
+    text_y = y + h - image_box_h - 8 * mm
+    c.setFillColorRGB(*INK)
+    c.setFont("Helvetica-Bold", 8.2)
+    c.drawString(x + 4 * mm, text_y, _clip(_variant_title(item), 37))
 
-    text_y -= 4.2 * mm
-    c.setFont("Helvetica", 7.2)
-    c.setFillColorRGB(0.35, 0.39, 0.47)
+    text_y -= 3.8 * mm
+    c.setFont("Helvetica", 6.8)
+    c.setFillColorRGB(*MUTED)
     meta = " | ".join(
         _text(value)
         for value in [item.get("marca_nombre"), item.get("categoria_nombre")]
@@ -119,21 +134,85 @@ def _draw_product_card(c, item, x, y, w, h):
 
     codigo = _codigo(item)
     if codigo:
-        text_y -= 3.8 * mm
+        text_y -= 3.4 * mm
         c.setFont("Helvetica", 6.8)
         c.drawString(x + 4 * mm, text_y, _clip(f"Cod. {codigo}", 42))
 
-    c.setFillColorRGB(0.0, 0.45, 0.28)
-    c.setFont("Helvetica-Bold", 12)
-    c.drawString(x + 4 * mm, y + 8 * mm, _money(item.get("precio_mayorista")))
+    c.setFillColorRGB(*ORANGE_DARK)
+    c.setFont("Helvetica-Bold", 6.8)
+    c.drawRightString(x + w - 4 * mm, text_y, "Disponible")
 
-    c.setFillColorRGB(0.08, 0.47, 0.31)
-    c.setFont("Helvetica-Bold", 7)
-    c.drawRightString(x + w - 4 * mm, y + 8.5 * mm, "Disponible")
+    block_y = y + 3.5 * mm
+    block_h = 21.5 * mm
+    c.setFillColorRGB(*ORANGE_SOFT)
+    c.roundRect(
+        x + 3 * mm,
+        block_y,
+        w - 6 * mm,
+        block_h,
+        2.5 * mm,
+        fill=1,
+        stroke=0,
+    )
+
+    lineas = _build_opciones_pago(item.get("precio_mayorista"), opciones_pago)
+    lista = next((linea for linea in lineas if linea["tipo"] == "lista"), None)
+    efectivo = next((linea for linea in lineas if linea["tipo"] == "efectivo"), None)
+    tarjetas = [linea for linea in lineas if linea["tipo"] == "tarjeta"]
+
+    c.setFillColorRGB(*MUTED)
+    c.setFont("Helvetica-Bold", 5.8)
+    c.drawString(x + 5 * mm, block_y + 17.2 * mm, "PRECIO MAYORISTA")
+    c.setFillColorRGB(*ORANGE_DARK)
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(
+        x + 5 * mm,
+        block_y + 11.8 * mm,
+        lista["monto"] if lista else _money(item.get("precio_mayorista")),
+    )
+
+    c.setStrokeColorRGB(*BORDER)
+    c.line(
+        x + 5 * mm,
+        block_y + 9.3 * mm,
+        x + w - 5 * mm,
+        block_y + 9.3 * mm,
+    )
+
+    c.setFillColorRGB(*INK)
+    c.setFont("Helvetica-Bold", 6.2)
+    if efectivo:
+        c.drawString(
+            x + 5 * mm,
+            block_y + 6.3 * mm,
+            f"EFECTIVO / TRANSFERENCIA  {efectivo['badge']}",
+        )
+        c.drawRightString(
+            x + w - 5 * mm,
+            block_y + 6.3 * mm,
+            efectivo["monto"],
+        )
+
+    c.setFont("Helvetica", 5.7)
+    if tarjetas:
+        c.drawString(x + 5 * mm, block_y + 3.2 * mm, tarjetas[0]["label"])
+        c.drawRightString(
+            x + w - 5 * mm,
+            block_y + 3.2 * mm,
+            tarjetas[0]["monto"],
+        )
+    if len(tarjetas) > 1:
+        c.drawString(x + 5 * mm, block_y + 0.7 * mm, tarjetas[1]["label"])
+        c.drawRightString(
+            x + w - 5 * mm,
+            block_y + 0.7 * mm,
+            tarjetas[1]["monto"],
+        )
 
 
 def generar_catalogo_mayorista_pdf(data: dict) -> bytes:
     items = data.get("items") or []
+    opciones_pago = data.get("opciones_pago") or {}
     fecha_actualizacion = data.get("fecha_actualizacion") or datetime.now()
 
     buffer = BytesIO()
@@ -154,7 +233,7 @@ def generar_catalogo_mayorista_pdf(data: dict) -> bytes:
     _draw_header(c, page_number)
 
     if not items:
-        c.setFillColorRGB(0.05, 0.08, 0.16)
+        c.setFillColorRGB(*INK)
         c.setFont("Helvetica-Bold", 14)
         c.drawCentredString(width / 2, height / 2, "No hay productos mayoristas disponibles.")
         _draw_footer(c)
@@ -172,7 +251,7 @@ def generar_catalogo_mayorista_pdf(data: dict) -> bytes:
             col = position % 2
             x = margin_x + col * (card_w + gap_x)
             y = start_y - row * (card_h + gap_y)
-            _draw_product_card(c, item, x, y, card_w, card_h)
+            _draw_product_card(c, item, opciones_pago, x, y, card_w, card_h)
 
         _draw_footer(c)
 

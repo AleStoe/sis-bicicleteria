@@ -1,5 +1,6 @@
 import { useState } from "react";
 import ProductImage from "../../catalogo/ProductImage";
+import ServicePlaceholder from "../../servicios/ServicePlaceholder";
 import { formatMoney, formatNumber } from "../../../utils/formatters";
 import { styles } from "./tallerDetalleStyles";
 import {
@@ -225,7 +226,7 @@ export function ServicioTallerOption({ servicio, selected, onSelect, onDoubleAdd
       title="Doble click para agregar"
     >
       <div style={styles.optionImageBox}>
-        <span style={styles.serviceIcon}>🛠</span>
+        <ServicePlaceholder />
       </div>
 
       <div style={styles.optionBody}>
@@ -259,7 +260,7 @@ export function TallerItemOption({ item, selected, onSelect, onDoubleAdd }) {
     >
       <div style={styles.optionImageBox}>
         {esServicio ? (
-          <span style={styles.serviceIcon}>🛠</span>
+          <ServicePlaceholder />
         ) : (
           <ProductImage url={item.imagen_principal} size={54} />
         )}

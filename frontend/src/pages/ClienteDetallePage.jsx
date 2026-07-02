@@ -5,6 +5,7 @@ import {
   Badge,
   Button,
   Card,
+  EmptyState,
   MetricCard,
   ResponsiveActions,
   ResponsiveHeader,
@@ -217,7 +218,7 @@ export default function ClienteDetallePage() {
   }, [deudas, creditos]);
 
   if (loading) {
-    return <ResponsivePage><div style={styles.state}>Cargando cuenta del cliente...</div></ResponsivePage>;
+    return <ResponsivePage><EmptyState title="Cargando cuenta del cliente..." description="Actualizando historial y situación financiera." /></ResponsivePage>;
   }
 
   if (error) {
@@ -229,7 +230,7 @@ export default function ClienteDetallePage() {
   }
 
   if (!cliente) {
-    return <ResponsivePage><div style={styles.state}>No se encontró el cliente.</div></ResponsivePage>;
+    return <ResponsivePage><EmptyState title="No se encontró el cliente" description="Volvé al listado e intentá nuevamente." /></ResponsivePage>;
   }
 
   const tieneDeuda = Number(resumenFinanciero.saldoDeuda || 0) > 0;

@@ -12,6 +12,7 @@ import { normalizeTextUpper } from "../utils/textNormalization";
 import CalculadoraPrecioPagoPreview from "../components/precios/CalculadoraPrecioPagoPreview";
 import { obtenerConfiguracionNegocio } from "../services/configuracionNegocioService";
 import { DEFAULT_CONFIGURACION_NEGOCIO } from "../config/defaultConfiguracionNegocio";
+import ServicePlaceholder from "../components/servicios/ServicePlaceholder";
 
 const FORM_INICIAL = {
   nombre: "",
@@ -327,8 +328,13 @@ export default function ServiciosPage() {
                 {serviciosFiltrados.map((servicio) => (
                   <tr key={servicio.id}>
                     <td style={styles.tdStrong}>
-                      {servicio.nombre}
-                      {servicio.descripcion && <div style={styles.tdMutedText}>{servicio.descripcion}</div>}
+                      <div style={styles.serviceCell}>
+                        <ServicePlaceholder size="sm" />
+                        <div style={styles.serviceCellText}>
+                          {servicio.nombre}
+                          {servicio.descripcion && <div style={styles.tdMutedText}>{servicio.descripcion}</div>}
+                        </div>
+                      </div>
                     </td>
                     <td style={styles.td}>{formatMoney(servicio.precio_sugerido)}</td>
                     <td style={styles.td}>
@@ -438,6 +444,8 @@ const styles = {
   th: { textAlign: "left", padding: "12px 14px", background: "#f8fafc", color: "#475569", fontSize: 12, textTransform: "uppercase", letterSpacing: ".06em" },
   td: { padding: "13px 14px", borderTop: "1px solid #e2e8f0", fontWeight: 800, color: "#334155" },
   tdStrong: { padding: "13px 14px", borderTop: "1px solid #e2e8f0", fontWeight: 1000, color: "#0f172a" },
+  serviceCell: { display: "flex", alignItems: "center", gap: 10, minWidth: 0 },
+  serviceCellText: { minWidth: 0, overflowWrap: "anywhere" },
   tdMutedText: { marginTop: 4, color: "#64748b", fontWeight: 700, fontSize: 13 },
   tdActions: { padding: "13px 14px", borderTop: "1px solid #e2e8f0", display: "flex", gap: 8, flexWrap: "wrap" },
   badge: { display: "inline-flex", borderRadius: 999, padding: "6px 10px", fontWeight: 1000, fontSize: 12 },

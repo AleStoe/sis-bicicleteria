@@ -50,6 +50,7 @@ import CotizacionDetallePage from "./pages/CotizacionDetallePage";
 import EtiquetasPage from "./pages/EtiquetasPage";
 import InventarioFisicoPage from "./pages/InventarioFisicoPage";
 import AlertasOperativasPage from "./pages/AlertasOperativasPage";
+import BackupPage from "./pages/BackupPage";
 
 const ADMIN = ["administrador"];
 const OPERACION = ["administrador", "encargado", "operador"];
@@ -462,6 +463,14 @@ export default function App() {
             element={
               <ProtectedRoute rolesPermitidos={ADMIN}>
                 <UsuariosPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/backups"
+            element={
+              <ProtectedRoute rolesPermitidos={ADMIN}>
+                <BackupPage />
               </ProtectedRoute>
             }
           />

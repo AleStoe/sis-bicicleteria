@@ -12,6 +12,15 @@ import EstadoBadge from "../components/catalogo/EstadoBadge";
 import CatalogoDetalleModal from "../components/catalogo/CatalogoDetalleModal";
 import PreciosComercialesCatalogo from "../components/catalogo/PreciosComercialesCatalogo";
 import { formatNumber } from "../utils/formatters";
+import {
+  Button,
+  EmptyState,
+  MetricCard,
+  PageHeader,
+  ResponsiveMetricsGrid,
+} from "../components/ui";
+import { Bike, FileDown, PackagePlus, RefreshCw, Search } from "lucide-react";
+import { colors, controls, radius, shadows, spacing, typography } from "../theme";
 const ID_SUCURSAL_DEFAULT = 1;
 const LIMIT = 24;
 const MOBILE_BREAKPOINT = 760;
@@ -64,6 +73,14 @@ function esCategoriaBicicletaPorNombre(nombre) {
 function categoriaEsBicicleta(categorias, idCategoria) {
   const categoria = categorias.find((cat) => String(cat.id) === String(idCategoria));
   return esCategoriaBicicletaPorNombre(categoria?.nombre);
+}
+
+function fechaDescargaActual() {
+  const hoy = new Date();
+  const year = hoy.getFullYear();
+  const month = String(hoy.getMonth() + 1).padStart(2, "0");
+  const day = String(hoy.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 export default function CatalogoPage() {
@@ -215,7 +232,7 @@ export default function CatalogoPage() {
 
     const link = document.createElement("a");
     link.href = url;
-    link.download = "catalogo-mayorista.pdf";
+    link.download = `Catalogo-Mayorista-${fechaDescargaActual()}.pdf`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -229,7 +246,7 @@ export default function CatalogoPage() {
 
     const link = document.createElement("a");
     link.href = url;
-    link.download = "catalogo-bicicletas.pdf";
+    link.download = `Catalogo-Bicicletas-${fechaDescargaActual()}.pdf`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -237,43 +254,34 @@ export default function CatalogoPage() {
 
   return (
     <div style={{ ...styles.page, ...(isMobile ? styles.pageMobile : {}) }}>
-      <header style={{ ...styles.hero, ...(isMobile ? styles.heroMobile : {}) }}>
-        <div>
-          <span style={styles.kicker}>Catálogo operativo</span>
-          <h1 style={{ ...styles.title, ...(isMobile ? styles.titleMobile : {}) }}>Catálogo</h1>
-          <p style={{ ...styles.subtitle, ...(isMobile ? styles.subtitleMobile : {}) }}>
-            Productos y variantes listos para POS, stock, imágenes, precios y alertas de venta.
-          </p>
-        </div>
-
-        <div style={{ ...styles.heroActions, ...(isMobile ? styles.heroActionsMobile : {}) }}>
-          <button type="button" onClick={() => cargarCatalogo()} style={styles.secondaryHeroButton}>
-            ↻ Refrescar
-          </button>
-          <button type="button" onClick={() => navigate("/mercaderia/alta")} style={styles.primaryHeroButton}>
-            ＋ Alta mercadería
-          </button>
-          <button type="button" onClick={() => navigate("/mercaderia/bicicletas/alta")} style={styles.secondaryHeroButton}>
-            ＋ Alta bicicleta
-          </button>
-        </div>
-      </header>
+      <PageHeader
+        title="Catálogo"
+        subtitle="Productos y variantes listos para POS, stock, imágenes, precios y alertas de venta."
+        eyebrow="Catálogo operativo"
+        actions={(
+          <>
+            <Button type="button" variant="outline" onClick={() => cargarCatalogo()}><RefreshCw size={16} /> Refrescar</Button>
+            <Button type="button" onClick={() => navigate("/mercaderia/alta")}><PackagePlus size={16} /> Alta mercadería</Button>
+            <Button type="button" variant="outline" onClick={() => navigate("/mercaderia/bicicletas/alta")}><Bike size={16} /> Alta bicicleta</Button>
+          </>
+        )}
+      />
 
       {mensaje && <div style={styles.success}>{mensaje}</div>}
       {error && <div style={styles.alert}>Error: {error}</div>}
 
-      <section style={{ ...styles.metricsGrid, ...(isMobile ? styles.metricsGridMobile : {}) }}>
-        <Metric label="Total filtrado" value={total} tone="dark" />
-        <Metric label="Disponibles" value={resumen.disponibles} tone="ok" />
-        <Metric label="Stock disponible" value={formatNumber(resumen.stockDisponible)} tone="info" />
-        <Metric label="Sin stock" value={resumen.sinStock} tone={resumen.sinStock > 0 ? "danger" : "muted"} />
-        <Metric label="Sin precio" value={resumen.sinPrecio} tone={resumen.sinPrecio > 0 ? "warning" : "muted"} />
-        <Metric label="Serializables" value={resumen.serializables} tone="orange" />
-      </section>
+      <ResponsiveMetricsGrid minWidth={145} mobileColumns={2}>
+        <MetricCard label="Total filtrado" value={total} />
+        <MetricCard label="Disponibles" value={resumen.disponibles} tone="success" />
+        <MetricCard label="Stock disponible" value={formatNumber(resumen.stockDisponible)} tone="primary" />
+        <MetricCard label="Sin stock" value={resumen.sinStock} tone={resumen.sinStock > 0 ? "danger" : "default"} />
+        <MetricCard label="Sin precio" value={resumen.sinPrecio} tone={resumen.sinPrecio > 0 ? "warning" : "default"} />
+        <MetricCard label="Serializables" value={resumen.serializables} tone="primary" />
+      </ResponsiveMetricsGrid>
 
       <section style={{ ...styles.filtersCard, ...(isMobile ? styles.filtersCardMobile : {}) }}>
         <div style={styles.searchBox}>
-          <span>🔎</span>
+          <Search size={18} color={colors.textMuted} aria-hidden="true" />
           <input
             ref={searchRef}
             value={query}
@@ -322,13 +330,8 @@ export default function CatalogoPage() {
           ))}
         </select>
 
-        <button type="button" onClick={descargarCatalogoMayoristaPdf} style={styles.pdfButton}>
-          Generar catálogo mayorista PDF
-        </button>
-
-        <button type="button" onClick={descargarCatalogoBicicletasPdf} style={styles.pdfClientButton}>
-          Catálogo bicicletas clientes
-        </button>
+        <Button type="button" variant="outline" onClick={descargarCatalogoMayoristaPdf}><FileDown size={16} /> Catálogo mayorista</Button>
+        <Button type="button" variant="outline" onClick={descargarCatalogoBicicletasPdf}><FileDown size={16} /> Catálogo bicicletas</Button>
       </section>
 
       <main style={{ ...styles.layout, ...(isMobile ? styles.layoutMobile : {}) }}>
@@ -352,9 +355,9 @@ export default function CatalogoPage() {
           </div>
 
           {loading ? (
-            <div style={styles.empty}>Cargando catálogo...</div>
+            <EmptyState title="Cargando catálogo..." description="Actualizando productos y precios comerciales." />
           ) : items.length === 0 ? (
-            <div style={styles.empty}>No hay productos para mostrar.</div>
+            <EmptyState title="No hay productos para mostrar" description="Probá otra categoría, marca o búsqueda." />
           ) : (
             <div style={{ ...styles.cardsGrid, ...(isMobile ? styles.cardsGridMobile : {}) }}>
               {items.map((item) => (
@@ -570,9 +573,10 @@ function CodePill({ label, value }) {
 const styles = {
   page: {
     minHeight: "100vh",
-    padding: 20,
-    background: "#f1f5f9",
-    color: "#0f172a",
+    display: "grid",
+    gap: spacing.xl,
+    color: colors.text,
+    fontFamily: typography.fontFamily,
   },
   hero: {
     display: "flex",
@@ -631,22 +635,20 @@ const styles = {
     cursor: "pointer",
   },
   success: {
-    background: "#ecfdf5",
-    color: "#047857",
-    border: "1px solid #86efac",
-    borderRadius: 14,
-    padding: 12,
-    marginBottom: 14,
-    fontWeight: 800,
+    background: colors.successSoft,
+    color: colors.successDark,
+    border: `1px solid ${colors.success}`,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    fontWeight: typography.label.fontWeight,
   },
   alert: {
-    background: "#fff1f0",
-    color: "#b42318",
-    border: "1px solid #fecdca",
-    borderRadius: 14,
-    padding: 12,
-    marginBottom: 14,
-    fontWeight: 800,
+    background: colors.dangerSoft,
+    color: colors.dangerDark,
+    border: `1px solid ${colors.danger}`,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    fontWeight: typography.label.fontWeight,
   },
   metricsGrid: {
     display: "grid",
@@ -676,21 +678,21 @@ const styles = {
     display: "grid",
     gridTemplateColumns: "minmax(0, 1fr) 200px 200px auto auto",
     gap: 12,
-    background: "white",
-    border: "1px solid #e2e8f0",
-    borderRadius: 20,
-    padding: 14,
-    marginBottom: 16,
-    boxShadow: "0 12px 28px rgba(15, 23, 42, 0.06)",
+    background: colors.surface,
+    border: `1px solid ${colors.borderSoft}`,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    boxShadow: shadows.sm,
   },
   searchBox: {
+    minHeight: controls.minHeight,
     display: "flex",
     alignItems: "center",
     gap: 10,
-    border: "1px solid #cbd5e1",
-    borderRadius: 14,
+    border: `1px solid ${colors.border}`,
+    borderRadius: radius.md,
     padding: "0 12px",
-    background: "#f8fafc",
+    background: colors.surfaceMuted,
   },
   searchInput: {
     flex: 1,
@@ -712,12 +714,13 @@ const styles = {
   },
   select: {
     width: "100%",
-    border: "1px solid #cbd5e1",
-    borderRadius: 14,
-    background: "white",
-    padding: "12px 13px",
-    fontWeight: 800,
-    color: "#0f172a",
+    minHeight: controls.minHeight,
+    border: `1px solid ${colors.border}`,
+    borderRadius: radius.md,
+    background: colors.surface,
+    padding: controls.padding,
+    fontWeight: typography.label.fontWeight,
+    color: colors.text,
   },
   pdfButton: {
     border: "1px solid #0f172a",
@@ -742,15 +745,15 @@ const styles = {
   layout: {
     display: "grid",
     gridTemplateColumns: "minmax(0, 1fr) 370px",
-    gap: 16,
+    gap: spacing.lg,
     alignItems: "start",
   },
   catalogPanel: {
-    background: "white",
-    border: "1px solid #e2e8f0",
-    borderRadius: 22,
+    background: colors.surface,
+    border: `1px solid ${colors.borderSoft}`,
+    borderRadius: radius.lg,
     overflow: "hidden",
-    boxShadow: "0 16px 34px rgba(15, 23, 42, 0.08)",
+    boxShadow: shadows.sm,
   },
   panelHeader: {
     display: "flex",
@@ -762,7 +765,8 @@ const styles = {
   },
   panelTitle: {
     margin: 0,
-    fontSize: 22,
+    fontSize: typography.sectionTitle.fontSize,
+    fontWeight: typography.sectionTitle.fontWeight,
   },
   panelSubtitle: {
     margin: "4px 0 0",
@@ -803,9 +807,9 @@ const styles = {
     padding: 16,
   },
   card: {
-    border: "1px solid #e2e8f0",
-    borderRadius: 8,
-    background: "white",
+    border: `1px solid ${colors.borderSoft}`,
+    borderRadius: radius.sm,
+    background: colors.surface,
     padding: 12,
     display: "grid",
     gridTemplateColumns: "minmax(0, 1fr)",
@@ -813,14 +817,14 @@ const styles = {
     boxShadow: "0 8px 18px rgba(15, 23, 42, 0.04)",
   },
   cardSelected: {
-    border: "1px solid #f97316",
-    borderRadius: 8,
-    background: "#fff7ed",
+    border: `1px solid ${colors.primary}`,
+    borderRadius: radius.sm,
+    background: colors.primarySoft,
     padding: 12,
     display: "grid",
     gridTemplateColumns: "minmax(0, 1fr)",
     cursor: "pointer",
-    boxShadow: "0 14px 28px rgba(249, 115, 22, 0.18)",
+    boxShadow: shadows.md,
   },
   cardImageWrap: {
     borderRadius: 8,

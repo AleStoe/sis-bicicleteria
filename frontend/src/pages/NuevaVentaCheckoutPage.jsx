@@ -23,6 +23,9 @@ import {
   calcularDeudaAbiertaCliente,
   esConsumidorFinal,
 } from "../helpers/ventaPreventiveWarnings";
+import { Button, PageHeader } from "../components/ui";
+import { ArrowLeft } from "lucide-react";
+import { colors, radius, shadows, spacing, typography } from "../theme";
 
 const MOBILE_BREAKPOINT = 760;
 
@@ -236,21 +239,12 @@ export default function NuevaVentaCheckoutPage() {
 
   return (
     <div style={{ ...styles.page, ...(isMobile ? styles.pageMobile : {}) }}>
-      <header style={{ ...styles.header, ...(isMobile ? styles.headerMobile : {}) }}>
-        <button type="button" onClick={volverAlCarrito} style={styles.backBtn}>
-          ← Carrito
-        </button>
-
-        <div style={styles.headerText}>
-          <span style={styles.kicker}>Paso 2 de 2</span>
-          <h1 style={{ ...styles.title, ...(isMobile ? styles.titleMobile : {}) }}>
-            Cobrar venta
-          </h1>
-          <p style={{ ...styles.subtitle, ...(isMobile ? styles.subtitleMobile : {}) }}>
-            Elegí el medio de pago, tocá “Completar saldo” y cargá el pago.
-          </p>
-        </div>
-      </header>
+      <PageHeader
+        title="Cobrar venta"
+        subtitle="Revisá cómo se cubre el saldo y finalizá la venta."
+        eyebrow="Paso 2 de 2"
+        actions={<Button type="button" variant="outline" onClick={volverAlCarrito}><ArrowLeft size={16} /> Carrito</Button>}
+      />
 
       <main style={{ ...styles.layout, ...(isMobile ? styles.layoutMobile : {}) }}>
         <section style={{ ...styles.checkoutCard, ...(isMobile ? styles.checkoutCardMobile : {}) }}>
@@ -290,8 +284,10 @@ export default function NuevaVentaCheckoutPage() {
 const styles = {
   page: {
     minHeight: "100%",
-    padding: 20,
-    background: "#f1f5f9",
+    display: "grid",
+    gap: spacing.xl,
+    color: colors.text,
+    fontFamily: typography.fontFamily,
   },
   header: {
     display: "flex",
@@ -339,11 +335,11 @@ const styles = {
     alignItems: "start",
   },
   checkoutCard: {
-    background: "white",
-    border: "1px solid #e2e8f0",
-    borderRadius: 24,
-    padding: 18,
-    boxShadow: "0 16px 35px rgba(15, 23, 42, 0.08)",
+    background: colors.surface,
+    border: `1px solid ${colors.borderSoft}`,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    boxShadow: shadows.sm,
     minWidth: 0,
   },
   emptyCard: {

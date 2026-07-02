@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { listarClientes, listarBicicletasCliente, crearBicicletaCliente } from "../services/clientesService";
 import { crearOrdenTaller } from "../services/tallerService";
-import { useBreakpoint } from "../components/ui";
+import { Card, EmptyState, PageHeader, useBreakpoint } from "../components/ui";
+import { ArrowLeft, Bike } from "lucide-react";
 import { useSession } from "../context/SessionContext";
 import { normalizeTextUpper } from "../utils/textNormalization";
+import { colors, controls, radius, shadows, spacing, typography } from "../theme";
 
 export default function TallerNuevaOrdenPage() {
   const navigate = useNavigate();
@@ -160,24 +162,27 @@ export default function TallerNuevaOrdenPage() {
     [bicicletas, bicicletaId]
   );
 
-  if (loading) return <div style={styles.state}>Cargando nueva orden...</div>;
+  if (loading) {
+    return <EmptyState icon={Bike} title="Cargando nueva orden..." description="Preparando clientes y bicicletas." />;
+  }
 
   return (
     <div style={{ ...styles.page, ...(isMobile ? styles.pageMobile : {}) }}>
-      <header style={{ ...styles.hero, ...(isMobile ? styles.heroMobile : {}) }}>
-        <div>
-          <p style={styles.kicker}>Taller / ingreso</p>
-          <h1 style={{ ...styles.title, ...(isMobile ? styles.titleMobile : {}) }}>Nueva orden de taller</h1>
-          <p style={{ ...styles.subtitle, ...(isMobile ? styles.subtitleMobile : {}) }}>Cliente real, bicicleta identificada y problema claro antes de presupuestar.</p>
-        </div>
-
-        <Link to="/taller" style={{ ...styles.secondaryHeroButton, ...(isMobile ? styles.heroButtonMobile : {}) }}>← Volver</Link>
-      </header>
+      <PageHeader
+        title="Nueva orden de taller"
+        subtitle="Cliente real, bicicleta identificada y problema claro antes de presupuestar."
+        actions={(
+          <Link to="/taller" style={styles.secondaryLink}>
+            <ArrowLeft size={17} aria-hidden="true" />
+            Volver
+          </Link>
+        )}
+      />
 
       {error && <div style={styles.error}>Error: {error}</div>}
 
       <main style={{ ...styles.layout, ...(isMobile ? styles.layoutMobile : {}) }}>
-        <section style={{ ...styles.card, ...(isMobile ? styles.cardMobile : {}) }}>
+        <Card style={isMobile ? styles.cardMobile : undefined}>
           <div style={styles.sectionHeader}>
             <div>
               <p style={styles.eyebrow}>Paso 1</p>
@@ -256,11 +261,10 @@ export default function TallerNuevaOrdenPage() {
               {guardando ? "Creando..." : "Crear orden de taller"}
             </button>
           </form>
-        </section>
+        </Card>
 
         <aside style={{ ...styles.sidePanel, ...(isMobile ? styles.sidePanelMobile : {}) }}>
-          <section style={{ ...styles.sideCard, ...(isMobile ? styles.sideCardMobile : {}) }}>
-            <h2 style={styles.sideTitle}>Resumen de ingreso</h2>
+          <Card title="Resumen de ingreso" style={isMobile ? styles.sideCardMobile : undefined}>
             <Info label="Cliente" value={clienteSeleccionado?.nombre || "-"} />
             <Info label="Teléfono" value={clienteSeleccionado?.telefono || "-"} />
             <Info label="Bicicleta" value={bicicletaSeleccionada ? describirBicicleta(bicicletaSeleccionada) : "-"} />
@@ -268,12 +272,12 @@ export default function TallerNuevaOrdenPage() {
             <Info label="Fecha prometida" value={fechaPrometida || "Sin fecha"} />
             <Info label="Prioridad" value={prioridad === "urgente" ? "Urgente" : "Normal"} />
             <div style={styles.note}>Si no registrás cliente y bicicleta real, después perdés historial, deuda, garantía y seguimiento.</div>
-          </section>
+          </Card>
         </aside>
       </main>
 
       {mostrarNuevaBici && (
-        <section style={{ ...styles.card, ...(isMobile ? styles.cardMobile : {}) }}>
+        <Card style={isMobile ? styles.cardMobile : undefined}>
           <div style={styles.sectionHeader}>
             <div>
               <p style={styles.eyebrow}>Paso auxiliar</p>
@@ -293,7 +297,7 @@ export default function TallerNuevaOrdenPage() {
               {guardando ? "Guardando..." : "Guardar bicicleta"}
             </button>
           </form>
-        </section>
+        </Card>
       )}
     </div>
   );
@@ -330,35 +334,28 @@ function limpiarObjeto(obj) {
 }
 
 const styles = {
-  page: { minHeight: "100vh", padding: 20, background: "#f1f5f9", color: "#0f172a" },
-  hero: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, padding: 22, borderRadius: 24, background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)", color: "white", boxShadow: "0 18px 40px rgba(15,23,42,.18)", marginBottom: 16 },
-  kicker: { margin: 0, color: "#fb923c", fontSize: 12, fontWeight: 1000, textTransform: "uppercase", letterSpacing: ".08em" },
-  title: { margin: "3px 0 0", fontSize: 34, fontWeight: 1000, letterSpacing: "-.03em" },
-  subtitle: { margin: "8px 0 0", color: "#cbd5e1", fontWeight: 700 },
-  secondaryHeroButton: { textDecoration: "none", border: "1px solid rgba(255,255,255,.22)", background: "rgba(255,255,255,.08)", color: "white", borderRadius: 14, padding: "12px 16px", fontWeight: 1000, cursor: "pointer" },
-  error: { background: "#fff1f0", color: "#b42318", border: "1px solid #fecdca", borderRadius: 14, padding: 12, marginBottom: 14, fontWeight: 800 },
-  layout: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) 340px", gap: 16, alignItems: "start" },
-  card: { background: "white", border: "1px solid #e2e8f0", borderRadius: 22, padding: 18, boxShadow: "0 14px 30px rgba(15,23,42,.06)", marginBottom: 16 },
+  page: { minHeight: "100vh", display: "grid", gap: spacing.xl, color: colors.text, fontFamily: typography.fontFamily },
+  secondaryLink: { minHeight: controls.minHeight, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: spacing.sm, textDecoration: "none", border: `1px solid ${colors.border}`, background: colors.surface, color: colors.text, borderRadius: radius.md, padding: controls.padding, fontWeight: typography.button.fontWeight },
+  error: { background: colors.dangerSoft, color: colors.dangerDark, border: `1px solid ${colors.danger}`, borderRadius: radius.md, padding: spacing.md, fontWeight: typography.label.fontWeight },
+  layout: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) 340px", gap: spacing.lg, alignItems: "start" },
   sectionHeader: { marginBottom: 14 },
-  eyebrow: { margin: 0, color: "#f97316", fontSize: 12, fontWeight: 1000, textTransform: "uppercase", letterSpacing: ".08em" },
-  cardTitle: { margin: "3px 0 0", fontSize: 22, letterSpacing: "-.02em" },
-  muted: { color: "#64748b", margin: "4px 0 0", fontWeight: 700 },
-  form: { display: "grid", gap: 14 },
-  field: { display: "grid", gap: 7, fontSize: 14, fontWeight: 900 },
-  label: { color: "#334155" },
-  input: { width: "100%", border: "1px solid #cbd5e1", borderRadius: 13, padding: "12px 13px", fontWeight: 700, color: "#0f172a", boxSizing: "border-box", background: "white" },
-  primaryButton: { border: "none", background: "#f97316", color: "white", borderRadius: 13, padding: "12px 16px", fontWeight: 1000, cursor: "pointer", boxShadow: "0 10px 20px rgba(249,115,22,.22)" },
-  secondaryButton: { border: "1px solid #cbd5e1", background: "white", color: "#0f172a", borderRadius: 13, padding: "11px 14px", fontWeight: 1000, cursor: "pointer", width: "fit-content" },
-  warning: { background: "#fffbeb", color: "#92400e", padding: 12, borderRadius: 14, border: "1px solid #fde68a", fontWeight: 800 },
-  emptyInline: { color: "#64748b", fontWeight: 800, padding: 12, background: "#f8fafc", borderRadius: 12 },
+  eyebrow: { margin: 0, color: colors.primary, fontSize: typography.small.fontSize, fontWeight: typography.label.fontWeight, textTransform: "uppercase" },
+  cardTitle: { margin: "3px 0 0", fontSize: typography.sectionTitle.fontSize, fontWeight: typography.sectionTitle.fontWeight },
+  muted: { color: colors.textMuted, margin: "4px 0 0", lineHeight: typography.body.lineHeight },
+  form: { display: "grid", gap: spacing.lg },
+  field: { display: "grid", gap: spacing.sm, fontSize: typography.label.fontSize, fontWeight: typography.label.fontWeight },
+  label: { color: colors.text },
+  input: { width: "100%", minHeight: controls.minHeight, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: controls.padding, fontSize: typography.body.fontSize, color: colors.text, boxSizing: "border-box", background: colors.surface },
+  primaryButton: { minHeight: controls.minHeight, border: "none", background: colors.primary, color: colors.surface, borderRadius: radius.md, padding: controls.padding, fontWeight: typography.button.fontWeight, cursor: "pointer", boxShadow: shadows.sm },
+  secondaryButton: { minHeight: controls.minHeight, border: `1px solid ${colors.border}`, background: colors.surface, color: colors.text, borderRadius: radius.md, padding: controls.padding, fontWeight: typography.button.fontWeight, cursor: "pointer", width: "fit-content" },
+  warning: { background: colors.warningSoft, color: colors.warningDark, padding: spacing.md, borderRadius: radius.md, border: `1px solid ${colors.warning}`, fontWeight: typography.label.fontWeight },
+  emptyInline: { color: colors.textMuted, padding: spacing.md, background: colors.surfaceMuted, borderRadius: radius.md },
   sidePanel: { position: "sticky", top: 16 },
-  sideCard: { background: "#0f172a", color: "white", borderRadius: 22, padding: 18, boxShadow: "0 18px 40px rgba(15,23,42,.22)", display: "grid", gap: 10 },
-  sideTitle: { margin: 0, fontSize: 22 },
-  infoBox: { background: "#1e293b", borderRadius: 14, padding: 12, display: "grid", gap: 5, color: "#cbd5e1" },
-  note: { marginTop: 4, background: "rgba(249,115,22,.14)", border: "1px solid rgba(251,146,60,.32)", color: "#fed7aa", borderRadius: 16, padding: 14, fontWeight: 800 },
+  infoBox: { background: colors.surfaceMuted, border: `1px solid ${colors.borderSoft}`, borderRadius: radius.md, padding: spacing.md, display: "grid", gap: 5, color: colors.textMuted },
+  note: { marginTop: spacing.sm, background: colors.primarySoft, border: `1px solid ${colors.primaryBorder}`, color: colors.secondary, borderRadius: radius.md, padding: spacing.md, fontWeight: typography.label.fontWeight },
   bikeGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 14 },
   state: { padding: 24, fontWeight: 900 },
-  pageMobile: { padding: 10, overflowX: "hidden" },
+  pageMobile: { overflowX: "hidden" },
   heroMobile: { display: "grid", gridTemplateColumns: "1fr", gap: 14, padding: 18, borderRadius: 22, marginBottom: 12 },
   titleMobile: { fontSize: 27, lineHeight: 1.08 },
   subtitleMobile: { fontSize: 14, lineHeight: 1.35 },

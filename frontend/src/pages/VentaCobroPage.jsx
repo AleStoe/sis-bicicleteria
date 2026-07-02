@@ -9,6 +9,7 @@ import { formatDateTime, formatMoney } from "../utils/formatters";
 import {
   Button,
   Card,
+  EmptyState,
   MetricCard,
   PageHeader,
 } from "../components/ui";
@@ -52,11 +53,11 @@ export default function VentaCobroPage() {
   }, [pagos]);
 
   if (loading) {
-    return <p style={{ padding: "24px" }}>Cargando cobro...</p>;
+    return <EmptyState title="Cargando cobro..." description="Actualizando pagos y saldo de la venta." />;
   }
 
   if (!data) {
-    return <p style={{ padding: "24px" }}>No se encontró la venta.</p>;
+    return <EmptyState title="No se encontró la venta" description="Volvé al listado e intentá nuevamente." />;
   }
 
   const { venta, situacion_financiera } = data;

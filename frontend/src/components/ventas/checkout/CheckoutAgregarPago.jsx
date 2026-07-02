@@ -22,6 +22,7 @@ export default function CheckoutAgregarPago({
   planesTarjeta,
   planTarjetaId,
   setPlanTarjetaId,
+  creditoCubreSaldo = false,
 }) {
   const esTarjeta = medioPago === "tarjeta";
   const medioActivo = MEDIOS_PAGO.find((medio) => medio.value === medioPago);
@@ -221,9 +222,16 @@ export default function CheckoutAgregarPago({
           type="button"
           onClick={sugerirMontoParaSaldar}
           disabled={simulando}
-          style={styles.saldarBtn}
+          style={{
+            ...styles.saldarBtn,
+            ...(creditoCubreSaldo ? styles.saldarBtnCredit : {}),
+          }}
         >
-          {simulando ? "Calculando..." : "Completar saldo"}
+          {simulando
+            ? "Calculando..."
+            : creditoCubreSaldo
+              ? "Aplicar crédito y completar saldo"
+              : "Completar saldo"}
         </button>
       </div>
 
@@ -422,6 +430,10 @@ const styles = {
     fontSize: 15,
     fontWeight: 900,
     cursor: "pointer",
+  },
+  saldarBtnCredit: {
+    background: "#15803d",
+    boxShadow: "0 0 0 3px rgba(34, 197, 94, 0.18), 0 10px 22px rgba(21, 128, 61, 0.2)",
   },
   amountRow: {
     display: "grid",

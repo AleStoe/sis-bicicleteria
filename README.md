@@ -150,6 +150,26 @@ compilado se evaluará al preparar la instalación productiva definitiva.
 
 ## Backup
 
+### Desde el sistema
+
+El administrador puede abrir `Sistema > Backups` para:
+
+- generar un `.dump` PostgreSQL en formato custom (`pg_dump -F c`)
+- generar un `.zip` con `database.dump` y la carpeta `uploads`
+- listar y descargar copias existentes
+
+La pantalla no permite restaurar ni eliminar backups. Cada generación y
+descarga queda registrada en auditoría. Los archivos quedan en `backups\`,
+una carpeta privada que no se expone como contenido estático.
+
+Antes de usar el módulo, aplicar las migraciones pendientes:
+
+```powershell
+.\scripts\apply_migrations.ps1
+```
+
+### Desde PowerShell
+
 Crear un respaldo completo:
 
 ```powershell
@@ -174,8 +194,28 @@ Frecuencia recomendada:
 
 ## Restore
 
-El restore nunca sobrescribe una base existente. Siempre exige un nombre
-nuevo:
+El restore es exclusivamente manual. Nunca sobrescribe una base existente y
+siempre exige un nombre nuevo.
+
+Para un `.dump` generado desde la pantalla:
+
+```powershell
+.\scripts\restore_beta.ps1 `
+  -BackupPath .\backups\backup-emprendimiento-agus-YYYYMMDD-HHMM.dump `
+  -TargetDatabase emprendimiento_agus_restore_test
+```
+
+Para un `.zip` con uploads, indicar una carpeta destino vacía:
+
+```powershell
+.\scripts\restore_beta.ps1 `
+  -BackupPath .\backups\backup-emprendimiento-agus-YYYYMMDD-HHMM.zip `
+  -TargetDatabase emprendimiento_agus_restore_test `
+  -UploadsDirectory .\restore-test-uploads `
+  -RestoreUploads
+```
+
+El formato anterior por carpeta continúa soportado:
 
 ```powershell
 .\scripts\restore_beta.ps1 `

@@ -13,7 +13,8 @@ import {
 } from "../services/cotizacionesService";
 import { getCotizacionPdfUrl } from "../services/documentosService";
 import { formatDate, formatMoney } from "../utils/formatters";
-import { useBreakpoint } from "../components/ui";
+import { Button, EmptyState, PageHeader, useBreakpoint } from "../components/ui";
+import { colors, controls, radius, shadows, spacing, typography } from "../theme";
 
 const ESTADOS_ACCION = [
   { value: "borrador", label: "Borrador" },
@@ -177,25 +178,21 @@ export default function CotizacionDetallePage() {
     }
   }
 
-  if (loading) return <div style={styles.state}>Cargando cotizacion...</div>;
-  if (!cotizacion) return <div style={styles.state}>No se encontro la cotizacion.</div>;
+  if (loading) return <EmptyState title="Cargando cotización..." description="Actualizando el detalle comercial." />;
+  if (!cotizacion) return <EmptyState title="No se encontró la cotización" description="Volvé al listado e intentá nuevamente." />;
 
   return (
     <div style={{ ...styles.page, ...(isMobile ? styles.pageMobile : {}) }}>
-      <header style={{ ...styles.hero, ...(isMobile ? styles.heroMobile : {}) }}>
-        <div>
-          <p style={styles.kicker}>Cotizacion</p>
-          <h1 style={styles.title}>{cotizacion.numero}</h1>
-          <p style={styles.subtitle}>
-            {cotizacion.tipo === "reparacion" ? "Reparacion" : "Bici / productos"} · {formatDate(cotizacion.fecha)}
-          </p>
-        </div>
-
-        <div style={styles.heroActions}>
-          <button type="button" onClick={() => navigate(-1)} style={styles.heroButton}><ArrowLeft size={17} /> Volver</button>
-          <button type="button" onClick={cargarTodo} style={styles.heroButton}><RefreshCw size={17} /> Refrescar</button>
-        </div>
-      </header>
+      <PageHeader
+        title={cotizacion.numero}
+        subtitle={`${cotizacion.tipo === "reparacion" ? "Reparación" : "Bici / productos"} · ${formatDate(cotizacion.fecha)}`}
+        actions={(
+          <>
+            <Button type="button" variant="outline" onClick={() => navigate(-1)}><ArrowLeft size={17} /> Volver</Button>
+            <Button type="button" variant="outline" onClick={cargarTodo}><RefreshCw size={17} /> Refrescar</Button>
+          </>
+        )}
+      />
 
       {mensaje && <div style={styles.success}>{mensaje}</div>}
       {error && <div style={styles.error}>{error}</div>}
@@ -421,7 +418,7 @@ function labelTipoItem(tipo) {
 }
 
 const styles = {
-  page: { minHeight: "100vh", padding: 20, background: "#f1f5f9", color: "#0f172a" },
+  page: { minHeight: "100vh", display: "grid", gap: spacing.xl, color: colors.text, fontFamily: typography.fontFamily },
   pageMobile: { padding: 10 },
   hero: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, padding: 22, borderRadius: 22, background: "#0f172a", color: "white", marginBottom: 16, boxShadow: "0 18px 40px rgba(15,23,42,.18)" },
   heroMobile: { display: "grid", gridTemplateColumns: "1fr", padding: 16 },
@@ -430,16 +427,16 @@ const styles = {
   subtitle: { margin: "8px 0 0", color: "#cbd5e1", fontWeight: 700 },
   heroActions: { display: "flex", gap: 10, flexWrap: "wrap" },
   heroButton: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, textDecoration: "none", border: "1px solid rgba(255,255,255,.22)", background: "rgba(255,255,255,.08)", color: "white", borderRadius: 13, padding: "12px 14px", fontWeight: 1000, cursor: "pointer" },
-  metricsGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 16 },
+  metricsGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: spacing.md },
   metricsGridMobile: { gridTemplateColumns: "1fr 1fr", gap: 8 },
-  metric: { background: "white", border: "1px solid #e2e8f0", borderRadius: 16, padding: 14, display: "grid", gap: 5, boxShadow: "0 10px 22px rgba(15,23,42,.06)" },
+  metric: { background: colors.surface, border: `1px solid ${colors.borderSoft}`, borderRadius: radius.lg, padding: spacing.lg, display: "grid", gap: 5, boxShadow: shadows.sm },
   metricTones: { ok: { color: "#047857", background: "#ecfdf5", borderColor: "#bbf7d0" }, info: { color: "#1d4ed8", background: "#eff6ff", borderColor: "#bfdbfe" }, muted: { color: "#475569", background: "#f8fafc" }, orange: { color: "#c2410c", background: "#fff7ed", borderColor: "#fed7aa" } },
-  layout: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) 360px", gap: 16, alignItems: "start" },
+  layout: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) 360px", gap: spacing.lg, alignItems: "start" },
   layoutMobile: { gridTemplateColumns: "1fr" },
   mainColumn: { display: "grid", gap: 16 },
   sidePanel: { display: "grid", gap: 16, position: "sticky", top: 16 },
-  card: { background: "white", border: "1px solid #e2e8f0", borderRadius: 20, padding: 18, boxShadow: "0 14px 30px rgba(15,23,42,.06)" },
-  cardNoPadding: { background: "white", border: "1px solid #e2e8f0", borderRadius: 20, overflow: "hidden", boxShadow: "0 14px 30px rgba(15,23,42,.06)" },
+  card: { background: colors.surface, border: `1px solid ${colors.borderSoft}`, borderRadius: radius.lg, padding: spacing.lg, boxShadow: shadows.sm },
+  cardNoPadding: { background: colors.surface, border: `1px solid ${colors.borderSoft}`, borderRadius: radius.lg, overflow: "hidden", boxShadow: shadows.sm },
   sectionHeader: { marginBottom: 4 },
   eyebrow: { margin: 0, color: "#f97316", fontSize: 12, fontWeight: 1000, textTransform: "uppercase" },
   cardTitle: { margin: "4px 0 0", fontSize: 22 },
@@ -454,8 +451,8 @@ const styles = {
   smallDanger: { display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid #fecaca", background: "#fff1f0", color: "#b42318", borderRadius: 11, padding: "8px 10px", fontWeight: 900, cursor: "pointer" },
   form: { display: "grid", gap: 12 },
   actionGrid: { display: "grid", gap: 10 },
-  field: { display: "grid", gap: 6, fontWeight: 900, color: "#334155" },
-  input: { width: "100%", border: "1px solid #cbd5e1", borderRadius: 12, padding: "11px 12px", fontWeight: 750, boxSizing: "border-box", background: "white", color: "#0f172a" },
+  field: { display: "grid", gap: spacing.sm, fontSize: typography.label.fontSize, fontWeight: typography.label.fontWeight, color: colors.text },
+  input: { width: "100%", minHeight: controls.minHeight, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: controls.padding, boxSizing: "border-box", background: colors.surface, color: colors.text },
   segmented: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 },
   segment: { border: "1px solid #cbd5e1", background: "white", color: "#334155", borderRadius: 12, padding: "10px 8px", fontWeight: 1000, cursor: "pointer" },
   segmentActive: { border: "1px solid #f97316", background: "#fff7ed", color: "#c2410c", borderRadius: 12, padding: "10px 8px", fontWeight: 1000, cursor: "pointer" },

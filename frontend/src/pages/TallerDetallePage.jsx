@@ -22,6 +22,8 @@ import {
 import { formatDate, formatMoney } from "../utils/formatters";
 import { EstadoBadge } from "./TallerListPage";
 import { PromptModal } from "../components/ui/PromptModal";
+import { Button, EmptyState, PageHeader } from "../components/ui";
+import { ArrowLeft, ClipboardList, RefreshCw } from "lucide-react";
 import {
   Info,
   ItemCard,
@@ -928,30 +930,22 @@ export default function TallerDetallePage() {
     }
   }
 
-  if (loading) return <div style={styles.state}>Cargando orden...</div>;
-  if (!orden) return <div style={styles.state}>No se encontró la orden.</div>;
+  if (loading) return <EmptyState icon={ClipboardList} title="Cargando orden..." description="Actualizando el estado operativo del taller." />;
+  if (!orden) return <EmptyState icon={ClipboardList} title="No se encontró la orden" description="Volvé al listado e intentá nuevamente." />;
 
   return (
     <div style={{ ...styles.page, ...(isMobile ? styles.pageMobile : {}) }}>
-      <header style={{ ...styles.hero, ...(isMobile ? styles.heroMobile : {}) }}>
-        <div>
-          <p style={styles.kicker}>Orden de taller</p>
-          <h1 style={styles.title}>Orden #{orden.id}</h1>
-          <p style={styles.subtitle}>
-            Ingresada: {formatDate(orden.fecha_ingreso)} · {nombreClienteOrden(orden)} · {descripcionBicicletaOrden(orden)}
-          </p>
-          {orden.es_service_postventa && (
-            <p style={styles.subtitle}>
-              Service bonificado de postventa · {orden.tipo_postventa === "service_30_dias" ? "30 días" : orden.tipo_postventa}
-            </p>
-          )}
-        </div>
-
-        <div style={{ ...styles.heroActions, ...(isMobile ? styles.heroActionsMobile : {}) }}>
-          <button type="button" onClick={cargarTodo} style={styles.secondaryHeroButton}>↻ Refrescar</button>
-          <Link to="/taller" style={styles.secondaryHeroButton}>← Volver</Link>
-        </div>
-      </header>
+      <PageHeader
+        title={`Orden #${orden.id}`}
+        subtitle={`Ingresada: ${formatDate(orden.fecha_ingreso)} · ${nombreClienteOrden(orden)} · ${descripcionBicicletaOrden(orden)}`}
+        eyebrow={orden.es_service_postventa ? "Service postventa" : "Orden de taller"}
+        actions={(
+          <>
+            <Button type="button" variant="outline" onClick={cargarTodo}><RefreshCw size={17} /> Refrescar</Button>
+            <Link to="/taller" style={styles.headerLink}><ArrowLeft size={17} /> Volver</Link>
+          </>
+        )}
+      />
 
       {mensaje && <div style={styles.success}>{mensaje}</div>}
       {error && <div style={styles.error}>Error: {error}</div>}

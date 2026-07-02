@@ -3,6 +3,8 @@ import { API_BASE_URL } from "../../config/appConfig";
 import { obtenerFichaTecnicaProducto } from "../../services/catalogoService";
 import EstadoBadge from "./EstadoBadge";
 import PreciosComercialesCatalogo from "./PreciosComercialesCatalogo";
+import { X } from "lucide-react";
+import { colors, radius, shadows, spacing, typography } from "../../theme";
 
 export default function CatalogoDetalleModal({ item, onClose, onEdit }) {
   const [fichaTecnica, setFichaTecnica] = useState([]);
@@ -51,7 +53,7 @@ export default function CatalogoDetalleModal({ item, onClose, onEdit }) {
           </div>
 
           <button type="button" onClick={onClose} style={styles.closeButton}>
-            ✕
+            <X size={18} aria-hidden="true" />
           </button>
         </header>
 
@@ -214,15 +216,15 @@ const styles = {
     maxHeight: "92vh",
     display: "flex",
     flexDirection: "column",
-    background: "#f8fafc",
-    borderRadius: 24,
+    background: colors.surfaceMuted,
+    borderRadius: radius.lg,
     overflow: "hidden",
-    boxShadow: "0 28px 80px rgba(0,0,0,.36)",
+    boxShadow: shadows.lg,
   },
   header: {
     padding: "20px 24px",
-    background: "#ffffff",
-    borderBottom: "1px solid #e2e8f0",
+    background: colors.surface,
+    borderBottom: `1px solid ${colors.borderSoft}`,
     display: "flex",
     justifyContent: "space-between",
     alignItems: "flex-start",
@@ -230,39 +232,41 @@ const styles = {
   },
   kicker: {
     margin: 0,
-    color: "#f97316",
-    fontSize: 12,
-    fontWeight: 1000,
+    color: colors.primary,
+    fontSize: typography.small.fontSize,
+    fontWeight: typography.label.fontWeight,
     textTransform: "uppercase",
     letterSpacing: "0.08em",
   },
   title: {
     margin: "4px 0 0",
-    fontSize: 28,
+    fontSize: typography.title.fontSize,
     lineHeight: 1.1,
-    fontWeight: 1000,
-    color: "#0f172a",
+    fontWeight: typography.title.fontWeight,
+    color: colors.textStrong,
   },
   subtitle: {
     margin: "6px 0 0",
-    color: "#64748b",
-    fontWeight: 800,
+    color: colors.textMuted,
+    fontWeight: typography.label.fontWeight,
   },
   closeButton: {
     width: 38,
     height: 38,
-    border: "1px solid #cbd5e1",
-    background: "#ffffff",
-    borderRadius: 12,
+    display: "inline-grid",
+    placeItems: "center",
+    border: `1px solid ${colors.border}`,
+    background: colors.surface,
+    borderRadius: radius.md,
     cursor: "pointer",
     fontWeight: 1000,
-    color: "#0f172a",
+    color: colors.text,
   },
   content: {
     display: "grid",
     gridTemplateColumns: "330px minmax(0, 1fr)",
-    gap: 18,
-    padding: 20,
+    gap: spacing.lg,
+    padding: spacing.xl,
     overflowY: "auto",
     alignItems: "start",
   },
@@ -276,9 +280,9 @@ const styles = {
   },
   imageCard: {
     minHeight: 330,
-    borderRadius: 20,
-    border: "1px solid #e2e8f0",
-    background: "#ffffff",
+    borderRadius: radius.lg,
+    border: `1px solid ${colors.borderSoft}`,
+    background: colors.surface,
     display: "grid",
     placeItems: "center",
     padding: 14,
@@ -300,10 +304,10 @@ const styles = {
     background: "#f8fafc",
   },
   statusCard: {
-    background: "#ffffff",
-    border: "1px solid #e2e8f0",
-    borderRadius: 18,
-    padding: 14,
+    background: colors.surface,
+    border: `1px solid ${colors.borderSoft}`,
+    borderRadius: radius.lg,
+    padding: spacing.md,
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
@@ -344,10 +348,10 @@ const styles = {
     gap: 14,
   },
   sectionCard: {
-    background: "#ffffff",
-    border: "1px solid #e2e8f0",
-    borderRadius: 20,
-    padding: 16,
+    background: colors.surface,
+    border: `1px solid ${colors.borderSoft}`,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
   },
   sectionTitle: {
     margin: "0 0 12px",

@@ -6,6 +6,7 @@ from fastapi.responses import Response
 
 from app.core.security import CurrentUser, aplicar_actor_actual
 from app.modules.authz.service import exigir_permiso_actual, requerir_permiso
+from app.modules.documentos.download_names import catalog_name
 from app.shared.constants import (
     PERMISO_GESTIONAR_CATALOGO,
     PERMISO_GESTIONAR_PRECIOS,
@@ -189,7 +190,9 @@ def catalogo_mayorista_pdf(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={
-            "Content-Disposition": 'attachment; filename="catalogo-mayorista.pdf"'
+            "Content-Disposition": (
+                f'attachment; filename="{catalog_name("Mayorista")}"'
+            )
         },
     )
 
@@ -208,7 +211,9 @@ def catalogo_bicicletas_pdf(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={
-            "Content-Disposition": 'attachment; filename="catalogo-bicicletas.pdf"'
+            "Content-Disposition": (
+                f'attachment; filename="{catalog_name("Bicicletas")}"'
+            )
         },
     )
 

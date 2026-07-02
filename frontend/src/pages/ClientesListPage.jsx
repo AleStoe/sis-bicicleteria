@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { listarClientes } from "../services/clientesService";
+import {
+  Button,
+  Card,
+  EmptyState,
+  MetricCard,
+  PageHeader,
+  ResponsiveMetricsGrid,
+} from "../components/ui";
+import { RefreshCw, Search, UserPlus, Users } from "lucide-react";
+import { colors, controls, radius, shadows, spacing, typography } from "../theme";
 
 
 const MOBILE_BREAKPOINT = 760;
@@ -85,58 +95,38 @@ export default function ClientesListPage() {
   }
 
   if (loading) {
-    return <p style={{ padding: "24px" }}>Cargando clientes...</p>;
+    return <EmptyState icon={Users} title="Cargando clientes..." description="Actualizando cuentas e información de contacto." />;
   }
 
   return (
     <div style={{ ...pageStyle, ...(isMobile ? pageMobileStyle : {}) }}>
-      <header style={{ ...headerStyle, ...(isMobile ? headerMobileStyle : {}) }}>
-        <div>
-          <h1 style={titleStyle}>Clientes</h1>
-          <p style={subtitleStyle}>
-            Buscá por nombre, teléfono, DNI, CUIT o razón social.
-          </p>
-        </div>
-
-        <div style={{ ...headerActionsStyle, ...(isMobile ? headerActionsMobileStyle : {}) }}>
-          <button type="button" onClick={cargarClientes} style={secondaryBtnStyle}>
-            {buscando ? "Buscando..." : "Refrescar"}
-          </button>
-
-          <Link to="/clientes/nuevo" style={primaryLinkStyle}>
-            Nuevo cliente
-          </Link>
-        </div>
-      </header>
+      <PageHeader
+        title="Clientes"
+        subtitle="Buscá por nombre, teléfono, DNI, CUIT o razón social."
+        actions={(
+          <>
+            <Button type="button" variant="outline" onClick={cargarClientes} disabled={buscando}>
+              <RefreshCw size={16} /> {buscando ? "Buscando..." : "Refrescar"}
+            </Button>
+            <Link to="/clientes/nuevo" style={styles.primaryLink}><UserPlus size={16} /> Nuevo cliente</Link>
+          </>
+        )}
+      />
 
       {error && <div style={alertStyle}>Error: {error}</div>}
 
-      <section style={{ ...statsGridStyle, ...(isMobile ? statsGridMobileStyle : {}) }}>
-        <div style={statCardStyle}>
-          <span>Total listado</span>
-          <strong>{clientes.length}</strong>
-        </div>
+      <ResponsiveMetricsGrid minWidth={160} mobileColumns={2}>
+        <MetricCard label="Total listado" value={clientes.length} />
+        <MetricCard label="Activos" value={totalActivos} tone="success" />
+        <MetricCard label="Inactivos" value={totalInactivos} tone={totalInactivos > 0 ? "warning" : "default"} />
+      </ResponsiveMetricsGrid>
 
-        <div style={statCardStyle}>
-          <span>Activos</span>
-          <strong>{totalActivos}</strong>
-        </div>
-
-        <div style={statCardStyle}>
-          <span>Inactivos</span>
-          <strong>{totalInactivos}</strong>
-        </div>
-      </section>
-
-      <section style={filterCardStyle}>
+      <Card title="Buscar clientes" subtitle="Nombre, teléfono, documento o razón social.">
         <form onSubmit={buscar} style={{ ...filterFormStyle, ...(isMobile ? filterFormMobileStyle : {}) }}>
-          <input
-            type="text"
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-            placeholder="Ej: Juan, 291..., 30-..., razón social"
-            style={{ ...inputStyle, ...(isMobile ? inputMobileStyle : {}) }}
-          />
+          <div style={styles.searchBox}>
+            <Search size={18} color={colors.textMuted} />
+            <input type="text" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Ej: Juan, 291..., 30-..., razón social" style={styles.searchInput} />
+          </div>
 
           <label style={checkStyle}>
             <input
@@ -147,15 +137,10 @@ export default function ClientesListPage() {
             Solo activos
           </label>
 
-          <button type="submit" style={primaryBtnStyle}>
-            Buscar
-          </button>
-
-          <button type="button" onClick={limpiarBusqueda} style={secondaryBtnStyle}>
-            Limpiar
-          </button>
+          <Button type="submit">Buscar</Button>
+          <Button type="button" variant="outline" onClick={limpiarBusqueda}>Limpiar</Button>
         </form>
-      </section>
+      </Card>
 
       <section style={tableCardStyle}>
         <div style={tableHeaderStyle}>
@@ -166,7 +151,7 @@ export default function ClientesListPage() {
         </div>
 
         {clientes.length === 0 ? (
-          <div style={emptyStyle}>No hay clientes para mostrar.</div>
+          <EmptyState icon={Users} title="No hay clientes para mostrar" description="Probá otra búsqueda o incluí clientes inactivos." />
         ) : isMobile ? (
           <ClientesMobileList clientes={clientes} abrirCliente={abrirCliente} />
         ) : (
@@ -237,6 +222,42 @@ export default function ClientesListPage() {
     </div>
   );
 }
+
+const styles = {
+  primaryLink: {
+    minHeight: controls.minHeight,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    padding: controls.padding,
+    borderRadius: radius.md,
+    background: colors.primary,
+    color: colors.surface,
+    fontWeight: typography.button.fontWeight,
+    textDecoration: "none",
+    boxShadow: shadows.sm,
+  },
+  searchBox: {
+    minHeight: controls.minHeight,
+    display: "flex",
+    alignItems: "center",
+    gap: spacing.sm,
+    padding: "0 12px",
+    border: `1px solid ${colors.border}`,
+    borderRadius: radius.md,
+    background: colors.surfaceMuted,
+  },
+  searchInput: {
+    width: "100%",
+    minWidth: 0,
+    border: "none",
+    outline: "none",
+    background: "transparent",
+    color: colors.text,
+    fontSize: typography.body.fontSize,
+  },
+};
 
 
 function ClientesMobileList({ clientes, abrirCliente }) {
@@ -465,6 +486,9 @@ const thStyle = {
   borderBottom: "1px solid #e5e7eb",
   color: "#475467",
   fontSize: "13px",
+  whiteSpace: "nowrap",
+  wordBreak: "normal",
+  overflowWrap: "normal",
 };
 
 const tdStyle = {
