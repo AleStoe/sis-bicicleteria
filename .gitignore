@@ -20,8 +20,10 @@ frontend/.env*
 !frontend/.env.example
 
 # Uploads / generados locales
-uploads/
-backups/
+/uploads/
+/backups/
+/output/
+/tmp/
 *.zip
 *.bak
 *.tmp
