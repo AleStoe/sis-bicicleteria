@@ -3,6 +3,20 @@ from decimal import Decimal
 from app.modules.stock.repository import TIPO_OPERATIVO_SQL
 
 
+TIPOS_MOVIMIENTO_STOCK_FISICO = (
+    "ingreso",
+    "entrega",
+    "devolucion",
+    "devolucion_venta",
+    "ajuste",
+    "uso_taller",
+    "reversion_uso_taller",
+    "serializacion",
+)
+# "venta" mueve unidades a pendiente de entrega; el físico cambia en "entrega".
+# Los movimientos de bicicletas serializadas tampoco modifican stock_sucursal.
+
+
 def insert_inventario(conn, data: dict):
     with conn.cursor() as cur:
         cur.execute(
@@ -178,6 +192,46 @@ def get_item_inventario_for_update(conn, inventario_id: int, variante_id: int):
             (inventario_id, variante_id),
         )
         return cur.fetchone()
+
+
+def get_items_con_movimientos_fisicos_posteriores(conn, inventario_id: int):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT
+                ii.id,
+                ii.id_variante,
+                ii.contado_at,
+                p.nombre AS producto_nombre,
+                v.nombre_variante,
+                v.sku,
+                MAX(ms.fecha) AS ultimo_movimiento_at,
+                ARRAY_AGG(DISTINCT ms.tipo_movimiento ORDER BY ms.tipo_movimiento)
+                    AS tipos_movimiento
+            FROM inventario_fisico_items ii
+            INNER JOIN inventarios_fisicos i ON i.id = ii.id_inventario
+            INNER JOIN variantes v ON v.id = ii.id_variante
+            INNER JOIN productos p ON p.id = v.id_producto
+            INNER JOIN movimientos_stock ms
+                ON ms.id_sucursal = i.id_sucursal
+               AND ms.id_variante = ii.id_variante
+               AND ms.fecha > ii.contado_at
+               AND ms.tipo_movimiento = ANY(%s)
+            WHERE ii.id_inventario = %s
+              AND ii.stock_contado IS NOT NULL
+              AND ii.contado_at IS NOT NULL
+            GROUP BY
+                ii.id,
+                ii.id_variante,
+                ii.contado_at,
+                p.nombre,
+                v.nombre_variante,
+                v.sku
+            ORDER BY p.nombre, v.nombre_variante, ii.id_variante
+            """,
+            (list(TIPOS_MOVIMIENTO_STOCK_FISICO), inventario_id),
+        )
+        return cur.fetchall()
 
 
 def get_historial_diferencias(conn, *, id_sucursal: int | None = None, limit: int = 100):

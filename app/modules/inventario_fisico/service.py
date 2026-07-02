@@ -14,6 +14,7 @@ from .repository import (
     get_inventario_by_id,
     get_inventarios,
     get_item_inventario_for_update,
+    get_items_con_movimientos_fisicos_posteriores,
     get_items_inventario,
     insert_inventario,
     set_movimiento_item,
@@ -119,6 +120,17 @@ def cargar_conteo(inventario_id: int, data):
             if item is None:
                 raise HTTPException(status_code=404, detail="La variante no pertenece al inventario")
 
+            stock_actual = stock_repository.obtener_stock_disponible_variante(
+                conn,
+                id_sucursal=inventario["id_sucursal"],
+                id_variante=data.id_variante,
+            )
+            if stock_actual is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"No existe stock para la variante {data.id_variante}",
+                )
+
             return upsert_conteo_item(
                 conn,
                 inventario_id,
@@ -161,6 +173,16 @@ def cancelar_inventario_abierto(inventario_id: int, data):
         conn.close()
 
 
+def _descripcion_item_reconteo(item: dict) -> str:
+    descripcion = str(item.get("producto_nombre") or f"Variante #{item['id_variante']}")
+    variante = str(item.get("nombre_variante") or "").strip()
+    if variante:
+        descripcion = f"{descripcion} - {variante}"
+    if item.get("sku"):
+        descripcion = f"{descripcion} [{item['sku']}]"
+    return descripcion
+
+
 def cerrar_y_ajustar_inventario(inventario_id: int, data):
     conn = get_connection()
     try:
@@ -180,8 +202,8 @@ def cerrar_y_ajustar_inventario(inventario_id: int, data):
                     detail=f"Faltan contar {len(sin_contar)} item(s)",
                 )
 
-            movimientos = []
-            for item in items:
+            stock_actual_por_variante = {}
+            for item in sorted(items, key=lambda row: row["id_variante"]):
                 stock_actual = stock_repository.obtener_stock_disponible_variante(
                     conn,
                     id_sucursal=inventario["id_sucursal"],
@@ -192,6 +214,28 @@ def cerrar_y_ajustar_inventario(inventario_id: int, data):
                         status_code=400,
                         detail=f"No existe stock para la variante {item['id_variante']}",
                     )
+                stock_actual_por_variante[item["id_variante"]] = stock_actual
+
+            items_reconteo = get_items_con_movimientos_fisicos_posteriores(
+                conn,
+                inventario_id,
+            )
+            if items_reconteo:
+                descripciones = ", ".join(
+                    _descripcion_item_reconteo(item) for item in items_reconteo
+                )
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "No se puede cerrar el inventario: hubo movimientos de stock "
+                        "físico después del conteo. Recontá estas variantes y volvé a "
+                        f"cerrar: {descripciones}."
+                    ),
+                )
+
+            movimientos = []
+            for item in items:
+                stock_actual = stock_actual_por_variante[item["id_variante"]]
 
                 ajuste_a_aplicar = (
                     to_decimal(item["stock_contado"])

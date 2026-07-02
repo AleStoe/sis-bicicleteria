@@ -57,6 +57,21 @@ def _get_stock_fisico(db_conn, seed_venta_basica, id_variante):
         return cur.fetchone()["stock_fisico"]
 
 
+def _ajustar_stock(client, seed_venta_basica, id_variante, cantidad, nota):
+    response = client.post(
+        "/stock/ajustes",
+        json={
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_variante": id_variante,
+            "cantidad": str(cantidad),
+            "nota": nota,
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
 def _count_movimientos_inventario(db_conn, inventario_id):
     with db_conn.cursor() as cur:
         cur.execute(
@@ -143,7 +158,13 @@ def test_inventario_fisico_no_sobreajusta_si_hubo_movimientos_durante_conteo(
     item = inventario["items"][0]
     assert Decimal(item["stock_sistema"]) == Decimal("10.000")
 
-    _set_stock_fisico(db_conn, seed_venta_basica, item["id_variante"], 8)
+    _ajustar_stock(
+        client,
+        seed_venta_basica,
+        item["id_variante"],
+        -2,
+        "Movimiento físico antes del conteo",
+    )
 
     conteo = _contar_item(client, inventario, item, seed_venta_basica, "8")
     assert conteo.status_code == 200, conteo.text
@@ -155,6 +176,103 @@ def test_inventario_fisico_no_sobreajusta_si_hubo_movimientos_durante_conteo(
     )
 
     assert cerrar.status_code == 200, cerrar.text
+    assert _get_stock_fisico(db_conn, seed_venta_basica, item["id_variante"]) == Decimal("8.000")
+    assert _count_movimientos_inventario(db_conn, inventario["id"]) == 0
+
+
+def test_inventario_fisico_bloquea_cierre_si_hubo_movimiento_despues_del_conteo(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    _set_stock_fisico(
+        db_conn,
+        seed_venta_basica,
+        seed_venta_basica["variante_id"],
+        10,
+    )
+
+    inventario = _crear_inventario(client, seed_venta_basica, "Reconteo requerido")
+    item = inventario["items"][0]
+
+    conteo = _contar_item(client, inventario, item, seed_venta_basica, "10")
+    assert conteo.status_code == 200, conteo.text
+
+    venta = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "id_variante": item["id_variante"],
+                    "cantidad": 2,
+                    "id_bicicleta_serializada": None,
+                }
+            ],
+        },
+    )
+    assert venta.status_code == 200, venta.text
+
+    entrega = client.post(
+        f"/ventas/{venta.json()['venta_id']}/entregar",
+        json={"id_usuario": seed_venta_basica["usuario_id"]},
+    )
+    assert entrega.status_code == 200, entrega.text
+
+    cerrar = client.post(
+        f"/inventarios-fisicos/{inventario['id']}/cerrar",
+        json={"id_usuario": seed_venta_basica["usuario_id"]},
+    )
+
+    assert cerrar.status_code == 409
+    assert "Recontá estas variantes" in cerrar.json()["detail"]
+    assert item["producto_nombre"] in cerrar.json()["detail"]
+    assert _get_stock_fisico(db_conn, seed_venta_basica, item["id_variante"]) == Decimal("8.000")
+    assert _count_movimientos_inventario(db_conn, inventario["id"]) == 0
+
+    detalle = client.get(f"/inventarios-fisicos/{inventario['id']}")
+    assert detalle.status_code == 200, detalle.text
+    assert detalle.json()["estado"] == "abierto"
+
+
+def test_inventario_fisico_reconteo_posterior_permite_cerrar(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    _set_stock_fisico(
+        db_conn,
+        seed_venta_basica,
+        seed_venta_basica["variante_id"],
+        10,
+    )
+
+    inventario = _crear_inventario(client, seed_venta_basica, "Reconteo actualizado")
+    item = inventario["items"][0]
+
+    primer_conteo = _contar_item(client, inventario, item, seed_venta_basica, "10")
+    assert primer_conteo.status_code == 200, primer_conteo.text
+
+    _ajustar_stock(
+        client,
+        seed_venta_basica,
+        item["id_variante"],
+        -2,
+        "Movimiento antes del reconteo",
+    )
+
+    reconteo = _contar_item(client, inventario, item, seed_venta_basica, "8")
+    assert reconteo.status_code == 200, reconteo.text
+
+    cerrar = client.post(
+        f"/inventarios-fisicos/{inventario['id']}/cerrar",
+        json={"id_usuario": seed_venta_basica["usuario_id"]},
+    )
+
+    assert cerrar.status_code == 200, cerrar.text
+    assert cerrar.json()["estado"] == "cerrado"
     assert _get_stock_fisico(db_conn, seed_venta_basica, item["id_variante"]) == Decimal("8.000")
     assert _count_movimientos_inventario(db_conn, inventario["id"]) == 0
 
