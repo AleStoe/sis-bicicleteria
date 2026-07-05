@@ -119,16 +119,22 @@ def obtener_dashboard_resumen(
         ventas_mes = get_ventas_mes(conn, fecha_desde, fecha_hasta, id_sucursal)
         gastos_mes = get_gastos_mes(conn, fecha_desde, fecha_hasta, id_sucursal)
         rent = get_resultado_estimado(conn, fecha_desde, fecha_hasta, id_sucursal)
-        resultado_estimado = Decimal(str(rent["margen_bruto"] or 0)) - Decimal(str(gastos_mes or 0))
+        margen_bruto_mes = Decimal(str(rent["margen_bruto"] or 0))
+        margen_real_mes = Decimal(str(rent["margen_real"] or 0))
+        resultado_estimado = margen_real_mes - Decimal(str(gastos_mes or 0))
         cantidad_ventas_mes = int(rent.get("cantidad_ventas") or 0)
         ticket_promedio_mes = (
             Decimal(str(ventas_mes)) / Decimal(cantidad_ventas_mes)
             if cantidad_ventas_mes
             else Decimal("0")
         )
-        margen_bruto_mes = Decimal(str(rent["margen_bruto"] or 0))
         margen_bruto_porcentaje = (
             margen_bruto_mes / Decimal(str(ventas_mes)) * Decimal("100")
+            if Decimal(str(ventas_mes or 0)) > 0
+            else Decimal("0")
+        )
+        margen_real_porcentaje = (
+            margen_real_mes / Decimal(str(ventas_mes)) * Decimal("100")
             if Decimal(str(ventas_mes or 0)) > 0
             else Decimal("0")
         )
@@ -206,6 +212,8 @@ def obtener_dashboard_resumen(
                 "resultado_estimado": resultado_estimado,
                 "margen_bruto_mes": margen_bruto_mes,
                 "margen_bruto_porcentaje": margen_bruto_porcentaje,
+                "margen_real_mes": margen_real_mes,
+                "margen_real_porcentaje": margen_real_porcentaje,
                 "cantidad_ventas_mes": cantidad_ventas_mes,
                 "ticket_promedio_mes": ticket_promedio_mes,
                 "caja_actual": caja["saldo_teorico"],

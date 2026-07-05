@@ -383,6 +383,7 @@ export default function StockPage() {
     <div className="erp-page erp-stock-page" style={styles.page}>
       <PageHeader
         title="Stock"
+        style={{ marginBottom: 0 }}
         subtitle="Control de físico, reservado, pendiente de entrega y disponible."
         eyebrow="Inventario / Control operativo"
         actions={(
@@ -415,32 +416,76 @@ export default function StockPage() {
         </div>
       )}
 
-      <ResponsiveMetricsGrid minWidth={145} mobileColumns={2}>
-        <MetricCard label="Variantes" value={resumen.variantes} />
-        <MetricCard label="Físico" value={formatNumber(resumen.stockFisico)} />
-        <MetricCard label="Reservado" value={formatNumber(resumen.stockReservado)} />
-        <MetricCard label="Pendiente entrega" value={formatNumber(resumen.stockPendiente)} />
-        <MetricCard label="Disponible" value={formatNumber(resumen.stockDisponible)} tone="success" emphasize />
-        <MetricCard label="Sin disponible" value={resumen.sinDisponible} tone={resumen.sinDisponible > 0 ? "danger" : "default"} />
-        <MetricCard label="Stock bajo" value={resumen.stockBajo ?? resumen.reservados ?? 0} tone={(resumen.stockBajo ?? 0) > 0 ? "warning" : "default"} />
-        {resumen.capitalInmovilizado !== null &&
-        resumen.capitalInmovilizado !== undefined ? (
+      <section style={styles.metricsStack}>
+        <ResponsiveMetricsGrid minWidth={180} mobileColumns={2}>
           <MetricCard
-            label="Capital inmovilizado"
-            value={formatMoney(resumen.capitalInmovilizado)}
+            label="Disponible"
+            value={formatNumber(resumen.stockDisponible)}
+            tone="success"
             emphasize
+            style={styles.metricCard}
           />
-        ) : null}
-        <MetricCard label="Inconsistencias" value={resumen.inconsistentes} tone={resumen.inconsistentes > 0 ? "danger" : "default"} />
-      </ResponsiveMetricsGrid>
+          <MetricCard
+            label="Físico"
+            value={formatNumber(resumen.stockFisico)}
+            style={styles.metricCard}
+          />
+          <MetricCard
+            label="Reservado"
+            value={formatNumber(resumen.stockReservado)}
+            style={styles.metricCard}
+          />
+          <MetricCard
+            label="Pendiente entrega"
+            value={formatNumber(resumen.stockPendiente)}
+            style={styles.metricCard}
+          />
+          <MetricCard
+            label="Variantes"
+            value={resumen.variantes}
+            style={styles.metricCard}
+          />
+        </ResponsiveMetricsGrid>
+
+        <ResponsiveMetricsGrid minWidth={230} mobileColumns={2}>
+          <MetricCard
+            label="Sin stock"
+            value={resumen.sinDisponible}
+            tone={resumen.sinDisponible > 0 ? "danger" : "default"}
+            style={styles.metricCardCompact}
+          />
+          <MetricCard
+            label="Stock bajo"
+            value={resumen.stockBajo ?? resumen.reservados ?? 0}
+            tone={(resumen.stockBajo ?? 0) > 0 ? "warning" : "default"}
+            style={styles.metricCardCompact}
+          />
+          <MetricCard
+            label="Inconsistencias"
+            value={resumen.inconsistentes}
+            tone={resumen.inconsistentes > 0 ? "danger" : "default"}
+            style={styles.metricCardCompact}
+          />
+          {resumen.capitalInmovilizado !== null &&
+          resumen.capitalInmovilizado !== undefined ? (
+            <MetricCard
+              label="Capital inmovilizado"
+              value={formatMoney(resumen.capitalInmovilizado)}
+              style={styles.metricCardCompact}
+              valueStyle={styles.capitalValue}
+            />
+          ) : null}
+        </ResponsiveMetricsGrid>
+      </section>
 
       <section className="erp-card erp-search-card" style={styles.searchCard}>
-        <div>
-          <h2 style={styles.searchTitle}>Buscar en stock</h2>
-          <p style={styles.searchHelp}>Producto, variante, código, SKU, sucursal o ID.</p>
+        <div style={styles.searchCardHeader}>
+          <div>
+            <h2 style={styles.searchTitle}>Buscar en stock</h2>
+            <p style={styles.searchHelp}>Producto, variante, código, SKU, sucursal o ID.</p>
+          </div>
+          {buscandoStock && <span style={styles.searchingPill}>Buscando...</span>}
         </div>
-
-        {buscandoStock && <span style={styles.searchingPill}>Buscando...</span>}
 
         <div style={{ ...styles.searchBar, ...(isMobile ? styles.searchBarMobile : {}) }}>
           <input
@@ -737,7 +782,7 @@ const styles = {
   page: {
     minHeight: "100vh",
     display: "grid",
-    gap: spacing.xl,
+    gap: spacing.lg,
     color: colors.text,
     fontFamily: typography.fontFamily,
   },
@@ -847,6 +892,22 @@ const styles = {
     gap: "6px",
   },
   metricValue: { fontSize: "24px" },
+  metricsStack: {
+    display: "grid",
+    gap: spacing.sm,
+  },
+  metricCard: {
+    minHeight: 78,
+  },
+  metricCardCompact: {
+    minHeight: 68,
+  },
+  capitalValue: {
+    fontSize: 22,
+    overflowWrap: "normal",
+    wordBreak: "normal",
+    whiteSpace: "nowrap",
+  },
   searchCard: {
     background: colors.surface,
     border: `1px solid ${colors.borderSoft}`,
@@ -854,6 +915,12 @@ const styles = {
     padding: spacing.lg,
     boxShadow: shadows.sm,
     display: "grid",
+    gap: spacing.md,
+  },
+  searchCardHeader: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
     gap: spacing.md,
   },
   searchTitle: { margin: 0, fontSize: "20px", fontWeight: 900 },
@@ -896,6 +963,10 @@ const styles = {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
     gap: "10px",
+    padding: "12px",
+    border: `1px solid ${colors.borderSoft}`,
+    borderRadius: radius.md,
+    background: "#f8fafc",
   },
   filterField: { display: "grid", gap: "6px" },
   filterLabel: { color: "#374151", fontSize: "12px", fontWeight: 900, textTransform: "uppercase" },

@@ -65,6 +65,12 @@ class VarianteOut(BaseModel):
     imagen_principal: str | None = None
     talle: str | None = None
     color: str | None = None
+    en_oferta: bool = False
+    oferta_id: int | None = None
+    oferta_nombre: str | None = None
+    precio_oferta: Decimal | None = None
+    oferta_fecha_desde: object | None = None
+    oferta_fecha_hasta: object | None = None
 
 
 class CatalogoImagenCreate(BaseModel):
@@ -128,6 +134,12 @@ class CatalogoPOSItemOut(BaseModel):
     proveedor_preferido_nombre: str | None = None
     talle: str | None = None
     color: str | None = None
+    en_oferta: bool = False
+    oferta_id: int | None = None
+    oferta_nombre: str | None = None
+    precio_oferta: Decimal | None = None
+    oferta_fecha_desde: object | None = None
+    oferta_fecha_hasta: object | None = None
 
 TipoItemCatalogo = Literal["producto", "servicio"]
 RubroProducto = Literal["BICICLETAS", "REPUESTOS", "ACCESORIOS", "INDUMENTARIA", "SERVICIOS"]

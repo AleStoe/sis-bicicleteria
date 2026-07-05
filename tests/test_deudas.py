@@ -425,7 +425,7 @@ def test_pago_deuda_tarjeta_con_monto_base_aplica_recargo_y_caja_operativa(
         if m["origen_tipo"] == "pago" and m["origen_id"] == pago["id"]
     )
     assert ingreso["submedio"] == "tarjeta"
-    assert _to_decimal(ingreso["monto"]) == saldo
+    assert _to_decimal(ingreso["monto"]) == Decimal("32994.00")
 
 
 def test_preview_pago_deuda_con_monto_cobrado_objetivo_calcula_base_cubierta(

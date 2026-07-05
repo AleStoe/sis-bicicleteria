@@ -21,6 +21,13 @@ export default function CatalogoPOSPanel({
   const catalogoVisible = catalogo.filter((producto) => {
     if (producto.tipo_item && producto.tipo_item !== "producto") return false;
     if (!producto.stockeable) return true;
+    if (producto.serializable) {
+      return (
+        Number(producto.serializadas_disponibles || 0) > 0 ||
+        Number(producto.stock_disponible || 0) > 0 ||
+        producto.disponible_para_venta === true
+      );
+    }
     return Number(producto.stock_disponible || 0) > 0;
   });
   return (

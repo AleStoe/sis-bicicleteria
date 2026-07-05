@@ -25,6 +25,12 @@ function mapProductoAItem(producto, tipoPrecio) {
     precio_minorista: Number(producto.precio_minorista || 0),
     precio_mayorista: Number(producto.precio_mayorista || 0),
     precio_lista: getPrecioItemCatalogo(producto, tipoPrecio),
+    en_oferta: tipoPrecio !== "mayorista" && Boolean(producto.en_oferta),
+    oferta_id: tipoPrecio !== "mayorista" ? producto.oferta_id : null,
+    oferta_nombre: tipoPrecio !== "mayorista" ? producto.oferta_nombre : null,
+    precio_catalogo_original: Number(producto.precio_minorista || 0),
+    precio_oferta:
+      tipoPrecio !== "mayorista" ? Number(producto.precio_oferta || 0) : null,
     tipo_precio_aplicado: tipoPrecio,
     cantidad: 1,
     imagen_principal: producto.imagen_principal,

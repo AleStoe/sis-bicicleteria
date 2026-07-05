@@ -3,10 +3,11 @@ from pathlib import Path
 
 from PIL import Image, ImageChops, ImageDraw, ImageFont
 
-from .pdf import _resolver_imagen_local, _text
+from .pdf import _money, _resolver_imagen_local, _text
 from .pdf_etiquetas import (
     _build_opciones_pago,
     _label_title,
+    _precio_minorista_vigente,
     _variant_parts,
 )
 from .brand import (
@@ -22,8 +23,8 @@ from .brand import (
 
 STORY_SIZE = (1080, 1920)
 NAVY = BROWN_HEX
-GREEN = ORANGE_HEX
-GREEN_SOFT = ORANGE_SOFT_HEX
+ORANGE = ORANGE_HEX
+ORANGE_SOFT = ORANGE_SOFT_HEX
 INK = INK_HEX
 MUTED = MUTED_HEX
 BORDER = BORDER_HEX
@@ -168,9 +169,9 @@ def _draw_price_row(draw, label, amount, y, *, badge=""):
         draw.rounded_rectangle(
             (430, y - 4, 430 + badge_width, y + 39),
             radius=18,
-            fill=GREEN_SOFT,
+            fill=ORANGE_SOFT,
         )
-        draw.text((447, y + 2), badge, font=badge_font, fill=GREEN)
+        draw.text((447, y + 2), badge, font=badge_font, fill=ORANGE)
     amount_font, amount_lines = _fit_lines(
         draw,
         amount,
@@ -186,12 +187,37 @@ def _draw_price_row(draw, label, amount, y, *, badge=""):
 def generar_historia_precio_png(data: dict) -> bytes:
     item = data["item"]
     opciones_pago = data.get("opciones_pago") or {}
+    precio_vigente = _precio_minorista_vigente(item)
+    en_oferta = (
+        item.get("en_oferta")
+        and float(precio_vigente) < float(item.get("precio_minorista") or 0)
+    )
     canvas = Image.new("RGB", STORY_SIZE, BACKGROUND)
     draw = ImageDraw.Draw(canvas)
 
-    draw.rectangle((0, 0, STORY_SIZE[0], 26), fill=GREEN)
+    draw.rectangle((0, 0, STORY_SIZE[0], 26), fill=ORANGE)
     draw.text((70, 62), "EMPRENDIMIENTO AGUS", font=_font(36, bold=True), fill=NAVY)
-    draw.text((70, 111), "PRECIO DEL PRODUCTO", font=_font(22, bold=True), fill=GREEN)
+    if en_oferta:
+        draw.rounded_rectangle(
+            (70, 108, 470, 162),
+            radius=16,
+            fill=ORANGE,
+        )
+        draw.text(
+            (96, 118),
+            "OFERTA ESPECIAL",
+            font=_font(29, bold=True),
+            fill="white",
+        )
+        title_y = 184
+    else:
+        draw.text(
+            (70, 111),
+            "PRECIO DEL PRODUCTO",
+            font=_font(22, bold=True),
+            fill=ORANGE,
+        )
+        title_y = 155
 
     title = _text(_label_title(item)).upper()
     title_font, title_lines = _fit_lines(
@@ -205,7 +231,7 @@ def generar_historia_precio_png(data: dict) -> bytes:
     title_bottom = _draw_lines(
         draw,
         title_lines,
-        (70, 155),
+        (70, title_y),
         title_font,
         NAVY,
         int(title_font.size * 1.08),
@@ -237,7 +263,7 @@ def generar_historia_precio_png(data: dict) -> bytes:
     image_path = _resolver_imagen_local(item.get("imagen_principal"))
     _draw_product(draw, canvas, image_path, (60, image_top, 1020, image_bottom))
 
-    lineas = _build_opciones_pago(item.get("precio_minorista"), opciones_pago)
+    lineas = _build_opciones_pago(precio_vigente, opciones_pago)
     lista = next((linea for linea in lineas if linea["tipo"] == "lista"), None)
     efectivo = next((linea for linea in lineas if linea["tipo"] == "efectivo"), None)
     tarjetas = [linea for linea in lineas if linea["tipo"] == "tarjeta"]
@@ -250,7 +276,12 @@ def generar_historia_precio_png(data: dict) -> bytes:
         outline=BORDER,
         width=2,
     )
-    draw.text((92, panel_top + 28), "PRECIO DE LISTA", font=_font(25, bold=True), fill=MUTED)
+    draw.text(
+        (92, panel_top + 28),
+        "PRECIO OFERTA" if en_oferta else "PRECIO DE LISTA",
+        font=_font(25, bold=True),
+        fill=ORANGE if en_oferta else MUTED,
+    )
     lista_amount = lista["monto"] if lista else "$ 0"
     lista_font, lista_lines = _fit_lines(
         draw,
@@ -261,10 +292,50 @@ def generar_historia_precio_png(data: dict) -> bytes:
         min_size=52,
     )
     draw.text((92, panel_top + 72), lista_lines[0], font=lista_font, fill=NAVY)
+    if en_oferta:
+        antes_text = f"ANTES {_money(item.get('precio_minorista'))}"
+        antes_font, antes_lines = _fit_lines(
+            draw,
+            antes_text,
+            max_width=385,
+            max_lines=1,
+            start_size=38,
+            min_size=28,
+        )
+        antes_text = antes_lines[0]
+        antes_width = _text_width(draw, antes_text, antes_font)
+        antes_center_x = 785
+        antes_x = antes_center_x - antes_width / 2
+        antes_y = panel_top + 29
+        draw.rounded_rectangle(
+            (575, panel_top + 17, 995, panel_top + 72),
+            radius=15,
+            fill=ORANGE_SOFT,
+        )
+        draw.text(
+            (antes_x, antes_y),
+            antes_text,
+            font=antes_font,
+            fill=MUTED,
+        )
+        draw.line(
+            (
+                antes_x - 3,
+                antes_y + 22,
+                antes_x + antes_width + 3,
+                antes_y + 22,
+            ),
+            fill=ORANGE,
+            width=4,
+        )
 
     next_top = 1375
     if efectivo:
-        draw.rounded_rectangle((60, next_top, 1020, 1585), radius=28, fill=GREEN)
+        draw.rounded_rectangle(
+            (60, next_top, 1020, 1585),
+            radius=28,
+            fill=ORANGE,
+        )
         draw.text(
             (92, next_top + 28),
             "EFECTIVO / TRANSFERENCIA",

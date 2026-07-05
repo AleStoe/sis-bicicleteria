@@ -98,6 +98,26 @@ def get_cotizacion_by_id(conn, cotizacion_id: int):
         return cur.fetchone()
 
 
+def get_cotizacion_by_id_for_update(conn, cotizacion_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT
+                c.*,
+                (
+                    SELECT COUNT(*)::int
+                    FROM cotizacion_items ci
+                    WHERE ci.id_cotizacion = c.id
+                ) AS items_count
+            FROM cotizaciones c
+            WHERE c.id = %s
+            FOR UPDATE
+            """,
+            (cotizacion_id,),
+        )
+        return cur.fetchone()
+
+
 def get_cotizacion_items(conn, cotizacion_id: int):
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
@@ -108,6 +128,63 @@ def get_cotizacion_items(conn, cotizacion_id: int):
             ORDER BY orden ASC, id ASC
             """,
             (cotizacion_id,),
+        )
+        return cur.fetchall()
+
+
+def get_cotizacion_items_disponibilidad(conn, cotizacion_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT
+                ci.*,
+                COALESCE(p.stockeable, FALSE) AS stockeable,
+                COALESCE(p.serializable, FALSE) AS serializable,
+                COALESCE(
+                    ss.stock_fisico
+                    - ss.stock_reservado
+                    - ss.stock_vendido_pendiente_entrega,
+                    0
+                ) AS stock_disponible,
+                COALESCE((
+                    SELECT COUNT(*)::numeric
+                    FROM bicicletas_serializadas bs
+                    WHERE bs.id_variante = ci.id_variante
+                      AND bs.id_sucursal_actual = c.id_sucursal
+                      AND bs.estado = 'disponible'
+                ), 0) AS serializadas_disponibles_count
+            FROM cotizacion_items ci
+            INNER JOIN cotizaciones c ON c.id = ci.id_cotizacion
+            LEFT JOIN variantes v ON v.id = ci.id_variante
+            LEFT JOIN productos p ON p.id = v.id_producto
+            LEFT JOIN stock_sucursal ss
+                ON ss.id_variante = ci.id_variante
+               AND ss.id_sucursal = c.id_sucursal
+            WHERE ci.id_cotizacion = %s
+            ORDER BY ci.orden, ci.id
+            """,
+            (cotizacion_id,),
+        )
+        return cur.fetchall()
+
+
+def get_serializadas_disponibles_cotizacion(
+    conn,
+    *,
+    variante_id: int,
+    sucursal_id: int,
+):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT id, numero_cuadro
+            FROM bicicletas_serializadas
+            WHERE id_variante = %s
+              AND id_sucursal_actual = %s
+              AND estado = 'disponible'
+            ORDER BY id
+            """,
+            (variante_id, sucursal_id),
         )
         return cur.fetchall()
 
@@ -147,6 +224,28 @@ def insert_cotizacion_item(conn, data: dict):
             RETURNING *
             """,
             data,
+        )
+        return cur.fetchone()
+
+
+def update_cotizacion_item_cantidad(
+    conn,
+    cotizacion_id: int,
+    item_id: int,
+    cantidad,
+):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            UPDATE cotizacion_items
+            SET cantidad = %s,
+                subtotal = (%s * precio_unitario) - descuento_monto,
+                updated_at = NOW()
+            WHERE id = %s
+              AND id_cotizacion = %s
+            RETURNING *
+            """,
+            (cantidad, cantidad, item_id, cotizacion_id),
         )
         return cur.fetchone()
 
@@ -201,6 +300,30 @@ def cambiar_estado_cotizacion(conn, cotizacion_id: int, estado: str, id_usuario:
             RETURNING *
             """,
             (estado, id_usuario, cotizacion_id),
+        )
+        return cur.fetchone()
+
+
+def marcar_cotizacion_convertida(
+    conn,
+    *,
+    cotizacion_id: int,
+    venta_id: int,
+    id_usuario: int,
+):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            UPDATE cotizaciones
+            SET estado = 'convertida',
+                id_venta_convertida = %s,
+                fecha_convertida = NOW(),
+                id_usuario_actualiza = %s,
+                updated_at = NOW()
+            WHERE id = %s
+            RETURNING *
+            """,
+            (venta_id, id_usuario, cotizacion_id),
         )
         return cur.fetchone()
 

@@ -438,6 +438,10 @@ def generar_comprobante_x_pdf(data: dict) -> bytes:
 
     for item in items:
         descripcion = collapse_repeated_words(item.get("descripcion_snapshot"))
+        if item.get("numero_cuadro"):
+            descripcion = (
+                f"{descripcion} - N° CUADRO {_text(item.get('numero_cuadro'))}"
+            )
         description_lines = wrap_text(
             descripcion,
             description_width,
@@ -445,6 +449,20 @@ def generar_comprobante_x_pdf(data: dict) -> bytes:
             8,
         )
         bonification_lines = []
+        offer_lines = []
+        if item.get("id_oferta"):
+            precio_anterior = _decimal(item.get("precio_catalogo_original"))
+            precio_oferta = _precio_unitario_visible(item)
+            texto_oferta = (
+                f"Oferta: {_text(item.get('oferta_nombre_snapshot') or 'precio promocional')} "
+                f"- Antes {_money(precio_anterior)} - Ahora {_money(precio_oferta)}"
+            )
+            offer_lines = wrap_text(
+                texto_oferta,
+                description_width,
+                "Helvetica",
+                6.5,
+            )
         if item.get("bonificado") and item.get("motivo_bonificacion"):
             bonification_lines = wrap_text(
                 "Bonificacion: "
@@ -456,6 +474,7 @@ def generar_comprobante_x_pdf(data: dict) -> bytes:
 
         text_height = (
             len(description_lines) * description_leading
+            + len(offer_lines) * 3.7 * mm
             + len(bonification_lines) * 3.7 * mm
         )
         row_h = max(20 * mm, 4 * mm + text_height + 4 * mm)
@@ -513,6 +532,13 @@ def generar_comprobante_x_pdf(data: dict) -> bytes:
             text_y -= description_leading
 
         c.setFont("Helvetica", 6.5)
+        if offer_lines:
+            c.setFillColorRGB(0.82, 0.24, 0.02)
+        for line in offer_lines:
+            c.drawString(description_x, text_y, line)
+            text_y -= 3.7 * mm
+
+        c.setFillColorRGB(0, 0, 0)
         for line in bonification_lines:
             c.drawString(description_x, text_y, line)
             text_y -= 3.7 * mm

@@ -21,6 +21,7 @@ import { formatMoney, formatNumber } from "../utils/formatters";
 import { Button, EmptyState, PageHeader } from "../components/ui";
 import { ArrowLeft, PackageSearch, RefreshCw } from "lucide-react";
 import { colors, controls, radius, shadows, spacing, typography } from "../theme";
+import { esVarianteUnica } from "../utils/productPresentation";
 
 const ID_SUCURSAL_DEFAULT = 1;
 const TAB_OPERATIVO = "operativo";
@@ -303,9 +304,13 @@ export default function CatalogoProductoDetallePage() {
 
       const archivo = imagenForm[variante.id];
       if (archivo) {
+        const destinoImagen = esVarianteUnica(form.nombre_variante)
+          ? { id_producto: producto.id }
+          : { id_variante: variante.id };
+
         await subirImagenCatalogo({
           archivo,
-          id_variante: variante.id,
+          ...destinoImagen,
           es_principal: true,
           orden: 0,
         });
@@ -315,6 +320,34 @@ export default function CatalogoProductoDetallePage() {
       await cargar();
     } catch (err) {
       setError(err.message || "No se pudo actualizar la variante");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  async function guardarProveedorVariante(variante) {
+    const form = variantesForm[variante.id] || {};
+
+    try {
+      setGuardando(true);
+      setError("");
+      setMensaje("");
+
+      await editarVariante(variante.id, {
+        proveedor_preferido_id: form.proveedor_preferido_id
+          ? Number(form.proveedor_preferido_id)
+          : null,
+        codigo_proveedor: form.codigo_proveedor || null,
+      });
+
+      setMensaje(
+        variantes.length === 1
+          ? "Proveedor del producto actualizado."
+          : `Proveedor de ${variante.nombre_variante || "la variante"} actualizado.`
+      );
+      await cargar();
+    } catch (err) {
+      setError(err.message || "No se pudo actualizar el proveedor");
     } finally {
       setGuardando(false);
     }
@@ -531,6 +564,82 @@ export default function CatalogoProductoDetallePage() {
             </div>
           </form>
 
+          {variantes.length > 0 && (
+            <div style={styles.providerManager}>
+              <div>
+                <h3 style={styles.imageManagerTitle}>Proveedor de compra</h3>
+                <p style={styles.muted}>
+                  Corregí acá el proveedor preferido y el código que figura en su lista.
+                </p>
+              </div>
+
+              <div style={styles.providerList}>
+                {variantes.map((variante) => (
+                  <div
+                    key={variante.id}
+                    style={{
+                      ...styles.providerRow,
+                      ...(isMobile ? styles.providerRowMobile : {}),
+                    }}
+                  >
+                    <div style={styles.providerVariant}>
+                      <span style={styles.previewLabel}>
+                        {variantes.length === 1 ? "Producto" : "Variante"}
+                      </span>
+                      <strong>
+                        {variantes.length === 1
+                          ? producto.nombre
+                          : variante.nombre_variante || `Variante #${variante.id}`}
+                      </strong>
+                    </div>
+
+                    <label style={styles.field}>
+                      <span>Proveedor preferido</span>
+                      <select
+                        style={styles.input}
+                        value={variantesForm[variante.id]?.proveedor_preferido_id || ""}
+                        onChange={(e) =>
+                          setVarianteCampo(
+                            variante.id,
+                            "proveedor_preferido_id",
+                            e.target.value
+                          )
+                        }
+                      >
+                        <option value="">Sin proveedor</option>
+                        {proveedores.map((proveedor) => (
+                          <option key={proveedor.id} value={proveedor.id}>
+                            {proveedor.nombre}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label style={styles.field}>
+                      <span>Código proveedor</span>
+                      <input
+                        style={styles.input}
+                        value={variantesForm[variante.id]?.codigo_proveedor || ""}
+                        onChange={(e) =>
+                          setVarianteCampo(variante.id, "codigo_proveedor", e.target.value)
+                        }
+                      />
+                    </label>
+
+                    <button
+                      type="button"
+                      disabled={guardando}
+                      onClick={() => guardarProveedorVariante(variante)}
+                      style={styles.primaryButton}
+                    >
+                      {guardando ? "Guardando..." : "Guardar proveedor"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div style={styles.imageManager}>
             <div>
               <h3 style={styles.imageManagerTitle}>Imagen principal</h3>
@@ -653,14 +762,6 @@ export default function CatalogoProductoDetallePage() {
                           <span>Nombre variante</span>
                           <input style={styles.input} value={variantesForm[variante.id]?.nombre_variante || ""} onChange={(e) => setVarianteCampo(variante.id, "nombre_variante", e.target.value)} />
                         </label>
-                        <label style={styles.field}>
-                          <span>Proveedor preferido</span>
-                          <select style={styles.input} value={variantesForm[variante.id]?.proveedor_preferido_id || ""} onChange={(e) => setVarianteCampo(variante.id, "proveedor_preferido_id", e.target.value)}>
-                            <option value="">Sin proveedor</option>
-                            {proveedores.map((proveedor) => <option key={proveedor.id} value={proveedor.id}>#{proveedor.id} - {proveedor.nombre}</option>)}
-                          </select>
-                        </label>
-                        <label style={styles.field}><span>Código proveedor</span><input style={styles.input} value={variantesForm[variante.id]?.codigo_proveedor || ""} onChange={(e) => setVarianteCampo(variante.id, "codigo_proveedor", e.target.value)} /></label>
                         <label style={styles.field}><span>Talle</span><input style={styles.input} value={variantesForm[variante.id]?.talle || ""} onChange={(e) => setVarianteCampo(variante.id, "talle", e.target.value)} /></label>
                         <label style={styles.field}><span>Color / presentación</span><input style={styles.input} value={variantesForm[variante.id]?.color || ""} onChange={(e) => setVarianteCampo(variante.id, "color", e.target.value)} /></label>
                         <label style={styles.field}><span>Precio minorista</span><input style={styles.input} type="number" value={variantesForm[variante.id]?.precio_minorista || ""} onChange={(e) => setVarianteCampo(variante.id, "precio_minorista", e.target.value)} /></label>
@@ -985,6 +1086,38 @@ const styles = {
     borderRadius: 14,
     padding: 12,
     fontWeight: 900,
+  },
+  providerManager: {
+    border: "1px solid #fed7aa",
+    borderRadius: 16,
+    background: "#fffaf5",
+    padding: 14,
+    marginBottom: 14,
+    display: "grid",
+    gap: 12,
+  },
+  providerList: {
+    display: "grid",
+    gap: 10,
+  },
+  providerRow: {
+    display: "grid",
+    gridTemplateColumns: "minmax(180px, 1.1fr) minmax(210px, 1fr) minmax(170px, 0.8fr) auto",
+    gap: 10,
+    alignItems: "end",
+    border: "1px solid #ffedd5",
+    borderRadius: 14,
+    background: "white",
+    padding: 12,
+  },
+  providerRowMobile: {
+    gridTemplateColumns: "1fr",
+  },
+  providerVariant: {
+    minWidth: 0,
+    display: "grid",
+    gap: 5,
+    alignSelf: "center",
   },
   imageManager: {
     border: "1px solid #dbeafe",

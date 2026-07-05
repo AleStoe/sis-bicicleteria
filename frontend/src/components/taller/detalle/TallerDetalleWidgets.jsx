@@ -2,6 +2,7 @@ import { useState } from "react";
 import ProductImage from "../../catalogo/ProductImage";
 import ServicePlaceholder from "../../servicios/ServicePlaceholder";
 import { formatMoney, formatNumber } from "../../../utils/formatters";
+import { esVarianteUnica } from "../../../utils/productPresentation";
 import { styles } from "./tallerDetalleStyles";
 import {
   getPasoOperativo,
@@ -271,7 +272,9 @@ export function TallerItemOption({ item, selected, onSelect, onDoubleAdd }) {
           <strong>{item.producto_nombre}</strong>
           <span style={tipo === "Servicio" ? styles.serviceBadge : styles.partBadge}>{tipo}</span>
         </div>
-        <p>{item.nombre_variante || "Única"}</p>
+        {!esVarianteUnica(item.nombre_variante) && item.nombre_variante && (
+          <p>{item.nombre_variante}</p>
+        )}
         <div style={styles.optionMeta}>
           {item.codigo_proveedor && <span>Prov: {item.codigo_proveedor}</span>}
           {item.sku && <span>SKU: {item.sku}</span>}

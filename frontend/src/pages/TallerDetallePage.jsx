@@ -20,6 +20,7 @@ import {
   actualizarNotaOrdenTaller,
 } from "../services/tallerService";
 import { formatDate, formatMoney } from "../utils/formatters";
+import { esVarianteUnica } from "../utils/productPresentation";
 import { EstadoBadge } from "./TallerListPage";
 import { PromptModal } from "../components/ui/PromptModal";
 import { Button, EmptyState, PageHeader } from "../components/ui";
@@ -558,12 +559,20 @@ export default function TallerDetallePage() {
       setMensaje("");
 
       const cobertura = Number(itemForm.valor_cobertura_unitario || 0);
+      const precioUnitario = Number(itemForm.precio_unitario || 0);
+
+      if (esServicio && precioUnitario <= 0) {
+        setError(
+          "El servicio necesita un precio de referencia mayor a cero. Para dejarlo sin cargo, usá “Bonificar servicio”.",
+        );
+        return;
+      }
+
       if (
-        !esServicio &&
         itemForm.cubrir_garantia &&
-        cobertura > Number(itemForm.precio_unitario || 0)
+        cobertura > precioUnitario
       ) {
-        setError("La cobertura no puede superar el precio del repuesto.");
+        setError("La cobertura no puede superar el precio del ítem.");
         return;
       }
 
@@ -572,7 +581,15 @@ export default function TallerDetallePage() {
             tipo_item: "servicio",
             id_servicio_taller: Number(itemForm.id_servicio_taller),
             cantidad: Number(itemForm.cantidad),
-            precio_unitario: Number(itemForm.precio_unitario || 0),
+            precio_unitario: precioUnitario,
+            valor_cobertura_unitario:
+              itemForm.cubrir_garantia ? precioUnitario : 0,
+            motivo_cobertura:
+              itemForm.cubrir_garantia ? itemForm.motivo_cobertura : null,
+            observacion_cobertura:
+              itemForm.cubrir_garantia
+                ? itemForm.observacion_cobertura.trim() || null
+                : null,
             id_usuario: usuarioId,
           }
         : {
@@ -1298,7 +1315,13 @@ export default function TallerDetallePage() {
                   <div>
                     <span style={styles.label}>Seleccionado</span>
                     <strong>{itemForm.tipo_item === "servicio" ? itemSeleccionado.nombre : itemSeleccionado.producto_nombre}</strong>
-                    <p>{itemForm.tipo_item === "servicio" ? itemSeleccionado.descripcion || "Servicio de taller" : itemSeleccionado.nombre_variante || "Única"}</p>
+                    {itemForm.tipo_item === "servicio" ? (
+                      <p>{itemSeleccionado.descripcion || "Servicio de taller"}</p>
+                    ) : (
+                      !esVarianteUnica(itemSeleccionado.nombre_variante) && (
+                        <p>{itemSeleccionado.nombre_variante}</p>
+                      )
+                    )}
                   </div>
                   <button
                     type="button"
@@ -1313,6 +1336,81 @@ export default function TallerDetallePage() {
               {esOrdenPostventa && itemForm.tipo_item === "servicio" ? (
                 <div style={styles.coverageInfo}>
                   La mano de obra de este service se cubrirá automáticamente al 100%.
+                </div>
+              ) : null}
+
+              {!esOrdenPostventa && itemForm.tipo_item === "servicio" ? (
+                <div style={styles.coveragePanel}>
+                  <label style={styles.coverageToggle}>
+                    <input
+                      type="checkbox"
+                      checked={itemForm.cubrir_garantia}
+                      onChange={(e) =>
+                        setItemForm((actual) => ({
+                          ...actual,
+                          cubrir_garantia: e.target.checked,
+                          valor_cobertura_unitario: e.target.checked
+                            ? actual.precio_unitario
+                            : "",
+                          motivo_cobertura: e.target.checked
+                            ? "Atención comercial"
+                            : actual.motivo_cobertura,
+                        }))
+                      }
+                    />
+                    Bonificar servicio
+                  </label>
+
+                  {itemForm.cubrir_garantia ? (
+                    <>
+                      <div style={styles.coverageFields}>
+                        <label style={styles.field}>
+                          <span style={styles.label}>Motivo</span>
+                          <select
+                            value={itemForm.motivo_cobertura}
+                            onChange={(e) =>
+                              setItemForm((actual) => ({
+                                ...actual,
+                                motivo_cobertura: e.target.value,
+                              }))
+                            }
+                            style={styles.input}
+                          >
+                            <option>Atención comercial</option>
+                            <option>Garantía local</option>
+                            <option>Garantía fábrica</option>
+                            <option>Service postventa</option>
+                            <option>Otro</option>
+                          </select>
+                        </label>
+                        <label style={styles.field}>
+                          <span style={styles.label}>Observación opcional</span>
+                          <input
+                            value={itemForm.observacion_cobertura}
+                            onChange={(e) =>
+                              setItemForm((actual) => ({
+                                ...actual,
+                                observacion_cobertura: e.target.value,
+                              }))
+                            }
+                            placeholder="Ej: mano de obra sin cargo"
+                            style={styles.input}
+                          />
+                        </label>
+                      </div>
+                      <div style={styles.coverageResult}>
+                        <span>
+                          Precio de referencia:{" "}
+                          {formatMoney(itemForm.precio_unitario || 0)}
+                        </span>
+                        <span>
+                          Bonificación: -
+                          {formatMoney(itemForm.precio_unitario || 0)}
+                        </span>
+                        <strong>Cliente paga: {formatMoney(0)}</strong>
+                      </div>
+                    </>
+                  ) : null}
                 </div>
               ) : null}
 
@@ -1434,7 +1532,7 @@ export default function TallerDetallePage() {
                   <span style={styles.label}>Precio unitario</span>
                   <input
                     type="number"
-                    min="0"
+                    min={itemForm.tipo_item === "servicio" ? "0.01" : "0"}
                     step="0.01"
                     value={itemForm.precio_unitario}
                     disabled={itemForm.tipo_item === "servicio" && !itemForm.id_servicio_taller}
@@ -1442,6 +1540,10 @@ export default function TallerDetallePage() {
                       setItemForm((p) => ({
                         ...p,
                         precio_unitario: e.target.value,
+                        valor_cobertura_unitario:
+                          p.tipo_item === "servicio" && p.cubrir_garantia
+                            ? e.target.value
+                            : p.valor_cobertura_unitario,
                       }))
                     }
                     style={styles.input}

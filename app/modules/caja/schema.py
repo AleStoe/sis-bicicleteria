@@ -143,6 +143,9 @@ class CajaResumenDiarioCajaOutput(BaseModel):
 class CajaResumenDiarioPagosOutput(BaseModel):
     cantidad_pagos: int = 0
     total_cobrado: Decimal = Decimal("0")
+    total_bruto_cobrado: Decimal = Decimal("0")
+    costos_financieros: Decimal = Decimal("0")
+    total_neto_esperado: Decimal = Decimal("0")
     base_aplicada: Decimal = Decimal("0")
     descuentos_aplicados: Decimal = Decimal("0")
     recargos_aplicados: Decimal = Decimal("0")
@@ -159,6 +162,10 @@ class CajaResumenDiarioRentabilidadOutput(BaseModel):
     ventas_items_total: Decimal = Decimal("0")
     costo_mercaderia_vendida: Decimal | None = None
     margen_bruto: Decimal | None = None
+    financiacion_cobrada: Decimal = Decimal("0")
+    costos_financieros: Decimal = Decimal("0")
+    resultado_financiero: Decimal = Decimal("0")
+    margen_real: Decimal | None = None
     gastos_operativos: Decimal = Decimal("0")
     ganancia_dia: Decimal | None = None
 

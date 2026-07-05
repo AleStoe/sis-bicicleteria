@@ -6,6 +6,7 @@ import {
 } from "../services/alertasOperativasService";
 import { formatMoney } from "../utils/formatters";
 import { useSession } from "../context/SessionContext";
+import { formatProductoVariante } from "../utils/productPresentation";
 
 const ALERTA_KEYS = [
   "ventas_cobradas_no_entregadas",
@@ -220,7 +221,12 @@ export default function AlertasOperativasPage() {
               title="Stock critico"
               items={data.stock_critico}
               to={() => "/stock?estado_stock=stock_bajo"}
-              render={(item) => `${item.producto_nombre || "Producto"} ${item.nombre_variante || ""} · disp. ${item.stock_disponible}`}
+              render={(item) =>
+                `${formatProductoVariante(
+                  item.producto_nombre || "Producto",
+                  item.nombre_variante
+                )} · disp. ${item.stock_disponible}`
+              }
             />
             <AlertaCard
               title="Productos incompletos"

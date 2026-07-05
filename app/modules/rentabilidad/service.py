@@ -6,14 +6,15 @@ from fastapi import HTTPException
 from psycopg import errors
 
 from app.db.connection import get_connection
-
 from .repository import (
     distribuir_monto,
     get_cierre_by_id,
     get_cierre_by_periodo,
     get_cierre_distribuciones,
     get_cierres,
+    get_detalle_rentabilidad_diaria,
     get_gastos_periodo,
+    get_bonificaciones_garantias,
     get_participante_by_id,
     get_regla_activa,
     get_regla_by_id,
@@ -130,12 +131,26 @@ def calcular_rentabilidad_mensual(periodo_mes: date, id_sucursal: int | None = N
         ventas_brutas = Decimal(str(ventas["ventas_brutas"] or 0))
         devoluciones_total = Decimal(str(ventas["devoluciones_total"] or 0))
         ventas_netas = Decimal(str(ventas["ventas_netas"] or 0))
+        financiacion_excluida = Decimal(
+            str(ventas["financiacion_total"] or 0)
+        )
+        financiacion_cobrada = Decimal(
+            str(ventas["financiacion_cobrada"] or 0)
+        )
+        costos_financieros = Decimal(
+            str(ventas["costos_financieros"] or 0)
+        )
+        ingreso_real_neto = Decimal(
+            str(ventas["ingreso_real_neto"] or 0)
+        )
+        resultado_financiero = financiacion_cobrada - costos_financieros
         cmv_bruto = Decimal(str(ventas["cmv_bruto"] or 0))
         cmv_devoluciones = Decimal(str(ventas["cmv_devoluciones"] or 0))
         cmv_neto = Decimal(str(ventas["cmv_neto"] or 0))
         gastos_operativos = Decimal(str(gastos or 0))
         margen_bruto = ventas_netas - cmv_neto
-        resultado_distribuible = margen_bruto - gastos_operativos
+        margen_real = margen_bruto + resultado_financiero
+        resultado_distribuible = margen_real - gastos_operativos
 
         regla, items = _obtener_regla_para_calculo(conn, id_regla_distribucion)
         distribuciones = distribuir_monto(resultado_distribuible, items) if regla else []
@@ -148,14 +163,244 @@ def calcular_rentabilidad_mensual(periodo_mes: date, id_sucursal: int | None = N
             "ventas_brutas": ventas_brutas,
             "devoluciones_total": devoluciones_total,
             "ventas_netas": ventas_netas,
+            "financiacion_excluida": financiacion_excluida,
+            "financiacion_cobrada": financiacion_cobrada,
+            "costos_financieros": costos_financieros,
+            "ingreso_real_neto": ingreso_real_neto,
+            "resultado_financiero": resultado_financiero,
             "cmv_bruto": cmv_bruto,
             "cmv_devoluciones": cmv_devoluciones,
             "cmv_neto": cmv_neto,
             "margen_bruto": margen_bruto,
+            "margen_real": margen_real,
             "gastos_operativos": gastos_operativos,
             "resultado_distribuible": resultado_distribuible,
             "regla_distribucion": _armar_regla(regla, items) if regla else None,
             "distribuciones_sugeridas": distribuciones,
+        }
+    finally:
+        conn.close()
+
+
+def calcular_bonificaciones_garantias(
+    periodo_mes: date,
+    id_sucursal: int | None = None,
+):
+    fecha_desde, fecha_hasta = _periodo_bounds(periodo_mes)
+    conn = get_connection()
+    try:
+        items = get_bonificaciones_garantias(
+            conn,
+            fecha_desde,
+            fecha_hasta,
+            id_sucursal=id_sucursal,
+        )
+
+        def sumar(campo):
+            return sum(
+                (Decimal(str(item[campo] or 0)) for item in items),
+                Decimal("0"),
+            )
+
+        return {
+            "periodo_mes": fecha_desde,
+            "fecha_desde": fecha_desde,
+            "fecha_hasta": fecha_hasta,
+            "id_sucursal": id_sucursal,
+            "cantidad_operaciones": len({item["id_venta"] for item in items}),
+            "cantidad_items": len(items),
+            "cantidad_productos": sum(
+                1 for item in items if item["tipo_item"] == "producto"
+            ),
+            "cantidad_servicios": sum(
+                1 for item in items if item["tipo_item"] == "servicio_taller"
+            ),
+            "valor_lista": sumar("valor_lista"),
+            "valor_bonificado": sumar("valor_bonificado"),
+            "importe_post_bonificacion": sumar("importe_post_bonificacion"),
+            "costo_capital": sumar("costo_capital"),
+            "ingreso_neto_asignado": sumar("ingreso_neto_asignado"),
+            "resultado_economico": sumar("resultado_economico"),
+            "items": items,
+        }
+    finally:
+        conn.close()
+
+
+def calcular_rentabilidad_diaria(
+    fecha: date,
+    id_sucursal: int | None = None,
+):
+    conn = get_connection()
+    try:
+        detalles = get_detalle_rentabilidad_diaria(
+            conn,
+            fecha,
+            id_sucursal=id_sucursal,
+        )
+
+        grupos = {}
+        for detalle in detalles:
+            clave_id = (
+                detalle["id_variante"]
+                or detalle["id_servicio_taller"]
+                or detalle["descripcion_snapshot"]
+            )
+            clave = (detalle["tipo_item"], clave_id)
+            if clave not in grupos:
+                grupos[clave] = {
+                    "tipo_item": detalle["tipo_item"],
+                    "id_variante": detalle["id_variante"],
+                    "id_servicio_taller": detalle["id_servicio_taller"],
+                    "producto": detalle["producto"],
+                    "variante": detalle["variante"],
+                    "cantidad_vendida": Decimal("0"),
+                    "cantidad_ventas": 0,
+                    "valor_lista": Decimal("0"),
+                    "bonificacion_total": Decimal("0"),
+                    "descuento_comercial": Decimal("0"),
+                    "financiacion_excluida": Decimal("0"),
+                    "financiacion_cobrada": Decimal("0"),
+                    "costo_financiero": Decimal("0"),
+                    "ingreso_real_neto": Decimal("0"),
+                    "devoluciones_total": Decimal("0"),
+                    "venta_total": Decimal("0"),
+                    "costo_total": Decimal("0"),
+                    "margen_bruto": Decimal("0"),
+                    "margen_real": Decimal("0"),
+                    "_ventas": set(),
+                    "detalles": [],
+                }
+
+            grupo = grupos[clave]
+            grupo["cantidad_vendida"] += Decimal(
+                str(detalle["cantidad_neta"] or 0)
+            )
+            grupo["valor_lista"] += (
+                Decimal(str(detalle["precio_lista"] or 0))
+                * Decimal(str(detalle["cantidad_neta"] or 0))
+            )
+            grupo["bonificacion_total"] += Decimal(
+                str(detalle["bonificacion_total"] or 0)
+            )
+            grupo["descuento_comercial"] += Decimal(
+                str(detalle["descuento_comercial_asignado"] or 0)
+            )
+            grupo["financiacion_excluida"] += Decimal(
+                str(detalle["financiacion_excluida"] or 0)
+            )
+            grupo["financiacion_cobrada"] += Decimal(
+                str(detalle["financiacion_cobrada"] or 0)
+            )
+            grupo["costo_financiero"] += Decimal(
+                str(detalle["costo_financiero"] or 0)
+            )
+            grupo["ingreso_real_neto"] += Decimal(
+                str(detalle["ingreso_real_neto"] or 0)
+            )
+            grupo["devoluciones_total"] += Decimal(
+                str(detalle["devolucion_comercial"] or 0)
+            )
+            grupo["venta_total"] += Decimal(
+                str(detalle["ingreso_comercial"] or 0)
+            )
+            grupo["costo_total"] += Decimal(
+                str(detalle["costo_total"] or 0)
+            )
+            grupo["margen_bruto"] += Decimal(
+                str(detalle["margen_bruto"] or 0)
+            )
+            grupo["margen_real"] += Decimal(
+                str(detalle["margen_real"] or 0)
+            )
+            grupo["_ventas"].add(detalle["id_venta"])
+            grupo["detalles"].append(detalle)
+
+        salida_articulos = []
+        for grupo in grupos.values():
+            grupo["cantidad_ventas"] = len(grupo.pop("_ventas"))
+            venta_total = grupo["venta_total"]
+            grupo["margen_porcentaje"] = (
+                grupo["margen_real"] / venta_total * Decimal("100")
+                if venta_total > 0
+                else Decimal("0")
+            )
+            salida_articulos.append(grupo)
+
+        salida_articulos.sort(
+            key=lambda articulo: articulo["venta_total"],
+            reverse=True,
+        )
+
+        ventas_netas = sum(
+            (Decimal(str(item["ingreso_comercial"] or 0)) for item in detalles),
+            Decimal("0"),
+        )
+        financiacion_excluida = sum(
+            (
+                Decimal(str(item["financiacion_excluida"] or 0))
+                for item in detalles
+            ),
+            Decimal("0"),
+        )
+        financiacion_cobrada = sum(
+            (
+                Decimal(str(item["financiacion_cobrada"] or 0))
+                for item in detalles
+            ),
+            Decimal("0"),
+        )
+        costos_financieros = sum(
+            (
+                Decimal(str(item["costo_financiero"] or 0))
+                for item in detalles
+            ),
+            Decimal("0"),
+        )
+        ingreso_real_neto = sum(
+            (
+                Decimal(str(item["ingreso_real_neto"] or 0))
+                for item in detalles
+            ),
+            Decimal("0"),
+        )
+        devoluciones_total = sum(
+            (
+                Decimal(str(item["devolucion_comercial"] or 0))
+                for item in detalles
+            ),
+            Decimal("0"),
+        )
+        cmv = sum(
+            (Decimal(str(item["costo_total"] or 0)) for item in detalles),
+            Decimal("0"),
+        )
+        margen_bruto = ventas_netas - cmv
+        resultado_financiero = financiacion_cobrada - costos_financieros
+        margen_real = margen_bruto + resultado_financiero
+
+        return {
+            "fecha": fecha,
+            "id_sucursal": id_sucursal,
+            "cantidad_ventas": len(
+                {detalle["id_venta"] for detalle in detalles}
+            ),
+            "ventas_netas": ventas_netas,
+            "financiacion_excluida": financiacion_excluida,
+            "financiacion_cobrada": financiacion_cobrada,
+            "costos_financieros": costos_financieros,
+            "ingreso_real_neto": ingreso_real_neto,
+            "resultado_financiero": resultado_financiero,
+            "devoluciones_total": devoluciones_total,
+            "cmv": cmv,
+            "margen_bruto": margen_bruto,
+            "margen_real": margen_real,
+            "margen_porcentaje": (
+                margen_real / ventas_netas * Decimal("100")
+                if ventas_netas > 0
+                else Decimal("0")
+            ),
+            "articulos": salida_articulos,
         }
     finally:
         conn.close()
@@ -182,9 +427,19 @@ def crear_cierre_rentabilidad(data):
             cmv_bruto = Decimal(str(ventas["cmv_bruto"] or 0))
             cmv_devoluciones = Decimal(str(ventas["cmv_devoluciones"] or 0))
             cmv_neto = Decimal(str(ventas["cmv_neto"] or 0))
+            financiacion_cobrada = Decimal(
+                str(ventas["financiacion_cobrada"] or 0)
+            )
+            costos_financieros = Decimal(
+                str(ventas["costos_financieros"] or 0)
+            )
+            resultado_financiero = (
+                financiacion_cobrada - costos_financieros
+            )
             gastos_operativos = Decimal(str(gastos or 0))
             margen_bruto = ventas_netas - cmv_neto
-            resultado_distribuible = margen_bruto - gastos_operativos
+            margen_real = margen_bruto + resultado_financiero
+            resultado_distribuible = margen_real - gastos_operativos
 
             regla, items = _obtener_regla_para_calculo(conn, data.id_regla_distribucion)
             if regla is None:
@@ -206,6 +461,10 @@ def crear_cierre_rentabilidad(data):
                     "cmv_devoluciones": cmv_devoluciones,
                     "cmv_neto": cmv_neto,
                     "margen_bruto": margen_bruto,
+                    "financiacion_cobrada": financiacion_cobrada,
+                    "costos_financieros": costos_financieros,
+                    "resultado_financiero": resultado_financiero,
+                    "margen_real": margen_real,
                     "gastos_operativos": gastos_operativos,
                     "resultado_distribuible": resultado_distribuible,
                     "id_usuario_cierre": data.id_usuario,

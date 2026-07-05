@@ -96,11 +96,14 @@ def _simular_con_conn(conn, *, subtotal_base: Decimal, pagos):
 
         descuento = Decimal("0")
         recargo = Decimal("0")
+        costo_financiero = Decimal("0")
 
         id_tarjeta_plan = None
         porcentaje_recargo_aplicado = None
+        porcentaje_costo_financiero_aplicado = Decimal("0")
+        plan = None
 
-        if medio_pago == "tarjeta":
+        if medio_pago in {"tarjeta", "mercadopago"}:
             cuotas = pago.cuotas or 1
             entidad = getattr(pago, "entidad", None)
 
@@ -111,7 +114,7 @@ def _simular_con_conn(conn, *, subtotal_base: Decimal, pagos):
                 entidad=entidad,
             )
 
-            if plan is None:
+            if medio_pago == "tarjeta" and plan is None:
                 raise HTTPException(
                     status_code=400,
                     detail=(
@@ -120,10 +123,14 @@ def _simular_con_conn(conn, *, subtotal_base: Decimal, pagos):
                     ),
                 )
 
+        if plan is not None:
             id_tarjeta_plan = plan["id"]
 
             porcentaje_recargo_aplicado = _dec(
                 plan["porcentaje_recargo_cliente"]
+            )
+            porcentaje_costo_financiero_aplicado = _dec(
+                plan["porcentaje_costo_financiero"]
             )
 
             recargo = redondear_monto(
@@ -199,6 +206,22 @@ def _simular_con_conn(conn, *, subtotal_base: Decimal, pagos):
         monto_total_cobrado = redondear_monto(
             monto_base - descuento + recargo
         )
+        costo_financiero = redondear_monto(
+            monto_total_cobrado
+            * (
+                porcentaje_costo_financiero_aplicado
+                / Decimal("100")
+            )
+        )
+        monto_neto_liquidado = redondear_monto(
+            monto_total_cobrado - costo_financiero
+        )
+
+        if monto_neto_liquidado < Decimal("0"):
+            raise HTTPException(
+                status_code=400,
+                detail="El costo financiero supera el monto cobrado",
+            )
 
         descuento_total = redondear_monto(
             descuento_total + descuento
@@ -223,6 +246,11 @@ def _simular_con_conn(conn, *, subtotal_base: Decimal, pagos):
                 "entidad": getattr(pago, "entidad", None),
                 "id_tarjeta_plan": id_tarjeta_plan,
                 "porcentaje_recargo_aplicado": porcentaje_recargo_aplicado,
+                "porcentaje_costo_financiero_aplicado": (
+                    porcentaje_costo_financiero_aplicado
+                ),
+                "costo_financiero": costo_financiero,
+                "monto_neto_liquidado": monto_neto_liquidado,
             }
         )
 

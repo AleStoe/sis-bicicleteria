@@ -151,12 +151,22 @@ export default function DashboardPage() {
           loading={loading}
         />
         <Metric
-          title="Margen bruto"
+          title="Margen comercial"
           value={money(k.margen_bruto_mes)}
           detail={formatPercent(k.margen_bruto_porcentaje || 0, {
             minimumFractionDigits: 0,
             maximumFractionDigits: 1,
           })}
+          loading={loading}
+        />
+        <Metric
+          title="Margen real"
+          value={money(k.margen_real_mes)}
+          detail={formatPercent(k.margen_real_porcentaje || 0, {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 1,
+          })}
+          tone={Number(k.margen_real_mes || 0) >= 0 ? "positive" : "negative"}
           loading={loading}
         />
         <Metric title="Gastos del mes" value={money(k.gastos_mes)} loading={loading} />

@@ -21,6 +21,7 @@ from .repository import (
     obtener_imagen_catalogo,
     actualizar_imagen_catalogo,
     desactivar_imagen_catalogo,
+    desactivar_imagenes_variantes_unicas_producto,
     get_catalogo_pos,
     get_categoria_by_id,
     get_marca_by_id,
@@ -207,6 +208,10 @@ def _quitar_principal_anterior(conn, imagen: dict):
                 WHERE id_producto = %s
                   AND activo = TRUE
             """, (imagen["id_producto"],))
+            desactivar_imagenes_variantes_unicas_producto(
+                conn,
+                imagen["id_producto"],
+            )
 
         if imagen.get("id_variante") is not None:
             cur.execute("""

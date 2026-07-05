@@ -6,6 +6,8 @@ export default function VentaResumenCards({
   situacionFinanciera,
   totalFinal,
   totalPagadoReal,
+  totalNetoLiquidado,
+  totalCostoFinanciero,
   cubiertoNoPago,
   saldoPendiente,
   formatMoney,
@@ -26,8 +28,15 @@ export default function VentaResumenCards({
       <MetricCard label="Total venta" value={formatMoney(totalFinal)} />
 
       <MetricCard
-        label={tieneCobroPorDeuda ? "Cobrado real total" : "Cobrado real"}
+        label={tieneCobroPorDeuda ? "Cobrado al cliente total" : "Cobrado al cliente"}
         value={formatMoney(totalPagadoReal)}
+        tone="success"
+      />
+
+      <MetricCard
+        label="Neto liquidado"
+        value={formatMoney(totalNetoLiquidado)}
+        footer={`Costo financiero: ${formatMoney(totalCostoFinanciero)}`}
         tone="success"
       />
 

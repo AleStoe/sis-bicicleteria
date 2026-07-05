@@ -17,6 +17,18 @@ export function getRentabilidadMensual(params) {
   return apiRequest(`/rentabilidad/mensual${query ? `?${query}` : ""}`);
 }
 
+export function getRentabilidadDiaria(params) {
+  const query = cleanParams(params);
+  return apiRequest(`/rentabilidad/diaria${query ? `?${query}` : ""}`);
+}
+
+export function getBonificacionesGarantias(params) {
+  const query = cleanParams(params);
+  return apiRequest(
+    `/rentabilidad/bonificaciones-garantias${query ? `?${query}` : ""}`
+  );
+}
+
 export function getReglasRentabilidad(params = {}) {
   const query = cleanParams(params);
   return apiRequest(`/rentabilidad/reglas${query ? `?${query}` : ""}`);

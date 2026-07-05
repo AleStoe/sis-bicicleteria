@@ -562,6 +562,12 @@ async function handleBuscarEnter(e) {
           precio_minorista: Number(producto.precio_minorista || 0),
           precio_mayorista: Number(producto.precio_mayorista || 0),
           precio_lista: getPrecioItemCatalogo(producto, tipoPrecio),
+          en_oferta: tipoPrecio !== "mayorista" && Boolean(producto.en_oferta),
+          oferta_id: tipoPrecio !== "mayorista" ? producto.oferta_id : null,
+          oferta_nombre: tipoPrecio !== "mayorista" ? producto.oferta_nombre : null,
+          precio_catalogo_original: Number(producto.precio_minorista || 0),
+          precio_oferta:
+            tipoPrecio !== "mayorista" ? Number(producto.precio_oferta || 0) : null,
           tipo_precio_aplicado: tipoPrecio,
           cantidad: 1,
           imagen_principal: producto.imagen_principal,
@@ -617,6 +623,12 @@ async function handleBuscarEnter(e) {
           precio_minorista: Number(producto.precio_minorista || 0),
           precio_mayorista: Number(producto.precio_mayorista || 0),
           precio_lista: getPrecioItemCatalogo(producto, tipoPrecio),
+          en_oferta: tipoPrecio !== "mayorista" && Boolean(producto.en_oferta),
+          oferta_id: tipoPrecio !== "mayorista" ? producto.oferta_id : null,
+          oferta_nombre: tipoPrecio !== "mayorista" ? producto.oferta_nombre : null,
+          precio_catalogo_original: Number(producto.precio_minorista || 0),
+          precio_oferta:
+            tipoPrecio !== "mayorista" ? Number(producto.precio_oferta || 0) : null,
           tipo_precio_aplicado: tipoPrecio,
           cantidad: 1,
           imagen_principal: producto.imagen_principal,
@@ -920,12 +932,17 @@ async function handleBuscarEnter(e) {
         const nuevoPrecio =
           nuevoTipoPrecio === "mayorista"
             ? Number(item.precio_mayorista || item.precio_lista || 0)
-            : Number(item.precio_minorista || item.precio_lista || 0);
+            : item.en_oferta && Number(item.precio_oferta || 0) > 0
+              ? Number(item.precio_oferta)
+              : Number(item.precio_minorista || item.precio_lista || 0);
 
         return {
           ...item,
           precio_lista: nuevoPrecio,
           precio_final: nuevoPrecio,
+          oferta_id: nuevoTipoPrecio === "mayorista" ? null : item.oferta_id,
+          oferta_nombre:
+            nuevoTipoPrecio === "mayorista" ? null : item.oferta_nombre,
           tipo_precio_aplicado: nuevoTipoPrecio,
         };
       })

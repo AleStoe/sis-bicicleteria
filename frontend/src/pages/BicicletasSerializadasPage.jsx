@@ -8,6 +8,7 @@ import { getImageUrl } from "../utils/images";
 import { useSession } from "../context/SessionContext";
 import useMediaQuery from "../hooks/useMediaQuery";
 import { normalizeTextUpper } from "../utils/textNormalization";
+import { formatProductoVariante } from "../utils/productPresentation";
 const ESTADOS = [
   { value: "disponible", label: "Disponibles", emoji: "✅" },
   { value: "reservada", label: "Reservadas", emoji: "🟡" },
@@ -23,9 +24,10 @@ function normalizarEstado(estado) {
 }
 
 function getTituloBici(bici) {
-  return [bici.producto_nombre, bici.nombre_variante]
-    .filter(Boolean)
-    .join(" - ") || `Bicicleta #${bici.id}`;
+  return (
+    formatProductoVariante(bici.producto_nombre, bici.nombre_variante) ||
+    `Bicicleta #${bici.id}`
+  );
 }
 
 function getImagenBici(bici) {
@@ -41,12 +43,12 @@ function getImagenVariante(variante) {
 }
 
 function getTituloVariante(variante) {
-  return [
-    variante?.producto_nombre || variante?.nombre_producto || variante?.producto,
-    variante?.nombre_variante || variante?.variante_nombre,
-  ]
-    .filter(Boolean)
-    .join(" - ") || `Variante #${variante?.id_variante || variante?.id || "-"}`;
+  return (
+    formatProductoVariante(
+      variante?.producto_nombre || variante?.nombre_producto || variante?.producto,
+      variante?.nombre_variante || variante?.variante_nombre
+    ) || `Variante #${variante?.id_variante || variante?.id || "-"}`
+  );
 }
 
 function getStockDisponibleVariante(variante) {

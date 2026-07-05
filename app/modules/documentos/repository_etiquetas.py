@@ -13,6 +13,13 @@ def get_variante_etiqueta_by_id(conn, variante_id: int):
                 v.color,
                 v.precio_minorista,
                 v.precio_mayorista,
+                (oferta.id IS NOT NULL) AS en_oferta,
+                oferta.id AS oferta_id,
+                oferta.nombre AS oferta_nombre,
+                oferta.precio_regular_referencia,
+                oferta.precio_oferta,
+                oferta.fecha_desde AS oferta_fecha_desde,
+                oferta.fecha_hasta AS oferta_fecha_hasta,
                 p.nombre AS producto_nombre,
                 p.descripcion AS producto_descripcion,
                 p.rodado,
@@ -28,6 +35,21 @@ def get_variante_etiqueta_by_id(conn, variante_id: int):
             JOIN productos p ON p.id = v.id_producto
             JOIN categorias c ON c.id = p.id_categoria
             LEFT JOIN marcas m ON m.id = p.id_marca
+            LEFT JOIN LATERAL (
+                SELECT
+                    o.id,
+                    o.nombre,
+                    o.precio_regular_referencia,
+                    o.precio_oferta,
+                    o.fecha_desde,
+                    o.fecha_hasta
+                FROM ofertas o
+                WHERE o.id_variante = v.id
+                  AND o.activa = TRUE
+                  AND CURRENT_DATE BETWEEN o.fecha_desde AND o.fecha_hasta
+                ORDER BY o.fecha_desde DESC, o.id DESC
+                LIMIT 1
+            ) oferta ON true
             LEFT JOIN LATERAL (
                 SELECT
                     SUM(ss.stock_fisico) AS stock_fisico_total,
@@ -46,9 +68,16 @@ def get_variante_etiqueta_by_id(conn, variante_id: int):
                   AND (
                     ci.id_variante = v.id
                     OR ci.id_producto = p.id
-                  )
+                )
                 ORDER BY
-                    CASE WHEN ci.id_variante = v.id THEN 0 ELSE 1 END,
+                    CASE
+                        WHEN UPPER(TRIM(COALESCE(v.nombre_variante, ''))) IN ('UNICA', 'ÚNICA')
+                             AND ci.id_producto = p.id THEN 0
+                        WHEN UPPER(TRIM(COALESCE(v.nombre_variante, ''))) IN ('UNICA', 'ÚNICA')
+                            THEN 1
+                        WHEN ci.id_variante = v.id THEN 0
+                        ELSE 1
+                    END,
                     ci.es_principal DESC,
                     ci.orden ASC,
                     ci.id ASC
@@ -83,6 +112,13 @@ def get_bicicleta_etiqueta_by_id(conn, bicicleta_id: int):
                 v.color,
                 v.precio_minorista,
                 v.precio_mayorista,
+                (oferta.id IS NOT NULL) AS en_oferta,
+                oferta.id AS oferta_id,
+                oferta.nombre AS oferta_nombre,
+                oferta.precio_regular_referencia,
+                oferta.precio_oferta,
+                oferta.fecha_desde AS oferta_fecha_desde,
+                oferta.fecha_hasta AS oferta_fecha_hasta,
                 p.nombre AS producto_nombre,
                 p.descripcion AS producto_descripcion,
                 p.rodado,
@@ -98,15 +134,37 @@ def get_bicicleta_etiqueta_by_id(conn, bicicleta_id: int):
             JOIN sucursales s ON s.id = bs.id_sucursal_actual
             LEFT JOIN marcas m ON m.id = p.id_marca
             LEFT JOIN LATERAL (
+                SELECT
+                    o.id,
+                    o.nombre,
+                    o.precio_regular_referencia,
+                    o.precio_oferta,
+                    o.fecha_desde,
+                    o.fecha_hasta
+                FROM ofertas o
+                WHERE o.id_variante = v.id
+                  AND o.activa = TRUE
+                  AND CURRENT_DATE BETWEEN o.fecha_desde AND o.fecha_hasta
+                ORDER BY o.fecha_desde DESC, o.id DESC
+                LIMIT 1
+            ) oferta ON true
+            LEFT JOIN LATERAL (
                 SELECT ci.url
                 FROM catalogo_imagenes ci
                 WHERE ci.activo = true
                   AND (
                     ci.id_variante = v.id
                     OR ci.id_producto = p.id
-                  )
+                )
                 ORDER BY
-                    CASE WHEN ci.id_variante = v.id THEN 0 ELSE 1 END,
+                    CASE
+                        WHEN UPPER(TRIM(COALESCE(v.nombre_variante, ''))) IN ('UNICA', 'ÚNICA')
+                             AND ci.id_producto = p.id THEN 0
+                        WHEN UPPER(TRIM(COALESCE(v.nombre_variante, ''))) IN ('UNICA', 'ÚNICA')
+                            THEN 1
+                        WHEN ci.id_variante = v.id THEN 0
+                        ELSE 1
+                    END,
                     ci.es_principal DESC,
                     ci.orden ASC,
                     ci.id ASC

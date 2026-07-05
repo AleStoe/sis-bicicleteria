@@ -8,6 +8,8 @@ export default function HerramientasPrecioPanel({
   onAplicarMayorista,
   mostrarGanancia = false,
   mostrarContadoLista = true,
+  mostrarAccionesContado = true,
+  textoAyuda = "Calculá precio lista desde lo que querés recibir contado. Solo completa campos; no guarda cambios.",
   styles,
 }) {
   const tieneCosto = Number(costo || 0) > 0;
@@ -24,7 +26,7 @@ export default function HerramientasPrecioPanel({
             Herramienta de precio
           </h3>
           <p style={styles?.priceToolsHelp || localStyles.help}>
-            Calculá precio lista desde lo que querés recibir contado. Solo completa campos; no guarda cambios.
+            {textoAyuda}
           </p>
         </div>
       </div>
@@ -35,6 +37,7 @@ export default function HerramientasPrecioPanel({
             porcentajeDescuentoContado={porcentajeDescuentoContado}
             onAplicarMinorista={onAplicarMinorista}
             onAplicarMayorista={onAplicarMayorista}
+            mostrarAcciones={mostrarAccionesContado}
           />
         )}
 

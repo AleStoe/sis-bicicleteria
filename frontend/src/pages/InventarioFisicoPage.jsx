@@ -10,6 +10,7 @@ import {
   obtenerInventarioFisico,
 } from "../services/inventarioFisicoService";
 import { useSession } from "../context/SessionContext";
+import { formatProductoVariante } from "../utils/productPresentation";
 
 const TIPOS_OPERATIVOS = [
   { value: "", label: "Todos los sectores" },
@@ -313,9 +314,14 @@ export default function InventarioFisicoPage() {
                     {items.map((item) => (
                       <tr key={item.id}>
                         <td style={styles.td}>
-                          <strong>{item.producto_nombre}</strong>
+                          <strong>
+                            {formatProductoVariante(
+                              item.producto_nombre,
+                              item.nombre_variante
+                            )}
+                          </strong>
                           <div style={styles.muted}>
-                            {item.nombre_variante} - {item.codigo_proveedor || item.sku || "-"}
+                            {item.codigo_proveedor || item.sku || "-"}
                           </div>
                         </td>
                         <td style={styles.td}>
@@ -373,9 +379,14 @@ export default function InventarioFisicoPage() {
                   <tr key={`${dif.inventario_id}-${dif.id_variante}`}>
                     <td style={styles.td}>{formatDate(dif.fecha_cierre)}</td>
                     <td style={styles.td}>
-                      <strong>{dif.producto_nombre}</strong>
+                      <strong>
+                        {formatProductoVariante(
+                          dif.producto_nombre,
+                          dif.nombre_variante
+                        )}
+                      </strong>
                       <div style={styles.muted}>
-                        {dif.nombre_variante} - Inv. #{dif.inventario_id}
+                        Inv. #{dif.inventario_id}
                       </div>
                     </td>
                     <td style={styles.td}>

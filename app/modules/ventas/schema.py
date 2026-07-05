@@ -224,6 +224,10 @@ class VentaDetalleItemOutput(BaseModel):
 
     precio_unitario_original: Decimal | None = None
     precio_unitario_final: Decimal | None = None
+    id_oferta: int | None = None
+    precio_catalogo_original: Decimal | None = None
+    descuento_oferta_unitario: Decimal = Decimal("0")
+    oferta_nombre_snapshot: str | None = None
 
 class VentaDeudaAbiertaResumenOutput(BaseModel):
     id: int

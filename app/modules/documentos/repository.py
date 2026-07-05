@@ -43,6 +43,7 @@ def get_venta_items_comprobante_by_venta_id(conn, venta_id: int):
             SELECT
                 vi.id,
                 vi.id_variante,
+                vi.id_bicicleta_serializada,
                 vi.tipo_item,
                 vi.id_servicio_taller,
                 p.tipo_item AS producto_tipo_item,
@@ -52,13 +53,22 @@ def get_venta_items_comprobante_by_venta_id(conn, venta_id: int):
                 vi.precio_final,
                 vi.precio_unitario_original,
                 vi.precio_unitario_final,
+                vi.id_oferta,
+                vi.precio_catalogo_original,
+                vi.descuento_oferta_unitario,
+                vi.oferta_nombre_snapshot,
                 vi.bonificado,
                 vi.bonificacion_unitaria,
                 vi.motivo_bonificacion,
                 vi.motivo_precio_manual,
                 vi.subtotal,
+                bs.numero_cuadro,
 
-                COALESCE(img_var.url, img_prod.url) AS imagen_principal
+                CASE
+                    WHEN UPPER(TRIM(COALESCE(var.nombre_variante, ''))) IN ('UNICA', 'ÚNICA')
+                        THEN COALESCE(img_prod.url, img_var.url)
+                    ELSE COALESCE(img_var.url, img_prod.url)
+                END AS imagen_principal
 
             FROM venta_items vi
 
@@ -67,6 +77,9 @@ def get_venta_items_comprobante_by_venta_id(conn, venta_id: int):
 
             LEFT JOIN productos p
                 ON p.id = var.id_producto
+
+            LEFT JOIN bicicletas_serializadas bs
+                ON bs.id = vi.id_bicicleta_serializada
 
             LEFT JOIN LATERAL (
                 SELECT ci.url
@@ -116,7 +129,8 @@ def get_pagos_comprobante_by_venta_id(conn, venta_id: int):
                 d.monto_base,
                 d.monto_recargo_financiero,
                 d.porcentaje_recargo_aplicado,
-                d.monto_neto_liquidado
+                p.monto_costo_financiero,
+                p.monto_neto_liquidado
 
             FROM pagos p
 
@@ -187,7 +201,8 @@ def get_pago_recibo_by_id(conn, pago_id: int):
                 d.monto_base,
                 d.monto_recargo_financiero,
                 d.porcentaje_recargo_aplicado,
-                d.monto_neto_liquidado
+                p.monto_costo_financiero,
+                p.monto_neto_liquidado
 
             FROM pagos_venta p
 
@@ -283,7 +298,11 @@ def get_resumen_cobros_items_preview_by_venta_id(conn, venta_id: int):
             SELECT
                 vi.descripcion_snapshot,
                 vi.cantidad,
-                COALESCE(img_var.url, img_prod.url) AS imagen_principal
+                CASE
+                    WHEN UPPER(TRIM(COALESCE(var.nombre_variante, ''))) IN ('UNICA', 'ÚNICA')
+                        THEN COALESCE(img_prod.url, img_var.url)
+                    ELSE COALESCE(img_var.url, img_prod.url)
+                END AS imagen_principal
             FROM venta_items vi
 
             INNER JOIN variantes var

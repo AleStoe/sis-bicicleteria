@@ -11,6 +11,7 @@ import {
   getPrecioA4VarianteUrl,
 } from "../services/documentosService";
 import { formatMoney } from "../utils/formatters";
+import { formatProductoVariante } from "../utils/productPresentation";
 
 const MOBILE_BREAKPOINT = 760;
 
@@ -22,11 +23,14 @@ function normalizar(valor) {
 }
 
 function descripcionVariante(item) {
-  return [item.producto_nombre, item.nombre_variante].filter(Boolean).join(" - ");
+  return formatProductoVariante(item.producto_nombre, item.nombre_variante);
 }
 
 function descripcionBicicleta(item) {
-  return [item.producto_nombre, item.nombre_variante, item.numero_cuadro]
+  return [
+    formatProductoVariante(item.producto_nombre, item.nombre_variante),
+    item.numero_cuadro,
+  ]
     .filter(Boolean)
     .join(" - ");
 }
@@ -235,8 +239,21 @@ export default function EtiquetasPage() {
               </div>
 
               <div style={isMobile ? styles.priceBoxMobile : styles.priceBox}>
-                <span style={styles.priceLabel}>Minorista</span>
-                <strong>{formatMoney(item.precio_minorista || 0)}</strong>
+                <span style={styles.priceLabel}>
+                  {item.en_oferta ? "Oferta" : "Minorista"}
+                </span>
+                {item.en_oferta ? (
+                  <small style={styles.oldPrice}>
+                    {formatMoney(item.precio_minorista || 0)}
+                  </small>
+                ) : null}
+                <strong>
+                  {formatMoney(
+                    item.en_oferta
+                      ? item.precio_oferta
+                      : item.precio_minorista || 0
+                  )}
+                </strong>
               </div>
 
               <div style={isMobile ? styles.actionsMobile : styles.actions}>
@@ -433,6 +450,11 @@ const styles = {
     color: "#64748b",
     fontSize: 12,
     fontWeight: 800,
+  },
+  oldPrice: {
+    color: "#64748b",
+    fontSize: 11,
+    textDecoration: "line-through",
   },
   actions: {
     display: "flex",

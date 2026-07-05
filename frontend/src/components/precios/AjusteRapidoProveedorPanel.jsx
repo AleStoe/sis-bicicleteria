@@ -153,7 +153,7 @@ export default function AjusteRapidoProveedorPanel({
         </div>
 
         <div style={styles.tableWrapper}>
-          <table style={styles.table}>
+          <table style={styles.tableWide}>
             <thead>
               <tr>
                 <th style={styles.th}>Producto</th>
@@ -171,7 +171,7 @@ export default function AjusteRapidoProveedorPanel({
             <tbody>
               {items.map((item) => (
                 <tr key={item.id_variante}>
-                  <td style={styles.tdStrong}>{item.producto_nombre}</td>
+                  <td style={styles.tdProduct}>{item.producto_nombre}</td>
                   <td style={styles.td}>{item.nombre_variante}</td>
                   <td style={styles.td}>{formatMoney(item.precio_minorista_actual)}</td>
                   <td style={styles.tdStrong}>{formatMoney(item.precio_minorista_nuevo)}</td>

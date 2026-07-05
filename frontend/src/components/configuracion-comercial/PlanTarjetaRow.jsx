@@ -59,6 +59,10 @@ export default function PlanTarjetaRow({
   return (
     <div style={styles.rowPlanes}>
       <div>
+        {plan.medio_pago === "mercadopago" ? "QR / Mercado Pago" : "Tarjeta"}
+      </div>
+
+      <div>
         {editando ? (
           <input
             value={form.nombre}

@@ -514,7 +514,11 @@ def agregar_item_orden_taller(orden_id: int, data):
             if orden.get("es_service_postventa") is True and data.tipo_item == "servicio":
                 cobertura_unitaria = precio_unitario
                 motivo_cobertura = "Service postventa"
-            elif cobertura_unitaria > 0 and orden.get("es_service_postventa") is not True:
+            elif (
+                cobertura_unitaria > 0
+                and orden.get("es_service_postventa") is not True
+                and data.tipo_item == "repuesto"
+            ):
                 raise HTTPException(
                     status_code=400,
                     detail=(
@@ -968,6 +972,9 @@ def generar_venta_desde_orden_taller(orden_id: int, data):
                     cobertura = Decimal(
                         str(item.get("valor_cobertura_unitario") or 0)
                     )
+                    precio_unitario = Decimal(
+                        str(item.get("precio_unitario") or 0)
+                    )
                     tiene_cobertura = cobertura > 0
                     motivo_cobertura = item.get("motivo_cobertura")
                     if item.get("observacion_cobertura"):
@@ -977,12 +984,44 @@ def generar_venta_desde_orden_taller(orden_id: int, data):
                         )
 
                     if item.get("tipo_item") == "servicio":
+                        # Compatibilidad con OT anteriores donde "gratis" se
+                        # representó cargando precio 0. Venta exige conservar
+                        # el precio de referencia y registrar la bonificación.
+                        if precio_unitario <= 0:
+                            servicio = get_servicio_taller_by_id(
+                                conn,
+                                item["id_servicio_taller"],
+                            )
+                            precio_referencia = Decimal(
+                                str(
+                                    (servicio or {}).get("precio_sugerido")
+                                    or 0
+                                )
+                            )
+                            if precio_referencia <= 0:
+                                raise HTTPException(
+                                    status_code=400,
+                                    detail=(
+                                        f'El servicio "{item["descripcion_snapshot"]}" '
+                                        "no tiene un precio de referencia. "
+                                        "Asignale un precio mayor a cero y "
+                                        "bonificalo antes de generar la venta."
+                                    ),
+                                )
+                            precio_unitario = precio_referencia
+                            cobertura = precio_referencia
+                            tiene_cobertura = True
+                            motivo_cobertura = (
+                                motivo_cobertura
+                                or "Atención comercial - servicio bonificado"
+                            )
+
                         payload_items.append({
                             "tipo_item": "servicio_taller",
                             "id_servicio_taller": item["id_servicio_taller"],
                             "descripcion_snapshot": item["descripcion_snapshot"],
                             "cantidad": item["cantidad"],
-                            "precio_unitario_manual": item["precio_unitario"],
+                            "precio_unitario_manual": precio_unitario,
                             "motivo_precio_manual": f"Precio de taller OT #{orden_id}",
                             "bonificado": tiene_cobertura,
                             "bonificacion_unitaria_manual": cobertura if tiene_cobertura else None,

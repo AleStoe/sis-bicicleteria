@@ -159,7 +159,11 @@ def _monto_con_recargo(precio, porcentaje_recargo):
 def _variant_parts(item):
     nombre_variante = _text(item.get("nombre_variante")).strip()
     base_busqueda = nombre_variante.upper()
-    parts = [nombre_variante]
+    parts = (
+        []
+        if base_busqueda in {"UNICA", "ÚNICA"}
+        else [nombre_variante]
+    )
 
     rodado = _text(item.get("rodado")).strip()
     if rodado and rodado.upper() not in base_busqueda and f"R{rodado}".upper() not in base_busqueda:
@@ -372,8 +376,16 @@ def _build_opciones_pago(precio, opciones_pago):
     return lineas
 
 
+def _precio_minorista_vigente(item):
+    precio_regular = _dec(item.get("precio_minorista"))
+    precio_oferta = _dec(item.get("precio_oferta"))
+    if item.get("en_oferta") and precio_oferta > 0 and precio_oferta < precio_regular:
+        return precio_oferta
+    return precio_regular
+
+
 def _draw_opciones_pago_a4(c, item, opciones_pago, x, y, w):
-    lineas = _build_opciones_pago(item.get("precio_minorista"), opciones_pago)
+    lineas = _build_opciones_pago(_precio_minorista_vigente(item), opciones_pago)
     if not lineas:
         return
 
@@ -431,8 +443,14 @@ def _draw_opciones_pago_a4(c, item, opciones_pago, x, y, w):
 
 
 def _draw_price_banner(c, item, opciones_pago, x, y, w):
-    price_text = _money(item.get("precio_minorista"))
-    lineas = _build_opciones_pago(item.get("precio_minorista"), opciones_pago)
+    en_oferta = (
+        item.get("en_oferta")
+        and _dec(item.get("precio_oferta")) > 0
+        and _dec(item.get("precio_oferta")) < _dec(item.get("precio_minorista"))
+    )
+    precio_vigente = _precio_minorista_vigente(item)
+    price_text = _money(precio_vigente)
+    lineas = _build_opciones_pago(precio_vigente, opciones_pago)
     efectivo = next(
         (linea for linea in lineas if linea["tipo"] == "efectivo"),
         None,
@@ -457,7 +475,19 @@ def _draw_price_banner(c, item, opciones_pago, x, y, w):
     c.setFont("Helvetica-Bold", price_size)
     c.drawCentredString(x + left_w / 2, y + 13 * mm, price_text)
     c.setFont("Helvetica-Bold", 9.5)
-    c.drawCentredString(x + left_w / 2, y + 4.5 * mm, "PRECIO DE LISTA")
+    c.drawCentredString(
+        x + left_w / 2,
+        y + 4.5 * mm,
+        "PRECIO OFERTA" if en_oferta else "PRECIO DE LISTA",
+    )
+    if en_oferta:
+        c.setFillColorRGB(*MUTED)
+        c.setFont("Helvetica", 7.5)
+        c.drawCentredString(
+            x + left_w / 2,
+            y + 26.5 * mm,
+            f"Antes {_money(item.get('precio_minorista'))}",
+        )
 
     if efectivo:
         promo_x = x + left_w

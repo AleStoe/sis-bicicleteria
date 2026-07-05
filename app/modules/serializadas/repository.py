@@ -198,9 +198,16 @@ def get_bicicletas_serializadas(conn, *, id_variante=None, id_sucursal=None, est
                     AND (
                         ci.id_variante = v.id
                         OR ci.id_producto = p.id
-                    )
+                )
                 ORDER BY
-                    CASE WHEN ci.id_variante = v.id THEN 0 ELSE 1 END,
+                    CASE
+                        WHEN UPPER(TRIM(COALESCE(v.nombre_variante, ''))) IN ('UNICA', 'ÚNICA')
+                             AND ci.id_producto = p.id THEN 0
+                        WHEN UPPER(TRIM(COALESCE(v.nombre_variante, ''))) IN ('UNICA', 'ÚNICA')
+                            THEN 1
+                        WHEN ci.id_variante = v.id THEN 0
+                        ELSE 1
+                    END,
                     ci.es_principal DESC,
                     ci.orden ASC,
                     ci.id ASC

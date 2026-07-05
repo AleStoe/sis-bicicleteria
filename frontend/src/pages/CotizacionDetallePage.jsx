@@ -1,18 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, MessageCircle, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { ArrowLeft, MessageCircle, Plus, RefreshCw, Save, ShoppingCart, Trash2 } from "lucide-react";
 import { useSession } from "../context/SessionContext";
 import { listarVariantes } from "../services/catalogoService";
 import { listarServiciosTaller } from "../services/serviciosTallerService";
 import {
   agregarItemCotizacion,
+  actualizarCantidadItemCotizacion,
   cambiarEstadoCotizacion,
+  convertirCotizacionAVenta,
   generarMensajeWhatsappCotizacion,
   obtenerCotizacion,
+  obtenerPreviewConversionCotizacion,
   quitarItemCotizacion,
 } from "../services/cotizacionesService";
 import { getCotizacionPdfUrl } from "../services/documentosService";
 import { formatDate, formatMoney } from "../utils/formatters";
+import { formatProductoVariante } from "../utils/productPresentation";
 import { Button, EmptyState, PageHeader, useBreakpoint } from "../components/ui";
 import { colors, controls, radius, shadows, spacing, typography } from "../theme";
 
@@ -44,6 +48,10 @@ export default function CotizacionDetallePage() {
   const [servicios, setServicios] = useState([]);
   const [estadoNuevo, setEstadoNuevo] = useState("");
   const [itemForm, setItemForm] = useState(itemInicial);
+  const [cantidades, setCantidades] = useState({});
+  const [conversionPreview, setConversionPreview] = useState(null);
+  const [conversionError, setConversionError] = useState("");
+  const [serializadasSeleccionadas, setSerializadasSeleccionadas] = useState({});
   const [loading, setLoading] = useState(true);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
@@ -64,6 +72,11 @@ export default function CotizacionDetallePage() {
       ]);
       setCotizacion(cotizacionData);
       setEstadoNuevo(cotizacionData.estado);
+      setCantidades(
+        Object.fromEntries(
+          (cotizacionData.items || []).map((item) => [item.id, String(item.cantidad)])
+        )
+      );
       setVariantes((variantesData || []).filter((item) => item.activo !== false));
       setServicios((serviciosData || []).filter((item) => item.activo !== false));
     } catch (err) {
@@ -77,9 +90,21 @@ export default function CotizacionDetallePage() {
     const data = await obtenerCotizacion(cotizacionId);
     setCotizacion(data);
     setEstadoNuevo(data.estado);
+    setCantidades(
+      Object.fromEntries((data.items || []).map((item) => [item.id, String(item.cantidad)]))
+    );
   }
 
   const puedeEditar = ["borrador", "enviada"].includes(cotizacion?.estado);
+
+  useEffect(() => {
+    if (cotizacion?.estado === "aceptada") {
+      cargarPreviewConversion();
+    } else {
+      setConversionPreview(null);
+      setConversionError("");
+    }
+  }, [cotizacion?.estado]);
 
   const itemSeleccionado = useMemo(() => {
     if (itemForm.tipo_item === "producto") {
@@ -129,6 +154,107 @@ export default function CotizacionDetallePage() {
       setMensaje("Item quitado");
     } catch (err) {
       setError(err.message || "No se pudo quitar el item");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  async function handleActualizarCantidad(item) {
+    const cantidad = Number(cantidades[item.id] || 0);
+    if (!Number.isFinite(cantidad) || cantidad <= 0) {
+      setError("La cantidad debe ser mayor a cero");
+      return;
+    }
+
+    try {
+      setGuardando(true);
+      setError("");
+      setMensaje("");
+      await actualizarCantidadItemCotizacion(cotizacionId, item.id, cantidad);
+      await refrescarCotizacion();
+      setMensaje("Cantidad actualizada");
+    } catch (err) {
+      setError(err.message || "No se pudo actualizar la cantidad");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  async function cargarPreviewConversion() {
+    try {
+      setConversionError("");
+      const data = await obtenerPreviewConversionCotizacion(cotizacionId);
+      setConversionPreview(data);
+      setSerializadasSeleccionadas((prev) => {
+        const siguiente = { ...prev };
+        (data.items || [])
+          .filter((item) => item.serializable)
+          .forEach((item) => {
+            const cantidad = Math.max(0, Number(item.cantidad || 0));
+            siguiente[item.id_cotizacion_item] = Array.from(
+              { length: cantidad },
+              (_, index) => siguiente[item.id_cotizacion_item]?.[index] || ""
+            );
+          });
+        return siguiente;
+      });
+    } catch (err) {
+      setConversionPreview(null);
+      setConversionError(err.message || "No se pudo revisar el stock");
+    }
+  }
+
+  function seleccionarSerializada(itemId, index, bicicletaId) {
+    setSerializadasSeleccionadas((prev) => {
+      const actual = [...(prev[itemId] || [])];
+      actual[index] = bicicletaId;
+      return { ...prev, [itemId]: actual };
+    });
+  }
+
+  function serializadasCompletas() {
+    return (conversionPreview?.items || [])
+      .filter((item) => item.serializable)
+      .every((item) => {
+        const seleccionadas = serializadasSeleccionadas[item.id_cotizacion_item] || [];
+        const cantidad = Number(item.cantidad || 0);
+        return (
+          seleccionadas.length === cantidad &&
+          seleccionadas.every(Boolean) &&
+          new Set(seleccionadas.map(String)).size === seleccionadas.length
+        );
+      });
+  }
+
+  async function handleConvertirAVenta() {
+    if (!conversionPreview?.puede_convertir || !serializadasCompletas()) return;
+    if (!window.confirm("Se creará una venta pendiente de cobro y entrega. ¿Continuar?")) {
+      return;
+    }
+
+    const serializadas = Object.entries(serializadasSeleccionadas).flatMap(
+      ([itemId, bicicletas]) =>
+        (bicicletas || []).filter(Boolean).map((bicicletaId) => ({
+          id_cotizacion_item: Number(itemId),
+          id_bicicleta_serializada: Number(bicicletaId),
+        }))
+    );
+
+    try {
+      setGuardando(true);
+      setError("");
+      setMensaje("");
+      const resultado = await convertirCotizacionAVenta(cotizacionId, {
+        id_usuario: Number(usuarioId || 1),
+        serializadas,
+      });
+      navigate(`/ventas/${resultado.venta_id}`, {
+        state: { scrollToTop: true },
+      });
+    } catch (err) {
+      const mensajeError = err.message || "No se pudo convertir la cotización";
+      await cargarPreviewConversion();
+      setConversionError(mensajeError);
     } finally {
       setGuardando(false);
     }
@@ -238,8 +364,43 @@ export default function CotizacionDetallePage() {
                         <strong>{item.descripcion_snapshot}</strong>
                       </div>
                       <p style={styles.muted}>
-                        Cantidad {item.cantidad} · {formatMoney(item.precio_unitario)} c/u
+                        {formatMoney(item.precio_unitario)} c/u
                       </p>
+                      {puedeEditar && (
+                        <div style={styles.quantityEditor}>
+                          <label style={styles.quantityLabel}>
+                            Cantidad
+                            <input
+                              type="number"
+                              min="0.01"
+                              step="0.01"
+                              value={cantidades[item.id] ?? item.cantidad}
+                              onChange={(e) =>
+                                setCantidades((prev) => ({
+                                  ...prev,
+                                  [item.id]: e.target.value,
+                                }))
+                              }
+                              style={styles.quantityInput}
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => handleActualizarCantidad(item)}
+                            disabled={
+                              guardando ||
+                              Number(cantidades[item.id]) === Number(item.cantidad)
+                            }
+                            style={styles.smallSecondary}
+                            title="Guardar cantidad"
+                          >
+                            <Save size={15} /> Guardar
+                          </button>
+                        </div>
+                      )}
+                      {!puedeEditar && (
+                        <p style={styles.muted}>Cantidad {item.cantidad}</p>
+                      )}
                     </div>
                     <div style={styles.itemRight}>
                       <strong>{formatMoney(item.subtotal)}</strong>
@@ -291,6 +452,106 @@ export default function CotizacionDetallePage() {
             </form>
           </section>
 
+          {cotizacion.estado === "aceptada" && (
+            <section style={styles.card}>
+              <h2 style={styles.sideTitle}>Convertir en venta</h2>
+              <p style={styles.muted}>
+                Aceptar no reserva mercadería. El stock se controla nuevamente ahora.
+              </p>
+
+              {conversionError && (
+                <div style={{ ...styles.notice, ...styles.noticeDanger }}>
+                  {conversionError}
+                </div>
+              )}
+
+              {conversionPreview?.advertencias?.length > 0 && (
+                <div style={{ ...styles.notice, ...styles.noticeWarning }}>
+                  {conversionPreview.advertencias.map((advertencia) => (
+                    <div key={advertencia}>{advertencia}</div>
+                  ))}
+                </div>
+              )}
+
+              <div style={styles.conversionItems}>
+                {(conversionPreview?.items || []).map((item) => (
+                  <div key={item.id_cotizacion_item} style={styles.conversionItem}>
+                    <strong>{item.descripcion}</strong>
+                    <span>
+                      Solicitado: {item.cantidad} · Disponible: {item.disponible}
+                    </span>
+                    {Number(item.faltante || 0) > 0 && (
+                      <span style={styles.missingText}>Faltan {item.faltante}</span>
+                    )}
+
+                    {item.serializable &&
+                      Array.from({ length: Number(item.cantidad || 0) }, (_, index) => {
+                        const elegidas =
+                          serializadasSeleccionadas[item.id_cotizacion_item] || [];
+                        return (
+                          <label key={index} style={styles.field}>
+                            <span>Número de cuadro {index + 1}</span>
+                            <select
+                              value={elegidas[index] || ""}
+                              onChange={(e) =>
+                                seleccionarSerializada(
+                                  item.id_cotizacion_item,
+                                  index,
+                                  e.target.value
+                                )
+                              }
+                              style={styles.input}
+                            >
+                              <option value="">Seleccionar...</option>
+                              {(item.serializadas_disponibles || []).map((bicicleta) => (
+                                <option
+                                  key={bicicleta.id}
+                                  value={bicicleta.id}
+                                  disabled={elegidas.some(
+                                    (id, posicion) =>
+                                      posicion !== index &&
+                                      String(id) === String(bicicleta.id)
+                                  )}
+                                >
+                                  {bicicleta.numero_cuadro}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        );
+                      })}
+                  </div>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={handleConvertirAVenta}
+                disabled={
+                  guardando ||
+                  !conversionPreview?.puede_convertir ||
+                  !serializadasCompletas()
+                }
+                style={styles.primaryButton}
+              >
+                <ShoppingCart size={17} />
+                {guardando ? "Creando venta..." : "Crear venta"}
+              </button>
+            </section>
+          )}
+
+          {cotizacion.estado === "convertida" && cotizacion.id_venta_convertida && (
+            <section style={styles.card}>
+              <h2 style={styles.sideTitle}>Venta generada</h2>
+              <Link
+                to={`/ventas/${cotizacion.id_venta_convertida}`}
+                style={styles.primaryButton}
+              >
+                <ShoppingCart size={17} /> Ver venta #{cotizacion.id_venta_convertida}
+              </Link>
+            </section>
+          )}
+
           <section style={styles.card}>
             <h2 style={styles.sideTitle}>Agregar item</h2>
             {!puedeEditar ? (
@@ -310,7 +571,10 @@ export default function CotizacionDetallePage() {
                       <option value="">Seleccionar...</option>
                       {variantes.map((variante) => (
                         <option key={variante.id} value={variante.id}>
-                          {variante.producto_nombre} {variante.nombre_variante ? `- ${variante.nombre_variante}` : ""}
+                          {formatProductoVariante(
+                            variante.producto_nombre,
+                            variante.nombre_variante
+                          )}
                         </option>
                       ))}
                     </select>
@@ -447,6 +711,10 @@ const styles = {
   itemCard: { border: "1px solid #e2e8f0", borderRadius: 16, padding: 13, display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" },
   itemTitleLine: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" },
   itemRight: { display: "grid", gap: 8, justifyItems: "end" },
+  quantityEditor: { display: "flex", alignItems: "end", gap: 8, marginTop: 8, flexWrap: "wrap" },
+  quantityLabel: { display: "grid", gap: 4, color: "#475569", fontSize: 12, fontWeight: 900 },
+  quantityInput: { width: 96, minHeight: 36, border: "1px solid #cbd5e1", borderRadius: 10, padding: "7px 9px", fontWeight: 850 },
+  smallSecondary: { display: "inline-flex", alignItems: "center", gap: 5, minHeight: 36, border: "1px solid #cbd5e1", background: "white", color: "#334155", borderRadius: 10, padding: "7px 10px", fontWeight: 900, cursor: "pointer" },
   typeBadge: { background: "#eff6ff", color: "#1d4ed8", borderRadius: 999, padding: "5px 8px", fontSize: 12, fontWeight: 1000 },
   smallDanger: { display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid #fecaca", background: "#fff1f0", color: "#b42318", borderRadius: 11, padding: "8px 10px", fontWeight: 900, cursor: "pointer" },
   form: { display: "grid", gap: 12 },
@@ -461,6 +729,11 @@ const styles = {
   secondaryButtonFull: { width: "100%", border: "1px solid #cbd5e1", background: "white", color: "#0f172a", borderRadius: 13, padding: "12px 16px", fontWeight: 1000, cursor: "pointer" },
   secondaryLink: { display: "block", textAlign: "center", textDecoration: "none", border: "1px solid #cbd5e1", background: "white", color: "#0f172a", borderRadius: 13, padding: "12px 16px", fontWeight: 1000 },
   notice: { background: "#eff6ff", border: "1px solid #bfdbfe", color: "#1d4ed8", borderRadius: 13, padding: 12, fontWeight: 850 },
+  noticeDanger: { background: "#fef2f2", borderColor: "#fecaca", color: "#b42318", marginTop: 10 },
+  noticeWarning: { background: "#fffbeb", borderColor: "#fde68a", color: "#92400e", marginTop: 10, display: "grid", gap: 5 },
+  conversionItems: { display: "grid", gap: 9, margin: "12px 0" },
+  conversionItem: { display: "grid", gap: 6, border: "1px solid #e2e8f0", borderRadius: 12, padding: 10, color: "#475569", fontSize: 13 },
+  missingText: { color: "#b42318", fontWeight: 950 },
   empty: { padding: 22, color: "#64748b", fontWeight: 900 },
   success: { background: "#ecfdf5", color: "#047857", border: "1px solid #86efac", borderRadius: 14, padding: 12, marginBottom: 14, fontWeight: 850 },
   error: { background: "#fff1f0", color: "#b42318", border: "1px solid #fecdca", borderRadius: 14, padding: 12, marginBottom: 14, fontWeight: 850 },

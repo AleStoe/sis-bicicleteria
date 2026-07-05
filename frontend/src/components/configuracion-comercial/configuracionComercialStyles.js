@@ -79,7 +79,7 @@ export const styles = {
 
   tableHeadPlanes: {
     display: "grid",
-    gridTemplateColumns: "2fr 1fr 0.7fr 1fr 1fr 1.7fr",
+    gridTemplateColumns: "2fr 1fr 1fr 0.7fr 1fr 1fr 1.7fr",
     gap: 12,
     padding: 14,
     background: "#f9fafb",
@@ -90,7 +90,7 @@ export const styles = {
 
   rowPlanes: {
     display: "grid",
-    gridTemplateColumns: "2fr 1fr 0.7fr 1fr 1fr 1.7fr",
+    gridTemplateColumns: "2fr 1fr 1fr 0.7fr 1fr 1fr 1.7fr",
     gap: 12,
     padding: 14,
     borderTop: "1px solid #f2f4f7",

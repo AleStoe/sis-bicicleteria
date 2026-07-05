@@ -44,7 +44,7 @@ export default function VentaLecturaRapida({
         />
 
         <SummaryBlock
-          title={tieneCobroPorDeuda ? "Cobrado real total" : "Cobrado real"}
+          title={tieneCobroPorDeuda ? "Cobrado al cliente total" : "Cobrado al cliente"}
           value={formatMoney(totalPagadoReal)}
           detail={
             tieneCobroPorDeuda

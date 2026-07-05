@@ -34,6 +34,7 @@ export default function MetricCard({
   emphasize = false,
   footer,
   style = {},
+  valueStyle = {},
 }) {
   const current = tones[tone] || tones.default;
 
@@ -70,6 +71,7 @@ export default function MetricCard({
           lineHeight: typography.metric.lineHeight,
           color: current.value,
           overflowWrap: "anywhere",
+          ...valueStyle,
         }}
       >
         {value}

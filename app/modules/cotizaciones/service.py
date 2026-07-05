@@ -1,5 +1,5 @@
 from datetime import date, datetime, timedelta
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from urllib.parse import quote_plus
 
 from fastapi import HTTPException
@@ -7,6 +7,8 @@ from fastapi import HTTPException
 from app.db.connection import get_connection
 from app.modules.configuracion_negocio.service import obtener_configuracion_negocio
 from app.core.text_normalization import clean_text, normalize_text_upper
+from app.modules.ventas.schema import VentaCreateInput
+from app.modules.ventas.service import crear_venta
 
 from .repository import (
     cambiar_estado_cotizacion,
@@ -14,7 +16,10 @@ from .repository import (
     get_bicicleta_cliente_by_id,
     get_cliente_by_id,
     get_cotizacion_by_id,
+    get_cotizacion_by_id_for_update,
     get_cotizacion_items,
+    get_cotizacion_items_disponibilidad,
+    get_serializadas_disponibles_cotizacion,
     get_servicio_taller_by_id,
     get_sucursal_by_id,
     get_usuario_by_id,
@@ -22,7 +27,9 @@ from .repository import (
     insert_cotizacion,
     insert_cotizacion_item,
     listar_cotizaciones,
+    marcar_cotizacion_convertida,
     recalcular_totales_cotizacion,
+    update_cotizacion_item_cantidad,
 )
 
 
@@ -133,6 +140,232 @@ def quitar_item_cotizacion(cotizacion_id: int, item_id: int):
                 raise HTTPException(status_code=404, detail="No existe el item de cotizacion")
             recalcular_totales_cotizacion(conn, cotizacion_id)
             return item
+    finally:
+        conn.close()
+
+
+def actualizar_cantidad_item_cotizacion(cotizacion_id: int, item_id: int, data):
+    conn = get_connection()
+    try:
+        with conn.transaction():
+            cotizacion = _get_cotizacion_o_404(conn, cotizacion_id)
+            _validar_editable(cotizacion)
+
+            item_actual = next(
+                (
+                    item
+                    for item in get_cotizacion_items(conn, cotizacion_id)
+                    if item["id"] == item_id
+                ),
+                None,
+            )
+            if item_actual is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail="No existe el item de cotizacion",
+                )
+
+            subtotal = (
+                Decimal(str(data.cantidad))
+                * Decimal(str(item_actual["precio_unitario"]))
+                - Decimal(str(item_actual["descuento_monto"]))
+            )
+            if subtotal < 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "La cantidad deja el descuento por encima del subtotal. "
+                        "Revisá el descuento del ítem."
+                    ),
+                )
+
+            actualizado = update_cotizacion_item_cantidad(
+                conn,
+                cotizacion_id,
+                item_id,
+                data.cantidad,
+            )
+            recalcular_totales_cotizacion(conn, cotizacion_id)
+            return actualizado
+    finally:
+        conn.close()
+
+
+def obtener_preview_conversion_venta(cotizacion_id: int):
+    conn = get_connection()
+    try:
+        cotizacion = _get_cotizacion_o_404(conn, cotizacion_id)
+        return _armar_preview_conversion(conn, cotizacion)
+    finally:
+        conn.close()
+
+
+def convertir_cotizacion_a_venta(cotizacion_id: int, data):
+    conn = get_connection()
+    try:
+        with conn.transaction():
+            cotizacion = get_cotizacion_by_id_for_update(conn, cotizacion_id)
+            if cotizacion is None:
+                raise HTTPException(status_code=404, detail="No existe la cotizacion")
+
+            if cotizacion["id_venta_convertida"] is not None:
+                return {
+                    "ok": True,
+                    "cotizacion_id": cotizacion_id,
+                    "venta_id": cotizacion["id_venta_convertida"],
+                    "estado_cotizacion": "convertida",
+                    "ya_convertida": True,
+                }
+
+            if cotizacion["tipo"] != "venta":
+                raise HTTPException(
+                    status_code=400,
+                    detail="Sólo las cotizaciones de venta se convierten en venta",
+                )
+            if cotizacion["estado"] != "aceptada":
+                raise HTTPException(
+                    status_code=400,
+                    detail="La cotización debe estar aceptada antes de convertirla",
+                )
+            if cotizacion["id_cliente"] is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="La cotización necesita un cliente seleccionado para convertirse",
+                )
+
+            preview = _armar_preview_conversion(conn, cotizacion)
+            if not preview["puede_convertir"]:
+                detalle = " ".join(preview["advertencias"])
+                raise HTTPException(status_code=409, detail=detalle)
+
+            items = get_cotizacion_items_disponibilidad(conn, cotizacion_id)
+            selecciones_por_item = {}
+            ids_serializados = set()
+            for seleccion in data.serializadas:
+                if seleccion.id_bicicleta_serializada in ids_serializados:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="La misma bicicleta no puede seleccionarse dos veces",
+                    )
+                ids_serializados.add(seleccion.id_bicicleta_serializada)
+                selecciones_por_item.setdefault(
+                    seleccion.id_cotizacion_item,
+                    [],
+                ).append(seleccion.id_bicicleta_serializada)
+
+            venta_items = []
+            factor_global = (
+                Decimal(str(cotizacion["total_final"]))
+                / Decimal(str(cotizacion["subtotal"]))
+                if Decimal(str(cotizacion["subtotal"])) > 0
+                else Decimal("1")
+            )
+
+            for item in items:
+                cantidad = Decimal(str(item["cantidad"]))
+                precio_referencia = Decimal(str(item["precio_unitario"]))
+                subtotal_item = Decimal(str(item["subtotal"]))
+                precio_final_unitario = (
+                    (subtotal_item * factor_global) / cantidad
+                ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+                if precio_referencia <= 0:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"{item['descripcion_snapshot']} tiene precio cero y "
+                            "no puede convertirse automáticamente"
+                        ),
+                    )
+
+                precio_manual = max(precio_referencia, precio_final_unitario)
+                bonificacion_unitaria = max(
+                    precio_manual - precio_final_unitario,
+                    Decimal("0"),
+                )
+                base_item = {
+                    "tipo_item": item["tipo_item"],
+                    "id_variante": item["id_variante"],
+                    "id_servicio_taller": item["id_servicio_taller"],
+                    "precio_unitario_manual": precio_manual,
+                    "motivo_precio_manual": (
+                        f"Precio conservado desde cotización {cotizacion['numero']}"
+                    ),
+                    "bonificado": bonificacion_unitaria > 0,
+                    "bonificacion_unitaria_manual": (
+                        bonificacion_unitaria
+                        if bonificacion_unitaria > 0
+                        else None
+                    ),
+                    "motivo_bonificacion": (
+                        f"Descuento cotizado en {cotizacion['numero']}"
+                        if bonificacion_unitaria > 0
+                        else None
+                    ),
+                    "descripcion_snapshot": item["descripcion_snapshot"],
+                }
+
+                if item["tipo_item"] == "producto" and item["serializable"]:
+                    if cantidad != cantidad.to_integral_value():
+                        raise HTTPException(
+                            status_code=400,
+                            detail=(
+                                f"{item['descripcion_snapshot']} requiere una "
+                                "cantidad entera"
+                            ),
+                        )
+                    seleccionadas = selecciones_por_item.get(item["id"], [])
+                    if len(seleccionadas) != int(cantidad):
+                        raise HTTPException(
+                            status_code=400,
+                            detail=(
+                                f"Seleccioná {int(cantidad)} número(s) de cuadro "
+                                f"para {item['descripcion_snapshot']}"
+                            ),
+                        )
+                    for bicicleta_id in seleccionadas:
+                        venta_items.append(
+                            {
+                                **base_item,
+                                "cantidad": 1,
+                                "id_bicicleta_serializada": bicicleta_id,
+                            }
+                        )
+                else:
+                    venta_items.append(
+                        {
+                            **base_item,
+                            "cantidad": cantidad,
+                            "id_bicicleta_serializada": None,
+                        }
+                    )
+
+            venta_data = VentaCreateInput(
+                id_cliente=cotizacion["id_cliente"],
+                id_sucursal=cotizacion["id_sucursal"],
+                id_usuario=data.id_usuario,
+                tipo_precio=cotizacion["tipo_precio"],
+                items=venta_items,
+                pagos=[],
+                observaciones=(
+                    f"Generada desde cotización {cotizacion['numero']}"
+                ),
+            )
+            resultado_venta = crear_venta(venta_data, conn=conn)
+            marcar_cotizacion_convertida(
+                conn,
+                cotizacion_id=cotizacion_id,
+                venta_id=resultado_venta["venta_id"],
+                id_usuario=data.id_usuario,
+            )
+
+            return {
+                "ok": True,
+                "cotizacion_id": cotizacion_id,
+                "venta_id": resultado_venta["venta_id"],
+                "estado_cotizacion": "convertida",
+                "ya_convertida": False,
+            }
     finally:
         conn.close()
 
@@ -293,6 +526,84 @@ def _validar_editable(cotizacion):
             status_code=400,
             detail="Solo se pueden editar cotizaciones en borrador o enviadas",
         )
+
+
+def _armar_preview_conversion(conn, cotizacion):
+    items = get_cotizacion_items_disponibilidad(conn, cotizacion["id"])
+    salida = []
+    advertencias = []
+    requiere_serializadas = False
+
+    if cotizacion["tipo"] != "venta":
+        advertencias.append("Esta cotización es de reparación, no de venta.")
+    if cotizacion["estado"] not in {"aceptada", "convertida"}:
+        advertencias.append("Primero marcá la cotización como aceptada.")
+    if cotizacion["id_cliente"] is None:
+        advertencias.append("Seleccioná un cliente antes de convertir.")
+
+    for item in items:
+        cantidad = Decimal(str(item["cantidad"]))
+        serializable = bool(item["serializable"])
+        stockeable = bool(item["stockeable"])
+        disponibles = cantidad
+        bloqueo = None
+        serializadas = []
+
+        if item["tipo_item"] == "linea_libre":
+            disponibles = Decimal("0")
+            bloqueo = (
+                "Las líneas libres deben reemplazarse por un producto o servicio "
+                "antes de convertir."
+            )
+        elif Decimal(str(item["precio_unitario"])) <= 0:
+            disponibles = Decimal("0")
+            bloqueo = "El ítem tiene precio cero."
+        elif item["tipo_item"] == "producto" and serializable:
+            requiere_serializadas = True
+            disponibles = Decimal(str(item["serializadas_disponibles_count"]))
+            serializadas = get_serializadas_disponibles_cotizacion(
+                conn,
+                variante_id=item["id_variante"],
+                sucursal_id=cotizacion["id_sucursal"],
+            )
+            if cantidad != cantidad.to_integral_value():
+                bloqueo = "Una bicicleta serializada requiere cantidad entera."
+        elif item["tipo_item"] == "producto" and stockeable:
+            disponibles = Decimal(str(item["stock_disponible"]))
+
+        faltante = max(cantidad - disponibles, Decimal("0"))
+        if faltante > 0:
+            advertencias.append(
+                f"{item['descripcion_snapshot']}: faltan {faltante:g} unidad(es)."
+            )
+        if bloqueo:
+            advertencias.append(f"{item['descripcion_snapshot']}: {bloqueo}")
+
+        salida.append(
+            {
+                "id_cotizacion_item": item["id"],
+                "descripcion": item["descripcion_snapshot"],
+                "tipo_item": item["tipo_item"],
+                "cantidad": cantidad,
+                "serializable": serializable,
+                "stockeable": stockeable,
+                "disponible": disponibles,
+                "faltante": faltante,
+                "serializadas_disponibles": serializadas,
+                "bloqueo": bloqueo,
+            }
+        )
+
+    if not items:
+        advertencias.append("La cotización no tiene ítems.")
+
+    return {
+        "cotizacion_id": cotizacion["id"],
+        "puede_convertir": not advertencias,
+        "requiere_seleccion_serializadas": requiere_serializadas,
+        "items": salida,
+        "advertencias": advertencias,
+    }
 
 
 def _descripcion_variante(variante):

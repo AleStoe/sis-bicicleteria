@@ -5,6 +5,10 @@ import EstadoBadge from "./EstadoBadge";
 import PreciosComercialesCatalogo from "./PreciosComercialesCatalogo";
 import { X } from "lucide-react";
 import { colors, radius, shadows, spacing, typography } from "../../theme";
+import {
+  esVarianteUnica,
+  formatProductoVariante,
+} from "../../utils/productPresentation";
 
 export default function CatalogoDetalleModal({ item, onClose, onEdit }) {
   const [fichaTecnica, setFichaTecnica] = useState([]);
@@ -49,7 +53,9 @@ export default function CatalogoDetalleModal({ item, onClose, onEdit }) {
           <div>
             <p style={styles.kicker}>Detalle de catálogo</p>
             <h2 style={styles.title}>{item.producto_nombre}</h2>
-            <p style={styles.subtitle}>{item.nombre_variante || "Variante única"}</p>
+            {!esVarianteUnica(item.nombre_variante) && item.nombre_variante && (
+              <p style={styles.subtitle}>{item.nombre_variante}</p>
+            )}
           </div>
 
           <button type="button" onClick={onClose} style={styles.closeButton}>
@@ -83,9 +89,10 @@ export default function CatalogoDetalleModal({ item, onClose, onEdit }) {
 
             <PreciosComercialesCatalogo
               item={item}
-              nombre={[item.producto_nombre, item.nombre_variante]
-                .filter(Boolean)
-                .join(" - ")}
+              nombre={formatProductoVariante(
+                item.producto_nombre,
+                item.nombre_variante
+              )}
             />
           </section>
 

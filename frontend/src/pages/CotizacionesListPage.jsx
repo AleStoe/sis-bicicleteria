@@ -8,6 +8,7 @@ import { listarServiciosTaller } from "../services/serviciosTallerService";
 import { crearCotizacion, listarCotizaciones } from "../services/cotizacionesService";
 import { normalizeTextUpper } from "../utils/textNormalization";
 import { formatDate, formatMoney } from "../utils/formatters";
+import { formatProductoVariante } from "../utils/productPresentation";
 import { Button, EmptyState, PageHeader, useBreakpoint } from "../components/ui";
 import { colors, controls, radius, shadows, spacing, typography } from "../theme";
 import ServicePlaceholder from "../components/servicios/ServicePlaceholder";
@@ -696,9 +697,10 @@ function normalizarItem(item, index) {
 }
 
 function descripcionVariante(variante) {
-  return [variante.producto_nombre, variante.nombre_variante]
-    .filter(Boolean)
-    .join(" - ");
+  return formatProductoVariante(
+    variante.producto_nombre,
+    variante.nombre_variante
+  );
 }
 
 function metaVariante(variante) {

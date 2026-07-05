@@ -41,8 +41,29 @@ export function quitarItemCotizacion(cotizacionId, itemId) {
   });
 }
 
+export function actualizarCantidadItemCotizacion(cotizacionId, itemId, cantidad) {
+  return apiRequest(
+    `/cotizaciones/${cotizacionId}/items/${itemId}/cantidad`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ cantidad }),
+    }
+  );
+}
+
 export function cambiarEstadoCotizacion(cotizacionId, data) {
   return apiRequest(`/cotizaciones/${cotizacionId}/estado`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function obtenerPreviewConversionCotizacion(cotizacionId) {
+  return apiRequest(`/cotizaciones/${cotizacionId}/conversion-preview`);
+}
+
+export function convertirCotizacionAVenta(cotizacionId, data) {
+  return apiRequest(`/cotizaciones/${cotizacionId}/convertir-a-venta`, {
     method: "POST",
     body: JSON.stringify(data),
   });

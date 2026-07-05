@@ -70,17 +70,135 @@ class RentabilidadMensualOutput(BaseModel):
     ventas_brutas: Decimal
     devoluciones_total: Decimal
     ventas_netas: Decimal
+    financiacion_excluida: Decimal = Decimal("0")
+    financiacion_cobrada: Decimal = Decimal("0")
+    costos_financieros: Decimal = Decimal("0")
+    ingreso_real_neto: Decimal = Decimal("0")
+    resultado_financiero: Decimal = Decimal("0")
 
     cmv_bruto: Decimal
     cmv_devoluciones: Decimal
     cmv_neto: Decimal
 
     margen_bruto: Decimal
+    margen_real: Decimal
     gastos_operativos: Decimal
     resultado_distribuible: Decimal
 
     regla_distribucion: Optional[ReglaDistribucionOutput] = None
     distribuciones_sugeridas: List[RentabilidadDistribucionOutput] = []
+
+
+class BonificacionGarantiaItemOutput(BaseModel):
+    id_venta_item: int
+    id_venta: int
+    fecha: datetime
+    id_orden_taller: Optional[int] = None
+    origen: str
+    cliente_nombre: str
+    usuario_nombre: str
+    descripcion_snapshot: str
+    tipo_item: str
+    cantidad_neta: Decimal
+    motivo_bonificacion: str
+    valor_lista: Decimal
+    valor_bonificado: Decimal
+    importe_post_bonificacion: Decimal
+    costo_capital: Decimal
+    ingreso_neto_asignado: Decimal
+    resultado_economico: Decimal
+
+
+class BonificacionesGarantiasOutput(BaseModel):
+    periodo_mes: date
+    fecha_desde: date
+    fecha_hasta: date
+    id_sucursal: Optional[int] = None
+    cantidad_operaciones: int
+    cantidad_items: int
+    cantidad_productos: int
+    cantidad_servicios: int
+    valor_lista: Decimal
+    valor_bonificado: Decimal
+    importe_post_bonificacion: Decimal
+    costo_capital: Decimal
+    ingreso_neto_asignado: Decimal
+    resultado_economico: Decimal
+    items: List[BonificacionGarantiaItemOutput] = []
+
+
+class RentabilidadDetalleDiarioOutput(BaseModel):
+    id_venta_item: int
+    id_venta: int
+    fecha: datetime
+    cliente_nombre: str
+    estado_venta: str
+    origen: str
+    tipo_item: str
+    id_variante: Optional[int] = None
+    id_servicio_taller: Optional[int] = None
+    producto: str
+    variante: Optional[str] = None
+    descripcion_snapshot: str
+    cantidad: Decimal
+    cantidad_devuelta: Decimal
+    cantidad_neta: Decimal
+    precio_lista: Decimal
+    precio_final: Decimal
+    bonificacion_total: Decimal
+    descuento_comercial_asignado: Decimal
+    financiacion_excluida: Decimal
+    financiacion_cobrada: Decimal = Decimal("0")
+    costo_financiero: Decimal = Decimal("0")
+    ingreso_real_neto: Decimal = Decimal("0")
+    devolucion_comercial: Decimal
+    ingreso_comercial: Decimal
+    costo_total: Decimal
+    margen_bruto: Decimal
+    margen_real: Decimal
+    medios_pago: str
+
+
+class RentabilidadArticuloDiarioOutput(BaseModel):
+    tipo_item: str = "producto"
+    id_variante: Optional[int] = None
+    id_servicio_taller: Optional[int] = None
+    producto: str
+    variante: Optional[str] = None
+    cantidad_vendida: Decimal
+    cantidad_ventas: int = 0
+    valor_lista: Decimal = Decimal("0")
+    bonificacion_total: Decimal = Decimal("0")
+    descuento_comercial: Decimal = Decimal("0")
+    financiacion_excluida: Decimal = Decimal("0")
+    financiacion_cobrada: Decimal = Decimal("0")
+    costo_financiero: Decimal = Decimal("0")
+    ingreso_real_neto: Decimal = Decimal("0")
+    devoluciones_total: Decimal = Decimal("0")
+    venta_total: Decimal
+    costo_total: Decimal
+    margen_bruto: Decimal
+    margen_real: Decimal
+    margen_porcentaje: Decimal
+    detalles: List[RentabilidadDetalleDiarioOutput] = []
+
+
+class RentabilidadDiariaOutput(BaseModel):
+    fecha: date
+    id_sucursal: Optional[int] = None
+    cantidad_ventas: int
+    ventas_netas: Decimal
+    financiacion_excluida: Decimal = Decimal("0")
+    financiacion_cobrada: Decimal = Decimal("0")
+    costos_financieros: Decimal = Decimal("0")
+    ingreso_real_neto: Decimal = Decimal("0")
+    resultado_financiero: Decimal = Decimal("0")
+    devoluciones_total: Decimal
+    cmv: Decimal
+    margen_bruto: Decimal
+    margen_real: Decimal
+    margen_porcentaje: Decimal
+    articulos: List[RentabilidadArticuloDiarioOutput] = []
 
 
 class CierreRentabilidadCreateInput(BaseModel):
@@ -124,6 +242,10 @@ class CierreRentabilidadOutput(BaseModel):
     cmv_neto: Decimal
 
     margen_bruto: Decimal
+    financiacion_cobrada: Decimal = Decimal("0")
+    costos_financieros: Decimal = Decimal("0")
+    resultado_financiero: Decimal = Decimal("0")
+    margen_real: Decimal = Decimal("0")
     gastos_operativos: Decimal
     resultado_distribuible: Decimal
 

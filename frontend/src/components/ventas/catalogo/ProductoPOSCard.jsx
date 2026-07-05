@@ -5,6 +5,7 @@ import {
   getCodigoItemCatalogo,
   getDescripcionItemCatalogo,
   getMotivoBloqueoItemCatalogo,
+  getOfertaItemCatalogo,
   getPrecioItemCatalogo,
   puedeAgregarItemCatalogo,
 } from "../../../helpers/ventasItemsHelper";
@@ -12,6 +13,7 @@ import {
 export default function ProductoPOSCard({ producto, tipoPrecio, onAgregarItem }) {
   const isMobile = useMediaQuery("(max-width: 680px)");
   const bloqueado = !puedeAgregarItemCatalogo(producto, tipoPrecio);
+  const oferta = getOfertaItemCatalogo(producto, tipoPrecio);
 
   return (
     <div
@@ -40,6 +42,7 @@ export default function ProductoPOSCard({ producto, tipoPrecio, onAgregarItem })
         <strong>{getDescripcionItemCatalogo(producto)}</strong>
         <div style={mutedStyle}>{getCodigoItemCatalogo(producto)}</div>
         <div style={tagRowStyle}>
+          {oferta && <span style={offerTagStyle}>OFERTA 🔥</span>}
           <span style={tagStyle}>{producto.categoria_nombre}</span>
           {producto.serializable ? (
             <span style={serializableTagStyle}>Bicicleta</span>
@@ -59,7 +62,14 @@ export default function ProductoPOSCard({ producto, tipoPrecio, onAgregarItem })
       </div>
 
       <div style={{ ...productPriceStyle, ...(isMobile ? productPriceMobileStyle : {}) }}>
-        <strong>{formatMoney(getPrecioItemCatalogo(producto, tipoPrecio))}</strong>
+        <div style={priceValuesStyle}>
+          {oferta && (
+            <span style={oldPriceStyle}>{formatMoney(oferta.precio_regular)}</span>
+          )}
+          <strong style={oferta ? offerPriceStyle : undefined}>
+            {formatMoney(getPrecioItemCatalogo(producto, tipoPrecio))}
+          </strong>
+        </div>
         <button
           type="button"
           onClick={() => onAgregarItem(producto)}
@@ -133,6 +143,10 @@ const tagStyle = { background: "#eef4ff", color: "#175cd3", borderRadius: "999px
 const stockTagStyle = { background: "#ecfdf3", color: "#067647", borderRadius: "999px", padding: "3px 8px", fontSize: "12px" };
 const serializableTagStyle = { background: "#fff8e1", color: "#8a6d00", borderRadius: "999px", padding: "3px 8px", fontSize: "12px" };
 const dangerTagStyle = { background: "#fee4e2", color: "#b42318", borderRadius: "999px", padding: "3px 8px", fontSize: "12px" };
+const offerTagStyle = { background: "#ffedd5", color: "#c2410c", borderRadius: "999px", padding: "3px 8px", fontSize: "12px", fontWeight: 900 };
+const priceValuesStyle = { display: "grid", gap: 2, justifyItems: "end" };
+const oldPriceStyle = { color: "#667085", fontSize: 12, textDecoration: "line-through" };
+const offerPriceStyle = { color: "#ea580c", fontSize: 18 };
 
 const productPriceStyle = {
   display: "grid",

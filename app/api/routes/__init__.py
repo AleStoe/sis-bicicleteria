@@ -27,6 +27,7 @@ from app.modules.inventario_fisico.routes import router as inventario_fisico_rou
 from app.modules.alertas_operativas.routes import router as alertas_operativas_router
 from app.modules.configuracion_negocio.routes import router as configuracion_negocio_router
 from app.modules.backups.routes import router as backups_router
+from app.modules.ofertas.routes import router as ofertas_router
 
 router = APIRouter()
 
@@ -58,3 +59,4 @@ router.include_router(inventario_fisico_router, prefix="/inventarios-fisicos", t
 router.include_router(alertas_operativas_router, prefix="/alertas-operativas", tags=["Alertas Operativas"])
 router.include_router(configuracion_negocio_router, prefix="/configuracion-negocio", tags=["Configuracion Negocio"])
 router.include_router(backups_router, prefix="/backups", tags=["Backups"])
+router.include_router(ofertas_router, prefix="/ofertas", tags=["Ofertas"])

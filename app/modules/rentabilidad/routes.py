@@ -8,15 +8,19 @@ from app.modules.authz.service import requerir_permiso
 from app.shared.constants import PERMISO_VER_RENTABILIDAD
 
 from .schema import (
+    BonificacionesGarantiasOutput,
     CierreRentabilidadCreateInput,
     CierreRentabilidadCreateOutput,
     CierreRentabilidadOutput,
     ReglaDistribucionCreateInput,
     ReglaDistribucionEstadoOutput,
     ReglaDistribucionOutput,
+    RentabilidadDiariaOutput,
     RentabilidadMensualOutput,
 )
 from .service import (
+    calcular_bonificaciones_garantias,
+    calcular_rentabilidad_diaria,
     calcular_rentabilidad_mensual,
     cambiar_estado_regla,
     crear_cierre_rentabilidad,
@@ -63,6 +67,27 @@ def rentabilidad_mensual_route(
     _usuario: CurrentUser = Depends(puede_ver_rentabilidad),
 ):
     return calcular_rentabilidad_mensual(periodo_mes, id_sucursal, id_regla_distribucion)
+
+
+@router.get("/diaria", response_model=RentabilidadDiariaOutput)
+def rentabilidad_diaria_route(
+    fecha: date,
+    id_sucursal: Optional[int] = Query(default=None, gt=0),
+    _usuario: CurrentUser = Depends(puede_ver_rentabilidad),
+):
+    return calcular_rentabilidad_diaria(fecha, id_sucursal)
+
+
+@router.get(
+    "/bonificaciones-garantias",
+    response_model=BonificacionesGarantiasOutput,
+)
+def bonificaciones_garantias_route(
+    periodo_mes: date,
+    id_sucursal: Optional[int] = Query(default=None, gt=0),
+    _usuario: CurrentUser = Depends(puede_ver_rentabilidad),
+):
+    return calcular_bonificaciones_garantias(periodo_mes, id_sucursal)
 
 
 @router.post("/cierres", response_model=CierreRentabilidadCreateOutput)

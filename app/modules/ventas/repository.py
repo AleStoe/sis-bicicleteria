@@ -130,6 +130,10 @@ def insert_venta_item(conn, data: dict):
             bonificacion_unitaria,
             motivo_bonificacion,
             motivo_precio_manual,
+            id_oferta,
+            precio_catalogo_original,
+            descuento_oferta_unitario,
+            oferta_nombre_snapshot,
             costo_unitario_aplicado,
             subtotal
         )
@@ -137,7 +141,8 @@ def insert_venta_item(conn, data: dict):
             %s, %s, %s, %s, %s,
             %s, %s, %s, %s, %s,
             %s, %s, %s, %s, %s,
-            %s, %s, %s
+            %s, %s, %s, %s, %s,
+            %s, %s
         )
             RETURNING id
             """,
@@ -158,6 +163,10 @@ def insert_venta_item(conn, data: dict):
                 data.get("bonificacion_unitaria", 0),
                 data.get("motivo_bonificacion"),
                 data.get("motivo_precio_manual"),
+                data.get("id_oferta"),
+                data.get("precio_catalogo_original"),
+                data.get("descuento_oferta_unitario", 0),
+                data.get("oferta_nombre_snapshot"),
                 data["costo_unitario_aplicado"],
                 data["subtotal"],
             ),
@@ -345,6 +354,10 @@ def get_venta_items_by_venta_id(conn, venta_id: int):
                 vi.motivo_precio_manual,
                 vi.precio_unitario_original,
                 vi.precio_unitario_final,
+                vi.id_oferta,
+                vi.precio_catalogo_original,
+                vi.descuento_oferta_unitario,
+                vi.oferta_nombre_snapshot,
                 COALESCE(dev.cantidad_devuelta, 0) AS cantidad_devuelta,
                 CASE
                     WHEN COALESCE(dev.cantidad_devuelta, 0) >= vi.cantidad
@@ -397,7 +410,11 @@ def get_venta_items_detallados_by_venta_id(conn, venta_id: int):
                 vi.motivo_bonificacion,
                 vi.motivo_precio_manual,
                 vi.precio_unitario_original,
-                vi.precio_unitario_final
+                vi.precio_unitario_final,
+                vi.id_oferta,
+                vi.precio_catalogo_original,
+                vi.descuento_oferta_unitario,
+                vi.oferta_nombre_snapshot
             FROM venta_items vi
             LEFT JOIN variantes v
                 ON v.id = vi.id_variante

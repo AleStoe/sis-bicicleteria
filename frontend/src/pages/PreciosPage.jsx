@@ -6,6 +6,8 @@ import RecalculoMasivoPanel from "../components/precios/RecalculoMasivoPanel";
 import AjusteRapidoProveedorPanel from "../components/precios/AjusteRapidoProveedorPanel";
 import PrecioManualPanel from "../components/precios/PrecioManualPanel";
 import ReglasPrecioPanel from "../components/precios/ReglasPrecioPanel";
+import HerramientasPrecioPanel from "../components/precios/HerramientasPrecioPanel";
+import OfertasPanel from "../components/precios/OfertasPanel";
 import { ConfirmModal } from "../components/ui/ConfirmModal";
 import {
   buildRecalculoProveedorPayload,
@@ -564,11 +566,31 @@ export default function PreciosPage() {
     tabActive: { ...styles.tabActive, ...(isMobile ? styles.fullWidth : {}) },
     manualGrid: isNarrow ? styles.gridMobile : styles.manualGrid,
     rulesGrid: isNarrow ? styles.gridMobile : styles.rulesGrid,
+    card: { ...styles.card, ...(isMobile ? styles.cardMobile : {}) },
+    cardWide: { ...styles.cardWide, ...(isMobile ? styles.cardMobile : {}) },
+    cardTitle: { ...styles.cardTitle, ...(isMobile ? styles.cardTitleMobile : {}) },
     searchRow: isMobile ? styles.searchRowMobile : styles.searchRow,
     filters: isMobile ? styles.filtersMobile : styles.filters,
     summaryGrid: isMobile ? styles.summaryGridMobile : styles.summaryGrid,
+    quickGrid: isMobile ? styles.quickGridMobile : styles.quickGrid,
+    checkboxGrid: isMobile ? styles.checkboxGridMobile : styles.checkboxGrid,
+    actions: isMobile ? styles.actionsMobile : styles.actions,
     tableHeader: isMobile ? styles.tableHeaderMobile : styles.tableHeader,
     tableWrapper: { ...styles.tableWrapper, ...(isMobile ? styles.tableWrapperMobile : {}) },
+    suggestionResult: isMobile
+      ? styles.suggestionResultMobile
+      : styles.suggestionResult,
+    priceToolsHeader: isMobile
+      ? styles.priceToolsHeaderMobile
+      : styles.priceToolsHeader,
+    primaryButton: {
+      ...styles.primaryButton,
+      ...(isMobile ? styles.buttonMobile : {}),
+    },
+    secondaryButton: {
+      ...styles.secondaryButton,
+      ...(isMobile ? styles.buttonMobile : {}),
+    },
   };
 
   return (
@@ -577,7 +599,7 @@ export default function PreciosPage() {
         <div>
           <h1 style={viewStyles.title}>Precios</h1>
           <p style={viewStyles.subtitle}>
-            Edición puntual, sugerencias, historial, reglas y recalculo masivo.
+            Edición puntual, calculadora, sugerencias, historial, reglas y recalculo masivo.
           </p>
         </div>
       </header>
@@ -592,6 +614,20 @@ export default function PreciosPage() {
           onClick={() => setTab("manual")}
         >
           Precio puntual
+        </button>
+        <button
+          type="button"
+          style={tab === "ofertas" ? viewStyles.tabActive : viewStyles.tab}
+          onClick={() => setTab("ofertas")}
+        >
+          Ofertas 🔥
+        </button>
+        <button
+          type="button"
+          style={tab === "calculadora" ? viewStyles.tabActive : viewStyles.tab}
+          onClick={() => setTab("calculadora")}
+        >
+          Calculadora
         </button>
         <button
           type="button"
@@ -636,6 +672,26 @@ export default function PreciosPage() {
           }
           styles={viewStyles}
           InfoBox={InfoBox}
+        />
+      )}
+
+      {tab === "calculadora" && (
+        <HerramientasPrecioPanel
+          porcentajeDescuentoContado={
+            configuracionNegocio.porcentaje_descuento_contado_calculadora_precios
+          }
+          mostrarAccionesContado={false}
+          textoAyuda="Usala para consultar un precio lista sin seleccionar ni modificar productos. No guarda cambios."
+          styles={viewStyles}
+        />
+      )}
+
+      {tab === "ofertas" && (
+        <OfertasPanel
+          porcentajeDescuentoContado={
+            configuracionNegocio.porcentaje_descuento_contado_calculadora_precios
+          }
+          styles={viewStyles}
         />
       )}
 
@@ -720,6 +776,10 @@ const styles = {
     padding: "24px",
     background: "#f6f7fb",
     minHeight: "100vh",
+    width: "100%",
+    maxWidth: "100%",
+    minWidth: 0,
+    boxSizing: "border-box",
   },
   pageMobile: {
     padding: "12px",
@@ -751,7 +811,7 @@ const styles = {
   },
   tabsMobile: {
     display: "grid",
-    gridTemplateColumns: "1fr",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: "8px",
     marginBottom: "14px",
   },
@@ -777,18 +837,21 @@ const styles = {
     gridTemplateColumns: "minmax(360px, 0.9fr) minmax(420px, 1.1fr)",
     gap: "16px",
     alignItems: "start",
+    minWidth: 0,
   },
   rulesGrid: {
     display: "grid",
     gridTemplateColumns: "420px 1fr",
     gap: "16px",
     alignItems: "start",
+    minWidth: 0,
   },
   gridMobile: {
     display: "grid",
     gridTemplateColumns: "1fr",
     gap: "12px",
     alignItems: "start",
+    minWidth: 0,
   },
   card: {
     background: "#fff",
@@ -796,6 +859,9 @@ const styles = {
     padding: "16px",
     boxShadow: "0 2px 10px rgba(0,0,0,.08)",
     marginBottom: "16px",
+    minWidth: 0,
+    maxWidth: "100%",
+    boxSizing: "border-box",
   },
   cardWide: {
     gridColumn: "1 / -1",
@@ -804,11 +870,22 @@ const styles = {
     padding: "16px",
     boxShadow: "0 2px 10px rgba(0,0,0,.08)",
     marginBottom: "16px",
+    minWidth: 0,
+    maxWidth: "100%",
+    boxSizing: "border-box",
+  },
+  cardMobile: {
+    padding: "12px",
+    borderRadius: "10px",
   },
   cardTitle: {
     margin: "0 0 14px",
     fontSize: "20px",
     fontWeight: 800,
+  },
+  cardTitleMobile: {
+    fontSize: "18px",
+    marginBottom: "10px",
   },
   searchRow: {
     display: "grid",
@@ -840,10 +917,22 @@ const styles = {
     gap: "12px",
     marginBottom: "12px",
   },
+  quickGridMobile: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: "10px",
+    marginBottom: "12px",
+  },
   checkboxGrid: {
     display: "flex",
     gap: "12px",
     flexWrap: "wrap",
+    margin: "4px 0 12px",
+  },
+  checkboxGridMobile: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: "10px",
     margin: "4px 0 12px",
   },
   checkboxLabel: {
@@ -915,6 +1004,8 @@ const styles = {
     borderRadius: "12px",
     padding: "12px",
     cursor: "pointer",
+    minWidth: 0,
+    overflowWrap: "anywhere",
   },
   identityBox: {
     display: "grid",
@@ -940,7 +1031,7 @@ const styles = {
   },
   summaryGridMobile: {
     display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(145px, 100%), 1fr))",
     gap: "8px",
     marginBottom: "14px",
   },
@@ -958,6 +1049,7 @@ const styles = {
   },
   summaryValue: {
     fontSize: "20px",
+    overflowWrap: "anywhere",
   },
   suggestionBox: {
     marginTop: "14px",
@@ -983,6 +1075,12 @@ const styles = {
     gap: "10px",
     alignItems: "start",
   },
+  priceToolsHeaderMobile: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: "8px",
+    alignItems: "start",
+  },
   priceToolsTitle: {
     margin: 0,
     fontSize: "17px",
@@ -1004,11 +1102,27 @@ const styles = {
     gap: "10px",
     alignItems: "center",
   },
+  suggestionResultMobile: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: "10px",
+    alignItems: "stretch",
+  },
   actions: {
     display: "flex",
     gap: "10px",
     marginTop: "14px",
     flexWrap: "wrap",
+  },
+  actionsMobile: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: "8px",
+    marginTop: "12px",
+  },
+  buttonMobile: {
+    width: "100%",
+    minHeight: "42px",
   },
   tableHeader: {
     display: "flex",
@@ -1029,15 +1143,35 @@ const styles = {
   },
   tableWrapper: {
     overflowX: "auto",
+    maxWidth: "100%",
+    border: "1px solid #e5e7eb",
+    borderRadius: "10px",
+    background: "#fff",
   },
   tableWrapperMobile: {
+    width: "100%",
     maxWidth: "100%",
     WebkitOverflowScrolling: "touch",
+    scrollbarWidth: "thin",
   },
   table: {
     width: "100%",
     borderCollapse: "collapse",
-    minWidth: "1180px",
+  },
+  tableCompact: {
+    width: "100%",
+    minWidth: "720px",
+    borderCollapse: "collapse",
+  },
+  tableMedium: {
+    width: "100%",
+    minWidth: "940px",
+    borderCollapse: "collapse",
+  },
+  tableWide: {
+    width: "100%",
+    minWidth: "1120px",
+    borderCollapse: "collapse",
   },
   fullWidth: {
     width: "100%",
@@ -1062,6 +1196,16 @@ const styles = {
     fontSize: "14px",
     fontWeight: 800,
     whiteSpace: "nowrap",
+  },
+  tdProduct: {
+    borderBottom: "1px solid #eee",
+    padding: "10px",
+    minWidth: "190px",
+    maxWidth: "300px",
+    fontSize: "14px",
+    fontWeight: 800,
+    whiteSpace: "normal",
+    overflowWrap: "anywhere",
   },
   badge: {
     display: "inline-block",
@@ -1116,5 +1260,63 @@ const styles = {
     color: "#667085",
     fontSize: "13px",
     fontWeight: 700,
+  },
+  offerPreview: {
+    display: "grid",
+    gap: "6px",
+    padding: "12px",
+    border: "1px solid #fdba74",
+    borderRadius: "10px",
+    background: "#fff7ed",
+  },
+  offerWarning: {
+    color: "#b42318",
+    fontWeight: 800,
+  },
+  offerList: {
+    display: "grid",
+    gap: "10px",
+  },
+  offerCard: {
+    display: "grid",
+    gap: "9px",
+    padding: "12px",
+    border: "1px solid #e5e7eb",
+    borderRadius: "10px",
+    background: "#fff",
+  },
+  offerCardHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: "10px",
+    alignItems: "start",
+    flexWrap: "wrap",
+  },
+  offerProduct: {
+    margin: "4px 0 0",
+    color: "#667085",
+    overflowWrap: "anywhere",
+  },
+  offerPrices: {
+    display: "flex",
+    alignItems: "baseline",
+    gap: "10px",
+    flexWrap: "wrap",
+    color: "#c2410c",
+    fontSize: "18px",
+  },
+  offerOldPrice: {
+    color: "#667085",
+    fontSize: "14px",
+    textDecoration: "line-through",
+  },
+  offerDates: {
+    margin: 0,
+    color: "#667085",
+    fontSize: "13px",
+  },
+  badgeOffer: {
+    background: "#ffedd5",
+    color: "#c2410c",
   },
 };

@@ -261,11 +261,14 @@ def test_resumen_diario_tarjeta_muestra_movimiento_operativo_no_total_financiado
                 monto_base_aplicado,
                 monto_descuento_aplicado,
                 monto_recargo_aplicado,
+                monto_costo_financiero,
+                monto_neto_liquidado,
                 estado,
                 nota,
                 id_usuario
             )
             VALUES (%s, 'venta', %s, 'tarjeta', 311666.66, 183333.33, 0, 128333.33,
+                    128333.33, 183333.33,
                     'confirmado', 'Pago tarjeta con recargo financiero', %s)
             RETURNING id
             """,
@@ -307,6 +310,9 @@ def test_resumen_diario_tarjeta_muestra_movimiento_operativo_no_total_financiado
     assert data["pagos"]["cantidad_pagos"] == 1
     assert float(data["pagos"]["tarjeta"]) == 183333.33
     assert float(data["pagos"]["total_cobrado"]) == 183333.33
+    assert float(data["pagos"]["total_bruto_cobrado"]) == 311666.66
+    assert float(data["pagos"]["costos_financieros"]) == 128333.33
+    assert float(data["pagos"]["total_neto_esperado"]) == 183333.33
     assert float(data["pagos"]["total_financiado_tarjeta"]) == 311666.66
     assert float(data["pagos"]["recargos_aplicados"]) == 128333.33
 

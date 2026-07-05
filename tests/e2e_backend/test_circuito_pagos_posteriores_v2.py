@@ -171,7 +171,7 @@ def test_pago_posterior_tarjeta_crea_tramo_v2_detalle_tarjeta_y_mueve_caja(
     assert detalle is not None
     assert _dec(detalle["monto_base"]) == Decimal("10000.00")
     assert _dec(detalle["monto_recargo_financiero"]) == Decimal("1500.00")
-    assert _dec(detalle["monto_neto_liquidado"]) == Decimal("10000.00")
+    assert _dec(detalle["monto_neto_liquidado"]) == Decimal("11500.00")
     assert detalle["cuotas"] == 3
     assert _dec(detalle["porcentaje_recargo_aplicado"]) == Decimal("15.0000")
 
@@ -192,7 +192,7 @@ def test_pago_posterior_tarjeta_crea_tramo_v2_detalle_tarjeta_y_mueve_caja(
     ]
 
     assert len(ingresos_tarjeta) == 1
-    assert _dec(ingresos_tarjeta[0]["monto"]) == Decimal("10000.00")
+    assert _dec(ingresos_tarjeta[0]["monto"]) == Decimal("11500.00")
 
 
 def test_pago_posterior_tarjeta_permite_cobrado_mayor_al_saldo_si_base_no_supera_saldo(

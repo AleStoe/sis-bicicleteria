@@ -1,6 +1,7 @@
 import { formatMoney, formatNumber } from "../../utils/formatters";
 import { getEstadoStock } from "../../utils/stockUtils";
 import { colors } from "../../theme";
+import { esVarianteUnica } from "../../utils/productPresentation";
 
 export default function StockTable({
   stockFiltrado,
@@ -95,7 +96,9 @@ export default function StockTable({
                 >
                   <td style={styles.tdProduct}>
                     <strong style={styles.productName}>{item.producto_nombre}</strong>
-                    <div style={styles.variantName}>{item.nombre_variante}</div>
+                    {!esVarianteUnica(item.nombre_variante) && (
+                      <div style={styles.variantName}>{item.nombre_variante}</div>
+                    )}
                     <div style={styles.mutedSmall}>
                       SKU: {item.sku || "-"} · Proveedor: {item.codigo_proveedor || "-"} · Variante #{item.variante_id}
                     </div>
@@ -172,7 +175,11 @@ export default function StockTable({
               <div className="stock-card-top">
                 <div>
                   <strong className="stock-card-title">{item.producto_nombre}</strong>
-                  <div className="stock-card-variant">{item.nombre_variante || `Variante #${item.variante_id}`}</div>
+                  {!esVarianteUnica(item.nombre_variante) && (
+                    <div className="stock-card-variant">
+                      {item.nombre_variante || `Variante #${item.variante_id}`}
+                    </div>
+                  )}
                 </div>
                 <EstadoBadge estado={estado} />
               </div>

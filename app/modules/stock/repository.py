@@ -49,13 +49,13 @@ def _stock_base_select():
             v.sku,
             v.codigo_barras,
             v.codigo_proveedor,
-            ss.stock_fisico,
-            ss.stock_reservado,
-            ss.stock_vendido_pendiente_entrega,
+            COALESCE(ss.stock_fisico, 0) AS stock_fisico,
+            COALESCE(ss.stock_reservado, 0) AS stock_reservado,
+            COALESCE(ss.stock_vendido_pendiente_entrega, 0) AS stock_vendido_pendiente_entrega,
             (
-                ss.stock_fisico
-                - ss.stock_reservado
-                - ss.stock_vendido_pendiente_entrega
+                COALESCE(ss.stock_fisico, 0)
+                - COALESCE(ss.stock_reservado, 0)
+                - COALESCE(ss.stock_vendido_pendiente_entrega, 0)
             ) AS stock_disponible,
             c.id AS id_categoria,
             c.nombre AS categoria_nombre,
@@ -67,17 +67,19 @@ def _stock_base_select():
             p.serializable,
             {TIPO_OPERATIVO_SQL} AS tipo_operativo,
             v.costo_promedio_vigente,
-            (ss.stock_fisico * v.costo_promedio_vigente)::numeric(14,2) AS capital_inmovilizado,
+            (COALESCE(ss.stock_fisico, 0) * v.costo_promedio_vigente)::numeric(14,2) AS capital_inmovilizado,
             uv.ultima_venta,
             CASE
                 WHEN uv.ultima_venta IS NULL THEN NULL
                 ELSE (CURRENT_DATE - uv.ultima_venta::date)::int
             END AS dias_sin_movimiento
-        FROM stock_sucursal ss
-        INNER JOIN sucursales s ON s.id = ss.id_sucursal
-        INNER JOIN variantes v ON v.id = ss.id_variante
+        FROM variantes v
         INNER JOIN productos p ON p.id = v.id_producto
         INNER JOIN categorias c ON c.id = p.id_categoria
+        CROSS JOIN sucursales s
+        LEFT JOIN stock_sucursal ss
+            ON ss.id_variante = v.id
+           AND ss.id_sucursal = s.id
         LEFT JOIN marcas m ON m.id = p.id_marca
         LEFT JOIN proveedores pr ON pr.id = v.proveedor_preferido_id
         LEFT JOIN ultimas_ventas uv ON uv.id_variante = v.id
@@ -96,7 +98,12 @@ def _build_stock_filters(
     stock_bajo_umbral=2,
     dias_sin_movimiento=None,
 ):
-    where = ["p.activo = TRUE", "v.activo = TRUE"]
+    where = [
+        "p.activo = TRUE",
+        "v.activo = TRUE",
+        "p.stockeable = TRUE",
+        "s.activa = TRUE",
+    ]
     params = []
 
     if q:
@@ -119,7 +126,7 @@ def _build_stock_filters(
         params.extend([like, like, like, like, like, like, like, like, q.strip()])
 
     if id_sucursal is not None:
-        where.append("ss.id_sucursal = %s")
+        where.append("s.id = %s")
         params.append(id_sucursal)
 
     if id_categoria is not None:
@@ -141,7 +148,13 @@ def _build_stock_filters(
             where.append(f"({TIPO_OPERATIVO_SQL}) = %s")
             params.append(tipo_operativo)
 
-    disponible_sql = "(ss.stock_fisico - ss.stock_reservado - ss.stock_vendido_pendiente_entrega)"
+    disponible_sql = """
+    (
+        COALESCE(ss.stock_fisico, 0)
+        - COALESCE(ss.stock_reservado, 0)
+        - COALESCE(ss.stock_vendido_pendiente_entrega, 0)
+    )
+    """
 
     if estado_stock and estado_stock != "todos":
         if estado_stock == "con_stock":
@@ -152,16 +165,24 @@ def _build_stock_filters(
             where.append(f"{disponible_sql} > 0 AND {disponible_sql} <= %s")
             params.append(stock_bajo_umbral)
         elif estado_stock == "reservado":
-            where.append("ss.stock_reservado > 0")
+            where.append("COALESCE(ss.stock_reservado, 0) > 0")
         elif estado_stock == "pendiente":
-            where.append("ss.stock_vendido_pendiente_entrega > 0")
+            where.append("COALESCE(ss.stock_vendido_pendiente_entrega, 0) > 0")
         elif estado_stock == "inconsistente":
-            where.append(f"({disponible_sql} < 0 OR ss.stock_fisico < (ss.stock_reservado + ss.stock_vendido_pendiente_entrega))")
+            where.append(
+                f"""(
+                    {disponible_sql} < 0
+                    OR COALESCE(ss.stock_fisico, 0) < (
+                        COALESCE(ss.stock_reservado, 0)
+                        + COALESCE(ss.stock_vendido_pendiente_entrega, 0)
+                    )
+                )"""
+            )
 
     if dias_sin_movimiento is not None:
         where.append(
             """
-            ss.stock_fisico > 0
+            COALESCE(ss.stock_fisico, 0) > 0
             AND (uv.ultima_venta IS NULL OR uv.ultima_venta::date <= CURRENT_DATE - (%s::int))
             """
         )
@@ -191,7 +212,7 @@ def get_stock_sucursal(
         "producto": "p.nombre",
         "variante": "v.nombre_variante",
         "stock": "stock_disponible",
-        "fisico": "ss.stock_fisico",
+        "fisico": "COALESCE(ss.stock_fisico, 0)",
         "capital": "capital_inmovilizado",
         "ultima_venta": "uv.ultima_venta",
         "categoria": "c.nombre",
@@ -258,20 +279,65 @@ def get_stock_resumen(
             f"""
             SELECT
                 COUNT(*)::int AS total_items,
-                COUNT(*) FILTER (WHERE (ss.stock_fisico - ss.stock_reservado - ss.stock_vendido_pendiente_entrega) > 0)::int AS con_stock,
-                COUNT(*) FILTER (WHERE (ss.stock_fisico - ss.stock_reservado - ss.stock_vendido_pendiente_entrega) <= 0)::int AS sin_stock,
-                COUNT(*) FILTER (WHERE (ss.stock_fisico - ss.stock_reservado - ss.stock_vendido_pendiente_entrega) > 0 AND (ss.stock_fisico - ss.stock_reservado - ss.stock_vendido_pendiente_entrega) <= %s)::int AS stock_bajo,
-                COUNT(*) FILTER (WHERE ss.stock_reservado > 0)::int AS reservado,
-                COUNT(*) FILTER (WHERE ss.stock_vendido_pendiente_entrega > 0)::int AS pendiente_entrega,
-                COUNT(*) FILTER (WHERE (ss.stock_fisico - ss.stock_reservado - ss.stock_vendido_pendiente_entrega) < 0 OR ss.stock_fisico < (ss.stock_reservado + ss.stock_vendido_pendiente_entrega))::int AS inconsistentes,
-                COALESCE(SUM(ss.stock_fisico), 0)::numeric(14,3) AS stock_fisico_total,
-                COALESCE(SUM(ss.stock_fisico - ss.stock_reservado - ss.stock_vendido_pendiente_entrega), 0)::numeric(14,3) AS stock_disponible_total,
-                COALESCE(SUM(ss.stock_fisico * v.costo_promedio_vigente), 0)::numeric(14,2) AS capital_inmovilizado_total
-            FROM stock_sucursal ss
-            INNER JOIN sucursales s ON s.id = ss.id_sucursal
-            INNER JOIN variantes v ON v.id = ss.id_variante
+                COUNT(*) FILTER (
+                    WHERE (
+                        COALESCE(ss.stock_fisico, 0)
+                        - COALESCE(ss.stock_reservado, 0)
+                        - COALESCE(ss.stock_vendido_pendiente_entrega, 0)
+                    ) > 0
+                )::int AS con_stock,
+                COUNT(*) FILTER (
+                    WHERE (
+                        COALESCE(ss.stock_fisico, 0)
+                        - COALESCE(ss.stock_reservado, 0)
+                        - COALESCE(ss.stock_vendido_pendiente_entrega, 0)
+                    ) <= 0
+                )::int AS sin_stock,
+                COUNT(*) FILTER (
+                    WHERE (
+                        COALESCE(ss.stock_fisico, 0)
+                        - COALESCE(ss.stock_reservado, 0)
+                        - COALESCE(ss.stock_vendido_pendiente_entrega, 0)
+                    ) > 0
+                    AND (
+                        COALESCE(ss.stock_fisico, 0)
+                        - COALESCE(ss.stock_reservado, 0)
+                        - COALESCE(ss.stock_vendido_pendiente_entrega, 0)
+                    ) <= %s
+                )::int AS stock_bajo,
+                COUNT(*) FILTER (
+                    WHERE COALESCE(ss.stock_reservado, 0) > 0
+                )::int AS reservado,
+                COUNT(*) FILTER (
+                    WHERE COALESCE(ss.stock_vendido_pendiente_entrega, 0) > 0
+                )::int AS pendiente_entrega,
+                COUNT(*) FILTER (
+                    WHERE (
+                        COALESCE(ss.stock_fisico, 0)
+                        - COALESCE(ss.stock_reservado, 0)
+                        - COALESCE(ss.stock_vendido_pendiente_entrega, 0)
+                    ) < 0
+                    OR COALESCE(ss.stock_fisico, 0) < (
+                        COALESCE(ss.stock_reservado, 0)
+                        + COALESCE(ss.stock_vendido_pendiente_entrega, 0)
+                    )
+                )::int AS inconsistentes,
+                COALESCE(SUM(COALESCE(ss.stock_fisico, 0)), 0)::numeric(14,3) AS stock_fisico_total,
+                COALESCE(SUM(
+                    COALESCE(ss.stock_fisico, 0)
+                    - COALESCE(ss.stock_reservado, 0)
+                    - COALESCE(ss.stock_vendido_pendiente_entrega, 0)
+                ), 0)::numeric(14,3) AS stock_disponible_total,
+                COALESCE(SUM(
+                    COALESCE(ss.stock_fisico, 0) * v.costo_promedio_vigente
+                ), 0)::numeric(14,2) AS capital_inmovilizado_total
+            FROM variantes v
             INNER JOIN productos p ON p.id = v.id_producto
             INNER JOIN categorias c ON c.id = p.id_categoria
+            CROSS JOIN sucursales s
+            LEFT JOIN stock_sucursal ss
+                ON ss.id_variante = v.id
+               AND ss.id_sucursal = s.id
             LEFT JOIN marcas m ON m.id = p.id_marca
             LEFT JOIN proveedores pr ON pr.id = v.proveedor_preferido_id
             LEFT JOIN (

@@ -1,3 +1,5 @@
+import { formatProductoVariante } from "../utils/productPresentation";
+
 export function crearLineId() {
   if (
     typeof crypto !== "undefined" &&
@@ -10,7 +12,7 @@ export function crearLineId() {
 }
 
 export function getDescripcionItemCatalogo(item) {
-  return [item.producto_nombre, item.nombre_variante].filter(Boolean).join(" - ");
+  return formatProductoVariante(item.producto_nombre, item.nombre_variante);
 }
 
 export function getCodigoItemCatalogo(item) {
@@ -18,11 +20,37 @@ export function getCodigoItemCatalogo(item) {
 }
 
 export function getPrecioItemCatalogo(item, tipoPrecio) {
+  if (
+    tipoPrecio !== "mayorista" &&
+    item.en_oferta &&
+    Number(item.precio_oferta || 0) > 0
+  ) {
+    return Number(item.precio_oferta);
+  }
+
   return Number(
     tipoPrecio === "mayorista"
       ? item.precio_mayorista || 0
       : item.precio_minorista || 0
   );
+}
+
+export function getOfertaItemCatalogo(item, tipoPrecio) {
+  if (
+    tipoPrecio === "mayorista" ||
+    !item.en_oferta ||
+    Number(item.precio_oferta || 0) <= 0
+  ) {
+    return null;
+  }
+
+  return {
+    id: item.oferta_id,
+    nombre: item.oferta_nombre,
+    precio_regular: Number(item.precio_minorista || 0),
+    precio_oferta: Number(item.precio_oferta || 0),
+    fecha_hasta: item.oferta_fecha_hasta,
+  };
 }
 
 export function getMotivoBloqueoItemCatalogo(item, tipoPrecio) {

@@ -76,6 +76,10 @@ class PagoResumenOutput(BaseModel):
     monto_base_aplicado: Decimal | None = None
     monto_descuento_aplicado: Decimal | None = None
     monto_recargo_aplicado: Decimal | None = None
+    id_plan_financiero: int | None = None
+    porcentaje_costo_financiero_aplicado: Decimal = Decimal("0")
+    monto_costo_financiero: Decimal = Decimal("0")
+    monto_neto_liquidado: Decimal | None = None
 
     estado: str
     nota: str | None = None
@@ -144,3 +148,6 @@ class PagoVentaSimulacionOutput(BaseModel):
     entidad: str | None = None
     id_tarjeta_plan: int | None = None
     porcentaje_recargo_aplicado: Decimal | None = None
+    porcentaje_costo_financiero_aplicado: Decimal = Decimal("0")
+    costo_financiero: Decimal = Decimal("0")
+    monto_neto_liquidado: Decimal

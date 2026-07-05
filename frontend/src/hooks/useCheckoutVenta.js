@@ -443,9 +443,10 @@ export default function useCheckoutVenta({
     async function cargarPlanesTarjeta() {
       try {
         const data = await listarTarjetaPlanes(true);
-        setPlanesTarjeta(data || []);
+        const planes = (data || []).filter((plan) => plan.medio_pago === "tarjeta");
+        setPlanesTarjeta(planes);
 
-        const primerPlan = data?.[0];
+        const primerPlan = planes[0];
         if (primerPlan && medioPago === "tarjeta" && !planTarjetaId) {
           setPlanTarjetaId(String(primerPlan.id));
         }

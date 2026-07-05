@@ -2,6 +2,7 @@ import { useState } from "react";
 import VentaItemPrecioPanel from "./item/VentaItemPrecioPanel";
 import VentaItemBonificacionPanel from "./item/VentaItemBonificacionPanel";
 import VentaItemSerializadaPanel from "./item/VentaItemSerializadaPanel";
+import { esVarianteUnica } from "../../utils/productPresentation";
 
 function formatMoney(value) {
   const n = Number(value || 0);
@@ -41,7 +42,11 @@ export default function VentaItemRow({
     item.descripcion_snapshot ||
     "Producto sin descripción";
 
-  const codigo = item.codigo || item.nombre_variante || item.sku || `#${item.id_variante}`;
+  const codigo =
+    item.codigo ||
+    (!esVarianteUnica(item.nombre_variante) ? item.nombre_variante : null) ||
+    item.sku ||
+    `#${item.id_variante}`;
 
   const precioLista = Number(
     item.precio_lista || item.precio_minorista || item.precio || 0
@@ -154,6 +159,10 @@ export default function VentaItemRow({
 
               {item.bonificado && <span style={styles.badgeGift}>BONIFICADO</span>}
 
+              {item.en_oferta && !item.precio_unitario_manual && !item.bonificado && (
+                <span style={styles.badgeOffer}>OFERTA 🔥</span>
+              )}
+
               {item.precio_unitario_manual && !item.bonificado && (
                 <span style={styles.badgeManual}>PRECIO MANUAL</span>
               )}
@@ -161,6 +170,12 @@ export default function VentaItemRow({
           </div>
 
           <div style={styles.priceBlock}>
+            {item.en_oferta && !item.precio_unitario_manual && !item.bonificado && (
+              <span style={styles.oldPrice}>
+                {formatMoney(item.precio_catalogo_original)}
+              </span>
+            )}
+
             {item.bonificado && (
               <span style={styles.oldPrice}>{formatMoney(precioLista)}</span>
             )}
@@ -190,6 +205,14 @@ export default function VentaItemRow({
                 {item.motivo_precio_manual || "-"}
               </>
             )}
+          </div>
+        )}
+
+        {item.en_oferta && !item.precio_unitario_manual && !item.bonificado && (
+          <div style={styles.auditOffer}>
+            {item.oferta_nombre || "Oferta vigente"}: antes{" "}
+            <strong>{formatMoney(item.precio_catalogo_original)}</strong>, ahora{" "}
+            <strong>{formatMoney(precioLista)}</strong>.
           </div>
         )}
 
@@ -392,6 +415,14 @@ const styles = {
     fontSize: 10,
     fontWeight: 900,
   },
+  badgeOffer: {
+    background: "#ffedd5",
+    color: "#c2410c",
+    padding: "3px 7px",
+    borderRadius: 999,
+    fontSize: 10,
+    fontWeight: 900,
+  },
   priceBlock: {
     textAlign: "right",
     display: "grid",
@@ -417,6 +448,14 @@ const styles = {
     padding: "7px 8px",
     fontSize: 12,
     color: "#475569",
+  },
+  auditOffer: {
+    background: "#fff7ed",
+    border: "1px solid #fdba74",
+    borderRadius: 8,
+    padding: "7px 8px",
+    fontSize: 12,
+    color: "#9a3412",
   },
   controlRow: {
     display: "flex",

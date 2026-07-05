@@ -79,14 +79,15 @@ export default function PagoVentaPanel({
   async function cargarPlanes() {
     try {
       const data = await listarTarjetaPlanes(true);
+      const planes = (data || []).filter((plan) => plan.medio_pago === "tarjeta");
 
-      setPlanesTarjeta(data || []);
+      setPlanesTarjeta(planes);
 
-      if (data?.length) {
+      if (planes.length) {
         setForm((actual) => ({
           ...actual,
-          cuotas: data[0].cuotas,
-          entidad: data[0].entidad || "",
+          cuotas: planes[0].cuotas,
+          entidad: planes[0].entidad || "",
         }));
       }
     } catch (err) {

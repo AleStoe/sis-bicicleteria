@@ -12,6 +12,7 @@ from app.modules.authz.service import (
 from app.modules.reglas_comerciales.service import (
     simular_reglas_comerciales,
 )
+from app.modules.ofertas.repository import get_oferta_vigente_variante
 from app.db.connection import get_connection
 from app.modules.stock import service as stock_service
 from app.modules.creditos import service as creditos_service
@@ -723,8 +724,9 @@ def _validar_y_bloquear_bicicleta_serializada_para_devolucion(
 
     return bicicleta
 
-def crear_venta(data):
-    conn = get_connection()
+def crear_venta(data, *, conn=None):
+    own_conn = conn is None
+    conn = conn or get_connection()
 
     try:
         with conn.transaction():
@@ -831,6 +833,27 @@ def crear_venta(data):
                 )
 
                 precio_lista = redondear_monto(variante[campo_precio])
+                precio_catalogo_original = precio_lista
+                oferta = None
+
+                if (
+                    data.tipo_precio == "minorista"
+                    and precio_manual is None
+                    and not bonificado
+                    and bonificacion_manual is None
+                ):
+                    oferta_candidata = get_oferta_vigente_variante(
+                        conn,
+                        variante["id"],
+                        for_update=True,
+                    )
+                    if oferta_candidata is not None:
+                        precio_oferta = redondear_monto(
+                            oferta_candidata["precio_oferta"]
+                        )
+                        if Decimal("0") < precio_oferta < precio_lista:
+                            oferta = oferta_candidata
+                            precio_lista = precio_oferta
 
                 if precio_lista <= Decimal("0"):
                     raise HTTPException(
@@ -874,6 +897,8 @@ def crear_venta(data):
                         "bonificacion_unitaria": bonificacion_unitaria,
                         "motivo_precio_manual": item.get("motivo_precio_manual"),
                         "motivo_bonificacion": item.get("motivo_bonificacion"),
+                        "oferta": oferta,
+                        "precio_catalogo_original": precio_catalogo_original,
                     }
                 )
             pagos = getattr(data, "pagos", []) or []
@@ -978,6 +1003,10 @@ def crear_venta(data):
                             "motivo_precio_manual": fila.get("motivo_precio_manual"),
                             "costo_unitario_aplicado": Decimal("0"),
                             "subtotal": subtotal,
+                            "id_oferta": None,
+                            "precio_catalogo_original": None,
+                            "descuento_oferta_unitario": Decimal("0"),
+                            "oferta_nombre_snapshot": None,
                         },
                     )
                     continue
@@ -1012,6 +1041,27 @@ def crear_venta(data):
                         "motivo_precio_manual": fila.get("motivo_precio_manual"),
                         "costo_unitario_aplicado": costo_promedio,
                         "subtotal": subtotal,
+                        "id_oferta": (
+                            fila["oferta"]["id"] if fila.get("oferta") else None
+                        ),
+                        "precio_catalogo_original": (
+                            fila["precio_catalogo_original"]
+                            if fila.get("oferta")
+                            else None
+                        ),
+                        "descuento_oferta_unitario": (
+                            redondear_monto(
+                                fila["precio_catalogo_original"]
+                                - fila["precio_lista"]
+                            )
+                            if fila.get("oferta")
+                            else Decimal("0")
+                        ),
+                        "oferta_nombre_snapshot": (
+                            fila["oferta"]["nombre"]
+                            if fila.get("oferta")
+                            else None
+                        ),
                     },
                 )
 
@@ -1216,7 +1266,8 @@ def crear_venta(data):
         }
 
     finally:
-        conn.close()
+        if own_conn:
+            conn.close()
 
 def listar_ventas():
     conn = get_connection()
@@ -2369,6 +2420,18 @@ def simular_venta(data):
             )
 
             precio_lista = redondear_monto(variante[campo_precio])
+
+            if (
+                data.tipo_precio == "minorista"
+                and precio_manual is None
+                and not bonificado
+                and bonificacion_manual is None
+            ):
+                oferta = get_oferta_vigente_variante(conn, variante["id"])
+                if oferta is not None:
+                    precio_oferta = redondear_monto(oferta["precio_oferta"])
+                    if Decimal("0") < precio_oferta < precio_lista:
+                        precio_lista = precio_oferta
 
             if precio_lista <= Decimal("0"):
                 raise HTTPException(

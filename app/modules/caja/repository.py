@@ -432,6 +432,10 @@ def get_resumen_pagos_caja(conn, caja_id: int | None, *, fecha, id_sucursal: int
                 SELECT
                     COUNT(DISTINCT p.id)::int AS cantidad_pagos,
                     COALESCE(SUM(cm.monto), 0)::numeric(14,2) AS total_cobrado,
+                    COALESCE(SUM(p.monto_total_cobrado), 0)::numeric(14,2) AS total_bruto_cobrado,
+                    COALESCE(SUM(p.monto_costo_financiero), 0)::numeric(14,2)
+                        AS costos_financieros,
+                    COALESCE(SUM(cm.monto), 0)::numeric(14,2) AS total_neto_esperado,
                     COALESCE(SUM(p.monto_base_aplicado), 0)::numeric(14,2) AS base_aplicada,
                     COALESCE(SUM(p.monto_descuento_aplicado), 0)::numeric(14,2) AS descuentos_aplicados,
                     COALESCE(SUM(p.monto_recargo_aplicado), 0)::numeric(14,2) AS recargos_aplicados,
@@ -465,6 +469,10 @@ def get_resumen_pagos_caja(conn, caja_id: int | None, *, fecha, id_sucursal: int
             SELECT
                 COUNT(DISTINCT p.id)::int AS cantidad_pagos,
                 COALESCE(SUM(cm.monto), 0)::numeric(14,2) AS total_cobrado,
+                COALESCE(SUM(p.monto_total_cobrado), 0)::numeric(14,2) AS total_bruto_cobrado,
+                COALESCE(SUM(p.monto_costo_financiero), 0)::numeric(14,2)
+                    AS costos_financieros,
+                COALESCE(SUM(cm.monto), 0)::numeric(14,2) AS total_neto_esperado,
                 COALESCE(SUM(p.monto_base_aplicado), 0)::numeric(14,2) AS base_aplicada,
                 COALESCE(SUM(p.monto_descuento_aplicado), 0)::numeric(14,2) AS descuentos_aplicados,
                 COALESCE(SUM(p.monto_recargo_aplicado), 0)::numeric(14,2) AS recargos_aplicados,
@@ -525,7 +533,9 @@ def get_resumen_rentabilidad_dia(conn, *, fecha, id_sucursal: int | None = None)
             SELECT
                 COUNT(DISTINCT v.id)::int AS cantidad_ventas,
                 COALESCE((
-                    SELECT SUM(v2.total_final)
+                    SELECT SUM(
+                        GREATEST(v2.total_final - v2.recargo_total, 0)
+                    )
                     FROM ventas v2
                     WHERE v2.fecha::date = %s
                       AND v2.estado = ANY(%s)
@@ -535,7 +545,9 @@ def get_resumen_rentabilidad_dia(conn, *, fecha, id_sucursal: int | None = None)
                 COALESCE(SUM(vi.costo_unitario_aplicado * vi.cantidad), 0)::numeric(14,2) AS costo_mercaderia_vendida,
                 (
                     COALESCE((
-                        SELECT SUM(v2.total_final)
+                        SELECT SUM(
+                            GREATEST(v2.total_final - v2.recargo_total, 0)
+                        )
                         FROM ventas v2
                         WHERE v2.fecha::date = %s
                           AND v2.estado = ANY(%s)
@@ -555,6 +567,27 @@ def get_resumen_rentabilidad_dia(conn, *, fecha, id_sucursal: int | None = None)
 
         cur.execute(
             f"""
+            SELECT
+                COALESCE(SUM(p.monto_recargo_aplicado), 0)::numeric(14,2)
+                    AS financiacion_cobrada,
+                COALESCE(SUM(
+                    p.monto_costo_financiero
+                ), 0)::numeric(14,2) AS costos_financieros
+            FROM pagos p
+            INNER JOIN ventas v
+                ON p.origen_tipo = 'venta'
+               AND p.origen_id = v.id
+            WHERE v.fecha::date = %s
+              AND v.estado = ANY(%s)
+              AND p.estado = 'confirmado'
+              {sucursal_sql}
+            """,
+            bloque_ventas_params,
+        )
+        financiero = cur.fetchone()
+
+        cur.execute(
+            f"""
             SELECT COALESCE(SUM(go.monto), 0)::numeric(14,2) AS gastos_operativos
             FROM gastos_operativos go
             WHERE COALESCE(go.periodo_mes, go.fecha)::date = %s
@@ -565,10 +598,19 @@ def get_resumen_rentabilidad_dia(conn, *, fecha, id_sucursal: int | None = None)
         )
         gastos = cur.fetchone()["gastos_operativos"]
 
+    resultado_financiero = (
+        financiero["financiacion_cobrada"]
+        - financiero["costos_financieros"]
+    )
+    margen_real = ventas["margen_bruto"] + resultado_financiero
+
     return {
         **ventas,
+        **financiero,
+        "resultado_financiero": resultado_financiero,
+        "margen_real": margen_real,
         "gastos_operativos": gastos,
-        "ganancia_dia": ventas["margen_bruto"] - gastos,
+        "ganancia_dia": margen_real - gastos,
     }
 
 

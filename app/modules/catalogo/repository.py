@@ -129,7 +129,17 @@ def get_variantes(conn):
                 v.permite_precio_libre,
                 v.costo_promedio_vigente,
                 v.activo,
-                COALESCE(img_var.url, img_prod.url) AS imagen_principal
+                (oferta.id IS NOT NULL) AS en_oferta,
+                oferta.id AS oferta_id,
+                oferta.nombre AS oferta_nombre,
+                oferta.precio_oferta,
+                oferta.fecha_desde AS oferta_fecha_desde,
+                oferta.fecha_hasta AS oferta_fecha_hasta,
+                CASE
+                    WHEN UPPER(TRIM(COALESCE(v.nombre_variante, ''))) IN ('UNICA', 'ÚNICA')
+                        THEN COALESCE(img_prod.url, img_var.url)
+                    ELSE COALESCE(img_var.url, img_prod.url)
+                END AS imagen_principal
             FROM variantes v
             INNER JOIN productos p
                 ON p.id = v.id_producto
@@ -137,6 +147,21 @@ def get_variantes(conn):
                 ON c.id = p.id_categoria
             LEFT JOIN proveedores pr
                 ON pr.id = v.proveedor_preferido_id
+
+            LEFT JOIN LATERAL (
+                SELECT
+                    o.id,
+                    o.nombre,
+                    o.precio_oferta,
+                    o.fecha_desde,
+                    o.fecha_hasta
+                FROM ofertas o
+                WHERE o.id_variante = v.id
+                  AND o.activa = TRUE
+                  AND CURRENT_DATE BETWEEN o.fecha_desde AND o.fecha_hasta
+                ORDER BY o.fecha_desde DESC, o.id DESC
+                LIMIT 1
+            ) oferta ON TRUE
 
             LEFT JOIN LATERAL (
                 SELECT ci.url
@@ -300,6 +325,23 @@ def desactivar_imagen_catalogo(conn, imagen_id: int):
 
         return cur.fetchone()
 
+
+def desactivar_imagenes_variantes_unicas_producto(conn, producto_id: int):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE catalogo_imagenes ci
+            SET activo = FALSE
+            FROM variantes v
+            WHERE ci.id_variante = v.id
+              AND v.id_producto = %s
+              AND UPPER(TRIM(COALESCE(v.nombre_variante, ''))) IN ('UNICA', 'ÚNICA')
+              AND ci.activo = TRUE
+            """,
+            (producto_id,),
+        )
+
+
 def get_catalogo_pos(
     conn,
     id_sucursal: int,
@@ -387,9 +429,19 @@ def get_catalogo_pos(
                 v.codigo_proveedor,
                 v.proveedor_preferido_id,
                 pr.nombre AS proveedor_preferido_nombre,
+                (oferta.id IS NOT NULL) AS en_oferta,
+                oferta.id AS oferta_id,
+                oferta.nombre AS oferta_nombre,
+                oferta.precio_oferta,
+                oferta.fecha_desde AS oferta_fecha_desde,
+                oferta.fecha_hasta AS oferta_fecha_hasta,
               
 
-                COALESCE(img_var.url, img_prod.url) AS imagen_principal,
+                CASE
+                    WHEN UPPER(TRIM(COALESCE(v.nombre_variante, ''))) IN ('UNICA', 'ÚNICA')
+                        THEN COALESCE(img_prod.url, img_var.url)
+                    ELSE COALESCE(img_var.url, img_prod.url)
+                END AS imagen_principal,
 
                 v.activo,
 
@@ -452,6 +504,21 @@ def get_catalogo_pos(
                 ON m.id = p.id_marca
             LEFT JOIN proveedores pr
                 ON pr.id = v.proveedor_preferido_id
+
+            LEFT JOIN LATERAL (
+                SELECT
+                    o.id,
+                    o.nombre,
+                    o.precio_oferta,
+                    o.fecha_desde,
+                    o.fecha_hasta
+                FROM ofertas o
+                WHERE o.id_variante = v.id
+                  AND o.activa = TRUE
+                  AND CURRENT_DATE BETWEEN o.fecha_desde AND o.fecha_hasta
+                ORDER BY o.fecha_desde DESC, o.id DESC
+                LIMIT 1
+            ) oferta ON TRUE
 
             LEFT JOIN stock_sucursal ss
                 ON ss.id_variante = v.id
@@ -565,7 +632,11 @@ def get_catalogo_mayorista_pdf_items(
                 v.precio_mayorista,
                 v.sku,
                 v.codigo_proveedor,
-                COALESCE(img_var.url, img_prod.url) AS imagen_principal,
+                CASE
+                    WHEN UPPER(TRIM(COALESCE(v.nombre_variante, ''))) IN ('UNICA', 'ÚNICA')
+                        THEN COALESCE(img_prod.url, img_var.url)
+                    ELSE COALESCE(img_var.url, img_prod.url)
+                END AS imagen_principal,
                 GREATEST(
                     COALESCE(ss.stock_fisico, 0)
                     - COALESCE(ss.stock_reservado, 0)
@@ -663,7 +734,11 @@ def get_catalogo_bicicletas_pdf_items(
                 v.precio_minorista,
                 v.sku,
                 v.codigo_proveedor,
-                COALESCE(img_var.url, img_prod.url) AS imagen_principal,
+                CASE
+                    WHEN UPPER(TRIM(COALESCE(v.nombre_variante, ''))) IN ('UNICA', 'ÚNICA')
+                        THEN COALESCE(img_prod.url, img_var.url)
+                    ELSE COALESCE(img_var.url, img_prod.url)
+                END AS imagen_principal,
                 GREATEST(
                     COALESCE(ss.stock_fisico, 0)
                     - COALESCE(ss.stock_reservado, 0)
@@ -738,8 +813,18 @@ def get_catalogo_pos_por_codigo(
                 v.codigo_proveedor,
                 v.proveedor_preferido_id,
                 pr.nombre AS proveedor_preferido_nombre,
+                (oferta.id IS NOT NULL) AS en_oferta,
+                oferta.id AS oferta_id,
+                oferta.nombre AS oferta_nombre,
+                oferta.precio_oferta,
+                oferta.fecha_desde AS oferta_fecha_desde,
+                oferta.fecha_hasta AS oferta_fecha_hasta,
 
-                COALESCE(img_var.url, img_prod.url) AS imagen_principal,
+                CASE
+                    WHEN UPPER(TRIM(COALESCE(v.nombre_variante, ''))) IN ('UNICA', 'ÚNICA')
+                        THEN COALESCE(img_prod.url, img_var.url)
+                    ELSE COALESCE(img_var.url, img_prod.url)
+                END AS imagen_principal,
 
                 v.activo,
 
@@ -798,6 +883,20 @@ def get_catalogo_pos_por_codigo(
             INNER JOIN categorias c ON c.id = p.id_categoria
             LEFT JOIN marcas m ON m.id = p.id_marca
             LEFT JOIN proveedores pr ON pr.id = v.proveedor_preferido_id
+            LEFT JOIN LATERAL (
+                SELECT
+                    o.id,
+                    o.nombre,
+                    o.precio_oferta,
+                    o.fecha_desde,
+                    o.fecha_hasta
+                FROM ofertas o
+                WHERE o.id_variante = v.id
+                  AND o.activa = TRUE
+                  AND CURRENT_DATE BETWEEN o.fecha_desde AND o.fecha_hasta
+                ORDER BY o.fecha_desde DESC, o.id DESC
+                LIMIT 1
+            ) oferta ON TRUE
             LEFT JOIN stock_sucursal ss
                 ON ss.id_variante = v.id
                AND ss.id_sucursal = %(id_sucursal)s
@@ -1215,7 +1314,11 @@ def get_variante_by_id(conn, variante_id: int):
                 v.permite_precio_libre,
                 v.costo_promedio_vigente,
                 v.activo,
-                COALESCE(img_var.url, img_prod.url) AS imagen_principal
+                CASE
+                    WHEN UPPER(TRIM(COALESCE(v.nombre_variante, ''))) IN ('UNICA', 'ÚNICA')
+                        THEN COALESCE(img_prod.url, img_var.url)
+                    ELSE COALESCE(img_var.url, img_prod.url)
+                END AS imagen_principal
             FROM variantes v
             INNER JOIN productos p ON p.id = v.id_producto
             INNER JOIN categorias c ON c.id = p.id_categoria

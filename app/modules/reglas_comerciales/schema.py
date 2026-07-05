@@ -82,6 +82,9 @@ class TramoPagoOutput(BaseModel):
     entidad: str | None = None
     id_tarjeta_plan: int | None = None
     porcentaje_recargo_aplicado: Decimal | None = None
+    porcentaje_costo_financiero_aplicado: Decimal = Decimal("0")
+    costo_financiero: Decimal = Decimal("0")
+    monto_neto_liquidado: Decimal
 
 
 class SimularReglasOutput(BaseModel):
@@ -157,7 +160,11 @@ class TarjetaPlanCreateInput(BaseModel):
     entidad: str | None = Field(default=None, max_length=80)
     cuotas: int = Field(gt=0)
     porcentaje_recargo_cliente: Decimal = Field(ge=0)
-    porcentaje_costo_financiero: Decimal = Field(default=Decimal("0"), ge=0)
+    porcentaje_costo_financiero: Decimal = Field(
+        default=Decimal("0"),
+        ge=0,
+        le=100,
+    )
     activa: bool = True
 
 
@@ -166,5 +173,9 @@ class TarjetaPlanUpdateInput(BaseModel):
     entidad: str | None = Field(default=None, max_length=80)
     cuotas: int | None = Field(default=None, gt=0)
     porcentaje_recargo_cliente: Decimal | None = Field(default=None, ge=0)
-    porcentaje_costo_financiero: Decimal | None = Field(default=None, ge=0)
+    porcentaje_costo_financiero: Decimal | None = Field(
+        default=None,
+        ge=0,
+        le=100,
+    )
     activa: bool | None = None

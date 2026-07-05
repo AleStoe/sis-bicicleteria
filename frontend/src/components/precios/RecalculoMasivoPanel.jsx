@@ -116,7 +116,7 @@ export default function RecalculoMasivoPanel({
         </div>
 
         <div style={styles.tableWrapper}>
-          <table style={styles.table}>
+          <table style={styles.tableMedium}>
             <thead>
               <tr>
                 <th style={styles.th}>Producto</th>
@@ -134,7 +134,7 @@ export default function RecalculoMasivoPanel({
             <tbody>
               {desfasados.map((item) => (
                 <tr key={`${item.id_variante}-${item.tipo_cliente}`}>
-                  <td style={styles.tdStrong}>{item.producto_nombre}</td>
+                  <td style={styles.tdProduct}>{item.producto_nombre}</td>
                   <td style={styles.td}>{item.nombre_variante}</td>
                   <td style={styles.td}>{formatMoney(item.costo_base)}</td>
                   <td style={styles.td}>{formatMoney(item.precio_actual)}</td>

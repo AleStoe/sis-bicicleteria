@@ -1,4 +1,5 @@
 from decimal import Decimal
+import pytest
 from tests.conftest import (
     get_auditoria_by_entidad,
     get_caja_movimientos,
@@ -46,6 +47,68 @@ def crear_venta_base(client, seed_venta_basica):
     response = client.post("/ventas/", json=payload)
     assert response.status_code == 200
     return response.json()["venta_id"]
+
+
+@pytest.fixture()
+def crear_plan_financiero_temporal(db_conn):
+    planes_creados = []
+
+    def crear(
+        *,
+        nombre: str,
+        medio_pago: str,
+        entidad: str,
+        cuotas: int,
+        recargo: str,
+        costo: str,
+    ):
+        with db_conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO tarjeta_planes (
+                    nombre,
+                    medio_pago,
+                    entidad,
+                    cuotas,
+                    porcentaje_recargo_cliente,
+                    porcentaje_costo_financiero,
+                    activa
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, TRUE)
+                RETURNING id
+                """,
+                (nombre, medio_pago, entidad, cuotas, recargo, costo),
+            )
+            plan_id = cur.fetchone()["id"]
+        db_conn.commit()
+        planes_creados.append(plan_id)
+        return plan_id
+
+    yield crear
+
+    if planes_creados:
+        with db_conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE pagos
+                SET id_plan_financiero = NULL
+                WHERE id_plan_financiero = ANY(%s)
+                """,
+                (planes_creados,),
+            )
+            cur.execute(
+                """
+                UPDATE pagos_tarjeta_detalle
+                SET id_tarjeta_plan = NULL
+                WHERE id_tarjeta_plan = ANY(%s)
+                """,
+                (planes_creados,),
+            )
+            cur.execute(
+                "DELETE FROM tarjeta_planes WHERE id = ANY(%s)",
+                (planes_creados,),
+            )
+        db_conn.commit()
 
 
 def test_simular_cobro_objetivo_efectivo_calcula_base_cubierta(
@@ -354,6 +417,7 @@ def test_rechaza_sobrepago(client, db_conn, seed_venta_basica):
     )
 
     assert response.status_code == 400
+    assert "supera el saldo pendiente" in response.json()["detail"]
     assert "supera el saldo pendiente" in response.json()["detail"]
 
     venta_despues = get_venta(db_conn, venta_id)
@@ -1930,4 +1994,228 @@ def test_rechaza_sobrepago_por_base_aplicada_no_por_cobrado_real(
     )
 
     assert response.status_code == 400
-    assert "supera el saldo pendiente" in response.json()["detail"]
+
+
+def test_tarjeta_congela_comision_neto_y_caja(
+    client,
+    db_conn,
+    seed_venta_basica,
+    crear_plan_financiero_temporal,
+):
+    crear_plan_financiero_temporal(
+        nombre="Tarjeta test costo financiero",
+        medio_pago="tarjeta",
+        entidad="TEST_CARD_COST",
+        cuotas=1,
+        recargo="10",
+        costo="5",
+    )
+    venta_id = crear_venta_base(client, seed_venta_basica)
+    caja = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+    assert caja.status_code == 200, caja.text
+
+    response = client.post(
+        "/pagos/",
+        json={
+            "origen_tipo": "venta",
+            "origen_id": venta_id,
+            "medio_pago": "tarjeta",
+            "monto_base": "24440",
+            "cuotas": 1,
+            "entidad": "TEST_CARD_COST",
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert response.status_code == 200, response.text
+
+    pago = get_pagos_by_venta(db_conn, venta_id)[0]
+    assert Decimal(str(pago["monto_total_cobrado"])) == Decimal("26884.00")
+    assert Decimal(str(pago["monto_recargo_aplicado"])) == Decimal("2444.00")
+    assert Decimal(str(pago["monto_costo_financiero"])) == Decimal("1344.20")
+    assert Decimal(str(pago["monto_neto_liquidado"])) == Decimal("25539.80")
+
+    movimientos = get_caja_movimientos(db_conn, caja.json()["caja_id"])
+    assert Decimal(str(movimientos[0]["monto"])) == Decimal("25539.80")
+
+
+def test_qr_congela_comision_sin_crear_egreso(
+    client,
+    db_conn,
+    seed_venta_basica,
+    crear_plan_financiero_temporal,
+):
+    crear_plan_financiero_temporal(
+        nombre="QR test costo financiero",
+        medio_pago="mercadopago",
+        entidad="TEST_QR_COST",
+        cuotas=1,
+        recargo="0",
+        costo="3",
+    )
+    venta_id = crear_venta_base(client, seed_venta_basica)
+    caja = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+    assert caja.status_code == 200, caja.text
+
+    response = client.post(
+        "/pagos/",
+        json={
+            "origen_tipo": "venta",
+            "origen_id": venta_id,
+            "medio_pago": "mercadopago",
+            "monto_base": "24440",
+            "cuotas": 1,
+            "entidad": "TEST_QR_COST",
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert response.status_code == 200, response.text
+
+    pago = get_pagos_by_venta(db_conn, venta_id)[0]
+    assert Decimal(str(pago["monto_total_cobrado"])) == Decimal("24440.00")
+    assert Decimal(str(pago["monto_costo_financiero"])) == Decimal("733.20")
+    assert Decimal(str(pago["monto_neto_liquidado"])) == Decimal("23706.80")
+
+    movimientos = get_caja_movimientos(db_conn, caja.json()["caja_id"])
+    assert len(movimientos) == 1
+    assert movimientos[0]["tipo_movimiento"] == "ingreso"
+    assert Decimal(str(movimientos[0]["monto"])) == Decimal("23706.80")
+
+
+def test_tarjeta_cuotas_congela_recargo_comision_y_neto(
+    client,
+    db_conn,
+    seed_venta_basica,
+    crear_plan_financiero_temporal,
+):
+    crear_plan_financiero_temporal(
+        nombre="Tarjeta cuotas test costo financiero",
+        medio_pago="tarjeta",
+        entidad="TEST_CARD_INSTALLMENTS",
+        cuotas=3,
+        recargo="15",
+        costo="10",
+    )
+    venta_id = crear_venta_base(client, seed_venta_basica)
+    caja = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+    assert caja.status_code == 200, caja.text
+
+    response = client.post(
+        "/pagos/",
+        json={
+            "origen_tipo": "venta",
+            "origen_id": venta_id,
+            "medio_pago": "tarjeta",
+            "monto_base": "10000",
+            "cuotas": 3,
+            "entidad": "TEST_CARD_INSTALLMENTS",
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert response.status_code == 200, response.text
+
+    pago = get_pagos_by_venta(db_conn, venta_id)[0]
+    assert Decimal(str(pago["monto_recargo_aplicado"])) == Decimal("1500.00")
+    assert Decimal(str(pago["monto_total_cobrado"])) == Decimal("11500.00")
+    assert Decimal(str(pago["monto_costo_financiero"])) == Decimal("1150.00")
+    assert Decimal(str(pago["monto_neto_liquidado"])) == Decimal("10350.00")
+
+    movimientos = get_caja_movimientos(db_conn, caja.json()["caja_id"])
+    assert Decimal(str(movimientos[0]["monto"])) == Decimal("10350.00")
+
+
+def test_transferencia_congela_comision_cero(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    venta_id = crear_venta_base(client, seed_venta_basica)
+    caja = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+    assert caja.status_code == 200, caja.text
+
+    response = client.post(
+        "/pagos/",
+        json={
+            "origen_tipo": "venta",
+            "origen_id": venta_id,
+            "medio_pago": "transferencia",
+            "monto_base": "24440",
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert response.status_code == 200, response.text
+
+    pago = get_pagos_by_venta(db_conn, venta_id)[0]
+    assert Decimal(str(pago["monto_costo_financiero"])) == Decimal("0.00")
+    assert Decimal(str(pago["monto_neto_liquidado"])) == Decimal(
+        str(pago["monto_total_cobrado"])
+    )
+
+
+def test_reversion_tarjeta_revierte_el_neto_congelado(
+    client,
+    db_conn,
+    seed_venta_basica,
+    crear_plan_financiero_temporal,
+):
+    crear_plan_financiero_temporal(
+        nombre="Tarjeta test reversión costo",
+        medio_pago="tarjeta",
+        entidad="TEST_CARD_REVERSE",
+        cuotas=1,
+        recargo="0",
+        costo="4",
+    )
+    venta_id = crear_venta_base(client, seed_venta_basica)
+    caja = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+    assert caja.status_code == 200, caja.text
+
+    pago = client.post(
+        "/pagos/",
+        json={
+            "origen_tipo": "venta",
+            "origen_id": venta_id,
+            "medio_pago": "tarjeta",
+            "monto_base": "10000",
+            "cuotas": 1,
+            "entidad": "TEST_CARD_REVERSE",
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert pago.status_code == 200, pago.text
+
+    reversion = client.post(
+        f"/pagos/{pago.json()['pago_id']}/revertir",
+        json={
+            "motivo": "Test reversión de comisión",
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert reversion.status_code == 200, reversion.text
+
+    movimientos = get_caja_movimientos(db_conn, caja.json()["caja_id"])
+    assert [movimiento["tipo_movimiento"] for movimiento in movimientos] == [
+        "ingreso",
+        "egreso",
+    ]
+    assert Decimal(str(movimientos[0]["monto"])) == Decimal("9600.00")
+    assert Decimal(str(movimientos[1]["monto"])) == Decimal("9600.00")

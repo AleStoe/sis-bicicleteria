@@ -1,4 +1,5 @@
 import { formatNumber, formatMoney } from "../../utils/formatters";
+import { esVarianteUnica } from "../../utils/productPresentation";
 
 export default function StockDrawer({
   seleccionado,
@@ -27,7 +28,9 @@ export default function StockDrawer({
           <div>
             <p style={styles.eyebrow}>Detalle de stock</p>
             <h2 style={styles.title}>{seleccionado.producto_nombre}</h2>
-            <p style={styles.muted}>{seleccionado.nombre_variante}</p>
+            {!esVarianteUnica(seleccionado.nombre_variante) && (
+              <p style={styles.muted}>{seleccionado.nombre_variante}</p>
+            )}
           </div>
 
           <button type="button" onClick={cerrarPanel} style={styles.closeButton}>

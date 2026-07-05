@@ -537,6 +537,22 @@ async function handleDevolverSerializada(item) {
           .reduce((acc, pago) => acc + Number(pago.monto_total_cobrado || 0), 0)
     );
   }, [data, pagos]);
+  const resumenLiquidacion = useMemo(() => {
+    return pagos
+      .filter((pago) => pago.estado === "confirmado")
+      .reduce(
+        (acc, pago) => {
+          const bruto = Number(pago.monto_total_cobrado || 0);
+          const neto = Number(pago.monto_neto_liquidado ?? bruto);
+          acc.neto += Number.isFinite(neto) ? neto : 0;
+          acc.costo += Number.isFinite(bruto - neto)
+            ? Math.max(bruto - neto, 0)
+            : 0;
+          return acc;
+        },
+        { neto: 0, costo: 0 }
+      );
+  }, [pagos]);
   function tienePagosExternosConfirmados() {
     return (pagos ?? []).some(
       (p) =>
@@ -614,6 +630,8 @@ const {
         situacionFinanciera={situacion_financiera}
         totalFinal={totalFinal}
         totalPagadoReal={totalPagadoReal}
+        totalNetoLiquidado={resumenLiquidacion.neto}
+        totalCostoFinanciero={resumenLiquidacion.costo}
         cubiertoNoPago={cubiertoNoPago}
         saldoPendiente={saldoPendiente}
         formatMoney={formatMoney}

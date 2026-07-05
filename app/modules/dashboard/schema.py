@@ -11,6 +11,8 @@ class DashboardKpiOutput(BaseModel):
     resultado_estimado: Decimal
     margen_bruto_mes: Decimal
     margen_bruto_porcentaje: Decimal
+    margen_real_mes: Decimal
+    margen_real_porcentaje: Decimal
     cantidad_ventas_mes: int
     ticket_promedio_mes: Decimal
     caja_actual: Decimal
@@ -40,6 +42,10 @@ class DashboardResultadoHoyOutput(BaseModel):
     ventas_items_total: Decimal
     cmv: Decimal
     margen_bruto: Decimal
+    financiacion_cobrada: Decimal
+    costos_financieros: Decimal
+    resultado_financiero: Decimal
+    margen_real: Decimal
     gastos_operativos: Decimal
     resultado_estimado: Decimal
 

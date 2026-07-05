@@ -23,7 +23,9 @@ export default function VentaPagosPanel({
           const esTarjeta = pago.medio_pago === "tarjeta";
           const detalleFinanciero = getDetalleFinanciero(pago);
           const tieneAjuste =
-            detalleFinanciero.descuento > 0 || detalleFinanciero.recargo > 0;
+            detalleFinanciero.descuento > 0 ||
+            detalleFinanciero.recargo > 0 ||
+            detalleFinanciero.costoFinanciero > 0;
 
           return (
             <div key={pago.id} style={styles.paymentCard}>
@@ -75,6 +77,20 @@ export default function VentaPagosPanel({
                     strong
                     isMobile={isMobile}
                   />
+                  {detalleFinanciero.costoFinanciero > 0 && (
+                    <Row
+                      label="Comision del medio"
+                      value={`- ${formatMoney(detalleFinanciero.costoFinanciero)}`}
+                      tone="danger"
+                      isMobile={isMobile}
+                    />
+                  )}
+                  <Row
+                    label="Neto liquidado"
+                    value={formatMoney(detalleFinanciero.netoLiquidado)}
+                    strong
+                    isMobile={isMobile}
+                  />
                 </div>
               )}
 
@@ -107,7 +123,9 @@ function Row({ label, value, tone, strong = false, isMobile = false }) {
       <strong
         style={{
           color:
-            tone === "warning"
+            tone === "danger"
+              ? "#b42318"
+              : tone === "warning"
               ? "#b54708"
               : tone === "success"
                 ? "#047857"
@@ -148,12 +166,21 @@ function getDetalleFinanciero(pago) {
       pago.monto_recargo_financiero ??
       0
   );
+  const netoLiquidado = Number(pago.monto_neto_liquidado ?? total);
+  const costoFinanciero = Number(
+    pago.monto_costo_financiero ??
+      Math.max(total - netoLiquidado, 0)
+  );
 
   return {
     base: Number.isFinite(base) ? base : total,
     descuento: Number.isFinite(descuento) ? descuento : 0,
     recargo: Number.isFinite(recargo) ? recargo : 0,
     total: Number.isFinite(total) ? total : 0,
+    netoLiquidado: Number.isFinite(netoLiquidado) ? netoLiquidado : total,
+    costoFinanciero: Number.isFinite(costoFinanciero)
+      ? costoFinanciero
+      : 0,
   };
 }
 

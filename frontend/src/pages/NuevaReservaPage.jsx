@@ -8,6 +8,7 @@ import {
   simularReglasComerciales,
 } from "../services/reglasComercialesService";
 import { formatMoney } from "../utils/formatters";
+import { formatProductoVariante } from "../utils/productPresentation";
 import { useSession } from "../context/SessionContext";
 import useMediaQuery from "../hooks/useMediaQuery";
 
@@ -129,7 +130,9 @@ export default function NuevaReservaPage() {
 
       setClientes(clientesData || []);
       setCatalogo(Array.isArray(catalogoData) ? catalogoData : catalogoData?.items || []);
-      setPlanesTarjeta(planesData || []);
+      setPlanesTarjeta(
+        (planesData || []).filter((plan) => plan.medio_pago === "tarjeta")
+      );
 
       const primerClienteNoGenerico = (clientesData || []).find(
         (c) => Number(c.id) !== 1
@@ -198,7 +201,7 @@ export default function NuevaReservaPage() {
   }
 
   function descripcionProducto(item) {
-    return [item.producto_nombre, item.nombre_variante].filter(Boolean).join(" - ");
+    return formatProductoVariante(item.producto_nombre, item.nombre_variante);
   }
 
   function puedeAgregar(producto) {

@@ -124,7 +124,7 @@ def test_venta_tarjeta_completa_con_recargo(
     ingresos = [m for m in movimientos if m["tipo_movimiento"] == "ingreso"]
     assert len(ingresos) == 1
     assert ingresos[0]["submedio"] == "tarjeta"
-    assert _dec(ingresos[0]["monto"]) == total_base
+    assert _dec(ingresos[0]["monto"]) == Decimal("28106.00")
 
 
 def test_venta_mixta_efectivo_tarjeta_completa(
@@ -186,5 +186,5 @@ def test_venta_mixta_efectivo_tarjeta_completa(
     )
     assert ingresos == [
         ("efectivo", Decimal("9000.00")),
-        ("tarjeta", Decimal("14440.00")),
+        ("tarjeta", Decimal("16606.00")),
     ]

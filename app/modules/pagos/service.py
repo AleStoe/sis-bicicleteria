@@ -94,6 +94,9 @@ def _calcular_tramo_pago_venta(conn, data: dict):
             "entidad": data.get("entidad"),
             "id_tarjeta_plan": data.get("id_tarjeta_plan"),
             "porcentaje_recargo_aplicado": data.get("porcentaje_recargo_aplicado"),
+            "porcentaje_costo_financiero_aplicado": Decimal("0.00"),
+            "costo_financiero": Decimal("0.00"),
+            "monto_neto_liquidado": monto_cobrado,
         }
 
     monto_base = redondear_monto(monto_base)
@@ -124,6 +127,17 @@ def _calcular_tramo_pago_venta(conn, data: dict):
         "entidad": tramo.get("entidad"),
         "id_tarjeta_plan": tramo.get("id_tarjeta_plan"),
         "porcentaje_recargo_aplicado": tramo.get("porcentaje_recargo_aplicado"),
+        "porcentaje_costo_financiero_aplicado": _to_decimal(
+            tramo.get("porcentaje_costo_financiero_aplicado")
+        )
+        or Decimal("0"),
+        "costo_financiero": redondear_monto(
+            tramo.get("costo_financiero") or 0
+        ),
+        "monto_neto_liquidado": redondear_monto(
+            tramo.get("monto_neto_liquidado")
+            or tramo["monto_total_cobrado"]
+        ),
     }
 
 
@@ -139,24 +153,27 @@ def _calcular_monto_caja_para_pago(medio_pago: str, tramo: dict) -> Decimal:
     """
     Monto que impacta caja como ingreso/egreso real.
 
-    Para tarjeta, el recargo financiero lo paga el cliente pero no representa
-    plata neta para el local; por eso caja debe tomar la base cubierta.
-    Para efectivo/transferencia/MP, caja toma el total cobrado luego de reglas.
+    Caja registra siempre el movimiento operativo neto congelado en el pago.
+    El bruto abonado por el cliente permanece en monto_total_cobrado.
     """
 
-    if medio_pago == "tarjeta":
-        return redondear_monto(tramo["monto_base_aplicado"])
-
-    return redondear_monto(tramo["monto_total_cobrado"])
+    return redondear_monto(
+        tramo.get("monto_neto_liquidado")
+        or tramo["monto_total_cobrado"]
+    )
 
 
 def _nota_caja_pago(origen_label: str, medio_pago: str, tramo: dict) -> str:
-    if medio_pago != "tarjeta":
+    costo = redondear_monto(tramo.get("costo_financiero") or 0)
+    if medio_pago not in {"tarjeta", "mercadopago"} and costo <= 0:
         return origen_label
 
     return (
-        f"{origen_label} | tarjeta neto_caja={redondear_monto(tramo['monto_base_aplicado'])} "
-        f"recargo_financiero={redondear_monto(tramo['recargo_aplicado'])} "
+        f"{origen_label} | {medio_pago} "
+        f"bruto_cliente={redondear_monto(tramo['monto_total_cobrado'])} "
+        f"costo_financiero={costo} "
+        f"neto_caja={_calcular_monto_caja_para_pago(medio_pago, tramo)} "
+        f"recargo_cliente={redondear_monto(tramo['recargo_aplicado'])} "
         f"total_cliente={redondear_monto(tramo['monto_total_cobrado'])}"
     )
 
@@ -351,6 +368,19 @@ def registrar_pago(conn, data: dict):
                 "monto_base_aplicado": tramo["monto_base_aplicado"],
                 "monto_descuento_aplicado": tramo["descuento_aplicado"],
                 "monto_recargo_aplicado": tramo["recargo_aplicado"],
+                "id_plan_financiero": tramo.get("id_tarjeta_plan"),
+                "porcentaje_costo_financiero_aplicado": tramo.get(
+                    "porcentaje_costo_financiero_aplicado",
+                    Decimal("0"),
+                ),
+                "monto_costo_financiero": tramo.get(
+                    "costo_financiero",
+                    Decimal("0"),
+                ),
+                "monto_neto_liquidado": tramo.get(
+                    "monto_neto_liquidado",
+                    monto,
+                ),
                 "nota": data.get("nota"),
                 "id_usuario": data["id_usuario"],
             },
@@ -420,7 +450,11 @@ def registrar_pago(conn, data: dict):
                 "monto_base_aplicado": str(tramo["monto_base_aplicado"]),
                 "monto_descuento_aplicado": str(tramo["descuento_aplicado"]),
                 "monto_recargo_aplicado": str(tramo["recargo_aplicado"]),
+                "monto_costo_financiero": str(
+                    tramo.get("costo_financiero") or 0
+                ),
                 "monto_total_cobrado": str(monto),
+                "monto_neto_liquidado": str(monto_caja),
                 "monto_caja": str(monto_caja),
                 "saldo_restante": str(saldo_restante),
                 "estado_venta": nuevo_estado,
@@ -496,6 +530,19 @@ def registrar_pago(conn, data: dict):
             "monto_base_aplicado": monto_base_aplicado,
             "monto_descuento_aplicado": descuento_aplicado,
             "monto_recargo_aplicado": recargo_aplicado,
+            "id_plan_financiero": tramo.get("id_tarjeta_plan"),
+            "porcentaje_costo_financiero_aplicado": tramo.get(
+                "porcentaje_costo_financiero_aplicado",
+                Decimal("0"),
+            ),
+            "monto_costo_financiero": tramo.get(
+                "costo_financiero",
+                Decimal("0"),
+            ),
+            "monto_neto_liquidado": tramo.get(
+                "monto_neto_liquidado",
+                monto,
+            ),
             "nota": data.get("nota"),
             "id_usuario": data["id_usuario"],
         },
@@ -555,7 +602,11 @@ def registrar_pago(conn, data: dict):
             "monto_base_aplicado": str(monto_base_aplicado),
             "monto_descuento_aplicado": str(descuento_aplicado),
             "monto_recargo_aplicado": str(recargo_aplicado),
+            "monto_costo_financiero": str(
+                tramo.get("costo_financiero") or 0
+            ),
             "monto_total_cobrado": str(monto),
+            "monto_neto_liquidado": str(monto_caja),
             "monto_caja": str(monto_caja),
         },
         origen_tipo=origen_tipo,
@@ -657,6 +708,19 @@ def revertir_pago(pago_id: int, data):
                 "descuento_aplicado": redondear_monto(pago_original["monto_descuento_aplicado"]),
                 "recargo_aplicado": redondear_monto(pago_original["monto_recargo_aplicado"]),
                 "monto_total_cobrado": monto_original,
+                "porcentaje_costo_financiero_aplicado": (
+                    pago_original.get(
+                        "porcentaje_costo_financiero_aplicado"
+                    )
+                    or Decimal("0")
+                ),
+                "costo_financiero": redondear_monto(
+                    pago_original.get("monto_costo_financiero") or 0
+                ),
+                "monto_neto_liquidado": redondear_monto(
+                    pago_original.get("monto_neto_liquidado")
+                    or monto_original
+                ),
             }
             monto_reversion_caja = _calcular_monto_caja_para_pago(
                 pago_original["medio_pago"],
@@ -681,6 +745,23 @@ def revertir_pago(pago_id: int, data):
                     "monto_base_aplicado": pago_original["monto_base_aplicado"],
                     "monto_descuento_aplicado": pago_original["monto_descuento_aplicado"],
                     "monto_recargo_aplicado": pago_original["monto_recargo_aplicado"],
+                    "id_plan_financiero": pago_original.get(
+                        "id_plan_financiero"
+                    ),
+                    "porcentaje_costo_financiero_aplicado": (
+                        pago_original.get(
+                            "porcentaje_costo_financiero_aplicado"
+                        )
+                        or Decimal("0")
+                    ),
+                    "monto_costo_financiero": (
+                        pago_original.get("monto_costo_financiero")
+                        or Decimal("0")
+                    ),
+                    "monto_neto_liquidado": (
+                        pago_original.get("monto_neto_liquidado")
+                        or pago_original["monto_total_cobrado"]
+                    ),
                     "nota": f"Reversión de pago #{pago_original['id']}: {data.motivo}",
                     "id_usuario": data.id_usuario,
                 },
@@ -840,6 +921,18 @@ def simular_pago_venta(data):
             "id_tarjeta_plan": tramo.get("id_tarjeta_plan"),
             "porcentaje_recargo_aplicado": tramo.get(
                 "porcentaje_recargo_aplicado"
+            ),
+            "porcentaje_costo_financiero_aplicado": tramo.get(
+                "porcentaje_costo_financiero_aplicado",
+                Decimal("0"),
+            ),
+            "costo_financiero": tramo.get(
+                "costo_financiero",
+                Decimal("0"),
+            ),
+            "monto_neto_liquidado": tramo.get(
+                "monto_neto_liquidado",
+                monto_total_cobrado,
             ),
         }
 

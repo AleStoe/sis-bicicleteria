@@ -733,6 +733,92 @@ def test_crear_imagen_variante_y_listarla(client):
     assert any(img["id"] == imagen["id"] for img in data)
 
 
+def test_catalogo_prioriza_imagen_producto_en_variante_unica_y_conserva_variante_real(
+    client,
+    seed_venta_basica,
+):
+    categoria = _get_first_categoria(client)
+
+    producto_unico = _crear_producto(
+        client,
+        categoria_id=categoria["id"],
+        nombre="Producto Imagen Unica Prioridad",
+    )
+    variante_unica = _crear_variante(
+        client,
+        producto_id=producto_unico["id"],
+        nombre_variante="ÚNICA",
+        sku="SKU-IMG-UNICA",
+        codigo_barras="7790000000312",
+    )
+    producto_real = _crear_producto(
+        client,
+        categoria_id=categoria["id"],
+        nombre="Producto Imagen Variante Real",
+    )
+    variante_real = _crear_variante(
+        client,
+        producto_id=producto_real["id"],
+        nombre_variante="NEGRA",
+        sku="SKU-IMG-REAL",
+        codigo_barras="7790000000329",
+    )
+
+    for producto, variante, sufijo in [
+        (producto_unico, variante_unica, "unica"),
+        (producto_real, variante_real, "real"),
+    ]:
+        imagen_variante = client.post(
+            "/catalogo/imagenes",
+            json={
+                "id_variante": variante["id"],
+                "url": f"https://example.com/{sufijo}-variante.jpg",
+                "es_principal": True,
+                "orden": 0,
+            },
+        )
+        assert imagen_variante.status_code == 200, imagen_variante.text
+
+        imagen_producto = client.post(
+            "/catalogo/imagenes",
+            json={
+                "id_producto": producto["id"],
+                "url": f"https://example.com/{sufijo}-producto.jpg",
+                "es_principal": True,
+                "orden": 0,
+            },
+        )
+        assert imagen_producto.status_code == 200, imagen_producto.text
+
+    response = client.get(
+        f"/catalogo/pos?id_sucursal={seed_venta_basica['sucursal_id']}&limit=100"
+    )
+    assert response.status_code == 200, response.text
+    items = response.json()["items"]
+
+    item_unico = next(
+        item for item in items if item["id_variante"] == variante_unica["id"]
+    )
+    item_real = next(
+        item for item in items if item["id_variante"] == variante_real["id"]
+    )
+
+    assert item_unico["imagen_principal"] == "https://example.com/unica-producto.jpg"
+    assert item_real["imagen_principal"] == "https://example.com/real-variante.jpg"
+
+    imagenes_unica = client.get(
+        f"/catalogo/variantes/{variante_unica['id']}/imagenes"
+    )
+    imagenes_real = client.get(
+        f"/catalogo/variantes/{variante_real['id']}/imagenes"
+    )
+
+    assert imagenes_unica.status_code == 200, imagenes_unica.text
+    assert imagenes_real.status_code == 200, imagenes_real.text
+    assert imagenes_unica.json() == []
+    assert len(imagenes_real.json()) == 1
+
+
 def test_rechaza_imagen_sin_producto_ni_variante(client):
     response = client.post(
         "/catalogo/imagenes",

@@ -82,7 +82,11 @@ def get_orden_taller_items_presupuesto_by_orden_id(conn, orden_id: int):
                 oti.aprobado,
                 COALESCE(oti.tipo_item, p.tipo_item) AS tipo_item,
                 p.stockeable,
-                COALESCE(img_var.url, img_prod.url) AS imagen_principal
+                CASE
+                    WHEN UPPER(TRIM(COALESCE(v.nombre_variante, ''))) IN ('UNICA', 'ÚNICA')
+                        THEN COALESCE(img_prod.url, img_var.url)
+                    ELSE COALESCE(img_var.url, img_prod.url)
+                END AS imagen_principal
             FROM ordenes_taller_items oti
             LEFT JOIN variantes v ON v.id = oti.id_variante
             LEFT JOIN productos p ON p.id = v.id_producto

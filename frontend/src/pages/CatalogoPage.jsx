@@ -13,13 +13,26 @@ import CatalogoDetalleModal from "../components/catalogo/CatalogoDetalleModal";
 import PreciosComercialesCatalogo from "../components/catalogo/PreciosComercialesCatalogo";
 import { formatNumber } from "../utils/formatters";
 import {
+  esVarianteUnica,
+  formatProductoVariante,
+} from "../utils/productPresentation";
+import {
   Button,
   EmptyState,
   MetricCard,
   PageHeader,
   ResponsiveMetricsGrid,
 } from "../components/ui";
-import { Bike, FileDown, PackagePlus, RefreshCw, Search } from "lucide-react";
+import {
+  Bike,
+  FileDown,
+  Flame,
+  ImageDown,
+  PackagePlus,
+  RefreshCw,
+  Search,
+} from "lucide-react";
+import { getHistoriaVarianteUrl } from "../services/documentosService";
 import { colors, controls, radius, shadows, spacing, typography } from "../theme";
 const ID_SUCURSAL_DEFAULT = 1;
 const LIMIT = 24;
@@ -47,7 +60,7 @@ function useIsMobile(breakpoint = MOBILE_BREAKPOINT) {
 }
 
 function getTituloItem(item) {
-  return [item.producto_nombre, item.nombre_variante].filter(Boolean).join(" - ");
+  return formatProductoVariante(item.producto_nombre, item.nombre_variante);
 }
 
 function getMotivoTexto(item) {
@@ -367,6 +380,13 @@ export default function CatalogoPage() {
                   selected={seleccionado?.id_variante === item.id_variante}
                   onSelect={() => setSeleccionadoId(item.id_variante)}
                   onOpenDetail={() => setDetalle(item)}
+                  onDownloadStory={() => {
+                    window.open(
+                      getHistoriaVarianteUrl(item.id_variante),
+                      "_blank",
+                      "noopener,noreferrer"
+                    );
+                  }}
                   isMobile={isMobile}
                 />
               ))}
@@ -400,7 +420,14 @@ export default function CatalogoPage() {
   );
 }
 
-function CatalogoCard({ item, selected, onSelect, onOpenDetail, isMobile }) {
+function CatalogoCard({
+  item,
+  selected,
+  onSelect,
+  onOpenDetail,
+  onDownloadStory,
+  isMobile,
+}) {
   const stockColumns = isMobile
     ? "1fr"
     : Number(item.stock_reservado || 0) > 0
@@ -419,7 +446,9 @@ function CatalogoCard({ item, selected, onSelect, onOpenDetail, isMobile }) {
         <div style={styles.cardTop}>
           <div style={styles.cardTitleWrap}>
             <strong style={styles.cardTitle}>{item.producto_nombre}</strong>
-            <span style={styles.cardVariant}>{item.nombre_variante}</span>
+            {!esVarianteUnica(item.nombre_variante) && (
+              <span style={styles.cardVariant}>{item.nombre_variante}</span>
+            )}
           </div>
         </div>
 
@@ -443,7 +472,15 @@ function CatalogoCard({ item, selected, onSelect, onOpenDetail, isMobile }) {
             <span style={styles.tag}>{item.categoria_nombre}</span>
             {item.serializable && <span style={styles.serialTag}>Serializada</span>}
           </div>
-          <EstadoBadge item={item} />
+          <div style={styles.statusGroup}>
+            <EstadoBadge item={item} />
+            {item.en_oferta ? (
+              <span style={styles.offerBadge}>
+                <Flame size={11} fill="currentColor" />
+                OFERTA
+              </span>
+            ) : null}
+          </div>
         </div>
 
         <div style={{ ...styles.stockStrip, gridTemplateColumns: stockColumns }}>
@@ -476,6 +513,17 @@ function CatalogoCard({ item, selected, onSelect, onOpenDetail, isMobile }) {
         <div style={styles.cardActions}>
           <button
             type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onDownloadStory();
+            }}
+            style={styles.storyButton}
+          >
+            <ImageDown size={16} />
+            Descargar historia
+          </button>
+          <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               onOpenDetail();
@@ -496,7 +544,9 @@ function PanelPreviewCatalogo({ item, onDetalle }) {
       <div style={styles.previewHeader}>
         <span style={styles.sideKicker}>Preview operativo</span>
         <h2 style={styles.sideTitle}>{item.producto_nombre}</h2>
-        <p style={styles.previewVariant}>{item.nombre_variante || "Variante única"}</p>
+        {!esVarianteUnica(item.nombre_variante) && item.nombre_variante && (
+          <p style={styles.previewVariant}>{item.nombre_variante}</p>
+        )}
       </div>
 
       <div style={styles.sideImageBoxSoft}>
@@ -922,10 +972,46 @@ const styles = {
   },
   cardActions: {
     display: "grid",
-    gridTemplateColumns: "1fr",
+    gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
     gap: 8,
   },
+  offerBadge: {
+    flexShrink: 0,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 3,
+    minHeight: 21,
+    padding: "2px 6px",
+    borderRadius: 999,
+    background: "#dc2626",
+    color: "#ffffff",
+    fontSize: 9,
+    fontWeight: 1000,
+    lineHeight: 1,
+  },
+  statusGroup: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    flexWrap: "wrap",
+    gap: 5,
+  },
+  storyButton: {
+    minHeight: 40,
+    border: "1px solid #fed7aa",
+    background: "#fff7ed",
+    color: "#c2410c",
+    borderRadius: 12,
+    padding: "9px 10px",
+    fontWeight: 900,
+    cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+  },
   secondaryButton: {
+    minHeight: 40,
     border: "1px solid #cbd5e1",
     background: "white",
     color: "#0f172a",

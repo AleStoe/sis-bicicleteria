@@ -83,6 +83,58 @@ class CotizacionEstadoUpdate(BaseModel):
     id_usuario: int = Field(gt=0)
 
 
+class CotizacionItemCantidadUpdate(BaseModel):
+    cantidad: Decimal = Field(gt=0)
+
+
+class CotizacionSerializadaSeleccionInput(BaseModel):
+    id_cotizacion_item: int = Field(gt=0)
+    id_bicicleta_serializada: int = Field(gt=0)
+
+
+class CotizacionConvertirVentaInput(BaseModel):
+    id_usuario: int = Field(gt=0)
+    serializadas: list[CotizacionSerializadaSeleccionInput] = Field(
+        default_factory=list
+    )
+
+
+class CotizacionSerializadaDisponibleOutput(BaseModel):
+    id: int
+    numero_cuadro: str
+
+
+class CotizacionConversionItemOutput(BaseModel):
+    id_cotizacion_item: int
+    descripcion: str
+    tipo_item: str
+    cantidad: Decimal
+    serializable: bool = False
+    stockeable: bool = False
+    disponible: Decimal
+    faltante: Decimal
+    serializadas_disponibles: list[CotizacionSerializadaDisponibleOutput] = Field(
+        default_factory=list
+    )
+    bloqueo: str | None = None
+
+
+class CotizacionConversionPreviewOutput(BaseModel):
+    cotizacion_id: int
+    puede_convertir: bool
+    requiere_seleccion_serializadas: bool
+    items: list[CotizacionConversionItemOutput] = Field(default_factory=list)
+    advertencias: list[str] = Field(default_factory=list)
+
+
+class CotizacionConversionVentaOutput(BaseModel):
+    ok: bool
+    cotizacion_id: int
+    venta_id: int
+    estado_cotizacion: str
+    ya_convertida: bool = False
+
+
 class CotizacionItemResponse(BaseModel):
     id: int
     id_cotizacion: int

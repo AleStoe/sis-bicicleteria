@@ -5,7 +5,11 @@ import re
 from PIL import Image
 from app.modules.documentos.pdf import _detalle_pago_financiero
 from app.modules.documentos.pdf import generar_comprobante_x_pdf
-from app.modules.documentos.pdf_etiquetas import _build_opciones_pago
+from app.modules.documentos.pdf_etiquetas import (
+    _build_opciones_pago,
+    _titulo_etiqueta,
+    _variant_parts,
+)
 from app.modules.documentos.download_names import (
     catalog_name,
     compact_date,
@@ -329,6 +333,75 @@ def test_comprobante_x_venta_devuelve_pdf(client, seed_venta_basica):
     assert response.content.startswith(b"%PDF")
 
 
+def test_comprobante_x_incluye_cuadros_de_varias_bicicletas_serializadas(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    cuadros = ["CUADRO-COMP-X-001", "CUADRO-COMP-X-002"]
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE productos
+            SET serializable = TRUE
+            WHERE id = %s
+            """,
+            (seed_venta_basica["producto_id"],),
+        )
+        ids_serializadas = []
+        for numero_cuadro in cuadros:
+            cur.execute(
+                """
+                INSERT INTO bicicletas_serializadas (
+                    id_variante,
+                    id_sucursal_actual,
+                    numero_cuadro,
+                    estado
+                )
+                VALUES (%s, %s, %s, 'disponible')
+                RETURNING id
+                """,
+                (
+                    seed_venta_basica["variante_id"],
+                    seed_venta_basica["sucursal_id"],
+                    numero_cuadro,
+                ),
+            )
+            ids_serializadas.append(cur.fetchone()["id"])
+    db_conn.commit()
+
+    crear = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "id_bicicleta_serializada": serializada_id,
+                    "cantidad": 1,
+                }
+                for serializada_id in ids_serializadas
+            ],
+        },
+    )
+    assert crear.status_code == 200, crear.text
+    venta_id = crear.json()["venta_id"]
+
+    items = get_venta_items_comprobante_by_venta_id(db_conn, venta_id)
+
+    assert len(items) == 2
+    assert [item["numero_cuadro"] for item in items] == cuadros
+
+    response = client.get(f"/documentos/ventas/{venta_id}/comprobante-x")
+
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.content.startswith(b"%PDF")
+
+
 def test_comprobante_x_incluye_servicios_taller(client, db_conn, seed_venta_basica):
     servicio = client.post(
         "/servicios_taller/",
@@ -575,6 +648,24 @@ def test_etiqueta_deposito_variante_devuelve_pdf(client, seed_venta_basica):
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/pdf"
     assert response.content.startswith(b"%PDF")
+
+
+def test_etiquetas_ocultan_variante_unica_sin_perder_datos_utiles():
+    item = {
+        "producto_nombre": "CUBIERTA ARISUN 29X2.10",
+        "nombre_variante": "ÚNICA",
+        "rodado": "29",
+        "talle": None,
+        "color": "NEGRA",
+    }
+
+    variante = _variant_parts(item)
+    titulo = _titulo_etiqueta(item)
+
+    assert "ÚNICA" not in variante
+    assert "UNICA" not in titulo
+    assert variante == "Rod. 29 - NEGRA"
+    assert titulo == "CUBIERTA ARISUN 29X2.10 ROD. 29 - NEGRA"
 
 
 def test_cartel_precio_variante_devuelve_pdf(client, seed_venta_basica):

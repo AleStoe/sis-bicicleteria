@@ -54,12 +54,19 @@ function lineaContado(opcion) {
   return `💵 ${label}: ${dineroCopiable(opcion.monto)}`;
 }
 
-function lineasMinorista(precios) {
+function lineasMinorista(precios, item) {
   if (!precios) return [];
 
-  const lineas = [
-    `🏷️ Precio de lista: ${dineroCopiable(precios.precioLista)}`,
-  ];
+  const enOferta =
+    item?.en_oferta && Number(item?.precio_oferta || 0) > 0;
+  const lineas = enOferta
+    ? [
+        `🔥 OFERTA: ${dineroCopiable(precios.precioLista)}`,
+        `🏷️ Precio anterior: ${dineroCopiable(item.precio_minorista)}`,
+      ]
+    : [
+        `🏷️ Precio de lista: ${dineroCopiable(precios.precioLista)}`,
+      ];
 
   if (precios.contado.length) {
     lineas.push("", ...precios.contado.map(lineaContado));
@@ -87,9 +94,9 @@ function lineasMayorista(precios) {
   ];
 }
 
-function armarTextoConsulta(tipo, nombre, precios) {
+function armarTextoConsulta(tipo, nombre, precios, item) {
   const titulo = String(nombre || "PRODUCTO").trim().toUpperCase();
-  const minorista = lineasMinorista(precios.minorista);
+  const minorista = lineasMinorista(precios.minorista, item);
   const mayorista = lineasMayorista(precios.mayorista);
 
   if (tipo === "minorista") return [titulo, "", ...minorista].join("\n");
@@ -114,6 +121,11 @@ export default function PreciosComercialesCatalogo({
   const timeoutRef = useRef(null);
   const precioMinorista = Number(item?.precio_minorista || 0);
   const precioMayorista = Number(item?.precio_mayorista || 0);
+  const precioOferta =
+    item?.en_oferta && Number(item?.precio_oferta || 0) > 0
+      ? Number(item.precio_oferta)
+      : 0;
+  const precioMinoristaVigente = precioOferta || precioMinorista;
 
   useEffect(() => {
     let vigente = true;
@@ -121,7 +133,7 @@ export default function PreciosComercialesCatalogo({
     setError("");
 
     obtenerPreciosComercialesCatalogo({
-      precioMinorista,
+      precioMinorista: precioMinoristaVigente,
       precioMayorista,
     })
       .then((data) => {
@@ -142,7 +154,7 @@ export default function PreciosComercialesCatalogo({
     return () => {
       vigente = false;
     };
-  }, [precioMinorista, precioMayorista]);
+  }, [precioMinoristaVigente, precioMayorista]);
 
   useEffect(
     () => () => {
@@ -154,9 +166,9 @@ export default function PreciosComercialesCatalogo({
   const preciosVisibles = useMemo(
     () =>
       precios || {
-        minorista: tienePrecio(precioMinorista)
+        minorista: tienePrecio(precioMinoristaVigente)
           ? {
-              precioLista: precioMinorista,
+              precioLista: precioMinoristaVigente,
               contado: [],
               tarjetas: [],
             }
@@ -168,11 +180,11 @@ export default function PreciosComercialesCatalogo({
             }
           : null,
       },
-    [precios, precioMayorista, precioMinorista]
+    [precios, precioMayorista, precioMinoristaVigente]
   );
 
   async function copiar(tipo) {
-    const texto = armarTextoConsulta(tipo, nombre, preciosVisibles);
+    const texto = armarTextoConsulta(tipo, nombre, preciosVisibles, item);
     const ok = await copiarTexto(texto);
     if (!ok) return;
 
@@ -193,6 +205,8 @@ export default function PreciosComercialesCatalogo({
           tipo="minorista"
           cargando={cargando}
           precio={preciosVisibles.minorista}
+          precioAnterior={precioOferta ? precioMinorista : 0}
+          nombreOferta={item?.oferta_nombre}
         />
         <BloquePrecio
           titulo="PRECIOS MAYORISTA"
@@ -238,7 +252,14 @@ export default function PreciosComercialesCatalogo({
   );
 }
 
-function BloquePrecio({ titulo, tipo, cargando, precio }) {
+function BloquePrecio({
+  titulo,
+  tipo,
+  cargando,
+  precio,
+  precioAnterior = 0,
+  nombreOferta = "",
+}) {
   const esMinorista = tipo === "minorista";
 
   return (
@@ -251,6 +272,14 @@ function BloquePrecio({ titulo, tipo, cargando, precio }) {
         <div style={styles.empty}>Precio no definido</div>
       ) : (
         <div style={styles.rows}>
+          {esMinorista && precioAnterior > 0 ? (
+            <PrecioRow
+              label={nombreOferta || "OFERTA"}
+              value={formatMoney(precio.precioLista)}
+              highlight
+              badge="OFERTA"
+            />
+          ) : null}
           {precio.contado.map((opcion) => (
             <PrecioRow
               key={opcion.medio}
@@ -262,9 +291,19 @@ function BloquePrecio({ titulo, tipo, cargando, precio }) {
           ))}
 
           <PrecioRow
-            label={esMinorista ? "Precio de lista" : "Precio mayorista"}
+            label={
+              esMinorista && precioAnterior > 0
+                ? "Precio anterior"
+                : esMinorista
+                  ? "Precio de lista"
+                  : "Precio mayorista"
+            }
             value={formatMoney(
-              esMinorista ? precio.precioLista : precio.precioMayorista
+              esMinorista && precioAnterior > 0
+                ? precioAnterior
+                : esMinorista
+                  ? precio.precioLista
+                  : precio.precioMayorista
             )}
           />
 

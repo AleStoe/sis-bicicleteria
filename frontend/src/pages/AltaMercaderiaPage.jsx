@@ -22,6 +22,7 @@ import { useSession } from "../context/SessionContext";
 import useMediaQuery from "../hooks/useMediaQuery";
 import { normalizeTextUpper } from "../utils/textNormalization";
 import { DEFAULT_CONFIGURACION_NEGOCIO } from "../config/defaultConfiguracionNegocio";
+import { formatProductoVariante } from "../utils/productPresentation";
 
 const ID_SUCURSAL_DEFAULT = 1;
 
@@ -216,7 +217,9 @@ export default function AltaMercaderiaPage() {
     setSeleccionado(item);
     setModoCrear(false);
     setResultados([]);
-    setBusqueda(`${item.producto_nombre} - ${item.nombre_variante}`);
+    setBusqueda(
+      formatProductoVariante(item.producto_nombre, item.nombre_variante)
+    );
 
     setForm((p) => ({
       ...p,
@@ -272,19 +275,57 @@ export default function AltaMercaderiaPage() {
     return "";
   }
 
-  function armarMensajeConfirmacion({ tipo, productoNombre, varianteNombre }) {
+  function armarMensajeConfirmacion({
+    tipo,
+    productoNombre,
+    varianteNombre,
+    codigoProveedor,
+  }) {
+    const proveedor = proveedores.find(
+      (item) => String(item.id) === String(form.id_proveedor)
+    );
+    const categoria = categorias.find(
+      (item) => String(item.id) === String(form.id_categoria)
+    );
+    const marca = marcas.find(
+      (item) => String(item.id) === String(form.id_marca)
+    );
+    const esAlta = tipo === "crear";
+
     return [
-      tipo === "crear"
+      esAlta
         ? "Vas a crear un producto nuevo e ingresar stock."
         : "Vas a registrar ingreso de mercadería.",
       "",
+      "DATOS DE COMPRA",
+      `Proveedor: ${proveedor?.nombre || "Sin proveedor"}`,
+      `Código proveedor: ${codigoProveedor || form.codigo_proveedor || "-"}`,
+      "",
+      "MERCADERÍA",
       `Producto: ${productoNombre || form.nombre_producto || "-"}`,
       `Variante: ${varianteNombre || (form.tiene_variantes ? form.nombre_variante || "Única" : "Única")}`,
+      ...(esAlta
+        ? [
+            `Rubro: ${form.rubro || "-"}`,
+            `Categoría: ${categoria?.nombre || "-"}`,
+            `Marca: ${marca?.nombre || "Sin marca"}`,
+          ]
+        : []),
+      "",
+      "INGRESO Y COSTOS",
       `Cantidad: ${formatNumber(form.cantidad || 0)}`,
       `Costo unitario: ${formatMoney(form.costo_unitario || 0)}`,
       `Costo productos total: ${formatMoney(totalProductos)}`,
       `Gastos adicionales: ${formatMoney(form.gastos_adicionales || 0)}`,
       `Costo final estimado por unidad: ${formatMoney(costoUnitarioConGastos)}`,
+      ...(esAlta
+        ? [
+            "",
+            "PRECIOS A GUARDAR",
+            `Precio minorista: ${formatMoney(form.precio_minorista || 0)}`,
+            `Precio mayorista: ${formatMoney(form.precio_mayorista || 0)}`,
+          ]
+        : []),
       "",
       "Confirmá para guardar. Enter solo abre esta revisión, no registra directo.",
     ].join("\n");
@@ -312,6 +353,7 @@ export default function AltaMercaderiaPage() {
         tipo: "existente",
         productoNombre: seleccionado.producto_nombre,
         varianteNombre: seleccionado.nombre_variante,
+        codigoProveedor: seleccionado.codigo_proveedor,
       }),
       item: {
         id_variante: seleccionado.id_variante,
@@ -358,6 +400,7 @@ export default function AltaMercaderiaPage() {
         tipo: "crear",
         productoNombre: form.nombre_producto,
         varianteNombre: form.tiene_variantes ? form.nombre_variante || "Única" : "Única",
+        codigoProveedor: form.codigo_proveedor,
       }),
     });
   }
@@ -399,7 +442,7 @@ export default function AltaMercaderiaPage() {
       if (form.imagen_archivo) {
         await subirImagenCatalogo({
           archivo: form.imagen_archivo,
-          id_variante: variante.id,
+          id_producto: producto.id,
           es_principal: true,
           orden: 0,
         });
@@ -466,7 +509,10 @@ export default function AltaMercaderiaPage() {
     await crearIngresoStock(payload);
 
     setMensaje(
-      `Ingreso registrado: ${item.producto_nombre} - ${item.nombre_variante}`
+      `Ingreso registrado: ${formatProductoVariante(
+        item.producto_nombre,
+        item.nombre_variante
+      )}`
     );
 
     setSeleccionado(null);
@@ -607,7 +653,10 @@ export default function AltaMercaderiaPage() {
                   >
                     <div>
                       <strong>
-                        {item.producto_nombre} - {item.nombre_variante}
+                        {formatProductoVariante(
+                          item.producto_nombre,
+                          item.nombre_variante
+                        )}
                       </strong>
                       <span>
                         Código proveedor: {item.codigo_proveedor || "-"}
@@ -629,8 +678,10 @@ export default function AltaMercaderiaPage() {
                 <div>
                   <p style={styles.eyebrow}>Producto existente</p>
                   <h2 style={styles.cardTitle}>
-                    {seleccionado.producto_nombre} -{" "}
-                    {seleccionado.nombre_variante}
+                    {formatProductoVariante(
+                      seleccionado.producto_nombre,
+                      seleccionado.nombre_variante
+                    )}
                   </h2>
                   <p style={styles.muted}>
                     Stock disponible actual:{" "}

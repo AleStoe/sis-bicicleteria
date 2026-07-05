@@ -9,7 +9,9 @@ def insert_pago(conn, data: dict):
     """
     Inserta un pago genérico.
     V2:
-    - monto_total_cobrado: dinero real que entra a caja
+    - monto_total_cobrado: importe bruto pagado por el cliente
+    - monto_costo_financiero: costo/comisión congelada del medio
+    - monto_neto_liquidado: movimiento operativo neto del pago
     - monto_base_aplicado: base comercial del tramo
     - monto_descuento_aplicado: descuento congelado del tramo
     - monto_recargo_aplicado: recargo congelado del tramo
@@ -26,11 +28,19 @@ def insert_pago(conn, data: dict):
                 monto_base_aplicado,
                 monto_descuento_aplicado,
                 monto_recargo_aplicado,
+                id_plan_financiero,
+                porcentaje_costo_financiero_aplicado,
+                monto_costo_financiero,
+                monto_neto_liquidado,
                 estado,
                 nota,
                 id_usuario
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'confirmado', %s, %s)
+            VALUES (
+                %s, %s, %s, %s, %s, %s, %s, %s,
+                %s, %s, %s, %s,
+                'confirmado', %s, %s
+            )
             RETURNING id
             """,
             (
@@ -42,6 +52,16 @@ def insert_pago(conn, data: dict):
                 data.get("monto_base_aplicado", data["monto_total_cobrado"]),
                 data.get("monto_descuento_aplicado", Decimal("0")),
                 data.get("monto_recargo_aplicado", Decimal("0")),
+                data.get("id_plan_financiero"),
+                data.get(
+                    "porcentaje_costo_financiero_aplicado",
+                    Decimal("0"),
+                ),
+                data.get("monto_costo_financiero", Decimal("0")),
+                data.get(
+                    "monto_neto_liquidado",
+                    data["monto_total_cobrado"],
+                ),
                 data.get("nota"),
                 data["id_usuario"],
             ),
@@ -54,22 +74,26 @@ def get_pago_by_id_for_update(conn, pago_id: int):
         cur.execute(
             """
             SELECT
-                id,
-                fecha,
-                id_cliente,
-                origen_tipo,
-                origen_id,
-                medio_pago,
-                monto_total_cobrado,
-                monto_base_aplicado,
-                monto_descuento_aplicado,
-                monto_recargo_aplicado,
-                estado,
-                nota,
-                id_usuario
-            FROM pagos
-            WHERE id = %s
-            FOR UPDATE
+                p.id,
+                p.fecha,
+                p.id_cliente,
+                p.origen_tipo,
+                p.origen_id,
+                p.medio_pago,
+                p.monto_total_cobrado,
+                p.monto_base_aplicado,
+                p.monto_descuento_aplicado,
+                p.monto_recargo_aplicado,
+                p.id_plan_financiero,
+                p.porcentaje_costo_financiero_aplicado,
+                p.monto_costo_financiero,
+                p.monto_neto_liquidado,
+                p.estado,
+                p.nota,
+                p.id_usuario
+            FROM pagos p
+            WHERE p.id = %s
+            FOR UPDATE OF p
             """,
             (pago_id,),
         )
@@ -113,6 +137,10 @@ def get_pagos(conn, id_cliente: int | None = None):
                 p.monto_base_aplicado,
                 p.monto_descuento_aplicado,
                 p.monto_recargo_aplicado,
+                p.id_plan_financiero,
+                p.porcentaje_costo_financiero_aplicado,
+                p.monto_costo_financiero,
+                p.monto_neto_liquidado,
                 p.estado,
                 p.nota,
                 p.id_usuario,
@@ -147,6 +175,9 @@ def obtener_pagos_por_venta(conn, venta_id: int):
                 p.monto_base_aplicado,
                 p.monto_descuento_aplicado,
                 p.monto_recargo_aplicado,
+                p.id_plan_financiero,
+                p.porcentaje_costo_financiero_aplicado,
+                p.monto_costo_financiero,
                 p.estado,
                 p.nota,
                 p.id_usuario,
@@ -155,14 +186,17 @@ def obtener_pagos_por_venta(conn, venta_id: int):
                 c.dni AS cliente_dni,
                 c.cuit AS cliente_cuit,
 
-                d.id_tarjeta_plan,
+                COALESCE(
+                    p.id_plan_financiero,
+                    d.id_tarjeta_plan
+                ) AS id_tarjeta_plan,
                 tp.nombre AS tarjeta_plan_nombre,
                 d.cuotas,
                 d.entidad,
                 d.monto_base,
                 d.monto_recargo_financiero,
                 d.porcentaje_recargo_aplicado,
-                d.monto_neto_liquidado
+                p.monto_neto_liquidado
 
             FROM pagos p
             LEFT JOIN clientes c
@@ -170,7 +204,10 @@ def obtener_pagos_por_venta(conn, venta_id: int):
             LEFT JOIN pagos_tarjeta_detalle d
                 ON d.id_pago = p.id
             LEFT JOIN tarjeta_planes tp
-                ON tp.id = d.id_tarjeta_plan
+                ON tp.id = COALESCE(
+                    p.id_plan_financiero,
+                    d.id_tarjeta_plan
+                )
             WHERE p.origen_tipo = 'venta'
               AND p.origen_id = %s
             ORDER BY p.fecha, p.id
@@ -415,6 +452,10 @@ def get_pagos_confirmados_por_venta(conn, venta_id: int):
                 monto_base_aplicado,
                 monto_descuento_aplicado,
                 monto_recargo_aplicado,
+                id_plan_financiero,
+                porcentaje_costo_financiero_aplicado,
+                monto_costo_financiero,
+                monto_neto_liquidado,
                 estado
             FROM pagos
             WHERE origen_tipo = 'venta'

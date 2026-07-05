@@ -28,7 +28,16 @@ def get_ventas_mes(conn, fecha_desde, fecha_hasta, id_sucursal=None):
               GROUP BY vi.id_venta
             )
             SELECT COALESCE(
-              SUM(v.total_final - COALESCE(d.monto, 0)),
+              SUM(
+                GREATEST(v.total_final - v.recargo_total, 0)
+                - COALESCE(d.monto, 0)
+                  * CASE
+                      WHEN v.total_final > 0
+                        THEN GREATEST(v.total_final - v.recargo_total, 0)
+                            / v.total_final
+                      ELSE 1
+                    END
+              ),
               0
             )::numeric(14,2) AS total
             FROM ventas v
@@ -76,7 +85,11 @@ def get_resultado_estimado(conn, fecha_desde, fecha_hasta, id_sucursal=None):
         cur.execute(
             f"""
             WITH ventas_filtradas AS (
-              SELECT v.id, v.total_final
+              SELECT
+                v.id,
+                v.total_final,
+                v.recargo_total,
+                GREATEST(v.total_final - v.recargo_total, 0) AS total_comercial
               FROM ventas v
               WHERE v.fecha::date >= %s
                 AND v.fecha::date <= %s
@@ -96,16 +109,33 @@ def get_resultado_estimado(conn, fecha_desde, fecha_hasta, id_sucursal=None):
                 vi.cantidad,
                 vi.costo_unitario_aplicado,
                 COALESCE(di.cantidad_devuelta, 0) AS cantidad_devuelta,
-                COALESCE(di.monto_devuelto, 0) AS monto_devuelto
+                COALESCE(di.monto_devuelto, 0)
+                  * CASE
+                      WHEN vf.total_final > 0
+                        THEN vf.total_comercial / vf.total_final
+                      ELSE 1
+                    END AS monto_devuelto
               FROM ventas_filtradas vf
               INNER JOIN venta_items vi ON vi.id_venta = vf.id
               LEFT JOIN devoluciones_item di ON di.id_venta_item = vi.id
             ),
             ventas AS (
               SELECT
-                COALESCE(SUM(total_final), 0) AS ventas_brutas,
+                COALESCE(SUM(total_comercial), 0) AS ventas_brutas,
                 COUNT(*)::int AS cantidad_ventas
               FROM ventas_filtradas
+            ),
+            pagos_financieros AS (
+              SELECT
+                COALESCE(SUM(p.monto_recargo_aplicado), 0) AS financiacion_cobrada,
+                COALESCE(SUM(
+                  p.monto_costo_financiero
+                ), 0) AS costos_financieros
+              FROM pagos p
+              INNER JOIN ventas_filtradas vf
+                ON p.origen_tipo = 'venta'
+               AND p.origen_id = vf.id
+              WHERE p.estado = 'confirmado'
             ),
             ajustes AS (
               SELECT
@@ -127,8 +157,25 @@ def get_resultado_estimado(conn, fecha_desde, fecha_hasta, id_sucursal=None):
                 - ajustes.devoluciones_total
                 - ajustes.cmv_neto
               )::numeric(14,2) AS margen_bruto
+              ,
+              pagos_financieros.financiacion_cobrada::numeric(14,2)
+                AS financiacion_cobrada,
+              pagos_financieros.costos_financieros::numeric(14,2)
+                AS costos_financieros,
+              (
+                pagos_financieros.financiacion_cobrada
+                - pagos_financieros.costos_financieros
+              )::numeric(14,2) AS resultado_financiero,
+              (
+                ventas.ventas_brutas
+                - ajustes.devoluciones_total
+                - ajustes.cmv_neto
+                + pagos_financieros.financiacion_cobrada
+                - pagos_financieros.costos_financieros
+              )::numeric(14,2) AS margen_real
             FROM ventas
             CROSS JOIN ajustes
+            CROSS JOIN pagos_financieros
             """,
             params,
         )
@@ -179,8 +226,12 @@ def get_resultado_dia(conn, fecha, id_sucursal=None):
         "ventas_items_total": rentabilidad["ventas_brutas"],
         "cmv": rentabilidad["cmv"],
         "margen_bruto": rentabilidad["margen_bruto"],
+        "financiacion_cobrada": rentabilidad["financiacion_cobrada"],
+        "costos_financieros": rentabilidad["costos_financieros"],
+        "resultado_financiero": rentabilidad["resultado_financiero"],
+        "margen_real": rentabilidad["margen_real"],
         "gastos_operativos": gastos,
-        "resultado_estimado": rentabilidad["margen_bruto"] - gastos,
+        "resultado_estimado": rentabilidad["margen_real"] - gastos,
     }
 
 
@@ -432,10 +483,17 @@ def get_top_productos(conn, fecha_desde, fecha_hasta, *, id_sucursal=None, order
                   vi.subtotal
                   * CASE
                       WHEN COALESCE(v.subtotal_base, 0) > 0
-                        THEN v.total_final / v.subtotal_base
+                        THEN GREATEST(v.total_final - v.recargo_total, 0)
+                            / v.subtotal_base
                       ELSE 1
                     END
                   - COALESCE(d.monto_devuelto, 0)
+                    * CASE
+                        WHEN v.total_final > 0
+                          THEN GREATEST(v.total_final - v.recargo_total, 0)
+                              / v.total_final
+                        ELSE 1
+                      END
                 ) AS venta_neta,
                 (
                   vi.costo_unitario_aplicado
@@ -713,7 +771,16 @@ def get_ventas_ultimos_meses(conn, fecha_hasta, *, id_sucursal=None, meses=6):
               SELECT
                 date_trunc('month', v.fecha)::date AS periodo,
                 COALESCE(
-                  SUM(v.total_final - COALESCE(d.monto, 0)),
+                  SUM(
+                    GREATEST(v.total_final - v.recargo_total, 0)
+                    - COALESCE(d.monto, 0)
+                      * CASE
+                          WHEN v.total_final > 0
+                            THEN GREATEST(v.total_final - v.recargo_total, 0)
+                                / v.total_final
+                          ELSE 1
+                        END
+                  ),
                   0
                 )::numeric(14,2) AS ventas_total,
                 COUNT(*)::int AS cantidad_ventas

@@ -1717,6 +1717,206 @@ def test_generar_venta_desde_taller_con_servicio_taller(
     assert orden_actualizada["id_venta_generada"] == venta_id
 
 
+def test_ot_comun_permite_bonificar_servicio_y_conserva_trazabilidad(
+    client,
+    db_conn,
+    seed_taller_basico,
+):
+    servicio_bonificado = _crear_servicio_taller_test(
+        client,
+        nombre="Mano de obra bonificada",
+        precio=5000,
+    )
+    servicio_facturable = _crear_servicio_taller_test(
+        client,
+        nombre="Trabajo adicional facturable",
+        precio=9000,
+    )
+    orden = _crear_orden_taller_test(
+        client,
+        seed_taller_basico,
+        problema="Atención comercial con trabajo adicional",
+    )
+    usuario_id = seed_taller_basico["usuario_id"]
+
+    bonificado = client.post(
+        f"/ordenes_taller/{orden['id']}/items",
+        json={
+            "tipo_item": "servicio",
+            "id_servicio_taller": servicio_bonificado["id"],
+            "cantidad": 1,
+            "precio_unitario": 5000,
+            "valor_cobertura_unitario": 5000,
+            "motivo_cobertura": "Atención comercial",
+            "observacion_cobertura": "Mano de obra sin cargo",
+            "id_usuario": usuario_id,
+        },
+    )
+    assert bonificado.status_code == 201, bonificado.text
+    assert _to_decimal(bonificado.json()["subtotal"]) == Decimal("0")
+
+    facturable = client.post(
+        f"/ordenes_taller/{orden['id']}/items",
+        json={
+            "tipo_item": "servicio",
+            "id_servicio_taller": servicio_facturable["id"],
+            "cantidad": 1,
+            "precio_unitario": 9000,
+            "id_usuario": usuario_id,
+        },
+    )
+    assert facturable.status_code == 201, facturable.text
+
+    for item_id in [bonificado.json()["id"], facturable.json()["id"]]:
+        aprobar = client.post(
+            f"/ordenes_taller/{orden['id']}/items/{item_id}/aprobacion",
+            json={"aprobado": True, "id_usuario": usuario_id},
+        )
+        assert aprobar.status_code == 200, aprobar.text
+        ejecutar = client.post(
+            f"/ordenes_taller/{orden['id']}/items/{item_id}/ejecutar",
+            params={"id_usuario": usuario_id},
+        )
+        assert ejecutar.status_code == 200, ejecutar.text
+
+    for estado in ["presupuestada", "en_reparacion", "terminada"]:
+        cambio = client.post(
+            f"/ordenes_taller/{orden['id']}/estado",
+            json={"nuevo_estado": estado, "id_usuario": usuario_id},
+        )
+        assert cambio.status_code == 200, cambio.text
+
+    generar = client.post(
+        f"/ordenes_taller/{orden['id']}/generar-venta",
+        json={"id_usuario": usuario_id},
+    )
+    assert generar.status_code == 200, generar.text
+
+    items_venta = db_conn.execute(
+        """
+        SELECT
+            id_servicio_taller,
+            precio_lista,
+            bonificacion_unitaria,
+            precio_final,
+            motivo_bonificacion
+        FROM venta_items
+        WHERE id_venta = %s
+        ORDER BY id
+        """,
+        (generar.json()["venta_id"],),
+    ).fetchall()
+
+    item_bonificado = next(
+        item
+        for item in items_venta
+        if item["id_servicio_taller"] == servicio_bonificado["id"]
+    )
+    assert _to_decimal(item_bonificado["precio_lista"]) == Decimal("5000")
+    assert _to_decimal(item_bonificado["bonificacion_unitaria"]) == Decimal("5000")
+    assert _to_decimal(item_bonificado["precio_final"]) == Decimal("0")
+    assert item_bonificado["motivo_bonificacion"].startswith("Atención comercial")
+
+
+def test_generar_venta_recupera_servicio_legacy_guardado_en_cero(
+    client,
+    db_conn,
+    seed_taller_basico,
+):
+    servicio_bonificado = _crear_servicio_taller_test(
+        client,
+        nombre="Servicio legacy sin cargo",
+        precio=6000,
+    )
+    servicio_facturable = _crear_servicio_taller_test(
+        client,
+        nombre="Servicio facturable acompañante",
+        precio=8000,
+    )
+    orden = _crear_orden_taller_test(
+        client,
+        seed_taller_basico,
+        problema="OT existente con precio cero",
+    )
+    usuario_id = seed_taller_basico["usuario_id"]
+    items = []
+
+    for servicio, precio in [
+        (servicio_bonificado, 6000),
+        (servicio_facturable, 8000),
+    ]:
+        response = client.post(
+            f"/ordenes_taller/{orden['id']}/items",
+            json={
+                "tipo_item": "servicio",
+                "id_servicio_taller": servicio["id"],
+                "cantidad": 1,
+                "precio_unitario": precio,
+                "id_usuario": usuario_id,
+            },
+        )
+        assert response.status_code == 201, response.text
+        items.append(response.json())
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE ordenes_taller_items
+            SET precio_unitario = 0,
+                valor_cobertura_unitario = 0,
+                motivo_cobertura = NULL,
+                subtotal = 0
+            WHERE id = %s
+            """,
+            (items[0]["id"],),
+        )
+    db_conn.commit()
+
+    for item in items:
+        aprobar = client.post(
+            f"/ordenes_taller/{orden['id']}/items/{item['id']}/aprobacion",
+            json={"aprobado": True, "id_usuario": usuario_id},
+        )
+        assert aprobar.status_code == 200, aprobar.text
+        ejecutar = client.post(
+            f"/ordenes_taller/{orden['id']}/items/{item['id']}/ejecutar",
+            params={"id_usuario": usuario_id},
+        )
+        assert ejecutar.status_code == 200, ejecutar.text
+
+    for estado in ["presupuestada", "en_reparacion", "terminada"]:
+        cambio = client.post(
+            f"/ordenes_taller/{orden['id']}/estado",
+            json={"nuevo_estado": estado, "id_usuario": usuario_id},
+        )
+        assert cambio.status_code == 200, cambio.text
+
+    generar = client.post(
+        f"/ordenes_taller/{orden['id']}/generar-venta",
+        json={"id_usuario": usuario_id},
+    )
+    assert generar.status_code == 200, generar.text
+
+    item_venta = db_conn.execute(
+        """
+        SELECT
+            precio_lista,
+            bonificacion_unitaria,
+            precio_final,
+            motivo_bonificacion
+        FROM venta_items
+        WHERE id_venta = %s
+          AND id_servicio_taller = %s
+        """,
+        (generar.json()["venta_id"], servicio_bonificado["id"]),
+    ).fetchone()
+
+    assert _to_decimal(item_venta["precio_lista"]) == Decimal("6000")
+    assert _to_decimal(item_venta["bonificacion_unitaria"]) == Decimal("6000")
+    assert _to_decimal(item_venta["precio_final"]) == Decimal("0")
+    assert item_venta["motivo_bonificacion"].startswith("Atención comercial")
+
+
 def test_anular_venta_de_taller_no_devuelve_stock_consumido_y_reabre_ot(
     client,
     db_conn,

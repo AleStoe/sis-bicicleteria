@@ -215,7 +215,7 @@ export default function ReglasPrecioPanel({
         </div>
 
         <div style={styles.tableWrapper}>
-          <table style={styles.table}>
+          <table style={styles.tableMedium}>
             <thead>
               <tr>
                 <th style={styles.th}>Nombre</th>
@@ -233,7 +233,7 @@ export default function ReglasPrecioPanel({
             <tbody>
               {reglas.map((regla) => (
                 <tr key={regla.id}>
-                  <td style={styles.tdStrong}>{regla.nombre}</td>
+                  <td style={styles.tdProduct}>{regla.nombre}</td>
                   <td style={styles.td}>{labelScope(regla)}</td>
                   <td style={styles.td}>{regla.tipo_cliente}</td>
                   <td style={styles.td}>

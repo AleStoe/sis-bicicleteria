@@ -38,6 +38,7 @@ function CalculadoraLinea({
   onApply,
   buttonLabel,
   porcentajeDescuentoContado,
+  mostrarAccion,
 }) {
   const calculo = useMemo(
     () => calcularPrecioLista(value, porcentajeDescuentoContado),
@@ -66,12 +67,15 @@ function CalculadoraLinea({
       </label>
 
       <div style={styles.resultRow}>
-        <span>
+        <span style={styles.secondaryResult}>
           Contado deseado <strong>{formatMoney(calculo.contado)}</strong>
         </span>
-        <span>
-          Precio lista a cargar <strong>{formatMoney(calculo.precioLista)}</strong>
-        </span>
+        <div style={styles.primaryResult}>
+          <span style={styles.primaryResultLabel}>Precio lista a cargar</span>
+          <strong style={styles.primaryResultValue}>
+            {formatMoney(calculo.precioLista)}
+          </strong>
+        </div>
       </div>
 
       {mostrarAdvertenciaPrecio && (
@@ -80,17 +84,19 @@ function CalculadoraLinea({
         </div>
       )}
 
-      <button
-        type="button"
-        style={{
-          ...styles.actionButton,
-          ...(!puedeAplicar ? styles.actionButtonDisabled : {}),
-        }}
-        onClick={aplicarPrecioLista}
-        disabled={!puedeAplicar}
-      >
-        {buttonLabel}
-      </button>
+      {mostrarAccion && (
+        <button
+          type="button"
+          style={{
+            ...styles.actionButton,
+            ...(!puedeAplicar ? styles.actionButtonDisabled : {}),
+          }}
+          onClick={aplicarPrecioLista}
+          disabled={!puedeAplicar}
+        >
+          {buttonLabel}
+        </button>
+      )}
     </div>
   );
 }
@@ -107,6 +113,7 @@ export default function CalculadoraPrecioPagoPreview({
   mayoristaLabel = "Quiero recibir mayorista en efectivo/transferencia",
   minoristaButtonLabel = "Usar como precio minorista/lista",
   mayoristaButtonLabel = "Usar como precio mayorista/lista",
+  mostrarAcciones = true,
 }) {
   const [contadoMinorista, setContadoMinorista] = useState("");
   const [contadoMayorista, setContadoMayorista] = useState("");
@@ -133,6 +140,7 @@ export default function CalculadoraPrecioPagoPreview({
             onApply={aplicarMinorista}
             buttonLabel={minoristaButtonLabel}
             porcentajeDescuentoContado={descuento}
+            mostrarAccion={mostrarAcciones}
           />
         )}
 
@@ -144,6 +152,7 @@ export default function CalculadoraPrecioPagoPreview({
             onApply={aplicarMayorista}
             buttonLabel={mayoristaButtonLabel}
             porcentajeDescuentoContado={descuento}
+            mostrarAccion={mostrarAcciones}
           />
         )}
       </div>
@@ -173,7 +182,7 @@ const styles = {
   },
   grid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(260px, 100%), 1fr))",
     gap: "10px",
   },
   lineCard: {
@@ -201,12 +210,34 @@ const styles = {
     background: "#ffffff",
   },
   resultRow: {
-    display: "flex",
-    justifyContent: "space-between",
+    display: "grid",
     gap: "8px",
-    flexWrap: "wrap",
+  },
+  secondaryResult: {
     color: "#475569",
     fontSize: "12px",
+  },
+  primaryResult: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "12px",
+    padding: "10px 12px",
+    border: "1px solid #fb923c",
+    borderRadius: "8px",
+    background: "#fff7ed",
+  },
+  primaryResultLabel: {
+    color: "#9a3412",
+    fontSize: "12px",
+    fontWeight: 900,
+    textTransform: "uppercase",
+  },
+  primaryResultValue: {
+    color: "#c2410c",
+    fontSize: "20px",
+    fontWeight: 900,
+    whiteSpace: "nowrap",
   },
   warning: {
     border: "1px solid #facc15",

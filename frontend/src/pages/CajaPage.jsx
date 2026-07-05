@@ -626,9 +626,21 @@ function CajaResumenDiario({ resumen, formatCurrency, isMobile }) {
           tone={Number(diferencia || 0) === 0 ? "neutral" : "warning"}
         />
         <ResumenDiarioMetric
-          label="Cobrado caja"
-          value={formatCurrency(pagos.total_cobrado)}
-          detail={`Ingreso operativo - ${pagos.cantidad_pagos || 0} pagos`}
+          label="Bruto cobrado"
+          value={formatCurrency(pagos.total_bruto_cobrado)}
+          detail={`${pagos.cantidad_pagos || 0} pagos confirmados`}
+          tone="primary"
+        />
+        <ResumenDiarioMetric
+          label="Costo financiero"
+          value={formatCurrency(pagos.costos_financieros)}
+          detail="Comisiones de tarjeta y QR"
+          tone="danger"
+        />
+        <ResumenDiarioMetric
+          label="Neto esperado"
+          value={formatCurrency(pagos.total_neto_esperado ?? pagos.total_cobrado)}
+          detail="Movimiento operativo real"
           tone="success"
         />
         <ResumenDiarioMetric

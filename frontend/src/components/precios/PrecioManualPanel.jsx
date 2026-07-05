@@ -1,5 +1,6 @@
 import { formatMoney, formatPercent, formatDate } from "../../utils/formatters";
 import HerramientasPrecioPanel from "./HerramientasPrecioPanel";
+import { formatProductoVariante } from "../../utils/productPresentation";
 
 export default function PrecioManualPanel({
   buscarRef,
@@ -53,7 +54,10 @@ export default function PrecioManualPanel({
               onClick={() => seleccionarVariante(item)}
             >
               <strong>
-                {item.producto_nombre} - {item.nombre_variante}
+                {formatProductoVariante(
+                  item.producto_nombre,
+                  item.nombre_variante
+                )}
               </strong>
               <span>
                 SKU: {item.sku || "-"} · EAN: {item.codigo_barras || "-"} · Prov:{" "}
@@ -81,8 +85,10 @@ export default function PrecioManualPanel({
           <>
             <div style={styles.selectedBox}>
               <strong>
-                {varianteSeleccionada.producto_nombre} -{" "}
-                {varianteSeleccionada.nombre_variante}
+                {formatProductoVariante(
+                  varianteSeleccionada.producto_nombre,
+                  varianteSeleccionada.nombre_variante
+                )}
               </strong>
               <span>SKU: {varianteSeleccionada.sku || "-"}</span>
             </div>
@@ -211,7 +217,7 @@ export default function PrecioManualPanel({
         </div>
 
         <div style={styles.tableWrapper}>
-          <table style={styles.table}>
+          <table style={styles.tableCompact}>
             <thead>
               <tr>
                 <th style={styles.th}>Fecha</th>

@@ -254,7 +254,7 @@ def test_circuito_taller_normal_completo_turno_ot_venta_cobro_retiro(
     assert len(ingresos) == 2
     assert sorted(_dec(m["monto"]) for m in ingresos) == [
         Decimal("9000.00"),
-        Decimal("12000.00"),
+        Decimal("13800.00"),
     ]
 
     lista = client.post(
