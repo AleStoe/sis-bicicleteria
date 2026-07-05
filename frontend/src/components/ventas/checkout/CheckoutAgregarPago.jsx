@@ -25,6 +25,8 @@ export default function CheckoutAgregarPago({
   creditoCubreSaldo = false,
 }) {
   const esTarjeta = medioPago === "tarjeta";
+  const esMercadoPago = medioPago === "mercadopago";
+  const usaPlanFinanciero = esTarjeta || esMercadoPago;
   const medioActivo = MEDIOS_PAGO.find((medio) => medio.value === medioPago);
 
   const normalizarMontoPago = (valor) => {
@@ -102,15 +104,19 @@ export default function CheckoutAgregarPago({
         })}
       </div>
 
-      {esTarjeta && (
+      {usaPlanFinanciero && (
         <label style={styles.planBox}>
-          <span style={styles.planLabel}>Plan de tarjeta</span>
+          <span style={styles.planLabel}>
+            {esMercadoPago ? "Plan QR aplicado" : "Plan de tarjeta"}
+          </span>
           <select
             value={planTarjetaId || ""}
             onChange={(e) => setPlanTarjetaId(e.target.value)}
             style={styles.planSelect}
           >
-            <option value="">Seleccionar plan...</option>
+            <option value="">
+              {esMercadoPago ? "Sin plan QR activo" : "Seleccionar plan..."}
+            </option>
             {(planesTarjeta || []).map((plan) => (
               <option key={plan.id} value={plan.id}>
                 {plan.nombre || `Plan #${plan.id}`}
@@ -123,7 +129,11 @@ export default function CheckoutAgregarPago({
       {mostrarInstruccion && (
         <div style={styles.operatorHint}>
           <span style={styles.operatorHintLabel}>
-            {esTarjeta ? "Total en tarjeta" : "Total a cobrar ahora"}
+            {esTarjeta
+              ? "Total en tarjeta"
+              : esMercadoPago
+                ? "Total por MercadoPago QR"
+                : "Total a cobrar ahora"}
           </span>
           <strong>{formatMoney(montoACobrarAhora)}</strong>
           {mostrarPreview ? (

@@ -96,8 +96,14 @@ export default function useCheckoutVenta({
   const planTarjetaSeleccionado = useMemo(() => {
     return planesTarjeta.find(
       (plan) => String(plan.id) === String(planTarjetaId)
+        && plan.medio_pago === medioPago
     );
-  }, [planesTarjeta, planTarjetaId]);
+  }, [medioPago, planesTarjeta, planTarjetaId]);
+
+  const planesMedioPago = useMemo(
+    () => planesTarjeta.filter((plan) => plan.medio_pago === medioPago),
+    [medioPago, planesTarjeta]
+  );
 
   const simulacionActiva = previewSaldar || simulacion;
   const totalCalculado = Number(simulacionActiva?.total_final ?? total ?? 0);
@@ -125,7 +131,7 @@ export default function useCheckoutVenta({
   const saldoBasePendiente = Math.max(Number(total || 0) - pagadoBase, 0);
 
   const getDatosFinancierosPago = useCallback(() => {
-    if (medioPago !== "tarjeta") {
+    if (!["tarjeta", "mercadopago"].includes(medioPago)) {
       return {
         cuotas: null,
         entidad: null,
@@ -197,7 +203,7 @@ export default function useCheckoutVenta({
     const errorPlan = validarPlanTarjeta({
       medioPago,
       planTarjetaId,
-      planesTarjeta,
+      planesTarjeta: planesMedioPago,
     });
 
     if (errorPlan) {
@@ -230,7 +236,7 @@ export default function useCheckoutVenta({
     medioPago,
     pagosDraft,
     planTarjetaId,
-    planesTarjeta,
+    planesMedioPago,
     simularPagos,
   ]);
 
@@ -322,7 +328,7 @@ export default function useCheckoutVenta({
     const errorPlan = validarPlanTarjeta({
       medioPago,
       planTarjetaId,
-      planesTarjeta,
+      planesTarjeta: planesMedioPago,
     });
 
     if (errorPlan) {
@@ -392,7 +398,7 @@ export default function useCheckoutVenta({
     monto,
     pagosDraft,
     planTarjetaId,
-    planesTarjeta,
+    planesMedioPago,
     simularPagos,
   ]);
 
@@ -443,20 +449,34 @@ export default function useCheckoutVenta({
     async function cargarPlanesTarjeta() {
       try {
         const data = await listarTarjetaPlanes(true);
-        const planes = (data || []).filter((plan) => plan.medio_pago === "tarjeta");
+        const planes = (data || []).filter((plan) =>
+          ["tarjeta", "mercadopago"].includes(plan.medio_pago)
+        );
         setPlanesTarjeta(planes);
-
-        const primerPlan = planes[0];
-        if (primerPlan && medioPago === "tarjeta" && !planTarjetaId) {
-          setPlanTarjetaId(String(primerPlan.id));
-        }
       } catch (err) {
         setErrorLocal(err.message || "No se pudieron cargar los planes de tarjeta");
       }
     }
 
     cargarPlanesTarjeta();
-  }, [medioPago, planTarjetaId]);
+  }, []);
+
+  useEffect(() => {
+    if (!["tarjeta", "mercadopago"].includes(medioPago)) {
+      if (planTarjetaId) setPlanTarjetaId("");
+      return;
+    }
+
+    const planActualEsValido = planesMedioPago.some(
+      (plan) => String(plan.id) === String(planTarjetaId)
+    );
+
+    if (!planActualEsValido) {
+      setPlanTarjetaId(
+        planesMedioPago[0] ? String(planesMedioPago[0].id) : ""
+      );
+    }
+  }, [medioPago, planesMedioPago, planTarjetaId]);
 
   useEffect(() => {
     setPagosDraft([]);
@@ -564,7 +584,7 @@ export default function useCheckoutVenta({
       const errorPlan = validarPlanTarjeta({
         medioPago,
         planTarjetaId,
-        planesTarjeta,
+        planesTarjeta: planesMedioPago,
       });
 
       if (errorPlan) {
@@ -609,7 +629,7 @@ export default function useCheckoutVenta({
     monto,
     pagosDraft,
     planTarjetaId,
-    planesTarjeta,
+    planesMedioPago,
     simularPagos,
   ]);
 
@@ -672,7 +692,7 @@ export default function useCheckoutVenta({
     simulando,
     previewSaldar,
     previewMontoActual,
-    planesTarjeta,
+    planesTarjeta: planesMedioPago,
     planTarjetaId,
     setPlanTarjetaId,
     cantidadItems,

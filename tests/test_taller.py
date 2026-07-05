@@ -2825,7 +2825,9 @@ def test_postventa_upgrade_genera_venta_y_caja_solo_por_diferencia(
 
     assert Decimal(str(pago_db["monto_base_aplicado"])) == Decimal("7000")
     assert Decimal(str(pago_db["monto_total_cobrado"])) == Decimal("7000")
-    assert Decimal(str(movimiento["monto"])) == Decimal("7000")
+    assert Decimal(str(pago_db["monto_costo_financiero"])) == Decimal("77.00")
+    assert Decimal(str(pago_db["monto_neto_liquidado"])) == Decimal("6923.00")
+    assert Decimal(str(movimiento["monto"])) == Decimal("6923.00")
 
     lista_cobrada = client.post(
         f"/ordenes_taller/{orden_id}/estado",

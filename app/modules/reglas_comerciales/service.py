@@ -114,7 +114,7 @@ def _simular_con_conn(conn, *, subtotal_base: Decimal, pagos):
                 entidad=entidad,
             )
 
-            if medio_pago == "tarjeta" and plan is None:
+            if plan is None:
                 raise HTTPException(
                     status_code=400,
                     detail=(

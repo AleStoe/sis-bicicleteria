@@ -167,6 +167,12 @@ class TarjetaPlanCreateInput(BaseModel):
     )
     activa: bool = True
 
+    @model_validator(mode="after")
+    def validar_cuotas_por_medio(self):
+        if self.medio_pago == "mercadopago" and self.cuotas != 1:
+            raise ValueError("MercadoPago QR debe configurarse en 1 cuota")
+        return self
+
 
 class TarjetaPlanUpdateInput(BaseModel):
     nombre: str | None = Field(default=None, min_length=3, max_length=120)

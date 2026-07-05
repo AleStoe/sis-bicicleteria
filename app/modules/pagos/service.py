@@ -82,6 +82,15 @@ def _calcular_tramo_pago_venta(conn, data: dict):
     monto_base = _to_decimal(data.get("monto_base"))
 
     if monto_base is None:
+        if medio_pago == "mercadopago":
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "MercadoPago QR requiere monto_base para aplicar "
+                    "su plan financiero"
+                ),
+            )
+
         monto_cobrado = redondear_monto(_to_decimal(data.get("monto")))
 
         return {

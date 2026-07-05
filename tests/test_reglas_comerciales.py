@@ -267,7 +267,7 @@ def test_pago_total_y_combinabilidad_conservan_semantica_actual(
             SELECT id, activa
             FROM reglas_comerciales
             WHERE activa = TRUE
-              AND (medio_pago IS NULL OR medio_pago = 'mercadopago')
+              AND (medio_pago IS NULL OR medio_pago = 'transferencia')
             """
         )
         estados_originales = {
@@ -279,7 +279,7 @@ def test_pago_total_y_combinabilidad_conservan_semantica_actual(
             UPDATE reglas_comerciales
             SET activa = FALSE
             WHERE activa = TRUE
-              AND (medio_pago IS NULL OR medio_pago = 'mercadopago')
+              AND (medio_pago IS NULL OR medio_pago = 'transferencia')
             """
         )
         cur.execute(
@@ -309,7 +309,7 @@ def test_pago_total_y_combinabilidad_conservan_semantica_actual(
         json={
             "nombre": nombres[0],
             "tipo": "descuento",
-            "medio_pago": "mercadopago",
+            "medio_pago": "transferencia",
             "porcentaje": "10",
             "requiere_pago_total": True,
             "combinable": False,
@@ -322,7 +322,7 @@ def test_pago_total_y_combinabilidad_conservan_semantica_actual(
         "/reglas-comerciales/simular",
         json={
             "subtotal_base": "1000",
-            "medios_pago": [{"medio_pago": "mercadopago", "monto_base": "500"}],
+            "medios_pago": [{"medio_pago": "transferencia", "monto_base": "500"}],
         },
     )
     assert _dec(parcial.json()["descuento_total"]) == Decimal("0")
@@ -331,7 +331,7 @@ def test_pago_total_y_combinabilidad_conservan_semantica_actual(
         "/reglas-comerciales/simular",
         json={
             "subtotal_base": "1000",
-            "medios_pago": [{"medio_pago": "mercadopago", "monto_base": "1000"}],
+            "medios_pago": [{"medio_pago": "transferencia", "monto_base": "1000"}],
         },
     )
     assert _dec(total.json()["descuento_total"]) == Decimal("100")
@@ -346,7 +346,7 @@ def test_pago_total_y_combinabilidad_conservan_semantica_actual(
         json={
             "nombre": nombres[1],
             "tipo": "descuento",
-            "medio_pago": "mercadopago",
+            "medio_pago": "transferencia",
             "porcentaje": "10",
             "combinable": True,
             "prioridad": 1,
@@ -357,7 +357,7 @@ def test_pago_total_y_combinabilidad_conservan_semantica_actual(
         json={
             "nombre": nombres[2],
             "tipo": "descuento",
-            "medio_pago": "mercadopago",
+            "medio_pago": "transferencia",
             "porcentaje": "5",
             "combinable": False,
             "prioridad": 2,
@@ -370,7 +370,7 @@ def test_pago_total_y_combinabilidad_conservan_semantica_actual(
         "/reglas-comerciales/simular",
         json={
             "subtotal_base": "1000",
-            "medios_pago": [{"medio_pago": "mercadopago", "monto_base": "1000"}],
+            "medios_pago": [{"medio_pago": "transferencia", "monto_base": "1000"}],
         },
     )
     assert _dec(combinadas.json()["descuento_total"]) == Decimal("150")

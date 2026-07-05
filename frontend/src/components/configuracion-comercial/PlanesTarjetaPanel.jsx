@@ -117,6 +117,7 @@ export default function PlanesTarjetaPanel() {
           value={nuevo.cuotas}
           onChange={(e) => setNuevo((actual) => ({ ...actual, cuotas: e.target.value }))}
           style={styles.input}
+          disabled={nuevo.medio_pago === "mercadopago"}
         />
         <input
           required

@@ -1,4 +1,5 @@
 from decimal import Decimal
+from datetime import date
 import pytest
 from tests.conftest import (
     get_auditoria_by_entidad,
@@ -264,13 +265,15 @@ def test_registra_pago_total_mercadopago(client, db_conn, seed_venta_basica):
 
     response = client.post(
         "/pagos/",
-        json=_payload_pago(
-            venta_id,
-            "mercadopago",
-            24440,
-            seed_venta_basica["usuario_id"],
-            "Pago total mercadopago",
-        ),
+        json={
+            "origen_tipo": "venta",
+            "origen_id": venta_id,
+            "medio_pago": "mercadopago",
+            "monto_base": "24440",
+            "cuotas": 1,
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "nota": "Pago total MercadoPago QR",
+        },
     )
 
     assert response.status_code == 200
@@ -282,6 +285,138 @@ def test_registra_pago_total_mercadopago(client, db_conn, seed_venta_basica):
     venta = get_venta(db_conn, venta_id)
     assert venta["estado"] == "pagada_total"
     assert float(venta["saldo_pendiente"]) == 0.0
+
+    pago = get_pagos_by_venta(db_conn, venta_id)[0]
+    assert pago["id_plan_financiero"] is not None
+    assert Decimal(str(pago["monto_total_cobrado"])) == Decimal("24440.00")
+    assert Decimal(str(pago["monto_costo_financiero"])) == Decimal("268.84")
+    assert Decimal(str(pago["monto_neto_liquidado"])) == Decimal("24171.16")
+
+    movimientos = get_caja_movimientos(db_conn, abrir_caja.json()["caja_id"])
+    assert len(movimientos) == 1
+    assert Decimal(str(movimientos[0]["monto"])) == Decimal("24171.16")
+
+
+def test_venta_mixta_efectivo_qr_usa_neto_en_caja_y_rentabilidad(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    venta_id = crear_venta_base(client, seed_venta_basica)
+    abrir_caja = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+    assert abrir_caja.status_code == 200, abrir_caja.text
+
+    efectivo = client.post(
+        "/pagos/",
+        json={
+            "origen_tipo": "venta",
+            "origen_id": venta_id,
+            "medio_pago": "efectivo",
+            "monto_base": "10000",
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert efectivo.status_code == 200, efectivo.text
+
+    qr = client.post(
+        "/pagos/",
+        json={
+            "origen_tipo": "venta",
+            "origen_id": venta_id,
+            "medio_pago": "mercadopago",
+            "monto_base": "14440",
+            "cuotas": 1,
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert qr.status_code == 200, qr.text
+
+    pagos = get_pagos_by_venta(db_conn, venta_id)
+    pago_qr = next(pago for pago in pagos if pago["medio_pago"] == "mercadopago")
+    total_bruto = sum(Decimal(str(pago["monto_total_cobrado"])) for pago in pagos)
+    total_costo = sum(Decimal(str(pago["monto_costo_financiero"])) for pago in pagos)
+    total_neto = sum(Decimal(str(pago["monto_neto_liquidado"])) for pago in pagos)
+
+    assert pago_qr["id_plan_financiero"] is not None
+    assert Decimal(str(pago_qr["monto_costo_financiero"])) == Decimal("158.84")
+    assert Decimal(str(pago_qr["monto_neto_liquidado"])) == Decimal("14281.16")
+
+    caja = client.get(
+        "/cajas/resumen-diario",
+        params={"id_sucursal": seed_venta_basica["sucursal_id"]},
+    )
+    assert caja.status_code == 200, caja.text
+    pagos_caja = caja.json()["pagos"]
+    assert Decimal(str(pagos_caja["total_bruto_cobrado"])) == total_bruto
+    assert Decimal(str(pagos_caja["costos_financieros"])) == total_costo
+    assert Decimal(str(pagos_caja["total_neto_esperado"])) == total_neto
+
+    periodo = date.today().replace(day=1).isoformat()
+    rentabilidad = client.get(
+        "/rentabilidad/mensual",
+        params={
+            "periodo_mes": periodo,
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+        },
+    )
+    assert rentabilidad.status_code == 200, rentabilidad.text
+    resumen = rentabilidad.json()
+    assert Decimal(str(resumen["ingreso_real_neto"])) == total_neto
+    assert Decimal(str(resumen["costos_financieros"])) == total_costo
+    assert Decimal(str(resumen["margen_real"])) == total_neto - Decimal("10000")
+
+
+def test_checkout_qr_congela_plan_costo_y_neto(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    abrir_caja = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+    assert abrir_caja.status_code == 200, abrir_caja.text
+
+    crear = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 1,
+                }
+            ],
+            "pagos": [
+                {
+                    "medio_pago": "mercadopago",
+                    "monto_base": str(seed_venta_basica["precio_venta"]),
+                    "cuotas": 1,
+                }
+            ],
+        },
+    )
+    assert crear.status_code == 200, crear.text
+
+    pagos = get_pagos_by_venta(db_conn, crear.json()["venta_id"])
+    assert len(pagos) == 1
+    pago = pagos[0]
+    assert pago["medio_pago"] == "mercadopago"
+    assert pago["id_plan_financiero"] is not None
+    assert Decimal(str(pago["monto_total_cobrado"])) == Decimal("24440.00")
+    assert Decimal(str(pago["monto_costo_financiero"])) == Decimal("268.84")
+    assert Decimal(str(pago["monto_neto_liquidado"])) == Decimal("24171.16")
+
+    movimientos = get_caja_movimientos(db_conn, abrir_caja.json()["caja_id"])
+    assert len(movimientos) == 1
+    assert Decimal(str(movimientos[0]["monto"])) == Decimal("24171.16")
 
 
 def test_registra_pago_total_tarjeta(client, db_conn, seed_venta_basica):
@@ -1153,13 +1288,15 @@ def test_pagos_acumulados_cierran_saldo_exacto(client, db_conn, seed_venta_basic
 
     pago_3 = client.post(
         "/pagos/",
-        json=_payload_pago(
-            venta_id,
-            "mercadopago",
-            23773.34,
-            seed_venta_basica["usuario_id"],
-            "Pago acumulado final",
-        ),
+        json={
+            "origen_tipo": "venta",
+            "origen_id": venta_id,
+            "medio_pago": "mercadopago",
+            "monto_base": "23773.34",
+            "cuotas": 1,
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "nota": "Pago acumulado final",
+        },
     )
     assert pago_3.status_code == 200
 

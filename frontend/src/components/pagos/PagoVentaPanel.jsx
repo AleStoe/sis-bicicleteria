@@ -64,6 +64,11 @@ export default function PagoVentaPanel({
     [pagos]
   );
 
+  const planesMedioPago = useMemo(
+    () => planesTarjeta.filter((plan) => plan.medio_pago === form.medio_pago),
+    [form.medio_pago, planesTarjeta]
+  );
+
   const totalConfirmado = useMemo(() => {
     return pagosConfirmados.reduce(
       (acc, pago) => acc + Number(pago.monto_total_cobrado || 0),
@@ -79,17 +84,11 @@ export default function PagoVentaPanel({
   async function cargarPlanes() {
     try {
       const data = await listarTarjetaPlanes(true);
-      const planes = (data || []).filter((plan) => plan.medio_pago === "tarjeta");
+      const planes = (data || []).filter((plan) =>
+        ["tarjeta", "mercadopago"].includes(plan.medio_pago)
+      );
 
       setPlanesTarjeta(planes);
-
-      if (planes.length) {
-        setForm((actual) => ({
-          ...actual,
-          cuotas: planes[0].cuotas,
-          entidad: planes[0].entidad || "",
-        }));
-      }
     } catch (err) {
       console.error(err);
     }
@@ -97,6 +96,26 @@ export default function PagoVentaPanel({
 
   cargarPlanes();
 }, []);
+
+  useEffect(() => {
+    if (!["tarjeta", "mercadopago"].includes(form.medio_pago)) {
+      return;
+    }
+
+    const planActual = planesMedioPago.find(
+      (plan) =>
+        Number(plan.cuotas) === Number(form.cuotas)
+        && (plan.entidad || "") === (form.entidad || "")
+    );
+
+    if (!planActual && planesMedioPago[0]) {
+      setForm((actual) => ({
+        ...actual,
+        cuotas: planesMedioPago[0].cuotas,
+        entidad: planesMedioPago[0].entidad || "",
+      }));
+    }
+  }, [form.cuotas, form.entidad, form.medio_pago, planesMedioPago]);
   useEffect(() => {
     if (!autoFocusPago) return;
 
@@ -170,7 +189,9 @@ export default function PagoVentaPanel({
     const base = {
       venta_id: Number(ventaId),
       medio_pago: form.medio_pago,
-      cuotas: form.medio_pago === "tarjeta" ? Number(form.cuotas || 1) : null,
+      cuotas: ["tarjeta", "mercadopago"].includes(form.medio_pago)
+        ? Number(form.cuotas || 1)
+        : null,
       entidad: form.entidad?.trim() || null,
     };
 
@@ -322,7 +343,9 @@ export default function PagoVentaPanel({
         origen_id: Number(ventaId),
         medio_pago: form.medio_pago,
         monto_base: String(simulacion.monto_base_aplicado),
-        cuotas: form.medio_pago === "tarjeta" ? Number(form.cuotas || 1) : null,
+        cuotas: ["tarjeta", "mercadopago"].includes(form.medio_pago)
+          ? Number(form.cuotas || 1)
+          : null,
         entidad: form.entidad?.trim() || null,
         id_usuario: usuarioId,
         nota: form.nota?.trim() || null,
@@ -420,7 +443,7 @@ export default function PagoVentaPanel({
         onSaldar={saldar}
         onMitad={mitad}
         onLimpiar={limpiarMonto}
-        planesTarjeta={planesTarjeta}
+        planesTarjeta={planesMedioPago}
       />
 
       <PagoVentaPreview

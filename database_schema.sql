@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict IAHebAl3TGEEqCnlTVPjW2LpQMuSceKWy7YtjqaOgs4Y5T9KbTSbKzu2sYGEwyS
+\restrict ie4jQ7Ut23nx3niOBsuVc21NV3rfYRAoX1htnXtzm1cLZfOUz64BDzbVNhMdDwR
 
 -- Dumped from database version 18.3
 -- Dumped by pg_dump version 18.3
@@ -2362,6 +2362,7 @@ CREATE TABLE public.tarjeta_planes (
     CONSTRAINT chk_tarjeta_planes_costo CHECK ((porcentaje_costo_financiero >= (0)::numeric)),
     CONSTRAINT chk_tarjeta_planes_cuotas CHECK ((cuotas > 0)),
     CONSTRAINT chk_tarjeta_planes_medio_pago CHECK (((medio_pago)::text = ANY (ARRAY[('tarjeta'::character varying)::text, ('mercadopago'::character varying)::text]))),
+    CONSTRAINT chk_tarjeta_planes_mercadopago_una_cuota CHECK ((((medio_pago)::text <> 'mercadopago'::text) OR (cuotas = 1))),
     CONSTRAINT chk_tarjeta_planes_recargo CHECK ((porcentaje_recargo_cliente >= (0)::numeric))
 );
 
@@ -6283,4 +6284,4 @@ ALTER TABLE ONLY public.ventas
 -- PostgreSQL database dump complete
 --
 
-\unrestrict IAHebAl3TGEEqCnlTVPjW2LpQMuSceKWy7YtjqaOgs4Y5T9KbTSbKzu2sYGEwyS
+\unrestrict ie4jQ7Ut23nx3niOBsuVc21NV3rfYRAoX1htnXtzm1cLZfOUz64BDzbVNhMdDwR

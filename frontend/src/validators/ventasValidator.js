@@ -62,14 +62,24 @@ export function validarMontoPago(monto) {
 }
 
 export function validarPlanTarjeta({ medioPago, planTarjetaId, planesTarjeta = [] }) {
-  if (medioPago !== "tarjeta") return null;
+  if (!["tarjeta", "mercadopago"].includes(medioPago)) return null;
 
   if (!planesTarjeta.length) {
-    return "No hay planes de tarjeta activos";
+    return medioPago === "mercadopago"
+      ? "No hay un plan activo para MercadoPago QR"
+      : "No hay planes de tarjeta activos";
   }
 
   if (!planTarjetaId) {
-    return "Seleccioná un plan de tarjeta";
+    return medioPago === "mercadopago"
+      ? "Seleccioná un plan para MercadoPago QR"
+      : "Seleccioná un plan de tarjeta";
+  }
+
+  if (!planesTarjeta.some((plan) => String(plan.id) === String(planTarjetaId))) {
+    return medioPago === "mercadopago"
+      ? "El plan de MercadoPago QR seleccionado no está activo"
+      : "El plan de tarjeta seleccionado no está activo";
   }
 
   return null;

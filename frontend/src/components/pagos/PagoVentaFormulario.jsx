@@ -53,10 +53,12 @@ export default function PagoVentaFormulario({
         })}
       </div>
 
-      {form.medio_pago === "tarjeta" && (
+      {["tarjeta", "mercadopago"].includes(form.medio_pago) && (
         <div style={styles.tarjetaBox}>
           <label style={styles.field}>
-            <span style={styles.label}>Cuotas</span>
+            <span style={styles.label}>
+              {form.medio_pago === "mercadopago" ? "Plan QR aplicado" : "Cuotas"}
+            </span>
             <select
               value={`${form.cuotas || ""}__${form.entidad || ""}`}
               onChange={(e) => {
@@ -79,9 +81,10 @@ export default function PagoVentaFormulario({
               ) : (
                 planesTarjeta.map((plan) => (
                   <option key={plan.id} value={`${plan.cuotas}__${plan.entidad || ""}`}>
-                    {plan.entidad ? `${plan.entidad} - ` : ""}
-                    {plan.cuotas} cuota(s) -{" "}
+                    {plan.nombre || (plan.entidad ? `${plan.entidad} - ` : "")}
+                    {" · "}
                     {Number(plan.porcentaje_recargo_cliente || 0).toFixed(2)}%
+                    {" al cliente"}
                   </option>
                 ))
               )}
@@ -89,7 +92,9 @@ export default function PagoVentaFormulario({
           </label>
 
           <div style={styles.field}>
-            <span style={styles.label}>Entidad</span>
+            <span style={styles.label}>
+              {form.medio_pago === "mercadopago" ? "Medio" : "Entidad"}
+            </span>
 
             <div style={styles.readonlyBox}>{form.entidad || "Sin especificar"}</div>
           </div>
@@ -99,7 +104,11 @@ export default function PagoVentaFormulario({
       <div style={styles.mainRow}>
         <label style={styles.field}>
           <span style={styles.label}>
-            {form.medio_pago === "tarjeta" ? "Monto final en tarjeta" : "Cliente paga"}
+            {form.medio_pago === "tarjeta"
+              ? "Monto final en tarjeta"
+              : form.medio_pago === "mercadopago"
+                ? "Monto por MercadoPago QR"
+                : "Cliente paga"}
           </span>
 
           <input

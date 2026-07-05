@@ -99,6 +99,7 @@ export default function PlanTarjetaRow({
               cambiar("cuotas", e.target.value)
             }
             style={styles.input}
+            disabled={plan.medio_pago === "mercadopago"}
           />
         ) : (
           plan.cuotas
