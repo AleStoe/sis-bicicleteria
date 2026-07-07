@@ -39,6 +39,7 @@ import ServiciosPage from "./pages/ServiciosPage";
 import CapitalRetirosPage from "./pages/CapitalRetirosPage";
 import CapitalRetirosParticipantePerfilPage from "./pages/CapitalRetirosParticipantePerfilPage";
 import RentabilidadPage from "./pages/RentabilidadPage";
+import RentabilidadDiariaPage from "./pages/RentabilidadDiariaPage";
 import DashboardPage from "./pages/DashboardPage";
 import GastosPage from "./pages/GastosPage";
 import UsuariosPage from "./pages/UsuariosPage";
@@ -348,7 +349,7 @@ export default function App() {
           <Route
             path="/catalogo"
             element={
-              <ProtectedRoute rolesPermitidos={ADMIN_ENCARGADO}>
+              <ProtectedRoute rolesPermitidos={OPERACION_TALLER}>
                 <CatalogoPage />
               </ProtectedRoute>
             }
@@ -364,7 +365,7 @@ export default function App() {
           <Route
             path="/catalogo/productos/:productoId"
             element={
-              <ProtectedRoute rolesPermitidos={ADMIN_ENCARGADO}>
+              <ProtectedRoute rolesPermitidos={OPERACION_TALLER}>
                 <CatalogoProductoDetallePage />
               </ProtectedRoute>
             }
@@ -447,6 +448,15 @@ export default function App() {
             element={
               <ProtectedRoute rolesPermitidos={ADMIN}>
                 <RentabilidadPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/rentabilidad/diaria"
+            element={
+              <ProtectedRoute rolesPermitidos={ADMIN}>
+                <RentabilidadDiariaPage />
               </ProtectedRoute>
             }
           />

@@ -128,6 +128,11 @@ def get_variantes(conn):
                 v.precio_mayorista,
                 v.permite_precio_libre,
                 v.costo_promedio_vigente,
+                (
+                    SELECT COUNT(DISTINCT vi.id_venta)::int
+                    FROM venta_items vi
+                    WHERE vi.id_variante = v.id
+                ) AS ventas_historicas,
                 v.activo,
                 (oferta.id IS NOT NULL) AS en_oferta,
                 oferta.id AS oferta_id,
@@ -1313,6 +1318,11 @@ def get_variante_by_id(conn, variante_id: int):
                 v.precio_mayorista,
                 v.permite_precio_libre,
                 v.costo_promedio_vigente,
+                (
+                    SELECT COUNT(DISTINCT vi.id_venta)::int
+                    FROM venta_items vi
+                    WHERE vi.id_variante = v.id
+                ) AS ventas_historicas,
                 v.activo,
                 CASE
                     WHEN UPPER(TRIM(COALESCE(v.nombre_variante, ''))) IN ('UNICA', 'ÚNICA')

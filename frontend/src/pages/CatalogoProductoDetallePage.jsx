@@ -14,8 +14,8 @@ import {
   eliminarImagenCatalogo,
   listarCatalogoPOS,
 } from "../services/catalogoService";
-import { actualizarPrecioVariante } from "../services/preciosService";
 import { listarProveedores } from "../services/proveedoresService";
+import CorreccionCargaInicialPanel from "../components/precios/CorreccionCargaInicialPanel";
 import { useSession } from "../context/SessionContext";
 import { formatMoney, formatNumber } from "../utils/formatters";
 import { Button, EmptyState, PageHeader } from "../components/ui";
@@ -75,7 +75,8 @@ function valorMostrar(valor) {
 export default function CatalogoProductoDetallePage() {
   const { productoId } = useParams();
   const navigate = useNavigate();
-  const { usuarioId } = useSession();
+  const { usuarioId, esAdministrador, esEncargado } = useSession();
+  const puedeEditarCatalogo = esAdministrador || esEncargado;
   const isMobile = useIsMobile();
 
   const [producto, setProducto] = useState(null);
@@ -99,7 +100,7 @@ export default function CatalogoProductoDetallePage() {
 
   useEffect(() => {
     cargar();
-  }, [productoId]);
+  }, [productoId, puedeEditarCatalogo]);
 
   useEffect(() => {
     if (!productoImagenArchivo) {
@@ -118,22 +119,43 @@ export default function CatalogoProductoDetallePage() {
       setLoading(true);
       setError("");
 
-      const [productoData, variantesData, fichaData, categoriasData, marcasData, proveedoresData, imagenesProductoData] = await Promise.all([
+      const [productoData, fichaData, categoriasData, marcasData, imagenesProductoData] = await Promise.all([
         obtenerProducto(productoId),
-        listarVariantes(),
         obtenerFichaTecnicaProducto(productoId),
         listarCategorias(),
         listarMarcas(),
-        listarProveedores({ solo_activos: true }),
         listarImagenesProducto(productoId),
       ]);
 
-      const variantesFiltradas = (variantesData || []).filter(
-        (v) => String(v.id_producto) === String(productoId)
-      );
+      const [variantesData, proveedoresData] = puedeEditarCatalogo
+        ? await Promise.all([
+            listarVariantes(),
+            listarProveedores({ solo_activos: true }),
+          ])
+        : [[], []];
+
+      const posData = await listarCatalogoPOS({
+        id_sucursal: ID_SUCURSAL_DEFAULT,
+        query: productoData?.nombre || undefined,
+        limit: 100,
+        offset: 0,
+      });
+      const items = (Array.isArray(posData) ? posData : posData?.items || [])
+        .filter((item) => String(item.id_producto) === String(productoId));
+
+      const variantesFiltradas = puedeEditarCatalogo
+        ? (variantesData || []).filter(
+            (v) => String(v.id_producto) === String(productoId)
+          )
+        : items.map((item) => ({
+            ...item,
+            id: item.id_variante,
+            activo: item.activo !== false,
+          }));
 
       setProducto(productoData);
       setVariantes(variantesFiltradas);
+      setItemsPOS(items);
       setFichaTecnica(fichaData || []);
       setProductoImagenes(imagenesProductoData || []);
       setCategorias(categoriasData || []);
@@ -158,24 +180,12 @@ export default function CatalogoProductoDetallePage() {
               proveedor_preferido_id: v.proveedor_preferido_id || "",
               talle: v.talle || "",
               color: v.color || "",
-              precio_minorista: v.precio_minorista ?? "0",
-              precio_mayorista: v.precio_mayorista ?? "0",
             },
           ])
         )
       );
       setImagenForm({});
       setProductoImagenArchivo(null);
-
-      const posData = await listarCatalogoPOS({
-        id_sucursal: ID_SUCURSAL_DEFAULT,
-        query: productoData?.nombre || undefined,
-        limit: 100,
-        offset: 0,
-      });
-
-      const items = Array.isArray(posData) ? posData : posData?.items || [];
-      setItemsPOS(items.filter((item) => String(item.id_producto) === String(productoId)));
     } catch (err) {
       setError(err.message || "No se pudo cargar el producto");
     } finally {
@@ -286,22 +296,6 @@ export default function CatalogoProductoDetallePage() {
         color: form.color || null,
       });
 
-      const precioCambio =
-        Number(form.precio_minorista || 0) !== Number(variante.precio_minorista || 0) ||
-        Number(form.precio_mayorista || 0) !== Number(variante.precio_mayorista || 0);
-
-      if (precioCambio) {
-        await actualizarPrecioVariante(variante.id, {
-          precio_minorista: form.precio_minorista || "0",
-          precio_mayorista: form.precio_mayorista || "0",
-          motivo: "Corrección operativa desde catálogo",
-          id_usuario: usuarioId,
-          tipo_movimiento: "actualizacion_manual",
-          origen_tipo: "catalogo",
-          origen_id: producto.id,
-        });
-      }
-
       const archivo = imagenForm[variante.id];
       if (archivo) {
         const destinoImagen = esVarianteUnica(form.nombre_variante)
@@ -357,17 +351,19 @@ export default function CatalogoProductoDetallePage() {
     return (
       producto?.categoria_nombre ||
       categorias.find((c) => String(c.id) === String(producto?.id_categoria))?.nombre ||
+      itemsPOS[0]?.categoria_nombre ||
       ""
     );
-  }, [producto, categorias]);
+  }, [producto, categorias, itemsPOS]);
 
   const marcaNombre = useMemo(() => {
     return (
       producto?.marca_nombre ||
       marcas.find((m) => String(m.id) === String(producto?.id_marca))?.nombre ||
+      itemsPOS[0]?.marca_nombre ||
       ""
     );
-  }, [producto, marcas]);
+  }, [producto, marcas, itemsPOS]);
 
   const esProductoBicicleta = useMemo(() => {
     return esBicicleta(producto, categoriaNombre);
@@ -468,7 +464,9 @@ export default function CatalogoProductoDetallePage() {
         actions={(
           <>
             <Button type="button" variant="outline" onClick={() => navigate("/catalogo")}><ArrowLeft size={16} /> Volver</Button>
-            <Button type="button" onClick={() => setTabActiva(TAB_OPERATIVO)}>Editar producto</Button>
+            {puedeEditarCatalogo && (
+              <Button type="button" onClick={() => setTabActiva(TAB_OPERATIVO)}>Editar producto</Button>
+            )}
             <Button type="button" variant="outline" onClick={cargar}><RefreshCw size={16} /> Refrescar</Button>
           </>
         )}
@@ -527,6 +525,8 @@ export default function CatalogoProductoDetallePage() {
             </div>
           </div>
 
+          {puedeEditarCatalogo && (
+            <>
           <form onSubmit={guardarProducto} style={styles.editForm}>
             <label style={styles.field}>
               <span>Nombre del producto</span>
@@ -699,6 +699,8 @@ export default function CatalogoProductoDetallePage() {
               </div>
             </div>
           </div>
+            </>
+          )}
 
           <div style={{ ...styles.infoGrid, ...(isMobile ? styles.infoGridMobile : {}) }}>
             <Info label="Nombre" value={producto.nombre} />
@@ -755,6 +757,8 @@ export default function CatalogoProductoDetallePage() {
                       <Info label={esProductoBicicleta ? "Color" : "Color / presentación"} value={variante.color} />
                     </div>
 
+                    {puedeEditarCatalogo && (
+                      <>
                     <div style={styles.variantEditBox}>
                       <h3 style={styles.variantEditTitle}>Editar variante</h3>
                       <div style={styles.editForm}>
@@ -764,14 +768,29 @@ export default function CatalogoProductoDetallePage() {
                         </label>
                         <label style={styles.field}><span>Talle</span><input style={styles.input} value={variantesForm[variante.id]?.talle || ""} onChange={(e) => setVarianteCampo(variante.id, "talle", e.target.value)} /></label>
                         <label style={styles.field}><span>Color / presentación</span><input style={styles.input} value={variantesForm[variante.id]?.color || ""} onChange={(e) => setVarianteCampo(variante.id, "color", e.target.value)} /></label>
-                        <label style={styles.field}><span>Precio minorista</span><input style={styles.input} type="number" value={variantesForm[variante.id]?.precio_minorista || ""} onChange={(e) => setVarianteCampo(variante.id, "precio_minorista", e.target.value)} /></label>
-                        <label style={styles.field}><span>Precio mayorista</span><input style={styles.input} type="number" value={variantesForm[variante.id]?.precio_mayorista || ""} onChange={(e) => setVarianteCampo(variante.id, "precio_mayorista", e.target.value)} /></label>
                         <label style={styles.field}><span>Imagen principal</span><input style={styles.input} type="file" accept="image/*" onChange={(e) => setImagenForm((prev) => ({ ...prev, [variante.id]: e.target.files?.[0] || null }))} /></label>
                       </div>
                       <div style={styles.formActions}>
                         <button type="button" disabled={guardando} onClick={() => guardarVariante(variante)} style={styles.primaryButton}>{guardando ? "Guardando..." : "Guardar variante"}</button>
                       </div>
                     </div>
+
+                    <CorreccionCargaInicialPanel
+                      key={`correccion-${variante.id}-${variante.costo_promedio_vigente}-${variante.precio_minorista}-${variante.precio_mayorista}`}
+                      variante={variante}
+                      proveedores={proveedores}
+                      usuarioId={usuarioId}
+                      onGuardado={async (resultado) => {
+                        setMensaje(
+                          resultado.advertencia
+                            ? `Corrección registrada. ${resultado.advertencia}`
+                            : "Corrección de carga inicial registrada."
+                        );
+                        await cargar();
+                      }}
+                    />
+                      </>
+                    )}
                   </article>
                 );
               })}

@@ -399,7 +399,7 @@ def _ensure_comprobante_space(
     return y
 
 
-def generar_comprobante_x_pdf(data: dict) -> bytes:
+def generar_comprobante_x_pdf(data: dict, incluir_marca_agua: bool = True) -> bytes:
     venta = data["venta"]
     items = data["items"]
     pagos = data.get("pagos", [])
@@ -408,7 +408,7 @@ def generar_comprobante_x_pdf(data: dict) -> bytes:
 
     c = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4
-    if LOGO_ICONO.exists():
+    if incluir_marca_agua and LOGO_ICONO.exists():
         c.saveState()
         try:
             c.setFillAlpha(0.06)

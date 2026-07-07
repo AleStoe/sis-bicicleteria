@@ -31,7 +31,7 @@ router = APIRouter()
 @router.get("/ventas/{venta_id}/comprobante-x")
 def comprobante_x_venta(venta_id: int):
     data = obtener_datos_comprobante_x_venta(venta_id)
-    pdf_bytes = generar_comprobante_x_pdf(data)
+    pdf_bytes = generar_comprobante_x_pdf(data, incluir_marca_agua=False)
 
     return Response(
         content=pdf_bytes,

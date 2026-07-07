@@ -10,7 +10,12 @@ import {
   formatProductoVariante,
 } from "../../utils/productPresentation";
 
-export default function CatalogoDetalleModal({ item, onClose, onEdit }) {
+export default function CatalogoDetalleModal({
+  item,
+  onClose,
+  onOpenProduct,
+  puedeEditar = false,
+}) {
   const [fichaTecnica, setFichaTecnica] = useState([]);
   const [cargandoFicha, setCargandoFicha] = useState(false);
 
@@ -133,8 +138,8 @@ export default function CatalogoDetalleModal({ item, onClose, onEdit }) {
           <button type="button" onClick={onClose} style={styles.secondaryButton}>
             Cerrar
           </button>
-          <button type="button" onClick={onEdit} style={styles.primaryButton}>
-            Editar producto
+          <button type="button" onClick={onOpenProduct} style={styles.primaryButton}>
+            {puedeEditar ? "Ver y editar producto" : "Ver ficha del producto"}
           </button>
         </footer>
       </div>

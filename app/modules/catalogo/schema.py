@@ -60,6 +60,7 @@ class VarianteOut(BaseModel):
     precio_mayorista: Decimal
     permite_precio_libre: bool
     costo_promedio_vigente: Decimal
+    ventas_historicas: int = 0
 
     activo: bool
     imagen_principal: str | None = None

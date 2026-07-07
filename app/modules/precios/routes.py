@@ -20,6 +20,8 @@ from .schema import (
     AjusteProveedorInput,
     AjusteProveedorOutput,
     FamiliaPrecioOut,
+    CorreccionCargaInicialInput,
+    CorreccionCargaInicialOutput,
 )
 from .service import (
     obtener_precio_variante,
@@ -33,6 +35,7 @@ from .service import (
     recalcular_precios_por_proveedor,
     ajustar_precios_por_proveedor,
     listar_familias_precio,
+    corregir_carga_inicial_variante,
 )
 
 router = APIRouter()
@@ -83,6 +86,19 @@ def historial_precio_variante_route(
     _usuario: CurrentUser = Depends(puede_gestionar_precios),
 ):
     return obtener_historial_precio_variante(id_variante)
+
+
+@router.post(
+    "/variantes/{id_variante}/correccion-inicial",
+    response_model=CorreccionCargaInicialOutput,
+)
+def corregir_carga_inicial_variante_route(
+    id_variante: int,
+    data: CorreccionCargaInicialInput,
+    usuario: CurrentUser = Depends(puede_gestionar_precios),
+):
+    aplicar_actor_actual(data, usuario)
+    return corregir_carga_inicial_variante(id_variante, data)
 
 @router.post("/reglas", response_model=ReglaPrecioOutput)
 def crear_regla_precio_route(

@@ -4,7 +4,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
 from fastapi.responses import Response
 
-from app.core.security import CurrentUser, aplicar_actor_actual
+from app.core.security import CurrentUser, aplicar_actor_actual, obtener_usuario_actual
 from app.modules.authz.service import exigir_permiso_actual, requerir_permiso
 from app.modules.documentos.download_names import catalog_name
 from app.shared.constants import (
@@ -267,7 +267,7 @@ def cambiar_estado_marca_route(
 @router.get("/productos/{producto_id}", response_model=ProductoCreateOut)
 def producto_detalle_route(
     producto_id: int,
-    _usuario: CurrentUser = Depends(puede_gestionar_catalogo),
+    _usuario: CurrentUser = Depends(obtener_usuario_actual),
 ):
     return obtener_producto(producto_id)
 

@@ -1,15 +1,13 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Package, Wrench } from "lucide-react";
+import { useEffect, useState } from "react";
+import { CalendarDays } from "lucide-react";
 import {
   crearCierreRentabilidad,
   getBonificacionesGarantias,
   getCierresRentabilidad,
   getReglasRentabilidad,
-  getRentabilidadDiaria,
   getRentabilidadMensual,
 } from "../services/rentabilidadService";
 import { formatMoney, formatPercent } from "../utils/formatters";
-import { formatProductoVariante } from "../utils/productPresentation";
 import { useSession } from "../context/SessionContext";
 import useMediaQuery from "../hooks/useMediaQuery";
 
@@ -20,27 +18,11 @@ function mesActual() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
 }
 
-function fechaActual() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-    d.getDate()
-  ).padStart(2, "0")}`;
-}
 
 function money(value) {
   return formatMoney(value || 0);
 }
 
-function fechaHora(value) {
-  if (!value) return "-";
-  return new Date(value).toLocaleString("es-AR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
 
 const card = {
   background: "#fff",
@@ -68,65 +50,18 @@ const primaryButton = {
   cursor: "pointer",
 };
 
-const secondaryButton = {
-  border: "1px solid #d0d5dd",
-  borderRadius: 12,
-  padding: "10px 12px",
-  background: "#fff",
-  color: "#344054",
-  fontWeight: 750,
-  cursor: "pointer",
-};
 
-const detailButton = {
-  width: 32,
-  height: 32,
-  border: "1px solid #d0d5dd",
-  borderRadius: 8,
-  background: "#fff",
-  color: "#344054",
-  display: "inline-grid",
-  placeItems: "center",
-  cursor: "pointer",
-};
 
-const itemBadgeBase = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 5,
-  borderRadius: 999,
-  padding: "4px 7px",
-  fontSize: 11,
-  fontWeight: 850,
-  whiteSpace: "nowrap",
-};
-
-const productBadge = {
-  ...itemBadgeBase,
-  background: "#eff6ff",
-  color: "#1d4ed8",
-};
-
-const serviceBadge = {
-  ...itemBadgeBase,
-  background: "#fff7ed",
-  color: "#c2410c",
-};
 
 export default function RentabilidadPage() {
   const { usuarioId } = useSession();
   const isMobile = useMediaQuery("(max-width: 760px)");
   const isNarrow = useMediaQuery("(max-width: 1000px)");
   const [periodoMes, setPeriodoMes] = useState(mesActual());
-  const [fechaDiaria, setFechaDiaria] = useState(fechaActual());
   const [idRegla, setIdRegla] = useState("");
   const [rentabilidad, setRentabilidad] = useState(null);
   const [bonificaciones, setBonificaciones] = useState(null);
   const [bonificacionesError, setBonificacionesError] = useState("");
-  const [rentabilidadDiaria, setRentabilidadDiaria] = useState(null);
-  const [diariaLoading, setDiariaLoading] = useState(false);
-  const [diariaError, setDiariaError] = useState("");
-  const [articuloAbierto, setArticuloAbierto] = useState("");
   const [reglas, setReglas] = useState([]);
   const [cierres, setCierres] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -195,29 +130,6 @@ export default function RentabilidadPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [periodoMes, idRegla]);
 
-  useEffect(() => {
-    cargarRentabilidadDiaria();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fechaDiaria]);
-
-  async function cargarRentabilidadDiaria() {
-    setDiariaLoading(true);
-    setDiariaError("");
-    setArticuloAbierto("");
-    try {
-      const data = await getRentabilidadDiaria({
-        fecha: fechaDiaria,
-        id_sucursal: SUCURSAL_ID,
-      });
-      setRentabilidadDiaria(data);
-    } catch (err) {
-      setRentabilidadDiaria(null);
-      setDiariaError(err.message || "No se pudo calcular el resumen diario");
-    } finally {
-      setDiariaLoading(false);
-    }
-  }
-
 
   async function cerrarMes() {
     if (!rentabilidad?.regla_distribucion?.id) {
@@ -285,174 +197,31 @@ export default function RentabilidadPage() {
         <Metric title="Gastos" value={money(rentabilidad?.gastos_operativos)} />
       </section>
 
-      <section style={{ ...card, padding: isMobile ? 12 : 18, display: "grid", gap: 14, minWidth: 0 }}>
-        <div
+      <section style={{ ...card, padding: isMobile ? 12 : 18, display: isMobile ? "grid" : "flex", justifyContent: "space-between", alignItems: "center", gap: 14, minWidth: 0 }}>
+        <div style={{ minWidth: 0 }}>
+          <p style={{ margin: 0, color: "#2563eb", fontSize: 12, fontWeight: 950, textTransform: "uppercase" }}>
+            Lectura por día
+          </p>
+          <h2 style={{ margin: "4px 0 0", color: "#101828" }}>Detalle diario completo</h2>
+          <p style={{ margin: "5px 0 0", color: "#667085", lineHeight: 1.45 }}>
+            La lectura diaria se separó en una pantalla propia para ver venta por venta e ítem por ítem.
+          </p>
+        </div>
+        <a
+          href="/rentabilidad/diaria"
           style={{
-            display: isMobile ? "grid" : "flex",
-            justifyContent: "space-between",
-            alignItems: "end",
-            gap: 12,
+            ...primaryButton,
+            width: isMobile ? "100%" : undefined,
+            textDecoration: "none",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
           }}
         >
-          <div>
-            <p style={{ margin: 0, color: "#2563eb", fontSize: 12, fontWeight: 950, textTransform: "uppercase" }}>
-              Lectura por día
-            </p>
-            <h2 style={{ margin: "4px 0 0", color: "#101828" }}>Resumen diario por artículo</h2>
-            <p style={{ margin: "5px 0 0", color: "#667085", lineHeight: 1.45 }}>
-              Ingreso real, costo aplicado y margen de los productos vendidos.
-            </p>
-          </div>
-          <label style={{ display: "grid", gap: 6, minWidth: isMobile ? 0 : 190, fontWeight: 850, color: "#344054" }}>
-            Fecha
-            <input
-              type="date"
-              value={fechaDiaria}
-              onChange={(e) => setFechaDiaria(e.target.value)}
-              style={input}
-            />
-          </label>
-        </div>
-
-        {diariaError && (
-          <div style={{ border: "1px solid #fecaca", background: "#fef2f2", color: "#b42318", borderRadius: 12, padding: 12, fontWeight: 800 }}>
-            {diariaError}
-          </div>
-        )}
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: isMobile
-              ? "repeat(2, minmax(0, 1fr))"
-              : "repeat(9, minmax(0, 1fr))",
-            gap: 10,
-          }}
-        >
-          <BonificacionMetric title="Ventas" value={String(rentabilidadDiaria?.cantidad_ventas || 0)} />
-          <BonificacionMetric title="Ventas netas" value={money(rentabilidadDiaria?.ventas_netas)} />
-          <BonificacionMetric title="Ingreso real neto" value={money(rentabilidadDiaria?.ingreso_real_neto)} />
-          <BonificacionMetric
-            title="Financiación cobrada"
-            value={money(rentabilidadDiaria?.financiacion_cobrada)}
-          />
-          <BonificacionMetric title="Costo financiero" value={money(rentabilidadDiaria?.costos_financieros)} tone="warning" />
-          <BonificacionMetric title="Costo" value={money(rentabilidadDiaria?.cmv)} tone="cost" />
-          <BonificacionMetric
-            title="Margen comercial"
-            value={money(rentabilidadDiaria?.margen_bruto)}
-            tone={Number(rentabilidadDiaria?.margen_bruto || 0) < 0 ? "danger" : "positive"}
-          />
-          <BonificacionMetric
-            title="Margen real"
-            value={money(rentabilidadDiaria?.margen_real)}
-            tone={Number(rentabilidadDiaria?.margen_real || 0) < 0 ? "danger" : "positive"}
-          />
-          <BonificacionMetric
-            title="Margen"
-            value={formatPercent(rentabilidadDiaria?.margen_porcentaje || 0)}
-          />
-        </div>
-
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", minWidth: 1300, borderCollapse: "collapse", fontSize: 13 }}>
-            <thead>
-              <tr style={{ color: "#667085", textAlign: "left", borderBottom: "1px solid #eaecf0" }}>
-                <th style={{ padding: 10 }}>Artículo</th>
-                <th style={{ padding: 10 }}>Tipo</th>
-                <th style={{ padding: 10, textAlign: "right" }}>Ventas</th>
-                <th style={{ padding: 10, textAlign: "right" }}>Cantidad</th>
-                <th style={{ padding: 10, textAlign: "right" }}>Ingreso comercial</th>
-                <th style={{ padding: 10, textAlign: "right" }}>Financiación</th>
-                <th style={{ padding: 10, textAlign: "right" }}>Costo financiero</th>
-                <th style={{ padding: 10, textAlign: "right" }}>Costo</th>
-                <th style={{ padding: 10, textAlign: "right" }}>Margen real</th>
-                <th style={{ padding: 10, textAlign: "right" }}>Margen</th>
-                <th style={{ width: 46 }} aria-label="Detalle" />
-              </tr>
-            </thead>
-            <tbody>
-              {diariaLoading ? (
-                <tr>
-                  <td colSpan="11" style={{ padding: 20, color: "#667085", textAlign: "center" }}>
-                    Calculando resumen diario...
-                  </td>
-                </tr>
-              ) : (rentabilidadDiaria?.articulos || []).length === 0 ? (
-                <tr>
-                  <td colSpan="11" style={{ padding: 20, color: "#667085", textAlign: "center" }}>
-                    No hay productos ni servicios vendidos en esta fecha.
-                  </td>
-                </tr>
-              ) : (
-                rentabilidadDiaria.articulos.map((articulo) => {
-                  const articuloKey = `${articulo.tipo_item}-${articulo.id_variante || articulo.id_servicio_taller || articulo.producto}`;
-                  const abierto = articuloAbierto === articuloKey;
-                  return (
-                    <Fragment key={articuloKey}>
-                      <tr style={{ borderBottom: "1px solid #f2f4f7" }}>
-                        <td style={{ padding: 10, fontWeight: 850 }}>
-                          {formatProductoVariante(articulo.producto, articulo.variante)}
-                        </td>
-                        <td style={{ padding: 10 }}>
-                          <span style={articulo.tipo_item === "servicio_taller" ? serviceBadge : productBadge}>
-                            {articulo.tipo_item === "servicio_taller" ? (
-                              <Wrench size={13} />
-                            ) : (
-                              <Package size={13} />
-                            )}
-                            {articulo.tipo_item === "servicio_taller" ? "Servicio" : "Producto"}
-                          </span>
-                        </td>
-                        <td style={{ padding: 10, textAlign: "right" }}>{articulo.cantidad_ventas}</td>
-                        <td style={{ padding: 10, textAlign: "right" }}>{articulo.cantidad_vendida}</td>
-                        <td style={{ padding: 10, textAlign: "right", fontWeight: 850 }}>{money(articulo.venta_total)}</td>
-                        <td style={{ padding: 10, textAlign: "right", color: "#b54708" }}>{money(articulo.financiacion_cobrada)}</td>
-                        <td style={{ padding: 10, textAlign: "right", color: "#b42318" }}>{money(articulo.costo_financiero)}</td>
-                        <td style={{ padding: 10, textAlign: "right" }}>{money(articulo.costo_total)}</td>
-                        <td
-                          style={{
-                            padding: 10,
-                            textAlign: "right",
-                            fontWeight: 950,
-                            color: Number(articulo.margen_real || 0) < 0 ? "#b42318" : "#067647",
-                          }}
-                        >
-                          {money(articulo.margen_real)}
-                        </td>
-                        <td style={{ padding: 10, textAlign: "right" }}>
-                          {formatPercent(articulo.margen_porcentaje || 0)}
-                        </td>
-                        <td style={{ padding: 6, textAlign: "right" }}>
-                          <button
-                            type="button"
-                            title={abierto ? "Ocultar auditoría" : "Ver auditoría completa"}
-                            onClick={() => setArticuloAbierto(abierto ? "" : articuloKey)}
-                            style={detailButton}
-                          >
-                            {abierto ? <ChevronDown size={17} /> : <ChevronRight size={17} />}
-                          </button>
-                        </td>
-                      </tr>
-                      {abierto ? (
-                        <tr>
-                          <td colSpan="11" style={{ padding: "0 10px 14px", background: "#f8fafc" }}>
-                            <DetalleRentabilidadArticulo articulo={articulo} />
-                          </td>
-                        </tr>
-                      ) : null}
-                    </Fragment>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        <div style={{ color: "#667085", fontSize: 12, lineHeight: 1.4 }}>
-          La financiación de tarjeta se informa por separado y no integra la ganancia.
-          Productos y mano de obra pueden desplegarse para auditar cada venta.
-        </div>
+          <CalendarDays size={18} />
+          Ver lectura diaria completa
+        </a>
       </section>
 
       <section style={{ ...card, padding: isMobile ? 12 : 18, display: "grid", gap: 14, minWidth: 0 }}>
@@ -717,88 +486,6 @@ function Metric({ title, value, strong = false }) {
     <div style={{ ...card, padding: 16 }}>
       <div style={{ color: "#667085", fontSize: 13, fontWeight: 800 }}>{title}</div>
       <div style={{ color: strong ? "#f97316" : "#101828", fontSize: 22, fontWeight: 950, marginTop: 6 }}>{value}</div>
-    </div>
-  );
-}
-
-function DetalleRentabilidadArticulo({ articulo }) {
-  return (
-    <div style={{ paddingTop: 12, display: "grid", gap: 10 }}>
-      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", color: "#475467", fontSize: 12 }}>
-        <strong style={{ color: "#101828" }}>Auditoría del artículo</strong>
-        <span>Lista: {money(articulo.valor_lista)}</span>
-        <span>Bonificado: {money(articulo.bonificacion_total)}</span>
-        <span>Descuentos: {money(articulo.descuento_comercial)}</span>
-        <span>Financiación: {money(articulo.financiacion_cobrada)}</span>
-        <span>Costo financiero: {money(articulo.costo_financiero)}</span>
-        <span>Devoluciones: {money(articulo.devoluciones_total)}</span>
-      </div>
-      <div style={{ overflowX: "auto", border: "1px solid #e4e7ec", borderRadius: 10, background: "#fff" }}>
-        <table style={{ width: "100%", minWidth: 1580, borderCollapse: "collapse", fontSize: 12 }}>
-          <thead>
-            <tr style={{ color: "#667085", background: "#f9fafb", textAlign: "left", borderBottom: "1px solid #e4e7ec" }}>
-              <th style={{ padding: 8 }}>Venta / Fecha</th>
-              <th style={{ padding: 8 }}>Cliente</th>
-              <th style={{ padding: 8 }}>Origen / Estado</th>
-              <th style={{ padding: 8 }}>Medio</th>
-              <th style={{ padding: 8, textAlign: "right" }}>Cantidad</th>
-              <th style={{ padding: 8, textAlign: "right" }}>Precio lista</th>
-              <th style={{ padding: 8, textAlign: "right" }}>Precio aplicado</th>
-              <th style={{ padding: 8, textAlign: "right" }}>Bonificación</th>
-              <th style={{ padding: 8, textAlign: "right" }}>Descuento</th>
-              <th style={{ padding: 8, textAlign: "right" }}>Financiación</th>
-              <th style={{ padding: 8, textAlign: "right" }}>Costo financiero</th>
-              <th style={{ padding: 8, textAlign: "right" }}>Devolución</th>
-              <th style={{ padding: 8, textAlign: "right" }}>Ingreso comercial</th>
-              <th style={{ padding: 8, textAlign: "right" }}>Costo</th>
-              <th style={{ padding: 8, textAlign: "right" }}>Margen real</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(articulo.detalles || []).map((detalle) => (
-              <tr key={detalle.id_venta_item} style={{ borderBottom: "1px solid #f2f4f7" }}>
-                <td style={{ padding: 8, whiteSpace: "nowrap" }}>
-                  <strong>Venta #{detalle.id_venta}</strong>
-                  <div style={{ color: "#667085", marginTop: 2 }}>{fechaHora(detalle.fecha)}</div>
-                </td>
-                <td style={{ padding: 8, minWidth: 150 }}>{detalle.cliente_nombre}</td>
-                <td style={{ padding: 8 }}>
-                  <strong>{detalle.origen}</strong>
-                  <div style={{ color: "#667085", marginTop: 2 }}>{detalle.estado_venta}</div>
-                </td>
-                <td style={{ padding: 8, minWidth: 130 }}>{detalle.medios_pago}</td>
-                <td style={{ padding: 8, textAlign: "right" }}>
-                  {detalle.cantidad_neta}
-                  {Number(detalle.cantidad_devuelta || 0) > 0 ? (
-                    <div style={{ color: "#b42318", marginTop: 2 }}>
-                      Dev. {detalle.cantidad_devuelta}
-                    </div>
-                  ) : null}
-                </td>
-                <td style={{ padding: 8, textAlign: "right" }}>{money(detalle.precio_lista)}</td>
-                <td style={{ padding: 8, textAlign: "right" }}>{money(detalle.precio_final)}</td>
-                <td style={{ padding: 8, textAlign: "right" }}>{money(detalle.bonificacion_total)}</td>
-                <td style={{ padding: 8, textAlign: "right" }}>{money(detalle.descuento_comercial_asignado)}</td>
-                <td style={{ padding: 8, textAlign: "right", color: "#b54708" }}>{money(detalle.financiacion_cobrada)}</td>
-                <td style={{ padding: 8, textAlign: "right", color: "#b42318" }}>{money(detalle.costo_financiero)}</td>
-                <td style={{ padding: 8, textAlign: "right" }}>{money(detalle.devolucion_comercial)}</td>
-                <td style={{ padding: 8, textAlign: "right", fontWeight: 850 }}>{money(detalle.ingreso_comercial)}</td>
-                <td style={{ padding: 8, textAlign: "right" }}>{money(detalle.costo_total)}</td>
-                <td
-                  style={{
-                    padding: 8,
-                    textAlign: "right",
-                    fontWeight: 900,
-                    color: Number(detalle.margen_real || 0) < 0 ? "#b42318" : "#067647",
-                  }}
-                >
-                  {money(detalle.margen_real)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
     </div>
   );
 }

@@ -2,7 +2,7 @@ from decimal import Decimal
 from typing import Optional, Literal, List
 from datetime import datetime
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 
 
 TipoMovimientoPrecio = Literal[
@@ -223,6 +223,41 @@ class AjusteProveedorItemOutput(BaseModel):
     diferencia_mayorista: Decimal
     aplicado: bool
     movimiento_id: Optional[int] = None
+
+
+class CorreccionCargaInicialInput(BaseModel):
+    costo_promedio_vigente: Decimal = Field(ge=0)
+    precio_minorista: Decimal = Field(ge=0)
+    precio_mayorista: Decimal = Field(ge=0)
+    alicuota_iva: Decimal = Field(ge=0)
+    gravado: bool = True
+    proveedor_preferido_id: Optional[int] = Field(default=None, gt=0)
+    motivo: str = Field(min_length=3, max_length=500)
+    id_usuario: int = Field(gt=0)
+
+    @model_validator(mode="after")
+    def validar_iva(self):
+        permitidas = {
+            Decimal("0"),
+            Decimal("10.50"),
+            Decimal("21.00"),
+            Decimal("27.00"),
+        }
+        if self.alicuota_iva not in permitidas:
+            raise ValueError("La alícuota de IVA debe ser 0, 10.5, 21 o 27")
+        return self
+
+
+class CorreccionCargaInicialOutput(BaseModel):
+    ok: bool
+    id_variante: int
+    movimiento_precio_id: Optional[int] = None
+    ventas_historicas: int
+    advertencia: Optional[str] = None
+    valores_anteriores: dict
+    valores_nuevos: dict
+    margen_minorista_anterior: Decimal
+    margen_minorista_nuevo: Decimal
 
 
 class AjusteProveedorOutput(BaseModel):

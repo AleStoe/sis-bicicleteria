@@ -3,6 +3,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from fastapi import HTTPException
 
 from app.db.connection import get_connection
+from app.modules.auditoria.service import registrar_evento
 
 from .repository import (
     get_variante_precio_by_id,
@@ -24,6 +25,8 @@ from .repository import (
     get_proveedor_by_id,
     get_familia_precio_by_id,
     get_familias_precio,
+    get_variante_correccion_for_update,
+    update_variante_correccion_inicial,
 )
 
 
@@ -33,6 +36,14 @@ def _dec(value) -> Decimal:
 
 def _redondear_pesos(valor: Decimal) -> Decimal:
     return valor.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+
+
+def _margen_sobre_costo(costo: Decimal, precio: Decimal) -> Decimal:
+    if costo <= 0:
+        return Decimal("0.00")
+    return (
+        (precio - costo) / costo * Decimal("100")
+    ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 def obtener_precio_variante(id_variante: int):
@@ -624,6 +635,133 @@ def recalcular_precios_por_proveedor(data):
                 "items": items,
             }
 
+    finally:
+        conn.close()
+
+
+def corregir_carga_inicial_variante(id_variante: int, data):
+    conn = get_connection()
+
+    try:
+        with conn.transaction():
+            variante = get_variante_correccion_for_update(conn, id_variante)
+            if variante is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No existe la variante {id_variante}",
+                )
+            if not variante["activo"]:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"La variante {id_variante} está inactiva",
+                )
+
+            _validar_proveedor(conn, data.proveedor_preferido_id)
+
+            anteriores = {
+                "costo_promedio_vigente": _dec(variante["costo_promedio_vigente"]),
+                "precio_minorista": _dec(variante["precio_minorista"]),
+                "precio_mayorista": _dec(variante["precio_mayorista"]),
+                "alicuota_iva": _dec(variante["alicuota_iva"]),
+                "gravado": bool(variante["gravado"]),
+                "proveedor_preferido_id": variante["proveedor_preferido_id"],
+            }
+            nuevos = {
+                "costo_promedio_vigente": _dec(data.costo_promedio_vigente),
+                "precio_minorista": _dec(data.precio_minorista),
+                "precio_mayorista": _dec(data.precio_mayorista),
+                "alicuota_iva": _dec(data.alicuota_iva),
+                "gravado": bool(data.gravado),
+                "proveedor_preferido_id": data.proveedor_preferido_id,
+            }
+
+            if anteriores == nuevos:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No hay cambios de carga inicial para registrar",
+                )
+
+            cambio_monetario = any(
+                anteriores[campo] != nuevos[campo]
+                for campo in (
+                    "costo_promedio_vigente",
+                    "precio_minorista",
+                    "precio_mayorista",
+                )
+            )
+            movimiento_id = None
+            if cambio_monetario:
+                movimiento_id = insert_precio_movimiento(
+                    conn,
+                    {
+                        "id_variante": id_variante,
+                        "precio_minorista_anterior": anteriores["precio_minorista"],
+                        "precio_minorista_nuevo": nuevos["precio_minorista"],
+                        "precio_mayorista_anterior": anteriores["precio_mayorista"],
+                        "precio_mayorista_nuevo": nuevos["precio_mayorista"],
+                        "costo_anterior": anteriores["costo_promedio_vigente"],
+                        "costo_nuevo": nuevos["costo_promedio_vigente"],
+                        "tipo_movimiento": "correccion_error",
+                        "motivo": data.motivo,
+                        "origen_tipo": "carga_inicial",
+                        "origen_id": variante["id_producto"],
+                        "id_usuario": data.id_usuario,
+                    },
+                )
+
+            update_variante_correccion_inicial(conn, id_variante, nuevos)
+
+            ventas_historicas = int(variante["ventas_historicas"] or 0)
+            advertencia = None
+            if ventas_historicas > 0:
+                advertencia = (
+                    f"La variante tiene {ventas_historicas} venta(s) histórica(s). "
+                    "La corrección no recalculó costos ni importes ya vendidos."
+                )
+
+            registrar_evento(
+                conn,
+                id_usuario=data.id_usuario,
+                id_sucursal=None,
+                entidad="variante",
+                entidad_id=id_variante,
+                accion="correccion_carga_inicial",
+                detalle=data.motivo,
+                metadata={
+                    "valores_anteriores": {
+                        clave: str(valor) if isinstance(valor, Decimal) else valor
+                        for clave, valor in anteriores.items()
+                    },
+                    "valores_nuevos": {
+                        clave: str(valor) if isinstance(valor, Decimal) else valor
+                        for clave, valor in nuevos.items()
+                    },
+                    "ventas_historicas": ventas_historicas,
+                    "movimiento_precio_id": movimiento_id,
+                    "stock_modificado": False,
+                    "ventas_historicas_recalculadas": False,
+                },
+                origen_tipo="carga_inicial",
+                origen_id=variante["id_producto"],
+            )
+
+            return {
+                "ok": True,
+                "id_variante": id_variante,
+                "movimiento_precio_id": movimiento_id,
+                "ventas_historicas": ventas_historicas,
+                "advertencia": advertencia,
+                "valores_anteriores": anteriores,
+                "valores_nuevos": nuevos,
+                "margen_minorista_anterior": _margen_sobre_costo(
+                    anteriores["costo_promedio_vigente"],
+                    anteriores["precio_minorista"],
+                ),
+                "margen_minorista_nuevo": _margen_sobre_costo(
+                    nuevos["costo_promedio_vigente"],
+                    nuevos["precio_minorista"],
+                ),
+            }
     finally:
         conn.close()
 

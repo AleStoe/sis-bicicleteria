@@ -386,6 +386,40 @@ def test_catalogo_y_maestros_requieren_permiso(
     assert servicio_bloqueado.status_code == 403
 
 
+def test_catalogo_permite_consulta_operativa_sin_habilitar_edicion(
+    client,
+    db_conn,
+    seed_venta_basica,
+    auth_habilitada,
+):
+    _, token_operador = _crear_actor(
+        db_conn,
+        username="operador_consulta_catalogo_1e",
+        rol="test_operador_consulta_catalogo_1e",
+    )
+    producto_id = seed_venta_basica["producto_id"]
+
+    detalle = client.get(
+        f"/catalogo/productos/{producto_id}",
+        headers=_headers(token_operador),
+    )
+    assert detalle.status_code == 200, detalle.text
+
+    edicion = client.put(
+        f"/catalogo/productos/{producto_id}",
+        headers=_headers(token_operador),
+        json={"nombre": "INTENTO SIN PERMISO"},
+    )
+    assert edicion.status_code == 403
+    assert "gestionar_catalogo" in edicion.json()["detail"]
+
+    variantes_con_costos = client.get(
+        "/catalogo/variantes",
+        headers=_headers(token_operador),
+    )
+    assert variantes_con_costos.status_code == 403
+
+
 def test_crear_variante_con_precios_exige_ambos_permisos(
     client,
     db_conn,

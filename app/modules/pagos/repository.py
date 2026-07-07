@@ -318,12 +318,12 @@ def sincronizar_venta_financiera_desde_pagos(conn, venta_id: int):
                     recargo_total,
                     GREATEST(subtotal_base - descuento_total + recargo_total, 0)::numeric(14,2) AS total_final,
                     CASE
-                        WHEN ABS(subtotal_base - base_pagada) <= 0.01 THEN 0
+                        WHEN ABS(subtotal_base - base_pagada) <= 1 THEN 0
                         ELSE GREATEST(subtotal_base - base_pagada, 0)
                     END::numeric(14,2) AS saldo_pendiente,
                     CASE
                         WHEN base_pagada <= 0 THEN 'creada'
-                        WHEN ABS(subtotal_base - base_pagada) <= 0.01 THEN 'pagada_total'
+                        WHEN ABS(subtotal_base - base_pagada) <= 1 THEN 'pagada_total'
                         ELSE 'pagada_parcial'
                     END AS estado
                 FROM resumen

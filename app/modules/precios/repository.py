@@ -45,6 +45,60 @@ def get_variante_precio_for_update(conn, id_variante: int):
         return cur.fetchone()
 
 
+def get_variante_correccion_for_update(conn, id_variante: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT
+                v.id,
+                v.id_producto,
+                v.precio_minorista,
+                v.precio_mayorista,
+                v.costo_promedio_vigente,
+                v.alicuota_iva,
+                v.gravado,
+                v.proveedor_preferido_id,
+                v.activo,
+                (
+                    SELECT COUNT(DISTINCT vi.id_venta)::int
+                    FROM venta_items vi
+                    WHERE vi.id_variante = v.id
+                ) AS ventas_historicas
+            FROM variantes v
+            WHERE v.id = %s
+            FOR UPDATE
+            """,
+            (id_variante,),
+        )
+        return cur.fetchone()
+
+
+def update_variante_correccion_inicial(conn, id_variante: int, data: dict):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE variantes
+            SET costo_promedio_vigente = %s,
+                precio_minorista = %s,
+                precio_mayorista = %s,
+                alicuota_iva = %s,
+                gravado = %s,
+                proveedor_preferido_id = %s,
+                updated_at = NOW()
+            WHERE id = %s
+            """,
+            (
+                data["costo_promedio_vigente"],
+                data["precio_minorista"],
+                data["precio_mayorista"],
+                data["alicuota_iva"],
+                data["gravado"],
+                data.get("proveedor_preferido_id"),
+                id_variante,
+            ),
+        )
+
+
 def update_variante_precios(conn, id_variante: int, data: dict):
     with conn.cursor() as cur:
         cur.execute(

@@ -64,6 +64,13 @@ export function recalcularPreciosProveedor(data) {
   });
 }
 
+export function corregirCargaInicialVariante(idVariante, data) {
+  return apiRequest(`/precios/variantes/${idVariante}/correccion-inicial`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
 export function ajustarPreciosProveedor(data) {
   return apiRequest("/precios/ajuste-proveedor", {
     method: "POST",

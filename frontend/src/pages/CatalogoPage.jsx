@@ -33,6 +33,7 @@ import {
   Search,
 } from "lucide-react";
 import { getHistoriaVarianteUrl } from "../services/documentosService";
+import { useSession } from "../context/SessionContext";
 import { colors, controls, radius, shadows, spacing, typography } from "../theme";
 const ID_SUCURSAL_DEFAULT = 1;
 const LIMIT = 24;
@@ -98,6 +99,8 @@ function fechaDescargaActual() {
 
 export default function CatalogoPage() {
   const navigate = useNavigate();
+  const { esAdministrador, esEncargado } = useSession();
+  const puedeEditarCatalogo = esAdministrador || esEncargado;
   const searchRef = useRef(null);
 
   const [items, setItems] = useState([]);
@@ -274,8 +277,12 @@ export default function CatalogoPage() {
         actions={(
           <>
             <Button type="button" variant="outline" onClick={() => cargarCatalogo()}><RefreshCw size={16} /> Refrescar</Button>
-            <Button type="button" onClick={() => navigate("/mercaderia/alta")}><PackagePlus size={16} /> Alta mercadería</Button>
-            <Button type="button" variant="outline" onClick={() => navigate("/mercaderia/bicicletas/alta")}><Bike size={16} /> Alta bicicleta</Button>
+            {puedeEditarCatalogo && (
+              <>
+                <Button type="button" onClick={() => navigate("/mercaderia/alta")}><PackagePlus size={16} /> Alta mercadería</Button>
+                <Button type="button" variant="outline" onClick={() => navigate("/mercaderia/bicicletas/alta")}><Bike size={16} /> Alta bicicleta</Button>
+              </>
+            )}
           </>
         )}
       />
@@ -413,7 +420,8 @@ export default function CatalogoPage() {
         <CatalogoDetalleModal
           item={detalle}
           onClose={() => setDetalle(null)}
-          onEdit={() => navigate(`/catalogo/productos/${detalle.id_producto}`)}
+          onOpenProduct={() => navigate(`/catalogo/productos/${detalle.id_producto}`)}
+          puedeEditar={puedeEditarCatalogo}
         />
       )}
     </div>

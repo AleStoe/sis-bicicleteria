@@ -1,5 +1,6 @@
 from decimal import Decimal
 import uuid
+from tests.conftest import get_auditoria_by_entidad
 
 def _dec(value) -> Decimal:
     return Decimal(str(value))
@@ -92,6 +93,150 @@ def test_obtiene_precio_de_variante(client, seed_venta_basica):
     assert data["precio_minorista"] is not None
     assert data["precio_mayorista"] is not None
     assert data["costo_promedio_vigente"] is not None
+
+
+def test_correccion_inicial_actualiza_maestros_sin_tocar_stock(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    variante_id = seed_venta_basica["variante_id"]
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO proveedores (nombre, activo)
+            VALUES ('Proveedor correccion inicial', TRUE)
+            RETURNING id
+            """
+        )
+        proveedor_id = cur.fetchone()["id"]
+        cur.execute(
+            "SELECT * FROM stock_sucursal WHERE id = %s",
+            (seed_venta_basica["stock_id"],),
+        )
+        stock_antes = dict(cur.fetchone())
+        cur.execute("SELECT COUNT(*) AS total FROM movimientos_stock")
+        movimientos_antes = cur.fetchone()["total"]
+    db_conn.commit()
+
+    response = client.post(
+        f"/precios/variantes/{variante_id}/correccion-inicial",
+        json={
+            "costo_promedio_vigente": "12500",
+            "precio_minorista": "25000",
+            "precio_mayorista": "19000",
+            "alicuota_iva": "10.5",
+            "gravado": True,
+            "proveedor_preferido_id": proveedor_id,
+            "motivo": "Correccion de carga inicial de prueba",
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["ventas_historicas"] == 0
+    assert data["advertencia"] is None
+    assert _dec(data["margen_minorista_nuevo"]) == Decimal("100.00")
+
+    variante = _get_variante(db_conn, variante_id)
+    assert _dec(variante["costo_promedio_vigente"]) == Decimal("12500")
+    assert _dec(variante["precio_minorista"]) == Decimal("25000")
+    assert _dec(variante["precio_mayorista"]) == Decimal("19000")
+    assert _dec(variante["alicuota_iva"]) == Decimal("10.50")
+    assert variante["proveedor_preferido_id"] == proveedor_id
+
+    movimientos_precio = _get_precios_movimientos(db_conn, variante_id)
+    assert len(movimientos_precio) == 1
+    assert movimientos_precio[0]["tipo_movimiento"] == "correccion_error"
+    assert _dec(movimientos_precio[0]["costo_anterior"]) == Decimal("10000")
+    assert _dec(movimientos_precio[0]["costo_nuevo"]) == Decimal("12500")
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "SELECT * FROM stock_sucursal WHERE id = %s",
+            (seed_venta_basica["stock_id"],),
+        )
+        assert dict(cur.fetchone()) == stock_antes
+        cur.execute("SELECT COUNT(*) AS total FROM movimientos_stock")
+        assert cur.fetchone()["total"] == movimientos_antes
+
+    eventos = get_auditoria_by_entidad(db_conn, "variante", variante_id)
+    evento = next(
+        item for item in eventos if item["accion"] == "correccion_carga_inicial"
+    )
+    assert evento["id_usuario"] == seed_venta_basica["usuario_id"]
+    assert evento["metadata"]["stock_modificado"] is False
+    assert evento["metadata"]["valores_anteriores"]["alicuota_iva"] == "21.00"
+    assert evento["metadata"]["valores_nuevos"]["alicuota_iva"] == "10.5"
+
+
+def test_correccion_inicial_advierte_y_no_recalcula_venta_historica(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    variante_id = seed_venta_basica["variante_id"]
+    crear = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [{"id_variante": variante_id, "cantidad": 1}],
+        },
+    )
+    assert crear.status_code == 200, crear.text
+    venta_id = crear.json()["venta_id"]
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT precio_lista, precio_final, subtotal, costo_unitario_aplicado
+            FROM venta_items
+            WHERE id_venta = %s
+            """,
+            (venta_id,),
+        )
+        item_antes = dict(cur.fetchone())
+        cur.execute(
+            "SELECT * FROM stock_sucursal WHERE id = %s",
+            (seed_venta_basica["stock_id"],),
+        )
+        stock_antes = dict(cur.fetchone())
+
+    response = client.post(
+        f"/precios/variantes/{variante_id}/correccion-inicial",
+        json={
+            "costo_promedio_vigente": "14000",
+            "precio_minorista": "28000",
+            "precio_mayorista": "21000",
+            "alicuota_iva": "21",
+            "gravado": True,
+            "proveedor_preferido_id": None,
+            "motivo": "Correccion posterior a primera venta",
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["ventas_historicas"] == 1
+    assert "no recalculó" in data["advertencia"]
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT precio_lista, precio_final, subtotal, costo_unitario_aplicado
+            FROM venta_items
+            WHERE id_venta = %s
+            """,
+            (venta_id,),
+        )
+        assert dict(cur.fetchone()) == item_antes
+        cur.execute(
+            "SELECT * FROM stock_sucursal WHERE id = %s",
+            (seed_venta_basica["stock_id"],),
+        )
+        assert dict(cur.fetchone()) == stock_antes
 
 
 def test_actualiza_precio_y_registra_movimiento(
