@@ -55,7 +55,10 @@ def _estado_humano(estado: str | None) -> str:
     )
 
 
-def _draw_watermark(c, width, height):
+def _draw_watermark(c, width, height, enabled=True):
+    if not enabled:
+        return
+
     if not LOGO_ICONO.exists():
         return
 
@@ -82,9 +85,9 @@ def _line(c, y, width, margin_x):
     return y - 6 * mm
 
 
-def _continuation_page(c, width, height, margin_x):
+def _continuation_page(c, width, height, margin_x, incluir_marca_agua=True):
     c.showPage()
-    _draw_watermark(c, width, height)
+    _draw_watermark(c, width, height, incluir_marca_agua)
     y = height - 16 * mm
     c.setFont("Helvetica-Bold", 10)
     c.drawString(margin_x, y, "PRESUPUESTO TALLER")
@@ -96,10 +99,10 @@ def _continuation_page(c, width, height, margin_x):
     return y - 7 * mm
 
 
-def _ensure_space(c, y, needed, width, height, margin_x):
+def _ensure_space(c, y, needed, width, height, margin_x, incluir_marca_agua=True):
     if y - needed >= BOTTOM_MARGIN:
         return y
-    return _continuation_page(c, width, height, margin_x)
+    return _continuation_page(c, width, height, margin_x, incluir_marca_agua)
 
 
 def _draw_field_pair(c, y, width, margin_x, left, right):
@@ -140,11 +143,12 @@ def _draw_labeled_block(
     value,
     font_name="Helvetica",
     font_size=9,
+    incluir_marca_agua=True,
 ):
     max_width = width - 2 * margin_x - 4 * mm
     lines = wrap_text(value, max_width, font_name, font_size)
     needed = 5 * mm + len(lines) * TEXT_LEADING + 2 * mm
-    y = _ensure_space(c, y, needed, width, height, margin_x)
+    y = _ensure_space(c, y, needed, width, height, margin_x, incluir_marca_agua)
 
     c.setFont("Helvetica-Bold", 8)
     c.setFillColorRGB(0.32, 0.36, 0.43)
@@ -205,8 +209,8 @@ def _table_header(c, y, width, margin_x):
     return y - 10 * mm
 
 
-def _new_table_page(c, width, height, margin_x):
-    y = _continuation_page(c, width, height, margin_x)
+def _new_table_page(c, width, height, margin_x, incluir_marca_agua=True):
+    y = _continuation_page(c, width, height, margin_x, incluir_marca_agua)
     return _table_header(c, y, width, margin_x)
 
 
@@ -312,6 +316,7 @@ def _draw_item(
     subtotal,
     imagen,
     es_servicio,
+    incluir_marca_agua=True,
 ):
     text_x = margin_x + 20 * mm
     text_right = width - margin_x - 65 * mm
@@ -321,7 +326,7 @@ def _draw_item(
 
     while lines:
         if y < BOTTOM_MARGIN + 17 * mm:
-            y = _new_table_page(c, width, height, margin_x)
+            y = _new_table_page(c, width, height, margin_x, incluir_marca_agua)
 
         available_height = y - BOTTOM_MARGIN - 5 * mm
         max_lines = max(1, int((available_height - 5 * mm) / (4.2 * mm)))
@@ -345,12 +350,12 @@ def _draw_item(
         first_chunk = False
 
         if lines:
-            y = _new_table_page(c, width, height, margin_x)
+            y = _new_table_page(c, width, height, margin_x, incluir_marca_agua)
 
     return y
 
 
-def generar_presupuesto_taller_pdf(data: dict) -> bytes:
+def generar_presupuesto_taller_pdf(data: dict, incluir_marca_agua: bool = True) -> bytes:
     orden = data["orden"]
     items = data.get("items", [])
     notas = data.get("notas", [])
@@ -361,7 +366,7 @@ def generar_presupuesto_taller_pdf(data: dict) -> bytes:
     width, height = A4
     margin_x = 16 * mm
 
-    _draw_watermark(c, width, height)
+    _draw_watermark(c, width, height, incluir_marca_agua)
     y = height - 18 * mm
 
     if LOGO_HORIZONTAL.exists():
@@ -446,6 +451,7 @@ def generar_presupuesto_taller_pdf(data: dict) -> bytes:
         value=bicicleta,
         font_name="Helvetica-Bold",
         font_size=9.5,
+        incluir_marca_agua=incluir_marca_agua,
     )
 
     if orden.get("bicicleta_numero_cuadro"):
@@ -457,6 +463,7 @@ def generar_presupuesto_taller_pdf(data: dict) -> bytes:
             margin_x=margin_x,
             label="N. de cuadro",
             value=normalize_inline_text(orden.get("bicicleta_numero_cuadro")),
+            incluir_marca_agua=incluir_marca_agua,
         )
 
     y = _draw_labeled_block(
@@ -467,6 +474,7 @@ def generar_presupuesto_taller_pdf(data: dict) -> bytes:
         margin_x=margin_x,
         label="Problema reportado",
         value=collapse_repeated_words(orden.get("problema_reportado")) or "-",
+        incluir_marca_agua=incluir_marca_agua,
     )
 
     observaciones = _text(orden.get("observaciones")).strip()
@@ -479,6 +487,7 @@ def generar_presupuesto_taller_pdf(data: dict) -> bytes:
             margin_x=margin_x,
             label="Observaciones",
             value=observaciones,
+            incluir_marca_agua=incluir_marca_agua,
         )
 
     if notas:
@@ -496,9 +505,10 @@ def generar_presupuesto_taller_pdf(data: dict) -> bytes:
                 margin_x=margin_x,
                 label=label,
                 value=nota.get("contenido"),
+                incluir_marca_agua=incluir_marca_agua,
             )
 
-    y = _ensure_space(c, y, 20 * mm, width, height, margin_x)
+    y = _ensure_space(c, y, 20 * mm, width, height, margin_x, incluir_marca_agua)
     y -= 3 * mm
     y = _line(c, y, width, margin_x)
     c.setFont("Helvetica-Bold", 11)
@@ -537,9 +547,10 @@ def generar_presupuesto_taller_pdf(data: dict) -> bytes:
             subtotal=subtotal,
             imagen=item.get("imagen_principal"),
             es_servicio=_es_item_servicio(item),
+            incluir_marca_agua=incluir_marca_agua,
         )
 
-    y = _ensure_space(c, y, 34 * mm, width, height, margin_x)
+    y = _ensure_space(c, y, 34 * mm, width, height, margin_x, incluir_marca_agua)
     y -= 2 * mm
     c.setFont("Helvetica-Bold", 10)
     c.drawRightString(width - margin_x - 34 * mm, y, "TOTAL")
@@ -564,7 +575,7 @@ def generar_presupuesto_taller_pdf(data: dict) -> bytes:
             8,
         )
         for line in lines:
-            y = _ensure_space(c, y, 6 * mm, width, height, margin_x)
+            y = _ensure_space(c, y, 6 * mm, width, height, margin_x, incluir_marca_agua)
             c.setFont("Helvetica", 8)
             c.drawString(margin_x, y, line)
             y -= 4.5 * mm

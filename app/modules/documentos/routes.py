@@ -78,7 +78,7 @@ def resumen_cobros_venta(venta_id: int):
 @router.get("/taller/{orden_id}/presupuesto")
 def presupuesto_taller(orden_id: int):
     data = obtener_datos_presupuesto_taller(orden_id)
-    pdf_bytes = generar_presupuesto_taller_pdf(data)
+    pdf_bytes = generar_presupuesto_taller_pdf(data, incluir_marca_agua=False)
 
     return Response(
         content=pdf_bytes,

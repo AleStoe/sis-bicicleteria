@@ -1,11 +1,13 @@
 from datetime import datetime
 from io import BytesIO
 
+from PIL import Image
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
-
-from .pdf import _draw_image_fit, _money, _resolver_imagen_local, _text
+from .pdf_layout import wrap_text
+from .pdf import _money, _resolver_imagen_local, _text
 from .pdf_etiquetas import _build_opciones_pago
 from .brand import (
     BORDER,
@@ -27,12 +29,60 @@ def _clip(value, max_len):
 
 
 def _variant_title(item):
-    parts = [item.get("producto_nombre"), item.get("nombre_variante")]
-    return " - ".join(_text(part) for part in parts if part)
+    return _text(item.get("producto_nombre")).strip()
 
 
 def _codigo(item):
     return item.get("sku") or item.get("codigo_proveedor")
+
+
+def _imagen_pdf_liviana(path, cache, max_px=420, quality=68):
+    if not path:
+        return None
+
+    cache_key = str(path)
+    if cache_key in cache:
+        return cache[cache_key]
+
+    try:
+        buffer = BytesIO()
+        img = Image.open(path)
+        img = img.convert("RGB")
+        img.thumbnail((max_px, max_px))
+        img.save(buffer, format="JPEG", quality=quality, optimize=True)
+        buffer.seek(0)
+
+        reader = ImageReader(buffer)
+        cache[cache_key] = reader
+        return reader
+    except Exception:
+        return path
+
+
+def _draw_image_fit_catalogo(c, image, x, y, max_w, max_h):
+    try:
+        if isinstance(image, ImageReader):
+            img = image
+        else:
+            img = ImageReader(str(image))
+
+        iw, ih = img.getSize()
+        ratio = min(max_w / iw, max_h / ih)
+        w = iw * ratio
+        h = ih * ratio
+
+        c.drawImage(
+            img,
+            x + (max_w - w) / 2,
+            y + (max_h - h) / 2,
+            width=w,
+            height=h,
+            preserveAspectRatio=True,
+            mask="auto",
+        )
+        return True
+    except Exception:
+        return False
 
 
 def _draw_cover(c, fecha_actualizacion: datetime):
@@ -101,18 +151,35 @@ def _draw_footer(c):
     )
 
 
-def _draw_product_card(c, item, opciones_pago, x, y, w, h):
+def _draw_product_card(c, item, opciones_pago, x, y, w, h, image_cache):
     c.setFillColorRGB(1, 1, 1)
     c.setStrokeColorRGB(*BORDER)
     c.roundRect(x, y, w, h, 4 * mm, fill=1, stroke=1)
 
     image_box_h = 27 * mm
     image_path = _resolver_imagen_local(item.get("imagen_principal"))
+    image_path = _imagen_pdf_liviana(image_path, image_cache)
+
     if image_path:
-        _draw_image_fit(c, image_path, x + 4 * mm, y + h - image_box_h - 4 * mm, w - 8 * mm, image_box_h)
+        _draw_image_fit_catalogo(
+            c,
+            image_path,
+            x + 4 * mm,
+            y + h - image_box_h - 4 * mm,
+            w - 8 * mm,
+            image_box_h,
+        )
     else:
         c.setFillColorRGB(*ORANGE_SOFT)
-        c.roundRect(x + 4 * mm, y + h - image_box_h - 4 * mm, w - 8 * mm, image_box_h, 3 * mm, fill=1, stroke=0)
+        c.roundRect(
+            x + 4 * mm,
+            y + h - image_box_h - 4 * mm,
+            w - 8 * mm,
+            image_box_h,
+            3 * mm,
+            fill=1,
+            stroke=0,
+        )
         c.setFillColorRGB(*MUTED)
         c.setFont("Helvetica", 8)
         c.drawCentredString(x + w / 2, y + h - 19 * mm, "Sin imagen")
@@ -120,9 +187,19 @@ def _draw_product_card(c, item, opciones_pago, x, y, w, h):
     text_y = y + h - image_box_h - 8 * mm
     c.setFillColorRGB(*INK)
     c.setFont("Helvetica-Bold", 8.2)
-    c.drawString(x + 4 * mm, text_y, _clip(_variant_title(item), 37))
 
-    text_y -= 3.8 * mm
+    titulo_lines = wrap_text(
+        _variant_title(item),
+        w - 8 * mm,
+        "Helvetica-Bold",
+        8.2,
+    )
+
+    for linea in titulo_lines[:2]:
+        c.drawString(x + 4 * mm, text_y, linea)
+        text_y -= 3.5 * mm
+
+    text_y -= 0.3 * mm
     c.setFont("Helvetica", 6.8)
     c.setFillColorRGB(*MUTED)
     meta = " | ".join(
@@ -218,6 +295,7 @@ def generar_catalogo_mayorista_pdf(data: dict) -> bytes:
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4
+    image_cache = {}
 
     _draw_cover(c, fecha_actualizacion)
     c.showPage()
@@ -235,7 +313,11 @@ def generar_catalogo_mayorista_pdf(data: dict) -> bytes:
     if not items:
         c.setFillColorRGB(*INK)
         c.setFont("Helvetica-Bold", 14)
-        c.drawCentredString(width / 2, height / 2, "No hay productos mayoristas disponibles.")
+        c.drawCentredString(
+            width / 2,
+            height / 2,
+            "No hay productos mayoristas disponibles.",
+        )
         _draw_footer(c)
     else:
         for index, item in enumerate(items):
@@ -251,7 +333,16 @@ def generar_catalogo_mayorista_pdf(data: dict) -> bytes:
             col = position % 2
             x = margin_x + col * (card_w + gap_x)
             y = start_y - row * (card_h + gap_y)
-            _draw_product_card(c, item, opciones_pago, x, y, card_w, card_h)
+            _draw_product_card(
+                c,
+                item,
+                opciones_pago,
+                x,
+                y,
+                card_w,
+                card_h,
+                image_cache,
+            )
 
         _draw_footer(c)
 
