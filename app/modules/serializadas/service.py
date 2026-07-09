@@ -6,7 +6,6 @@ from app.modules.auditoria import service as auditoria_service
 from app.modules.stock import service as stock_service
 from app.modules.ventas.repository import get_variantes_by_ids, get_sucursal_by_id
 from .repository import (
-    get_bicicleta_serializada_by_numero_cuadro,
     insert_bicicleta_serializada,
     get_bicicletas_serializadas,
 )
@@ -77,13 +76,6 @@ def armar_bicicleta_serializada(data):
             _validar_sucursal(conn, data.id_sucursal_actual)
 
             numero_cuadro = normalize_text_upper(data.numero_cuadro)
-
-            existente = get_bicicleta_serializada_by_numero_cuadro(conn, numero_cuadro)
-            if existente is not None:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Ya existe una bicicleta con número de cuadro {numero_cuadro}",
-                )
 
             bicicleta_id = insert_bicicleta_serializada(
                 conn,

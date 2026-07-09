@@ -280,12 +280,155 @@ def test_crear_bicicleta_serializada_normaliza_numero_cuadro(
     assert movimientos[0]["origen_id"] == bicicleta_id
 
 
-def test_crear_bicicleta_serializada_duplicada_falla(client, seed_serializacion):
+def _preparar_stock_serializable(db_conn, seed_serializacion, cantidad: int):
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE stock_sucursal
+            SET stock_fisico = %s
+            WHERE id_sucursal = %s AND id_variante = %s
+            """,
+            (
+                cantidad,
+                seed_serializacion["sucursal_id"],
+                seed_serializacion["variante_id"],
+            ),
+        )
+    db_conn.commit()
+
+
+def _crear_otra_variante_serializable(db_conn, seed_serializacion):
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO productos (
+                id_categoria,
+                nombre,
+                tipo_item,
+                stockeable,
+                serializable,
+                activo
+            )
+            VALUES (
+                (SELECT id_categoria FROM productos WHERE id = %s),
+                'Bicicleta Test Otra Variante',
+                'producto',
+                TRUE,
+                TRUE,
+                TRUE
+            )
+            RETURNING id
+            """,
+            (seed_serializacion["producto_id"],),
+        )
+        producto_id = cur.fetchone()["id"]
+
+        cur.execute(
+            """
+            INSERT INTO variantes (
+                id_producto,
+                nombre_variante,
+                sku,
+                precio_minorista,
+                precio_mayorista,
+                costo_promedio_vigente,
+                activo
+            )
+            VALUES (%s, 'R29 Tigris M Azul', 'BICI-TEST-R29-TIGRIS-M-AZUL', 1000000, 850000, 700000, TRUE)
+            RETURNING id
+            """,
+            (producto_id,),
+        )
+        variante_id = cur.fetchone()["id"]
+
+        cur.execute(
+            """
+            INSERT INTO stock_sucursal (
+                id_sucursal,
+                id_variante,
+                stock_fisico,
+                stock_reservado,
+                stock_vendido_pendiente_entrega
+            )
+            VALUES (%s, %s, 1, 0, 0)
+            """,
+            (seed_serializacion["sucursal_id"], variante_id),
+        )
+
+    db_conn.commit()
+    return variante_id
+
+
+def test_crear_bicicletas_serializadas_permite_numero_cuadro_repetido_misma_variante(
+    client,
+    db_conn,
+    seed_serializacion,
+):
+    _preparar_stock_serializable(db_conn, seed_serializacion, 2)
+
     r1 = _crear_bici_serializada(client, seed_serializacion, "CUADRO-DUP-001")
     assert r1.status_code == 200, r1.text
 
     r2 = _crear_bici_serializada(client, seed_serializacion, "CUADRO-DUP-001")
-    assert r2.status_code == 400, r2.text
+    assert r2.status_code == 200, r2.text
+
+    ids = {r1.json()["bicicleta_id"], r2.json()["bicicleta_id"]}
+    assert len(ids) == 2
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id, id_variante, numero_cuadro
+            FROM bicicletas_serializadas
+            WHERE numero_cuadro = 'CUADRO-DUP-001'
+            ORDER BY id
+            """
+        )
+        bicis = cur.fetchall()
+
+    assert len(bicis) == 2
+    assert {bici["id"] for bici in bicis} == ids
+    assert {bici["id_variante"] for bici in bicis} == {
+        seed_serializacion["variante_id"]
+    }
+
+
+def test_crear_bicicletas_serializadas_permite_numero_cuadro_repetido_distinta_variante(
+    client,
+    db_conn,
+    seed_serializacion,
+):
+    otra_variante_id = _crear_otra_variante_serializable(db_conn, seed_serializacion)
+
+    r1 = _crear_bici_serializada(client, seed_serializacion, "TIGRIS-DUP-001")
+    assert r1.status_code == 200, r1.text
+
+    payload_otra = {
+        "id_variante": otra_variante_id,
+        "id_sucursal_actual": seed_serializacion["sucursal_id"],
+        "numero_cuadro": "TIGRIS-DUP-001",
+        "observaciones": "Mismo cuadro de fabrica en otra variante",
+        "id_usuario": seed_serializacion["usuario_id"],
+    }
+    r2 = client.post("/bicicletas_serializadas", json=payload_otra)
+    assert r2.status_code == 200, r2.text
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id, id_variante
+            FROM bicicletas_serializadas
+            WHERE numero_cuadro = 'TIGRIS-DUP-001'
+            ORDER BY id
+            """
+        )
+        bicis = cur.fetchall()
+
+    assert len(bicis) == 2
+    assert {bici["id_variante"] for bici in bicis} == {
+        seed_serializacion["variante_id"],
+        otra_variante_id,
+    }
 
 
 def test_venta_sin_serie_sigue_funcionando_para_bici_en_caja(client, db_conn, seed_serializacion):
@@ -340,6 +483,66 @@ def test_venta_con_bici_serializada_ok_si_esta_disponible(client, db_conn, seed_
     movimientos = get_movimientos_by_venta(db_conn, data["venta_id"])
     tipos = [m["tipo_movimiento"] for m in movimientos]
     assert tipos == ["venta_serializada"]
+
+
+def test_venta_con_bicis_de_mismo_numero_cuadro_traza_por_id_serializada(
+    client,
+    db_conn,
+    seed_serializacion,
+):
+    _preparar_stock_serializable(db_conn, seed_serializacion, 2)
+
+    crear_bici_1 = _crear_bici_serializada(client, seed_serializacion, "TIGRIS-MISMO-001")
+    crear_bici_2 = _crear_bici_serializada(client, seed_serializacion, "TIGRIS-MISMO-001")
+    assert crear_bici_1.status_code == 200, crear_bici_1.text
+    assert crear_bici_2.status_code == 200, crear_bici_2.text
+    bicicleta_1_id = crear_bici_1.json()["bicicleta_id"]
+    bicicleta_2_id = crear_bici_2.json()["bicicleta_id"]
+
+    response = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_serializacion["cliente_id"],
+            "id_sucursal": seed_serializacion["sucursal_id"],
+            "id_usuario": seed_serializacion["usuario_id"],
+            "items": [
+                {
+                    "id_variante": seed_serializacion["variante_id"],
+                    "cantidad": 1,
+                    "id_bicicleta_serializada": bicicleta_1_id,
+                },
+                {
+                    "id_variante": seed_serializacion["variante_id"],
+                    "cantidad": 1,
+                    "id_bicicleta_serializada": bicicleta_2_id,
+                },
+            ],
+        },
+    )
+    assert response.status_code == 200, response.text
+    venta_id = response.json()["venta_id"]
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id_bicicleta_serializada
+            FROM venta_items
+            WHERE id_venta = %s
+            ORDER BY id
+            """,
+            (venta_id,),
+        )
+        items = cur.fetchall()
+
+    assert [item["id_bicicleta_serializada"] for item in items] == [
+        bicicleta_1_id,
+        bicicleta_2_id,
+    ]
+
+    bicicleta_1 = _get_bicicleta_serializada(db_conn, bicicleta_1_id)
+    bicicleta_2 = _get_bicicleta_serializada(db_conn, bicicleta_2_id)
+    assert bicicleta_1["estado"] == "vendida_pendiente_entrega"
+    assert bicicleta_2["estado"] == "vendida_pendiente_entrega"
 
 
 def test_venta_con_bici_serializada_falla_si_ya_esta_comprometida(client, seed_serializacion):
@@ -463,9 +666,18 @@ def test_entregar_venta_serializada_la_pasa_a_entregada_y_crea_bicicleta_cliente
     db_conn,
     seed_serializacion,
 ):
+    _preparar_stock_serializable(db_conn, seed_serializacion, 2)
+
     crear_bici = _crear_bici_serializada(client, seed_serializacion, "CUADRO-ENT-001")
     assert crear_bici.status_code == 200, crear_bici.text
     bicicleta_id = crear_bici.json()["bicicleta_id"]
+
+    otra_bici_mismo_cuadro = _crear_bici_serializada(
+        client,
+        seed_serializacion,
+        "CUADRO-ENT-001",
+    )
+    assert otra_bici_mismo_cuadro.status_code == 200, otra_bici_mismo_cuadro.text
 
     crear_venta = _crear_venta_serializada(client, seed_serializacion, bicicleta_id)
     assert crear_venta.status_code == 200, crear_venta.text
@@ -509,6 +721,7 @@ def test_entregar_venta_serializada_la_pasa_a_entregada_y_crea_bicicleta_cliente
     bicis_cliente = _get_bicicletas_cliente_por_numero_cuadro(db_conn, "CUADRO-ENT-001")
     assert len(bicis_cliente) == 1
     assert bicis_cliente[0]["id_cliente"] == seed_serializacion["cliente_id"]
+    assert bicis_cliente[0]["id_bicicleta_serializada"] == bicicleta_id
 
 
 def test_anular_venta_serializada_devuelve_bici_a_disponible(client, db_conn, seed_serializacion):

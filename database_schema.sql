@@ -3824,14 +3824,6 @@ ALTER TABLE ONLY public.tipos_evento_taller
 
 
 --
--- Name: bicicletas_serializadas uq_bicicletas_serializadas_numero_cuadro; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.bicicletas_serializadas
-    ADD CONSTRAINT uq_bicicletas_serializadas_numero_cuadro UNIQUE (numero_cuadro);
-
-
---
 -- Name: categorias uq_categorias_nombre; Type: CONSTRAINT; Schema: public; Owner: -
 --
 

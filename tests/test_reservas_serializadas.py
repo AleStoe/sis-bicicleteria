@@ -212,6 +212,36 @@ def test_crear_reserva_con_serializada_la_pasa_a_reservada(client, db_conn, seed
     assert float(stock["stock_vendido_pendiente_entrega"]) == 0.0
 
 
+def test_reserva_bicicleta_correcta_aunque_numero_cuadro_este_repetido(
+    client,
+    db_conn,
+    seed_reserva_serializada,
+):
+    bici_1 = _crear_bici_serializada(client, seed_reserva_serializada, "CUADRO-RES-DUP-001")
+    bici_2 = _crear_bici_serializada(client, seed_reserva_serializada, "CUADRO-RES-DUP-001")
+    assert bici_1.status_code == 200, bici_1.text
+    assert bici_2.status_code == 200, bici_2.text
+    bicicleta_1_id = bici_1.json()["bicicleta_id"]
+    bicicleta_2_id = bici_2.json()["bicicleta_id"]
+
+    reserva_response = _crear_reserva_serializada(
+        client,
+        seed_reserva_serializada,
+        bicicleta_2_id,
+    )
+    assert reserva_response.status_code == 200, reserva_response.text
+    reserva_id = reserva_response.json()["reserva_id"]
+
+    bici_reservada = _get_bicicleta_serializada(db_conn, bicicleta_2_id)
+    bici_libre = _get_bicicleta_serializada(db_conn, bicicleta_1_id)
+    assert bici_reservada["estado"] == "reservada"
+    assert bici_libre["estado"] == "disponible"
+
+    items = _get_reserva_items(db_conn, reserva_id)
+    assert len(items) == 1
+    assert items[0]["id_bicicleta_serializada"] == bicicleta_2_id
+
+
 def test_no_permite_reservar_serializada_con_cantidad_distinta_de_1(client, seed_reserva_serializada):
     bici_response = _crear_bici_serializada(client, seed_reserva_serializada, "CUADRO-RES-CANT-001")
     assert bici_response.status_code == 200, bici_response.text
