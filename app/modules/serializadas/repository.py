@@ -60,6 +60,78 @@ def update_bicicleta_serializada_estado(conn, bicicleta_id: int, nuevo_estado: s
         )
 
 
+def update_bicicleta_serializada_numero_cuadro(conn, bicicleta_id: int, numero_cuadro: str):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE bicicletas_serializadas
+            SET
+                numero_cuadro = %s,
+                updated_at = NOW()
+            WHERE id = %s
+            """,
+            (numero_cuadro, bicicleta_id),
+        )
+
+
+def update_bicicletas_cliente_numero_cuadro_by_serializada(
+    conn,
+    bicicleta_id: int,
+    numero_cuadro: str,
+):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            UPDATE bicicletas_clientes
+            SET
+                numero_cuadro = %s,
+                updated_at = NOW()
+            WHERE id_bicicleta_serializada = %s
+            RETURNING id
+            """,
+            (numero_cuadro, bicicleta_id),
+        )
+        return cur.fetchall()
+
+
+def get_correcciones_numero_cuadro(conn, bicicleta_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT
+                ae.id,
+                ae.created_at AS fecha,
+                ae.metadata,
+                u.nombre AS usuario_nombre,
+                u.username AS usuario_username
+            FROM auditoria_eventos ae
+            LEFT JOIN usuarios u
+                ON u.id = ae.id_usuario
+            WHERE ae.entidad = 'bicicleta_serializada'
+              AND ae.entidad_id = %s
+              AND ae.accion = 'numero_cuadro_corregido'
+            ORDER BY ae.id DESC
+            """,
+            (bicicleta_id,),
+        )
+        return cur.fetchall()
+
+
+def get_primer_usuario_activo_id(conn):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT id
+            FROM usuarios
+            WHERE activo = TRUE
+            ORDER BY id
+            LIMIT 1
+            """
+        )
+        row = cur.fetchone()
+        return row["id"] if row else None
+
+
 def insert_bicicleta_cliente(conn, data: dict):
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(

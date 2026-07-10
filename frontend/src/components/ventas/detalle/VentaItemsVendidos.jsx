@@ -7,6 +7,7 @@ export default function VentaItemsVendidos({
   procesando,
   onDevolverItem,
   onDevolverSerializada,
+  onCorregirNumeroCuadro,
 }) {
   const { isMobile } = useBreakpoint();
   const totalItems = items.length;
@@ -42,6 +43,7 @@ export default function VentaItemsVendidos({
               procesando={procesando}
               onDevolverItem={onDevolverItem}
               onDevolverSerializada={onDevolverSerializada}
+              onCorregirNumeroCuadro={onCorregirNumeroCuadro}
             />
           ))}
         </div>

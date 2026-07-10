@@ -27,3 +27,25 @@ export function crearSerializada(data) {
     body: JSON.stringify(data),
   });
 }
+
+export function corregirNumeroCuadroSerializada(idBicicletaSerializada, data, params = {}) {
+  const query = new URLSearchParams();
+
+  if (params.origen_accion) query.set("origen_accion", params.origen_accion);
+
+  const qs = query.toString();
+
+  return apiRequest(
+    `/bicicletas_serializadas/${idBicicletaSerializada}/numero-cuadro${qs ? `?${qs}` : ""}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export function listarCorreccionesNumeroCuadro(idBicicletaSerializada) {
+  return apiRequest(
+    `/bicicletas_serializadas/${idBicicletaSerializada}/correcciones-numero-cuadro`
+  );
+}

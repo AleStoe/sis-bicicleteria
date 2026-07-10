@@ -154,7 +154,7 @@ export default function useVentaCarrito({ tipoPrecio, setError, setMensaje }) {
       actual.map((item) => {
         if (item.line_id !== lineId) return item;
 
-        if (item.serializable && item.modo_venta_serializada === "serializada") {
+        if (item.serializable && item.id_bicicleta_serializada) {
           setError("Las bicicletas serializadas siempre tienen cantidad 1");
           return { ...item, cantidad: 1 };
         }

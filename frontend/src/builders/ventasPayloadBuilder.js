@@ -2,10 +2,9 @@ export function buildVentaItemPayload(item) {
   return {
     id_variante: Number(item.id_variante),
     cantidad: String(item.cantidad),
-    id_bicicleta_serializada:
-      item.modo_venta_serializada === "serializada" && item.id_bicicleta_serializada
-        ? Number(item.id_bicicleta_serializada)
-        : null,
+    id_bicicleta_serializada: item.id_bicicleta_serializada
+      ? Number(item.id_bicicleta_serializada)
+      : null,
     precio_unitario_manual: item.precio_unitario_manual
       ? String(item.precio_unitario_manual)
       : null,

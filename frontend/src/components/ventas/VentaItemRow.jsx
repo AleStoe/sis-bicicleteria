@@ -134,8 +134,6 @@ export default function VentaItemRow({
   function activarModoCaja() {
     onActualizarItem?.(item.line_id, {
       modo_venta_serializada: "caja",
-      id_bicicleta_serializada: null,
-      numero_cuadro: "",
       cantidad: 1,
     });
   }
@@ -153,7 +151,7 @@ export default function VentaItemRow({
                 <span style={styles.badgeSerial}>
                   {item.modo_venta_serializada === "serializada"
                     ? "ARMADA"
-                    : "EN CAJA"}
+                    : "SIN UNIDAD"}
                 </span>
               )}
 
@@ -225,7 +223,7 @@ export default function VentaItemRow({
               }
               disabled={
                 item.serializable &&
-                item.modo_venta_serializada === "serializada"
+                Boolean(item.id_bicicleta_serializada)
               }
             >
               -
@@ -240,7 +238,7 @@ export default function VentaItemRow({
               }
               disabled={
                 item.serializable &&
-                item.modo_venta_serializada === "serializada"
+                Boolean(item.id_bicicleta_serializada)
               }
             >
               +
@@ -298,7 +296,7 @@ export default function VentaItemRow({
                     : styles.modeBtn
                 }
               >
-                En caja
+                Sin unidad asignada
               </button>
 
               <button
@@ -310,7 +308,7 @@ export default function VentaItemRow({
                     : styles.modeBtn
                 }
               >
-                Armada / con cuadro
+                Unidad serializada
               </button>
             </div>
 

@@ -685,7 +685,7 @@ async function handleBuscarEnter(e) {
 
         if (
           item.serializable &&
-          item.modo_venta_serializada === "serializada"
+          item.id_bicicleta_serializada
         ) {
           setError("Las bicicletas serializadas siempre tienen cantidad 1");
           return { ...item, cantidad: 1 };

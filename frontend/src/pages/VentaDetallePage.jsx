@@ -29,6 +29,7 @@ import {
 } from "../styles/pages/ventaDetallePageStyles";
 import { obtenerAccionesVentaDetalle } from "../rules/ventaDetalleActionRules";
 import { puedeRevertirPago } from "../rules/ventaDetalleActionRules";
+import CorregirNumeroCuadroModal from "../components/serializadas/CorregirNumeroCuadroModal";
 
 export default function VentaDetallePage() {
   const params = useParams();
@@ -44,6 +45,7 @@ export default function VentaDetallePage() {
   const [procesando, setProcesando] = useState(false);
   const [confirmConfig, setConfirmConfig] = useState(null);
   const [promptConfig, setPromptConfig] = useState(null);
+  const [correccionCuadro, setCorreccionCuadro] = useState(null);
 
   function pedirConfirmacion(config) {
     return new Promise((resolve) => {
@@ -705,6 +707,12 @@ const {
         procesando={procesando}
         onDevolverItem={handleDevolverItem}
         onDevolverSerializada={handleDevolverSerializada}
+        onCorregirNumeroCuadro={(item) =>
+          setCorreccionCuadro({
+            id: item.id_bicicleta_serializada,
+            numero_cuadro: item.bicicleta_numero_cuadro || item.numero_cuadro || "",
+          })
+        }
       />
 
       <ConfirmModal
@@ -734,6 +742,21 @@ const {
         onConfirm={promptConfig?.onConfirm}
         onCancel={promptConfig?.onCancel}
       />
+
+      {correccionCuadro && (
+        <CorregirNumeroCuadroModal
+          idBicicletaSerializada={correccionCuadro.id}
+          numeroActual={correccionCuadro.numero_cuadro}
+          contexto="venta"
+          onClose={() => setCorreccionCuadro(null)}
+          onCorregido={async (res) => {
+            setMensaje(
+              `Número de cuadro corregido: ${res.numero_cuadro_anterior} → ${res.numero_cuadro_nuevo}`
+            );
+            await cargarVenta({ mostrarCarga: false, limpiarMensaje: false });
+          }}
+        />
+      )}
     </div>
   );
 }

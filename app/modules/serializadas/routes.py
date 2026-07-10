@@ -7,14 +7,19 @@ from app.modules.authz.service import requerir_permiso
 from app.shared.constants import PERMISO_GESTIONAR_CATALOGO
 
 from .schema import (
+    BicicletaSerializadaCorreccionNumeroCuadroOutput,
+    BicicletaSerializadaCorregirNumeroCuadroInput,
+    BicicletaSerializadaCorregirNumeroCuadroOutput,
     BicicletaSerializadaCreateInput,
     BicicletaSerializadaCreateOutput,
     BicicletaSerializadaDetalleOutput,
 )
 from .service import (
     armar_bicicleta_serializada,
+    corregir_numero_cuadro_bicicleta_serializada,
     listar_bicicletas_serializadas,
     listar_bicicletas_serializadas_disponibles,
+    listar_correcciones_numero_cuadro,
 )
 
 router = APIRouter()
@@ -52,3 +57,29 @@ def armar_bicicleta_serializada_route(
 ):
     aplicar_actor_actual(data, usuario)
     return armar_bicicleta_serializada(data)
+
+
+@router.patch(
+    "/{bicicleta_id}/numero-cuadro",
+    response_model=BicicletaSerializadaCorregirNumeroCuadroOutput,
+)
+def corregir_numero_cuadro_route(
+    bicicleta_id: int,
+    data: BicicletaSerializadaCorregirNumeroCuadroInput,
+    origen_accion: str | None = Query(default="serializadas", max_length=50),
+    usuario: CurrentUser = Depends(puede_gestionar_catalogo),
+):
+    return corregir_numero_cuadro_bicicleta_serializada(
+        bicicleta_id,
+        data,
+        id_usuario=usuario.id,
+        origen_accion=origen_accion or "serializadas",
+    )
+
+
+@router.get(
+    "/{bicicleta_id}/correcciones-numero-cuadro",
+    response_model=List[BicicletaSerializadaCorreccionNumeroCuadroOutput],
+)
+def listar_correcciones_numero_cuadro_route(bicicleta_id: int):
+    return listar_correcciones_numero_cuadro(bicicleta_id)

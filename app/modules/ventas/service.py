@@ -1450,6 +1450,16 @@ def entregar_venta(venta_id: int, data):
             fecha_compra = date.today()
 
             for item in items:
+                if item.get("serializable") and item.get("id_bicicleta_serializada") is None:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "La bicicleta serializable debe tener una unidad asignada "
+                            "antes de entregarse. Elegí la bicicleta serializada y luego "
+                            "indicá si se entrega armada o en caja."
+                        ),
+                    )
+
                 if item.get("id_bicicleta_serializada") is not None:
                     bicicleta = _validar_y_bloquear_bicicleta_serializada_para_entrega(
                         conn,
@@ -2556,24 +2566,36 @@ def simular_venta(data):
         conn.close()
     
 
-def _calcular_monto_credito_devolucion_item(venta: dict, item: dict, cantidad_devuelta) -> Decimal:
+def _calcular_monto_credito_devolucion_item(
+    venta: dict,
+    item: dict,
+    cantidad_devuelta,
+) -> Decimal:
     subtotal_base = redondear_monto(to_decimal(venta.get("subtotal_base") or 0))
     total_final = redondear_monto(to_decimal(venta.get("total_final") or 0))
 
     if subtotal_base <= Decimal("0"):
         return Decimal("0")
 
+    cantidad_original = to_decimal(item.get("cantidad") or 0)
+    cantidad_devuelta = to_decimal(cantidad_devuelta)
+
+    if cantidad_original <= Decimal("0") or cantidad_devuelta <= Decimal("0"):
+        return Decimal("0")
+
+    subtotal_item = redondear_monto(to_decimal(item.get("subtotal") or 0))
+
+    # Si el item fue bonificado o no tuvo importe cobrado, no genera devolución.
+    if subtotal_item <= Decimal("0"):
+        return Decimal("0")
+
     factor = total_final / subtotal_base
 
-    precio_unitario = to_decimal(
-        item.get("precio_unitario_final")
-        or item.get("precio_final")
-        or 0
+    base_item_devuelta = redondear_monto(
+        subtotal_item * cantidad_devuelta / cantidad_original
     )
 
-    monto = precio_unitario * to_decimal(cantidad_devuelta) * factor
-
-    return redondear_monto(monto)
+    return redondear_monto(base_item_devuelta * factor)
 
 def _resolver_postventa_bicicleta(condicion_entrega: str, plan_postventa: str | None) -> str:
     if condicion_entrega == "en_caja":

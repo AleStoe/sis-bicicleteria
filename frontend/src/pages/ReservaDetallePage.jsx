@@ -11,6 +11,7 @@ import { formatDate, formatMoney } from "../utils/formatters";
 import { EstadoReservaBadge } from "./ReservasListPage";
 import { ConfirmModal } from "../components/ui/ConfirmModal";
 import { PromptModal } from "../components/ui/PromptModal";
+import CorregirNumeroCuadroModal from "../components/serializadas/CorregirNumeroCuadroModal";
 import useMediaQuery from "../hooks/useMediaQuery";
 
 
@@ -27,6 +28,7 @@ export default function ReservaDetallePage() {
   const [mensaje, setMensaje] = useState("");
   const [confirmConfig, setConfirmConfig] = useState(null);
   const [promptConfig, setPromptConfig] = useState(null);
+  const [correccionCuadro, setCorreccionCuadro] = useState(null);
 
   function pedirConfirmacion(config) {
     return new Promise((resolve) => {
@@ -177,6 +179,11 @@ export default function ReservaDetallePage() {
     }
   }
 
+  async function handleNumeroCuadroCorregido(res) {
+    await cargarReserva();
+    setMensaje(`NÃºmero de cuadro corregido: ${res.numero_cuadro_anterior} â†’ ${res.numero_cuadro_nuevo}`);
+  }
+
   const reserva = data?.reserva;
   const items = data?.items || [];
   const eventos = data?.eventos || [];
@@ -300,7 +307,18 @@ export default function ReservaDetallePage() {
                     <td style={tdStyle}>{Number(item.cantidad).toLocaleString("es-AR")}</td>
                     <td style={tdStyle}>{formatMoney(item.precio_estimado)}</td>
                     <td style={tdStyle}>{formatMoney(item.subtotal_estimado)}</td>
-                    <td style={tdStyle}>{item.id_bicicleta_serializada ? `#${item.id_bicicleta_serializada}` : "-"}</td>
+                    <td style={tdStyle}>
+                      <UnidadSerializadaReserva
+                        item={item}
+                        onCorregir={() => {
+                          if (!item.id_bicicleta_serializada) return;
+                          setCorreccionCuadro({
+                            id: item.id_bicicleta_serializada,
+                            numero_cuadro: item.serializada_numero_cuadro || "",
+                          });
+                        }}
+                      />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -374,9 +392,37 @@ export default function ReservaDetallePage() {
         onConfirm={promptConfig?.onConfirm}
         onCancel={promptConfig?.onCancel}
       />
+
+      {correccionCuadro && (
+        <CorregirNumeroCuadroModal
+          idBicicletaSerializada={correccionCuadro.id}
+          numeroActual={correccionCuadro.numero_cuadro}
+          contexto="reserva"
+          onClose={() => setCorreccionCuadro(null)}
+          onCorregido={handleNumeroCuadroCorregido}
+        />
+      )}
     </div>
   );
 }
+
+function UnidadSerializadaReserva({ item, onCorregir }) {
+  if (!item.id_bicicleta_serializada) {
+    return <span style={mutedStyle}>Sin unidad serializada asignada</span>;
+  }
+
+  return (
+    <div style={serializadaBoxStyle}>
+      <strong>Unidad #{item.id_bicicleta_serializada}</strong>
+      <span>Cuadro: {item.serializada_numero_cuadro || "-"}</span>
+      <span>Estado actual: {item.serializada_estado || "-"}</span>
+      <button type="button" style={smallLinkButtonStyle} onClick={onCorregir}>
+        Corregir nÃºmero
+      </button>
+    </div>
+  );
+}
+
 function formatUsuario(item) {
   if (item.usuario_nombre) {
     return item.usuario_username
@@ -507,3 +553,19 @@ const paymentBadgeStyle = { background: "white", border: "1px solid #d0d5dd", bo
 const paymentGridStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: "8px" };
 const miniMoneyStyle = { background: "white", borderRadius: "10px", border: "1px solid #eaecf0", padding: "10px", display: "grid", gap: "4px" };
 const cardMetaStyle = { background: "#eef4ff", color: "#175cd3", borderRadius: "10px", padding: "8px 10px", fontWeight: "bold", fontSize: "13px" };
+const serializadaBoxStyle = {
+  display: "grid",
+  gap: "4px",
+  minWidth: "190px",
+  color: "#344054",
+};
+const smallLinkButtonStyle = {
+  width: "fit-content",
+  border: "none",
+  background: "transparent",
+  color: "#f97316",
+  padding: 0,
+  fontWeight: 900,
+  cursor: "pointer",
+  textDecoration: "underline",
+};

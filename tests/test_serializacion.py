@@ -73,6 +73,47 @@ def _crear_venta_sin_serie(client, seed_serializacion):
     )
 
 
+def _crear_reserva_serializada(client, seed_serializacion, bicicleta_id: int):
+    return client.post(
+        "/reservas/",
+        json={
+            "id_cliente": seed_serializacion["cliente_id"],
+            "id_sucursal": seed_serializacion["sucursal_id"],
+            "id_usuario": seed_serializacion["usuario_id"],
+            "fecha_vencimiento": "2026-12-31",
+            "nota": "Reserva serializada test",
+            "items": [
+                {
+                    "id_variante": seed_serializacion["variante_id"],
+                    "cantidad": 1,
+                    "id_bicicleta_serializada": bicicleta_id,
+                    "precio_estimado": seed_serializacion["precio_venta"],
+                }
+            ],
+        },
+    )
+
+
+def _crear_reserva_sin_serie(client, seed_serializacion):
+    return client.post(
+        "/reservas/",
+        json={
+            "id_cliente": seed_serializacion["cliente_id"],
+            "id_sucursal": seed_serializacion["sucursal_id"],
+            "id_usuario": seed_serializacion["usuario_id"],
+            "fecha_vencimiento": "2026-12-31",
+            "nota": "Reserva sin unidad serializada test",
+            "items": [
+                {
+                    "id_variante": seed_serializacion["variante_id"],
+                    "cantidad": 1,
+                    "precio_estimado": seed_serializacion["precio_venta"],
+                }
+            ],
+        },
+    )
+
+
 def _pagar_venta_total(client, venta_id: int, seed_serializacion):
     return client.post(
         "/pagos/",
@@ -110,6 +151,20 @@ def _get_bicicletas_cliente_por_numero_cuadro(conn, numero_cuadro: str):
             ORDER BY id
             """,
             (numero_cuadro,),
+        )
+        return cur.fetchall()
+
+
+def _get_bicicletas_cliente_por_serializada(conn, bicicleta_id: int):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT *
+            FROM bicicletas_clientes
+            WHERE id_bicicleta_serializada = %s
+            ORDER BY id
+            """,
+            (bicicleta_id,),
         )
         return cur.fetchall()
 
@@ -431,7 +486,256 @@ def test_crear_bicicletas_serializadas_permite_numero_cuadro_repetido_distinta_v
     }
 
 
-def test_venta_sin_serie_sigue_funcionando_para_bici_en_caja(client, db_conn, seed_serializacion):
+def test_corregir_numero_cuadro_serializada_normaliza_y_audita(
+    client,
+    db_conn,
+    seed_serializacion,
+):
+    crear_bici = _crear_bici_serializada(client, seed_serializacion, "CUADRO-OLD-001")
+    assert crear_bici.status_code == 200, crear_bici.text
+    bicicleta_id = crear_bici.json()["bicicleta_id"]
+
+    response = client.patch(
+        f"/bicicletas_serializadas/{bicicleta_id}/numero-cuadro",
+        json={
+            "numero_cuadro": "  nuevo-123  ",
+            "motivo": "Error de carga inicial",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["ok"] is True
+    assert data["bicicleta_id"] == bicicleta_id
+    assert data["numero_cuadro_anterior"] == "CUADRO-OLD-001"
+    assert data["numero_cuadro_nuevo"] == "NUEVO-123"
+
+    bicicleta = _get_bicicleta_serializada(db_conn, bicicleta_id)
+    assert bicicleta["id"] == bicicleta_id
+    assert bicicleta["numero_cuadro"] == "NUEVO-123"
+
+    auditoria = get_auditoria_by_entidad(db_conn, "bicicleta_serializada", bicicleta_id)
+    correcciones = [
+        evento for evento in auditoria if evento["accion"] == "numero_cuadro_corregido"
+    ]
+    assert len(correcciones) == 1
+    assert correcciones[0]["metadata"]["numero_cuadro_anterior"] == "CUADRO-OLD-001"
+    assert correcciones[0]["metadata"]["numero_cuadro_nuevo"] == "NUEVO-123"
+    assert correcciones[0]["metadata"]["motivo"] == "Error de carga inicial"
+
+
+def test_corregir_numero_cuadro_rechaza_motivo_vacio_y_mismo_numero(
+    client,
+    seed_serializacion,
+):
+    crear_bici = _crear_bici_serializada(client, seed_serializacion, "CUADRO-MISMO-001")
+    assert crear_bici.status_code == 200, crear_bici.text
+    bicicleta_id = crear_bici.json()["bicicleta_id"]
+
+    sin_motivo = client.patch(
+        f"/bicicletas_serializadas/{bicicleta_id}/numero-cuadro",
+        json={
+            "numero_cuadro": "CUADRO-NUEVO-001",
+            "motivo": "   ",
+        },
+    )
+    assert sin_motivo.status_code == 400
+    assert "motivo" in sin_motivo.json()["detail"].lower()
+
+    mismo = client.patch(
+        f"/bicicletas_serializadas/{bicicleta_id}/numero-cuadro",
+        json={
+            "numero_cuadro": " cuadro-mismo-001 ",
+            "motivo": "Verificado",
+        },
+    )
+    assert mismo.status_code == 400
+    assert "coincide" in mismo.json()["detail"].lower()
+
+
+def test_corregir_numero_cuadro_permite_numero_repetido(
+    client,
+    db_conn,
+    seed_serializacion,
+):
+    _preparar_stock_serializable(db_conn, seed_serializacion, 2)
+
+    bici_1 = _crear_bici_serializada(client, seed_serializacion, "CUADRO-REP-001")
+    bici_2 = _crear_bici_serializada(client, seed_serializacion, "CUADRO-REP-002")
+    assert bici_1.status_code == 200, bici_1.text
+    assert bici_2.status_code == 200, bici_2.text
+
+    bicicleta_2_id = bici_2.json()["bicicleta_id"]
+    response = client.patch(
+        f"/bicicletas_serializadas/{bicicleta_2_id}/numero-cuadro",
+        json={
+            "numero_cuadro": "CUADRO-REP-001",
+            "motivo": "Cuadro repetido de fábrica",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id
+            FROM bicicletas_serializadas
+            WHERE numero_cuadro = 'CUADRO-REP-001'
+            ORDER BY id
+            """
+        )
+        rows = cur.fetchall()
+
+    assert len(rows) == 2
+
+
+def test_corregir_numero_cuadro_entregada_actualiza_ficha_cliente_sin_cambiar_id(
+    client,
+    db_conn,
+    seed_serializacion,
+):
+    crear_bici = _crear_bici_serializada(client, seed_serializacion, "CUADRO-CLI-001")
+    assert crear_bici.status_code == 200, crear_bici.text
+    bicicleta_id = crear_bici.json()["bicicleta_id"]
+
+    crear_venta = _crear_venta_serializada(client, seed_serializacion, bicicleta_id)
+    assert crear_venta.status_code == 200, crear_venta.text
+    venta_id = crear_venta.json()["venta_id"]
+
+    abrir = _abrir_caja(
+        client,
+        seed_serializacion["sucursal_id"],
+        seed_serializacion["usuario_id"],
+    )
+    assert abrir.status_code == 200, abrir.text
+
+    pago = _pagar_venta_total(client, venta_id, seed_serializacion)
+    assert pago.status_code == 200, pago.text
+
+    entregar = client.post(
+        f"/ventas/{venta_id}/entregar",
+        json={
+            "id_usuario": seed_serializacion["usuario_id"],
+            "condicion_entrega_bicicleta": "en_caja",
+            "plan_postventa_bicicleta": "garantia_fabrica",
+        },
+    )
+    assert entregar.status_code == 200, entregar.text
+
+    response = client.patch(
+        f"/bicicletas_serializadas/{bicicleta_id}/numero-cuadro",
+        json={
+            "numero_cuadro": "CUADRO-CLI-CORREGIDO",
+            "motivo": "Corrección posterior a entrega",
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["bicicletas_cliente_actualizadas"] == 1
+
+    bicicleta = _get_bicicleta_serializada(db_conn, bicicleta_id)
+    assert bicicleta["id"] == bicicleta_id
+    assert bicicleta["numero_cuadro"] == "CUADRO-CLI-CORREGIDO"
+
+    bicis_cliente = _get_bicicletas_cliente_por_serializada(db_conn, bicicleta_id)
+    assert len(bicis_cliente) == 1
+    assert bicis_cliente[0]["id_bicicleta_serializada"] == bicicleta_id
+    assert bicis_cliente[0]["id_venta_origen"] == venta_id
+    assert bicis_cliente[0]["numero_cuadro"] == "CUADRO-CLI-CORREGIDO"
+    assert bicis_cliente[0]["condicion_entrega"] == "en_caja"
+    assert bicis_cliente[0]["plan_postventa"] == "garantia_fabrica"
+
+
+def test_detalle_reserva_serializada_muestra_numero_actual_y_conserva_id(
+    client,
+    seed_serializacion,
+):
+    crear_bici = _crear_bici_serializada(client, seed_serializacion, "CUADRO-RES-001")
+    assert crear_bici.status_code == 200, crear_bici.text
+    bicicleta_id = crear_bici.json()["bicicleta_id"]
+
+    crear_reserva = _crear_reserva_serializada(client, seed_serializacion, bicicleta_id)
+    assert crear_reserva.status_code == 200, crear_reserva.text
+    reserva_id = crear_reserva.json()["reserva_id"]
+
+    detalle = client.get(f"/reservas/{reserva_id}")
+    assert detalle.status_code == 200, detalle.text
+    item = detalle.json()["items"][0]
+
+    assert item["id_bicicleta_serializada"] == bicicleta_id
+    assert item["serializada_numero_cuadro"] == "CUADRO-RES-001"
+    assert item["serializada_estado"] == "reservada"
+    assert item["producto_nombre"] == "Bicicleta Test"
+    assert item["nombre_variante"] == "R29 Negra"
+
+
+def test_detalle_reserva_refleja_correccion_numero_cuadro_sin_perder_asociacion(
+    client,
+    seed_serializacion,
+):
+    crear_bici = _crear_bici_serializada(client, seed_serializacion, "CUADRO-RES-OLD")
+    assert crear_bici.status_code == 200, crear_bici.text
+    bicicleta_id = crear_bici.json()["bicicleta_id"]
+
+    crear_reserva = _crear_reserva_serializada(client, seed_serializacion, bicicleta_id)
+    assert crear_reserva.status_code == 200, crear_reserva.text
+    reserva_id = crear_reserva.json()["reserva_id"]
+
+    correccion = client.patch(
+        f"/bicicletas_serializadas/{bicicleta_id}/numero-cuadro",
+        json={
+            "numero_cuadro": "CUADRO-RES-NUEVO",
+            "motivo": "Correccion de cuadro en reserva",
+        },
+    )
+    assert correccion.status_code == 200, correccion.text
+
+    detalle = client.get(f"/reservas/{reserva_id}")
+    assert detalle.status_code == 200, detalle.text
+    item = detalle.json()["items"][0]
+
+    assert item["id_bicicleta_serializada"] == bicicleta_id
+    assert item["serializada_numero_cuadro"] == "CUADRO-RES-NUEVO"
+    assert item["serializada_estado"] == "reservada"
+
+
+def test_detalle_reserva_sin_unidad_serializada_expone_estado_sin_asignacion(
+    client,
+    seed_serializacion,
+):
+    crear_reserva = _crear_reserva_sin_serie(client, seed_serializacion)
+    assert crear_reserva.status_code == 200, crear_reserva.text
+    reserva_id = crear_reserva.json()["reserva_id"]
+
+    detalle = client.get(f"/reservas/{reserva_id}")
+    assert detalle.status_code == 200, detalle.text
+    item = detalle.json()["items"][0]
+
+    assert item["id_bicicleta_serializada"] is None
+    assert item["serializada_numero_cuadro"] is None
+    assert item["serializada_estado"] is None
+
+
+def test_reserva_items_no_guarda_snapshot_duplicado_de_numero_cuadro(db_conn):
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'reserva_items'
+              AND column_name IN ('numero_cuadro', 'serializada_numero_cuadro')
+            """
+        )
+        columnas = cur.fetchall()
+
+    assert columnas == []
+
+
+def test_venta_sin_serie_crea_venta_generica_pero_no_entrega_serializable(
+    client,
+    db_conn,
+    seed_serializacion,
+):
     response = _crear_venta_sin_serie(client, seed_serializacion)
     assert response.status_code == 200, response.text
 
@@ -455,6 +759,23 @@ def test_venta_sin_serie_sigue_funcionando_para_bici_en_caja(client, db_conn, se
     assert len(movimientos) == 1
     assert movimientos[0]["tipo_movimiento"] == "venta"
     assert movimientos[0]["id_bicicleta_serializada"] is None
+
+    abrir = _abrir_caja(
+        client,
+        seed_serializacion["sucursal_id"],
+        seed_serializacion["usuario_id"],
+    )
+    assert abrir.status_code == 200, abrir.text
+
+    pago = _pagar_venta_total(client, venta_id, seed_serializacion)
+    assert pago.status_code == 200, pago.text
+
+    entregar = client.post(
+        f"/ventas/{venta_id}/entregar",
+        json={"id_usuario": seed_serializacion["usuario_id"]},
+    )
+    assert entregar.status_code == 400
+    assert "unidad asignada" in entregar.json()["detail"].lower()
 
 
 def test_venta_con_bici_serializada_ok_si_esta_disponible(client, db_conn, seed_serializacion):

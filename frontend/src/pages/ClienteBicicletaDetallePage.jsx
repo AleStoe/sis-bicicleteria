@@ -12,6 +12,7 @@ import { formatDate } from "../utils/formatters";
 import { Button, EmptyState, PageHeader } from "../components/ui";
 import { ArrowLeft, Bike, RefreshCw, Wrench } from "lucide-react";
 import { colors, controls, radius, shadows, spacing, typography } from "../theme";
+import CorregirNumeroCuadroModal from "../components/serializadas/CorregirNumeroCuadroModal";
 export default function ClienteBicicletaDetallePage() {
   const { clienteId, bicicletaId } = useParams();
   const navigate = useNavigate();
@@ -21,6 +22,7 @@ export default function ClienteBicicletaDetallePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
+  const [correccionCuadro, setCorreccionCuadro] = useState(null);
   const [editando, setEditando] = useState(false);
   const [editForm, setEditForm] = useState({
     marca: "",
@@ -310,10 +312,28 @@ export default function ClienteBicicletaDetallePage() {
             <Info label="Rodado" value={bicicleta.rodado || "-"} />
             <Info label="Color" value={bicicleta.color || "-"} />
             <Info label="Número de cuadro" value={bicicleta.numero_cuadro || "-"} />
-            <Info
-              label="Serializada"
-              value={bicicleta.id_bicicleta_serializada ? `#${bicicleta.id_bicicleta_serializada}` : "-"}
-            />
+            <div style={infoCardStyle}>
+              <div style={infoLabelStyle}>Serializada</div>
+              <strong>
+                {bicicleta.id_bicicleta_serializada
+                  ? `#${bicicleta.id_bicicleta_serializada}`
+                  : "-"}
+              </strong>
+              {bicicleta.id_bicicleta_serializada && (
+                <button
+                  type="button"
+                  style={smallLinkButtonStyle}
+                  onClick={() =>
+                    setCorreccionCuadro({
+                      id: bicicleta.id_bicicleta_serializada,
+                      numero_cuadro: bicicleta.numero_cuadro || "",
+                    })
+                  }
+                >
+                  Corregir número de cuadro
+                </button>
+              )}
+            </div>
             <Info label="Notas" value={bicicleta.notas || "-"} full />
           </div>
         </div>
@@ -531,6 +551,16 @@ export default function ClienteBicicletaDetallePage() {
           </div>
         )}
       </section>
+
+      {correccionCuadro && (
+        <CorregirNumeroCuadroModal
+          idBicicletaSerializada={correccionCuadro.id}
+          numeroActual={correccionCuadro.numero_cuadro}
+          contexto="cliente"
+          onClose={() => setCorreccionCuadro(null)}
+          onCorregido={cargarHistorial}
+        />
+      )}
     </div>
   );
 }
@@ -1177,6 +1207,17 @@ const actionLabelStyle = {
   fontSize: "12px",
   fontWeight: 1000,
   textTransform: "uppercase",
+};
+
+const smallLinkButtonStyle = {
+  border: "none",
+  background: "transparent",
+  color: colors?.primary || "#f97316",
+  fontWeight: 900,
+  padding: "6px 0 0",
+  textAlign: "left",
+  cursor: "pointer",
+  textDecoration: "underline",
 };
 
 const primaryBtnStyle = {

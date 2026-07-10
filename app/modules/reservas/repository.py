@@ -284,7 +284,12 @@ def get_reserva_items(conn, reserva_id: int):
                 ri.id_reserva,
                 ri.id_variante,
                 ri.id_bicicleta_serializada,
+                bs.numero_cuadro AS serializada_numero_cuadro,
+                bs.estado AS serializada_estado,
+                bs.id_sucursal_actual AS serializada_id_sucursal_actual,
                 CONCAT(p.nombre, ' - ', v.nombre_variante) AS descripcion_snapshot,
+                p.nombre AS producto_nombre,
+                v.nombre_variante,
                 ri.cantidad,
                 ri.precio_estimado,
                 ri.subtotal_estimado,
@@ -294,6 +299,7 @@ def get_reserva_items(conn, reserva_id: int):
             INNER JOIN reservas r ON r.id = ri.id_reserva
             INNER JOIN variantes v ON v.id = ri.id_variante
             INNER JOIN productos p ON p.id = v.id_producto
+            LEFT JOIN bicicletas_serializadas bs ON bs.id = ri.id_bicicleta_serializada
             WHERE ri.id_reserva = %s
             ORDER BY ri.id
             """,

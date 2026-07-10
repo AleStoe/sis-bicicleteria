@@ -18,6 +18,30 @@ class BicicletaSerializadaCreateOutput(BaseModel):
     estado: str
 
 
+class BicicletaSerializadaCorregirNumeroCuadroInput(BaseModel):
+    numero_cuadro: str = Field(min_length=1, max_length=100)
+    motivo: str = Field(min_length=1, max_length=1000)
+
+
+class BicicletaSerializadaCorregirNumeroCuadroOutput(BaseModel):
+    ok: bool
+    bicicleta_id: int
+    numero_cuadro_anterior: str
+    numero_cuadro_nuevo: str
+    bicicletas_cliente_actualizadas: int = 0
+
+
+class BicicletaSerializadaCorreccionNumeroCuadroOutput(BaseModel):
+    id: int
+    fecha: datetime
+    usuario_nombre: Optional[str] = None
+    usuario_username: Optional[str] = None
+    numero_cuadro_anterior: Optional[str] = None
+    numero_cuadro_nuevo: Optional[str] = None
+    motivo: Optional[str] = None
+    origen_accion: Optional[str] = None
+
+
 class BicicletaSerializadaOutput(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

@@ -9,6 +9,7 @@ import { useSession } from "../context/SessionContext";
 import useMediaQuery from "../hooks/useMediaQuery";
 import { normalizeTextUpper } from "../utils/textNormalization";
 import { formatProductoVariante } from "../utils/productPresentation";
+import CorregirNumeroCuadroModal from "../components/serializadas/CorregirNumeroCuadroModal";
 const ESTADOS = [
   { value: "disponible", label: "Disponibles", emoji: "✅" },
   { value: "reservada", label: "Reservadas", emoji: "🟡" },
@@ -112,6 +113,7 @@ export default function BicicletasSerializadasPage() {
   const [variantesSerializables, setVariantesSerializables] = useState([]);
   const [buscandoVariantes, setBuscandoVariantes] = useState(false);
   const [varianteSeleccionada, setVarianteSeleccionada] = useState(null);
+  const [corrigiendoCuadro, setCorrigiendoCuadro] = useState(null);
 
   const [form, setForm] = useState({
       id_variante: "",
@@ -413,7 +415,14 @@ export default function BicicletasSerializadasPage() {
         <aside style={sideStyle}>
           <section style={detailCardStyle}>
             <h2 style={cardTitleStyle}>Detalle operativo</h2>
-            {seleccionada ? <BiciDetalle bici={seleccionada} /> : <p style={mutedStyle}>Seleccioná una unidad.</p>}
+            {seleccionada ? (
+              <BiciDetalle
+                bici={seleccionada}
+                onCorregirNumeroCuadro={() => setCorrigiendoCuadro(seleccionada)}
+              />
+            ) : (
+              <p style={mutedStyle}>Seleccioná una unidad.</p>
+            )}
           </section>
 
         </aside>
@@ -551,6 +560,22 @@ export default function BicicletasSerializadasPage() {
         </div>
       )}
 
+      {corrigiendoCuadro && (
+        <CorregirNumeroCuadroModal
+          idBicicletaSerializada={corrigiendoCuadro.id}
+          numeroActual={corrigiendoCuadro.numero_cuadro}
+          contexto="serializadas"
+          onClose={() => setCorrigiendoCuadro(null)}
+          onCorregido={async (res) => {
+            setMensaje(
+              `Número de cuadro corregido: ${res.numero_cuadro_anterior} → ${res.numero_cuadro_nuevo}`
+            );
+            await cargarSerializadas();
+            setSeleccionadaId(res.bicicleta_id);
+          }}
+        />
+      )}
+
     </div>
   );
 }
@@ -596,7 +621,7 @@ function BiciCard({ bici, selected, onClick }) {
   );
 }
 
-function BiciDetalle({ bici }) {
+function BiciDetalle({ bici, onCorregirNumeroCuadro }) {
   const imagen = getImagenBici(bici);
 
   return (
@@ -617,6 +642,9 @@ function BiciDetalle({ bici }) {
       <div style={detalleCuadroStyle}>
         <span>Número de cuadro</span>
         <strong>{bici.numero_cuadro}</strong>
+        <button type="button" style={corregirCuadroButtonStyle} onClick={onCorregirNumeroCuadro}>
+          Corregir número
+        </button>
       </div>
 
       <div style={detalleGridStyle}>
@@ -797,6 +825,7 @@ const detalleImageStyle = { width: "100%", height: "100%", objectFit: "contain",
 const detalleFallbackStyle = { fontSize: 62 };
 const detalleTitleStyle = { margin: "8px 0 0", fontSize: 19, lineHeight: 1.25 };
 const detalleCuadroStyle = { background: "#1e293b", border: "1px solid rgba(148, 163, 184, .25)", borderRadius: 16, padding: 14, display: "grid", gap: 5 };
+const corregirCuadroButtonStyle = { border: "1px solid rgba(251, 146, 60, .45)", background: "rgba(249, 115, 22, .16)", color: "#fed7aa", borderRadius: 10, padding: "8px 10px", fontWeight: 1000, cursor: "pointer", marginTop: 6 };
 const detalleGridStyle = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 };
 const infoBoxStyle = { background: "#1e293b", borderRadius: 14, padding: 10, display: "grid", gap: 4, color: "#cbd5e1" };
 const ownerDetailStyle = { background: "rgba(249, 115, 22, 0.14)", border: "1px solid rgba(251, 146, 60, 0.32)", color: "#fed7aa", borderRadius: 14, padding: 12, display: "grid", gap: 4 };

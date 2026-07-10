@@ -130,6 +130,11 @@ class ReservaDetalleItemOutput(BaseModel):
     id_reserva: int
     id_variante: int
     id_bicicleta_serializada: int | None = None
+    serializada_numero_cuadro: str | None = None
+    serializada_estado: str | None = None
+    serializada_id_sucursal_actual: int | None = None
+    producto_nombre: str | None = None
+    nombre_variante: str | None = None
     descripcion_snapshot: str
     cantidad: Decimal
     precio_estimado: Decimal

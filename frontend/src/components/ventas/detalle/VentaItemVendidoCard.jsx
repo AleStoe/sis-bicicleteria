@@ -8,6 +8,7 @@ export default function VentaItemVendidoCard({
   procesando,
   onDevolverItem,
   onDevolverSerializada,
+  onCorregirNumeroCuadro,
 }) {
   const { isMobile } = useBreakpoint();
   const cantidadDevuelta = Number(item.cantidad_devuelta || 0);
@@ -54,6 +55,19 @@ export default function VentaItemVendidoCard({
             {item.id_bicicleta_serializada
               ? `Serializada #${item.id_bicicleta_serializada}`
               : "No serializada"}
+            {item.id_bicicleta_serializada && (
+              <>
+                {" "}
+                ·{" "}
+                <button
+                  type="button"
+                  style={linkButtonStyle}
+                  onClick={() => onCorregirNumeroCuadro?.(item)}
+                >
+                  Corregir cuadro
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -184,6 +198,16 @@ const metaStyle = {
   color: "#667085",
   fontSize: 12,
   lineHeight: 1.3,
+};
+
+const linkButtonStyle = {
+  border: "none",
+  background: "transparent",
+  color: "#f97316",
+  fontWeight: 900,
+  padding: 0,
+  cursor: "pointer",
+  textDecoration: "underline",
 };
 
 const subtotalBlockStyle = {
