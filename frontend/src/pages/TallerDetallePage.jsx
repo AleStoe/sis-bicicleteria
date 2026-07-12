@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useSession } from "../context/SessionContext";
 import { listarVariantes } from "../services/catalogoService";
@@ -11,6 +11,7 @@ import {
   obtenerOrdenTaller,
   revertirEjecucionItemOrdenTaller,
   cancelarItemOrdenTaller,
+  quitarItemBorradorOrdenTaller,
   generarVentaDesdeOrdenTaller,
   getPresupuestoTallerUrl,
   actualizarOperativoOrdenTaller,
@@ -19,16 +20,14 @@ import {
   crearNotaOrdenTaller,
   actualizarNotaOrdenTaller,
 } from "../services/tallerService";
-import { formatDate, formatMoney } from "../utils/formatters";
+import { formatDate, formatMoney, formatNumber } from "../utils/formatters";
 import { esVarianteUnica } from "../utils/productPresentation";
 import { EstadoBadge } from "./TallerListPage";
 import { PromptModal } from "../components/ui/PromptModal";
-import { Button, EmptyState, PageHeader } from "../components/ui";
+import { EmptyState } from "../components/ui";
 import { ArrowLeft, ClipboardList, RefreshCw } from "lucide-react";
 import {
   Info,
-  ItemCard,
-  Metric,
   OperadorPanel,
   ServicioTallerOption,
   TallerItemOption,
@@ -39,6 +38,7 @@ import {
   descripcionBicicletaOrden,
   esItemPermitidoParaTaller,
   humanizarEvento,
+  labelEtapa,
   labelEstado,
   nombreClienteOrden,
   normalizarTexto,
@@ -191,6 +191,47 @@ function QuickAction({ title, detail, label, disabled, onClick }) {
   );
 }
 
+function ItemDrawer({ open, onClose, children, isMobile }) {
+  useEffect(() => {
+    if (!open || typeof document === "undefined") return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") onClose?.();
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div style={styles.drawerLayer} role="dialog" aria-modal="true" aria-label="Agregar item a la orden">
+      <button type="button" aria-label="Cerrar carga de item" style={styles.drawerBackdrop} onClick={onClose} />
+      <section style={{ ...styles.itemDrawer, ...(isMobile ? styles.itemDrawerMobile : {}) }}>
+        <header style={styles.itemDrawerHeader}>
+          <div>
+            <p style={styles.eyebrow}>Carga de trabajo</p>
+            <h2 style={styles.cardTitle}>Agregar item</h2>
+            <p style={styles.muted}>Buscá un repuesto o servicio y agregalo directo a la orden.</p>
+          </div>
+          <button type="button" onClick={onClose} style={styles.drawerCloseButton} aria-label="Cerrar drawer">
+            ×
+          </button>
+        </header>
+        <div style={styles.itemDrawerBody}>{children}</div>
+      </section>
+    </div>
+  );
+}
+
 export default function TallerDetallePage() {
   const { ordenId } = useParams();
   const navigate = useNavigate();
@@ -207,6 +248,8 @@ export default function TallerDetallePage() {
   const [nuevoEstado, setNuevoEstado] = useState("");
   const [busquedaVariante, setBusquedaVariante] = useState("");
   const [busquedaServicio, setBusquedaServicio] = useState("");
+  const [agregarItemsOpen, setAgregarItemsOpen] = useState(false);
+  const [itemsPendientesSeleccionados, setItemsPendientesSeleccionados] = useState([]);
   const [itemForm, setItemForm] = useState({
     tipo_item: "repuesto",
     id_variante: "",
@@ -226,6 +269,26 @@ export default function TallerDetallePage() {
     tipo: "interna",
     contenido: "",
   });
+  const quitandoItemBorradorRef = useRef(false);
+  const busquedaVarianteRef = useRef(null);
+  const busquedaServicioRef = useRef(null);
+
+  function enfocarBuscadorItem(tipo = itemForm.tipo_item) {
+    if (typeof window === "undefined") return;
+    window.requestAnimationFrame(() => {
+      if (tipo === "servicio") {
+        busquedaServicioRef.current?.focus();
+      } else {
+        busquedaVarianteRef.current?.focus();
+      }
+    });
+  }
+
+  useEffect(() => {
+    if (!agregarItemsOpen) return;
+    enfocarBuscadorItem();
+  }, [agregarItemsOpen, itemForm.tipo_item]);
+
   function formatUsuario(item) {
     if (item.usuario_nombre) {
       return item.usuario_username
@@ -294,6 +357,33 @@ export default function TallerDetallePage() {
   const notas = orden?.notas || [];
   const alertasBicicleta = orden?.alertas_bicicleta || [];
 
+  const itemsPorEtapa = useMemo(() => {
+    const pendientes = [];
+    const aprobados = [];
+    const ejecutados = [];
+    const cancelados = [];
+
+    items.forEach((item) => {
+      if (item.etapa === "cancelado") cancelados.push(item);
+      else if (item.etapa === "ejecutado") ejecutados.push(item);
+      else if (item.etapa === "agregado") aprobados.push(item);
+      else pendientes.push(item);
+    });
+
+    return { pendientes, aprobados, ejecutados, cancelados };
+  }, [items]);
+
+  const idsPendientes = useMemo(
+    () => itemsPorEtapa.pendientes.map((item) => String(item.id)),
+    [itemsPorEtapa.pendientes],
+  );
+
+  useEffect(() => {
+    setItemsPendientesSeleccionados((actuales) =>
+      actuales.filter((id) => idsPendientes.includes(String(id))),
+    );
+  }, [idsPendientes]);
+
   const resumen = useMemo(() => {
     return items.reduce(
       (acc, item) => {
@@ -345,20 +435,33 @@ export default function TallerDetallePage() {
       )
     );
 
+  const ordenSinCargo =
+    Number(orden?.total_final || 0) <= 0 ||
+    (resumen.activos > 0 && Number(resumen.total || 0) <= 0);
+
   const puedeGenerarVenta =
     orden?.estado === "terminada" &&
     !orden?.id_venta_generada &&
+    !ordenSinCargo &&
     (!esOrdenPostventa || Number(orden?.total_final || 0) > 0) &&
     resumen.facturables > 0;
 
   const puedeMarcarListaParaRetirar =
-    esOrdenPostventa
+    ordenSinCargo
+      ? orden?.estado === "terminada"
+      : esOrdenPostventa
       ? Number(orden?.total_final || 0) > 0
         ? orden?.estado === "facturada" && Boolean(orden?.id_venta_generada)
         : orden?.estado === "terminada"
       : orden?.estado === "facturada" && Boolean(orden?.id_venta_generada);
 
   const puedeMarcarRetirada = orden?.estado === "lista_para_retirar";
+
+  const itemsPendientesAprobacion = items.filter((item) => item.etapa === "presupuestado");
+  const itemsAprobadosSinEjecutar = items.filter((item) => item.etapa === "agregado");
+  const puedeAprobarTodo = itemsPendientesAprobacion.length > 0;
+  const puedeDesaprobarTodo = itemsAprobadosSinEjecutar.length > 0;
+  const puedeEjecutarTodo = itemsAprobadosSinEjecutar.length > 0;
 
   const variantesFiltradas = useMemo(() => {
     const q = normalizarTexto(busquedaVariante);
@@ -422,9 +525,14 @@ export default function TallerDetallePage() {
     if (!orden) return [];
 
     return (TRANSICIONES_UI[orden.estado] || []).filter((estado) => {
+      const sinCargo =
+        Number(orden.total_final || 0) <= 0 ||
+        (resumen.activos > 0 && Number(resumen.total || 0) <= 0);
+
       if (
         estado === "lista_para_retirar" &&
         !orden.id_venta_generada &&
+        !sinCargo &&
         (
           orden.es_service_postventa !== true ||
           Number(orden.total_final || 0) > 0
@@ -435,7 +543,7 @@ export default function TallerDetallePage() {
 
       return true;
     });
-  }, [orden]);
+  }, [orden, resumen.activos, resumen.total]);
 
   function cambiarTipoItem(tipoItem) {
     setError("");
@@ -561,13 +669,6 @@ export default function TallerDetallePage() {
       const cobertura = Number(itemForm.valor_cobertura_unitario || 0);
       const precioUnitario = Number(itemForm.precio_unitario || 0);
 
-      if (esServicio && precioUnitario <= 0) {
-        setError(
-          "El servicio necesita un precio de referencia mayor a cero. Para dejarlo sin cargo, usá “Bonificar servicio”.",
-        );
-        return;
-      }
-
       if (
         itemForm.cubrir_garantia &&
         cobertura > precioUnitario
@@ -630,6 +731,7 @@ export default function TallerDetallePage() {
       setBusquedaServicio("");
       await refrescarOrden();
       setMensaje(esServicio ? "Servicio agregado correctamente" : "Repuesto agregado correctamente");
+      enfocarBuscadorItem(itemForm.tipo_item);
     } catch (err) {
 
       if (err?.response) {
@@ -705,6 +807,7 @@ export default function TallerDetallePage() {
       setBusquedaServicio("");
       await refrescarOrden();
       setMensaje(esServicio ? "Servicio agregado correctamente" : "Repuesto agregado correctamente");
+      enfocarBuscadorItem(tipo_item);
     } catch (err) {
       setError(err?.detail || err?.message || "No se pudo agregar el item");
     } finally {
@@ -727,6 +830,66 @@ export default function TallerDetallePage() {
     }
   }
 
+  async function aprobarTodo() {
+    if (!itemsPendientesAprobacion.length) {
+      setMensaje("No hay items pendientes de aprobacion.");
+      return;
+    }
+
+    try {
+      setGuardando(true);
+      setError("");
+      setMensaje("");
+      for (const item of itemsPendientesAprobacion) {
+        await aprobarItemOrdenTaller(ordenId, item.id, { aprobado: true, id_usuario: usuarioId });
+      }
+      await refrescarOrden();
+      setMensaje(`${itemsPendientesAprobacion.length} item/s aprobados correctamente.`);
+    } catch (err) {
+      setError(err.message || "No se pudieron aprobar todos los items");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  async function desaprobarTodo() {
+    if (!itemsAprobadosSinEjecutar.length) {
+      setMensaje("No hay items aprobados sin ejecutar para desaprobar.");
+      return;
+    }
+
+    const motivo = await pedirPrompt({
+      title: "Desaprobar todo",
+      message: "Se aplicara el mismo motivo a todos los items aprobados que todavia no fueron ejecutados.",
+      label: "Motivo",
+      placeholder: "Cliente cancelo el trabajo / Presupuesto rechazado / Falta de repuestos / Se realizara mas adelante / Otro",
+      required: true,
+      minLength: 3,
+      confirmText: "Desaprobar todo",
+    });
+    if (!motivo || !motivo.trim()) return;
+
+    try {
+      setGuardando(true);
+      setError("");
+      setMensaje("");
+      for (const item of itemsAprobadosSinEjecutar) {
+        await aprobarItemOrdenTaller(ordenId, item.id, { aprobado: false, id_usuario: usuarioId });
+      }
+      await crearNotaOrdenTaller(ordenId, {
+        tipo: "interna",
+        contenido: `Desaprobacion masiva de items. Motivo: ${motivo.trim()}`,
+        id_usuario: usuarioId,
+      });
+      await refrescarOrden();
+      setMensaje(`${itemsAprobadosSinEjecutar.length} item/s desaprobados. Motivo: ${motivo.trim()}`);
+    } catch (err) {
+      setError(err.message || "No se pudieron desaprobar todos los items");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
   async function ejecutarItem(item) {
     try {
       setGuardando(true);
@@ -737,6 +900,98 @@ export default function TallerDetallePage() {
       setMensaje("Item ejecutado correctamente");
     } catch (err) {
       setError(err.message || "No se pudo ejecutar el item");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  function toggleItemPendiente(itemId) {
+    const id = String(itemId);
+    setItemsPendientesSeleccionados((actuales) =>
+      actuales.includes(id)
+        ? actuales.filter((actual) => actual !== id)
+        : [...actuales, id],
+    );
+  }
+
+  function toggleTodosPendientes() {
+    setItemsPendientesSeleccionados((actuales) =>
+      actuales.length === idsPendientes.length ? [] : idsPendientes,
+    );
+  }
+
+  async function aprobarPendientesSeleccionados() {
+    const seleccionados = itemsPorEtapa.pendientes.filter((item) =>
+      itemsPendientesSeleccionados.includes(String(item.id)),
+    );
+    if (!seleccionados.length) return;
+
+    try {
+      setGuardando(true);
+      setError("");
+      setMensaje("");
+      for (const item of seleccionados) {
+        await aprobarItemOrdenTaller(ordenId, item.id, { aprobado: true, id_usuario: usuarioId });
+      }
+      setItemsPendientesSeleccionados([]);
+      await refrescarOrden();
+      setMensaje(`${seleccionados.length} item/s aprobados correctamente.`);
+    } catch (err) {
+      setError(err.message || "No se pudieron aprobar los items seleccionados");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  async function cancelarPendientesSeleccionados() {
+    const seleccionados = itemsPorEtapa.pendientes.filter((item) =>
+      itemsPendientesSeleccionados.includes(String(item.id)),
+    );
+    if (!seleccionados.length) return;
+
+    const motivo = await pedirPrompt({
+      title: "Cancelar seleccionados",
+      label: "Motivo de cancelacion",
+      required: true,
+      minLength: 3,
+      confirmText: "Cancelar seleccionados",
+    });
+    if (!motivo || !motivo.trim()) return;
+
+    try {
+      setGuardando(true);
+      setError("");
+      setMensaje("");
+      for (const item of seleccionados) {
+        await cancelarItemOrdenTaller(ordenId, item.id, { id_usuario: usuarioId, motivo: motivo.trim() });
+      }
+      setItemsPendientesSeleccionados([]);
+      await refrescarOrden();
+      setMensaje(`${seleccionados.length} item/s cancelados correctamente.`);
+    } catch (err) {
+      setError(err.message || "No se pudieron cancelar los items seleccionados");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  async function ejecutarTodo() {
+    if (!itemsAprobadosSinEjecutar.length) {
+      setMensaje("No hay items aprobados pendientes de ejecutar.");
+      return;
+    }
+
+    try {
+      setGuardando(true);
+      setError("");
+      setMensaje("");
+      for (const item of itemsAprobadosSinEjecutar) {
+        await ejecutarItemOrdenTaller(ordenId, item.id, usuarioId);
+      }
+      await refrescarOrden();
+      setMensaje(`${itemsAprobadosSinEjecutar.length} item/s ejecutados correctamente.`);
+    } catch (err) {
+      setError(err.message || "No se pudieron ejecutar todos los items");
     } finally {
       setGuardando(false);
     }
@@ -778,6 +1033,30 @@ export default function TallerDetallePage() {
     }
   }
 
+  async function handleQuitarItemBorrador(item) {
+    if (guardando || quitandoItemBorradorRef.current) return;
+    quitandoItemBorradorRef.current = true;
+    const confirmar = window.confirm("¿Deseás quitar este ítem del borrador?");
+    if (!confirmar) {
+      quitandoItemBorradorRef.current = false;
+      return;
+    }
+
+    try {
+      setGuardando(true);
+      setError("");
+      setMensaje("");
+      await quitarItemBorradorOrdenTaller(ordenId, item.id, usuarioId);
+      await refrescarOrden();
+      setMensaje("Ítem quitado del borrador.");
+    } catch (err) {
+      setError(err?.detail || err?.message || "No se pudo quitar el ítem del borrador");
+    } finally {
+      quitandoItemBorradorRef.current = false;
+      setGuardando(false);
+    }
+  }
+
   async function generarVenta() {
     try {
       setGuardando(true);
@@ -785,7 +1064,7 @@ export default function TallerDetallePage() {
       setMensaje("");
       const resultado = await generarVentaDesdeOrdenTaller(ordenId, { id_usuario: usuarioId });
       await refrescarOrden();
-      setMensaje(`Venta #${resultado.venta_id} generada desde taller. Ya podés cobrarla desde esta OT.`);
+      setMensaje(`Venta generada correctamente (#${resultado.venta_id}). La venta quedo pendiente de cobro.`);
     } catch (err) {
       setError(err?.detail || err?.message || "No se pudo generar la venta desde taller");
     } finally {
@@ -952,227 +1231,19 @@ export default function TallerDetallePage() {
 
   return (
     <div style={{ ...styles.page, ...(isMobile ? styles.pageMobile : {}) }}>
-      <PageHeader
-        title={`Orden #${orden.id}`}
-        subtitle={`Ingresada: ${formatDate(orden.fecha_ingreso)} · ${nombreClienteOrden(orden)} · ${descripcionBicicletaOrden(orden)}`}
-        eyebrow={orden.es_service_postventa ? "Service postventa" : "Orden de taller"}
-        actions={(
-          <>
-            <Button type="button" variant="outline" onClick={cargarTodo}><RefreshCw size={17} /> Refrescar</Button>
-            <Link to="/taller" style={styles.headerLink}><ArrowLeft size={17} /> Volver</Link>
-          </>
-        )}
+      <TallerOrdenCompactHeader
+        orden={orden}
+        resumen={resumen}
+        esOrdenPostventa={esOrdenPostventa}
+        puedeTerminarTrabajo={puedeTerminarTrabajo}
+        onRefresh={cargarTodo}
       />
 
       {mensaje && <div style={styles.success}>{mensaje}</div>}
       {error && <div style={styles.error}>Error: {error}</div>}
 
-      <section style={{ ...styles.metricsGrid, ...(isMobile ? styles.metricsGridMobile : {}) }}>
-        <Metric label="Estado" value={<EstadoBadge estado={orden.estado} />} tone="dark" />
-        <Metric
-          label="Tipo"
-          value={orden.es_service_postventa ? "Postventa 30 días" : "Taller"}
-          tone={orden.es_service_postventa ? "info" : "muted"}
-        />
-        <Metric
-          label={esOrdenPostventa ? "Diferencia a cobrar" : "Total"}
-          value={formatMoney(orden.total_final)}
-          tone={
-            esOrdenPostventa && Number(orden.total_final || 0) <= 0
-              ? "ok"
-              : "orange"
-          }
-        />
-        <Metric label="Saldo pendiente" value={esOrdenPostventa ? "No aplica" : formatMoney(orden.saldo_pendiente)} tone={esOrdenPostventa || Number(orden.saldo_pendiente || 0) <= 0 ? "ok" : "warning"} />
-        <Metric label="Venta" value={esOrdenPostventa ? "No aplica" : orden.id_venta_generada ? `#${orden.id_venta_generada}` : "No generada"} tone={esOrdenPostventa || orden.id_venta_generada ? "ok" : "warning"} />
-        <Metric label="Prometida" value={orden.fecha_prometida ? formatDate(orden.fecha_prometida) : "Sin fecha"} tone={orden.dias_demorados > 0 ? "warning" : "muted"} />
-        <Metric label="Demora" value={orden.dias_demorados > 0 ? `${orden.dias_demorados} día(s)` : "Sin demora"} tone={orden.dias_demorados > 0 ? "warning" : "ok"} />
-        <Metric label="Prioridad" value={orden.prioridad === "urgente" ? "Urgente" : "Normal"} tone={orden.prioridad === "urgente" ? "warning" : "muted"} />
-        <Metric label="Items" value={resumen.items} tone="muted" />
-        <Metric label="Ejecutados" value={resumen.ejecutados} tone="ok" />
-        <Metric label="Pendientes" value={resumen.presupuestados + resumen.aprobados} tone="info" />
-      </section>
-
-      <AccionesRapidasTaller
-        orden={orden}
-        resumen={resumen}
-        guardando={guardando}
-        esOrdenPostventa={esOrdenPostventa}
-        items={items}
-        puedeGenerarVenta={puedeGenerarVenta}
-        puedeMarcarListaParaRetirar={puedeMarcarListaParaRetirar}
-        puedeMarcarRetirada={puedeMarcarRetirada}
-        onImprimirPresupuesto={imprimirPresupuesto}
-        onGenerarVenta={generarVenta}
-        onCobrar={irACobrarVenta}
-        onListaParaRetirar={() => cambiarEstadoDirecto("lista_para_retirar", "Orden lista para retirar")}
-        onWhatsappRetiro={enviarWhatsappRetiro}
-        onRetirada={() => cambiarEstadoDirecto("retirada", "Orden marcada como retirada")}
-      />
-
       <main style={{ ...styles.layout, ...(isMobile ? styles.layoutMobile : {}) }}>
-        <section style={{ ...styles.mainColumn, ...(isMobile ? styles.mainColumnMobile : {}) }}>
-          <section style={styles.card}>
-            <div style={styles.sectionHeader}>
-              <div>
-                <p style={styles.eyebrow}>Problema reportado</p>
-                <h2 style={styles.cardTitle}>{orden.problema_reportado}</h2>
-                {orden.observaciones && <p style={styles.muted}>{orden.observaciones}</p>}
-              </div>
-            </div>
-          </section>
-
-          <section style={styles.card}>
-            <div style={styles.sectionHeader}>
-              <p style={styles.eyebrow}>Historial técnico</p>
-              <h2 style={styles.cardTitle}>Notas y recomendaciones</h2>
-              <p style={styles.muted}>
-                La visibilidad al cliente depende del tipo elegido.
-              </p>
-            </div>
-
-            {alertasBicicleta.length > 0 ? (
-              <div style={styles.previousAlertsBox}>
-                <strong>Alertas activas de servicios anteriores</strong>
-                {alertasBicicleta.map((alerta) => (
-                  <div key={alerta.id} style={styles.previousAlertItem}>
-                    <span>{alerta.contenido}</span>
-                    <Link
-                      to={`/taller/${alerta.id_orden_taller}`}
-                      style={styles.previousAlertLink}
-                    >
-                      Ver OT #{alerta.id_orden_taller}
-                    </Link>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-
-            <form onSubmit={agregarNota} style={styles.noteComposer}>
-              <label style={styles.field}>
-                <span style={styles.label}>Tipo de nota</span>
-                <select
-                  value={notaForm.tipo}
-                  onChange={(e) =>
-                    setNotaForm((actual) => ({ ...actual, tipo: e.target.value }))
-                  }
-                  style={styles.input}
-                >
-                  <option value="interna">Nota interna</option>
-                  <option value="cliente">Nota para cliente</option>
-                  <option value="recomendacion_futura">Recomendación futura</option>
-                  <option value="alerta_tecnica">Alerta técnica de bicicleta</option>
-                </select>
-              </label>
-
-              <label style={styles.field}>
-                <span style={styles.label}>Contenido</span>
-                <textarea
-                  value={notaForm.contenido}
-                  onChange={(e) =>
-                    setNotaForm((actual) => ({
-                      ...actual,
-                      contenido: e.target.value,
-                    }))
-                  }
-                  placeholder="Ej: revisar pastillas de freno en el próximo service"
-                  style={styles.noteTextarea}
-                  maxLength={2000}
-                />
-              </label>
-
-              <div style={styles.noteComposerFooter}>
-                <span style={styles.noteVisibilityHint}>
-                  {visibilidadTipoNota(notaForm.tipo)}
-                </span>
-                <button
-                  type="submit"
-                  disabled={guardando || !notaForm.contenido.trim()}
-                  style={styles.primaryButton}
-                >
-                  Agregar nota
-                </button>
-              </div>
-            </form>
-
-            {notas.length === 0 ? (
-              <div style={styles.emptySmall}>Todavía no hay notas técnicas.</div>
-            ) : (
-              <div style={styles.notesList}>
-                {notas.map((nota) => (
-                  <article
-                    key={nota.id}
-                    style={{
-                      ...styles.technicalNote,
-                      ...(nota.estado === "archivada"
-                        ? styles.technicalNoteArchived
-                        : {}),
-                    }}
-                  >
-                    <div style={styles.technicalNoteHeader}>
-                      <div style={styles.noteBadges}>
-                        <span style={styleTipoNota(nota.tipo)}>
-                          {labelTipoNota(nota.tipo)}
-                        </span>
-                        <span style={styleEstadoNota(nota.estado)}>
-                          {labelEstadoNota(nota.estado)}
-                        </span>
-                      </div>
-                      <span style={styles.technicalNoteMeta}>
-                        {formatDate(nota.created_at)} ·{" "}
-                        {nota.usuario_creador_nombre ||
-                          `Usuario #${nota.id_usuario_creador}`}
-                      </span>
-                    </div>
-
-                    <p style={styles.technicalNoteText}>{nota.contenido}</p>
-
-                    <div style={styles.noteActions}>
-                      <button
-                        type="button"
-                        onClick={() => editarNota(nota)}
-                        disabled={guardando}
-                        style={styles.smallSecondary}
-                      >
-                        Editar
-                      </button>
-                      {nota.estado !== "resuelta" ? (
-                        <button
-                          type="button"
-                          onClick={() => cambiarEstadoNota(nota, "resuelta")}
-                          disabled={guardando}
-                          style={styles.smallPrimary}
-                        >
-                          Marcar resuelta
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => cambiarEstadoNota(nota, "activa")}
-                          disabled={guardando}
-                          style={styles.smallSecondary}
-                        >
-                          Reactivar
-                        </button>
-                      )}
-                      {nota.estado !== "archivada" ? (
-                        <button
-                          type="button"
-                          onClick={() => cambiarEstadoNota(nota, "archivada")}
-                          disabled={guardando}
-                          style={styles.smallDanger}
-                        >
-                          Archivar
-                        </button>
-                      ) : null}
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
-          </section>
-
-          {esOrdenPostventa ? (
+        <section style={{ ...styles.mainColumn, ...(isMobile ? styles.mainColumnMobile : {}) }}>{esOrdenPostventa ? (
             <section style={styles.card}>
               <div style={styles.sectionHeader}>
                 <div>
@@ -1189,8 +1260,52 @@ export default function TallerDetallePage() {
               </div>
             </section>
           ) : null}
+          <TrabajosOrdenPanel
+            orden={orden}
+            grupos={itemsPorEtapa}
+            resumen={resumen}
+            guardando={guardando}
+            seleccionadosPendientes={itemsPendientesSeleccionados}
+            idsPendientes={idsPendientes}
+            onTogglePendiente={toggleItemPendiente}
+            onToggleTodosPendientes={toggleTodosPendientes}
+            onAprobarSeleccionados={aprobarPendientesSeleccionados}
+            onCancelarSeleccionados={cancelarPendientesSeleccionados}
+            onAprobarItem={(item) => aprobarItem(item, true)}
+            onDesaprobarItem={(item) => aprobarItem(item, false)}
+            onEjecutarItem={ejecutarItem}
+            onRevertirItem={revertirItem}
+            onCancelarItem={handleCancelarItem}
+            onQuitarBorrador={handleQuitarItemBorrador}
+            onAbrirAgregar={() => setAgregarItemsOpen(true)}
+          />
+        </section>
 
-          <section style={styles.card}>
+        <aside style={{ ...styles.sidePanel, ...(isMobile ? styles.sidePanelMobile : {}) }}>
+          <OperadorPanel
+            compact={isMobile}
+            orden={orden}
+            resumen={resumen}
+            guardando={guardando}
+            puedeTerminarTrabajo={puedeTerminarTrabajo}
+            puedeGenerarVenta={puedeGenerarVenta}
+            puedeMarcarListaParaRetirar={puedeMarcarListaParaRetirar}
+            puedeMarcarRetirada={puedeMarcarRetirada}
+            onPasarPresupuestada={() => cambiarEstadoDirecto("presupuestada", "Orden marcada como presupuestada")}
+            onPasarEnReparacion={() => cambiarEstadoDirecto("en_reparacion", "Orden marcada en reparacion")}
+            onEjecutarPendientes={ejecutarTodo}
+            onTerminar={() => cambiarEstadoDirecto("terminada", "Trabajo marcado como terminado")}
+            onGenerarVenta={generarVenta}
+            onCobrar={irACobrarVenta}
+            onListaParaRetirar={() => cambiarEstadoDirecto("lista_para_retirar", "Trabajo marcado como listo para retirar.")}
+            onRetirada={() => cambiarEstadoDirecto("retirada", "Orden retirada y finalizada.")}
+          />
+
+          <ItemDrawer
+            open={agregarItemsOpen}
+            onClose={() => setAgregarItemsOpen(false)}
+            isMobile={isMobile}
+          >
             <div style={styles.sectionHeader}>
               <div>
                 <p style={styles.eyebrow}>Presupuesto / repuestos</p>
@@ -1222,6 +1337,7 @@ export default function TallerDetallePage() {
                   <label style={styles.field}>
                     <span style={styles.label}>Buscar servicio de taller</span>
                     <input
+                      ref={busquedaServicioRef}
                       value={busquedaServicio}
                       onChange={(e) => setBusquedaServicio(e.target.value)}
                       placeholder="Ej: centrado, service completo, armado..."
@@ -1243,10 +1359,6 @@ export default function TallerDetallePage() {
                       ))}
                     </select>
                   </label>
-
-                  <div style={styles.selectorHint}>
-                    Los servicios no tienen stock, proveedor ni variantes. Se copia nombre y precio sugerido a la orden.
-                  </div>
 
                   <div style={styles.itemsPicker}>
                     {serviciosFiltrados.length === 0 ? (
@@ -1275,16 +1387,13 @@ export default function TallerDetallePage() {
                   <label style={styles.field}>
                     <span style={styles.label}>Buscar repuesto o accesorio</span>
                     <input
+                      ref={busquedaVarianteRef}
                       value={busquedaVariante}
                       onChange={(e) => setBusquedaVariante(e.target.value)}
                       placeholder="Ej: cámara, cadena, freno, lubricante..."
                       style={styles.input}
                     />
                   </label>
-
-                  <div style={styles.selectorHint}>
-                    Se ocultan bicicletas completas y serializadas. Los servicios se cargan desde el selector Servicio.
-                  </div>
 
                   <div style={styles.itemsPicker}>
                     {variantesFiltradas.length === 0 ? (
@@ -1519,7 +1628,7 @@ export default function TallerDetallePage() {
 
               <div style={{ ...styles.itemFormRow, ...(isMobile ? styles.itemFormRowMobile : {}) }}>
                 {itemForm.tipo_item === "servicio" && !itemForm.id_servicio_taller && (
-                  <div style={styles.error}>
+                  <div style={styles.inlineError}>
                     Primero elegí un servicio en “Servicio seleccionado”.
                   </div>
                 )}
@@ -1532,7 +1641,7 @@ export default function TallerDetallePage() {
                   <span style={styles.label}>Precio unitario</span>
                   <input
                     type="number"
-                    min={itemForm.tipo_item === "servicio" ? "0.01" : "0"}
+                    min="0"
                     step="0.01"
                     value={itemForm.precio_unitario}
                     disabled={itemForm.tipo_item === "servicio" && !itemForm.id_servicio_taller}
@@ -1577,64 +1686,185 @@ export default function TallerDetallePage() {
                 </button>
               </div>
             </form>
-          </section>
+          </ItemDrawer>
 
-          <section style={styles.cardNoPadding}>
-            <div style={styles.tableHeader}>
-              <div>
-                <p style={styles.eyebrow}>{esOrdenPostventa ? "Control realizado" : "Trabajo"}</p>
-                <h2 style={styles.cardTitle}>{esOrdenPostventa ? "Detalle postventa" : "Items de la orden"}</h2>
-              </div>
+          <CollapsiblePanel title="Mas opciones" eyebrow="Acciones operativas">
+            <AccionesRapidasTaller
+              orden={orden}
+              resumen={resumen}
+              guardando={guardando}
+              esOrdenPostventa={esOrdenPostventa}
+              items={items}
+              puedeGenerarVenta={puedeGenerarVenta}
+              puedeMarcarListaParaRetirar={puedeMarcarListaParaRetirar}
+              puedeMarcarRetirada={puedeMarcarRetirada}
+              onImprimirPresupuesto={imprimirPresupuesto}
+              onGenerarVenta={generarVenta}
+              onCobrar={irACobrarVenta}
+              onListaParaRetirar={() => cambiarEstadoDirecto("lista_para_retirar", "Trabajo marcado como listo para retirar.")}
+              onWhatsappRetiro={enviarWhatsappRetiro}
+              onRetirada={() => cambiarEstadoDirecto("retirada", "Orden retirada y finalizada.")}
+            />
+          </CollapsiblePanel></aside>
+      </main>
+      <SecondaryInfoShell>
+
+          <CollapsiblePanel
+            title="Notas y recomendaciones"
+            eyebrow="Historial tecnico"
+          >
+            <div style={styles.sectionHeader}>
+              <p style={styles.eyebrow}>Historial técnico</p>
+              <h2 style={styles.cardTitle}>Notas y recomendaciones</h2>
+              <p style={styles.muted}>
+                La visibilidad al cliente depende del tipo elegido.
+              </p>
             </div>
 
-            {items.length === 0 ? (
-              esOrdenPostventa ? (
-                <div style={styles.empty}>
-                  Service sin repuestos adicionales. Total a cobrar: $0.
-                </div>
-              ) : (
-                <div style={styles.empty}>Todavía no hay items cargados.</div>
-              )
+            {alertasBicicleta.length > 0 ? (
+              <div style={styles.previousAlertsBox}>
+                <strong>Alertas activas de servicios anteriores</strong>
+                {alertasBicicleta.map((alerta) => (
+                  <div key={alerta.id} style={styles.previousAlertItem}>
+                    <span>{alerta.contenido}</span>
+                    <Link
+                      to={`/taller/${alerta.id_orden_taller}`}
+                      style={styles.previousAlertLink}
+                    >
+                      Ver OT #{alerta.id_orden_taller}
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            <form onSubmit={agregarNota} style={styles.noteComposer}>
+              <label style={styles.field}>
+                <span style={styles.label}>Tipo de nota</span>
+                <select
+                  value={notaForm.tipo}
+                  onChange={(e) =>
+                    setNotaForm((actual) => ({ ...actual, tipo: e.target.value }))
+                  }
+                  style={styles.input}
+                >
+                  <option value="interna">Nota interna</option>
+                  <option value="cliente">Nota para cliente</option>
+                  <option value="recomendacion_futura">Recomendación futura</option>
+                  <option value="alerta_tecnica">Alerta técnica de bicicleta</option>
+                </select>
+              </label>
+
+              <label style={styles.field}>
+                <span style={styles.label}>Contenido</span>
+                <textarea
+                  value={notaForm.contenido}
+                  onChange={(e) =>
+                    setNotaForm((actual) => ({
+                      ...actual,
+                      contenido: e.target.value,
+                    }))
+                  }
+                  placeholder="Ej: revisar pastillas de freno en el próximo service"
+                  style={styles.noteTextarea}
+                  maxLength={2000}
+                />
+              </label>
+
+              <div style={styles.noteComposerFooter}>
+                <span style={styles.noteVisibilityHint}>
+                  {visibilidadTipoNota(notaForm.tipo)}
+                </span>
+                <button
+                  type="submit"
+                  disabled={guardando || !notaForm.contenido.trim()}
+                  style={styles.primaryButton}
+                >
+                  Agregar nota
+                </button>
+              </div>
+            </form>
+
+            {notas.length === 0 ? (
+              <div style={styles.emptySmall}>Todavía no hay notas técnicas.</div>
             ) : (
-              <div style={styles.itemsList}>
-                {items.map((item) => (
-                  <ItemCard
-                    key={item.id}
-                    item={item}
-                    guardando={guardando}
-                    onAprobar={() => aprobarItem(item, true)}
-                    onDesaprobar={() => aprobarItem(item, false)}
-                    onEjecutar={() => ejecutarItem(item)}
-                    onRevertir={() => revertirItem(item)}
-                    onCancelar={() => handleCancelarItem(item)}
-                  />
+              <div style={styles.notesList}>
+                {notas.map((nota) => (
+                  <article
+                    key={nota.id}
+                    style={{
+                      ...styles.technicalNote,
+                      ...(nota.estado === "archivada"
+                        ? styles.technicalNoteArchived
+                        : {}),
+                    }}
+                  >
+                    <div style={styles.technicalNoteHeader}>
+                      <div style={styles.noteBadges}>
+                        <span style={styleTipoNota(nota.tipo)}>
+                          {labelTipoNota(nota.tipo)}
+                        </span>
+                        <span style={styleEstadoNota(nota.estado)}>
+                          {labelEstadoNota(nota.estado)}
+                        </span>
+                      </div>
+                      <span style={styles.technicalNoteMeta}>
+                        {formatDate(nota.created_at)} ·{" "}
+                        {nota.usuario_creador_nombre ||
+                          `Usuario #${nota.id_usuario_creador}`}
+                      </span>
+                    </div>
+
+                    <p style={styles.technicalNoteText}>{nota.contenido}</p>
+
+                    <div style={styles.noteActions}>
+                      <button
+                        type="button"
+                        onClick={() => editarNota(nota)}
+                        disabled={guardando}
+                        style={styles.smallSecondary}
+                      >
+                        Editar
+                      </button>
+                      {nota.estado !== "resuelta" ? (
+                        <button
+                          type="button"
+                          onClick={() => cambiarEstadoNota(nota, "resuelta")}
+                          disabled={guardando}
+                          style={styles.smallPrimary}
+                        >
+                          Marcar resuelta
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => cambiarEstadoNota(nota, "activa")}
+                          disabled={guardando}
+                          style={styles.smallSecondary}
+                        >
+                          Reactivar
+                        </button>
+                      )}
+                      {nota.estado !== "archivada" ? (
+                        <button
+                          type="button"
+                          onClick={() => cambiarEstadoNota(nota, "archivada")}
+                          disabled={guardando}
+                          style={styles.smallDanger}
+                        >
+                          Archivar
+                        </button>
+                      ) : null}
+                    </div>
+                  </article>
                 ))}
               </div>
             )}
-          </section>
-        </section>
+          </CollapsiblePanel>
 
-        <aside style={{ ...styles.sidePanel, ...(isMobile ? styles.sidePanelMobile : {}) }}>
-          <OperadorPanel
-            compact={isMobile}
-            orden={orden}
-            resumen={resumen}
-            guardando={guardando}
-            puedeTerminarTrabajo={puedeTerminarTrabajo}
-            puedeGenerarVenta={puedeGenerarVenta}
-            puedeMarcarListaParaRetirar={puedeMarcarListaParaRetirar}
-            puedeMarcarRetirada={puedeMarcarRetirada}
-            onPasarPresupuestada={() => cambiarEstadoDirecto("presupuestada", "Orden marcada como presupuestada")}
-            onPasarEnReparacion={() => cambiarEstadoDirecto("en_reparacion", "Orden marcada en reparación")}
-            onTerminar={() => cambiarEstadoDirecto("terminada", "Trabajo marcado como terminado")}
-            onGenerarVenta={generarVenta}
-            onCobrar={irACobrarVenta}
-            onListaParaRetirar={() => cambiarEstadoDirecto("lista_para_retirar", "Orden lista para retirar")}
-            onRetirada={() => cambiarEstadoDirecto("retirada", "Orden marcada como retirada")}
-          />
+          
 
-          <section style={styles.card}>
-            <h2 style={styles.sideTitle}>Operativo</h2>
+          <CollapsiblePanel title="Datos operativos" eyebrow="Operativo">
             <form onSubmit={guardarOperativo} style={styles.statusForm}>
               <label style={styles.field}>
                 <span style={styles.label}>Fecha prometida</span>
@@ -1667,10 +1897,9 @@ export default function TallerDetallePage() {
               </button>
             </form>
             <div style={styles.note}>La fecha prometida alimenta atrasadas y prioridad del tablero.</div>
-          </section>
+          </CollapsiblePanel>
 
-          <section style={styles.card}>
-            <h2 style={styles.sideTitle}>Estado manual</h2>
+          <CollapsiblePanel title="Estado manual" eyebrow="Uso avanzado">
             <form onSubmit={cambiarEstado} style={styles.statusForm}>
               <Info label="Actual" value={<EstadoBadge estado={orden.estado} />} />
               <label style={styles.field}>
@@ -1684,10 +1913,9 @@ export default function TallerDetallePage() {
               <button type="submit" disabled={guardando || nuevoEstado === orden.estado} style={styles.primaryButton}>Actualizar estado</button>
             </form>
             <div style={styles.note}>Uso avanzado. El flujo recomendado está arriba; este selector queda para casos puntuales.</div>
-          </section>
+          </CollapsiblePanel>
 
-          <section style={styles.card}>
-            <h2 style={styles.sideTitle}>Eventos</h2>
+          <CollapsiblePanel title="Timeline / eventos" eyebrow="Auditoria">
             {eventos.length === 0 ? (
               <div style={styles.emptySmall}>No hay eventos registrados.</div>
             ) : (
@@ -1703,10 +1931,8 @@ export default function TallerDetallePage() {
                 ))}
               </div>
             )}
-          </section>
-        </aside>
-      </main>
-
+          </CollapsiblePanel>
+              </SecondaryInfoShell>
       <PromptModal
         open={Boolean(promptConfig)}
         title={promptConfig?.title}
@@ -1724,6 +1950,357 @@ export default function TallerDetallePage() {
         onCancel={promptConfig?.onCancel}
       />
     </div>
+  );
+}
+
+function SecondaryInfoShell({ children }) {
+  return (
+    <section style={styles.secondaryTabsShell}>
+      <div style={styles.secondaryTabsNav}>
+        <span style={styles.secondaryTabActive}>Notas</span>
+        <span style={styles.secondaryTab}>Historial</span>
+        <span style={styles.secondaryTab}>Datos operativos</span>
+        <span style={styles.secondaryTab}>Auditoría</span>
+      </div>
+      <div style={styles.secondaryTabsContent}>{children}</div>
+    </section>
+  );
+}
+
+function TrabajosOrdenPanel({
+  orden,
+  grupos,
+  resumen,
+  guardando,
+  seleccionadosPendientes,
+  idsPendientes,
+  onTogglePendiente,
+  onToggleTodosPendientes,
+  onAprobarSeleccionados,
+  onCancelarSeleccionados,
+  onAprobarItem,
+  onDesaprobarItem,
+  onEjecutarItem,
+  onRevertirItem,
+  onCancelarItem,
+  onQuitarBorrador,
+  onAbrirAgregar,
+}) {
+  const cantidadSeleccionada = seleccionadosPendientes.length;
+
+  return (
+    <section style={styles.workBoard}>
+      <div style={styles.workBoardHeader}>
+        <div>
+          <h2 style={styles.workBoardTitle}>Trabajos de la orden</h2>
+          <p style={styles.muted}>
+            Armá, aprobá y ejecutá los trabajos sin perder de vista el estado de cada ítem.
+          </p>
+        </div>
+        <div style={styles.workCounters}>
+          <span style={styles.workCounter}>Pendientes <strong>{resumen.pendientesAprobacion}</strong></span>
+          <span style={styles.workCounter}>Aprobados <strong>{resumen.aprobados}</strong></span>
+          <span style={styles.workCounter}>Ejecutados <strong>{resumen.ejecutados}</strong></span>
+          <span style={styles.workCounter}>Cancelados <strong>{resumen.cancelados}</strong></span>
+        </div>
+      </div>
+
+      {resumen.items === 0 ? (
+        <div style={styles.empty}>Todavía no hay ítems cargados.</div>
+      ) : (
+        <div style={styles.workGroups}>
+          <TrabajoGrupo
+            title="Pendientes de aprobación"
+            tone="pending"
+            items={grupos.pendientes}
+            selectable
+            allSelected={idsPendientes.length > 0 && cantidadSeleccionada === idsPendientes.length}
+            selectedIds={seleccionadosPendientes}
+            onToggleAll={onToggleTodosPendientes}
+            onToggleItem={onTogglePendiente}
+            guardando={guardando}
+            footer={
+              grupos.pendientes.length > 0 ? (
+                <div style={styles.groupActions}>
+                  <button
+                    type="button"
+                    disabled={guardando || cantidadSeleccionada === 0}
+                    onClick={onAprobarSeleccionados}
+                    style={styles.workActionPrimary}
+                  >
+                    Aprobar seleccionados
+                  </button>
+                  <button
+                    type="button"
+                    disabled={guardando || cantidadSeleccionada === 0}
+                    onClick={onCancelarSeleccionados}
+                    style={styles.workActionDanger}
+                  >
+                    Cancelar seleccionados
+                  </button>
+                </div>
+              ) : null
+            }
+            renderActions={(item) => (
+              <>
+                <button disabled={guardando} onClick={() => onAprobarItem(item)} style={styles.smallPrimary}>Aprobar</button>
+                {puedeQuitarItemBorrador(orden, item) ? (
+                  <button disabled={guardando} onClick={() => onQuitarBorrador(item)} style={styles.smallSecondary}>Quitar</button>
+                ) : (
+                  <button disabled={guardando} onClick={() => onCancelarItem(item)} style={styles.smallDanger}>Cancelar</button>
+                )}
+              </>
+            )}
+          />
+
+          <TrabajoGrupo
+            title="Aprobados"
+            tone="approved"
+            items={grupos.aprobados}
+            guardando={guardando}
+            renderActions={(item) => (
+              <>
+                <button disabled={guardando} onClick={() => onEjecutarItem(item)} style={styles.smallPrimary}>Ejecutar</button>
+                <button disabled={guardando} onClick={() => onDesaprobarItem(item)} style={styles.smallSecondary}>Desaprobar</button>
+                <button disabled={guardando} onClick={() => onCancelarItem(item)} style={styles.smallDanger}>Cancelar</button>
+              </>
+            )}
+          />
+
+          <TrabajoGrupo
+            title="Ejecutados"
+            tone="executed"
+            items={grupos.ejecutados}
+            guardando={guardando}
+            renderActions={(item) => (
+              <button disabled={guardando} onClick={() => onRevertirItem(item)} style={styles.smallSecondary}>Revertir</button>
+            )}
+          />
+
+          <TrabajoGrupo
+            title="Cancelados"
+            tone="cancelled"
+            items={grupos.cancelados}
+            muted
+            renderActions={() => <span style={styles.smallMuted}>Sin acciones</span>}
+          />
+        </div>
+      )}
+
+      <button type="button" onClick={onAbrirAgregar} style={styles.addWorkCta}>
+        <strong>+ Agregar ítem</strong>
+        <span>Repuesto o servicio</span>
+      </button>
+    </section>
+  );
+}
+
+function TrabajoGrupo({
+  title,
+  tone,
+  items,
+  selectable = false,
+  allSelected = false,
+  selectedIds = [],
+  onToggleAll,
+  onToggleItem,
+  renderActions,
+  footer,
+  muted = false,
+}) {
+  if (!items.length) return null;
+
+  const groupStyle = {
+    ...styles.workGroup,
+    ...(styles.workGroupTones[tone] || {}),
+    ...(muted ? styles.workGroupMuted : {}),
+  };
+
+  return (
+    <section style={groupStyle}>
+      <div style={styles.workGroupHeader}>
+        <div style={styles.workGroupTitle}>
+          <span style={styles.workGroupDot} />
+          <strong>{title} ({items.length})</strong>
+        </div>
+        {selectable ? (
+          <label style={styles.selectAllLabel}>
+            <input type="checkbox" checked={allSelected} onChange={onToggleAll} />
+            Seleccionar todos
+          </label>
+        ) : null}
+      </div>
+
+      <div style={styles.workGroupTable}>
+        <div style={selectable ? styles.workGroupHeadSelectable : styles.workGroupHead}>
+          {selectable ? <span /> : null}
+          <span>Item</span>
+          <span>Tipo</span>
+          <span>Cant.</span>
+          <span>Precio</span>
+          <span>Estado</span>
+          <span style={{ textAlign: "right" }}>Acciones</span>
+        </div>
+        {items.map((item) => (
+          <TrabajoFila
+            key={item.id}
+            item={item}
+            selectable={selectable}
+            selected={selectedIds.includes(String(item.id))}
+            onToggle={() => onToggleItem?.(item.id)}
+            actions={renderActions(item)}
+          />
+        ))}
+      </div>
+
+      {footer}
+    </section>
+  );
+}
+
+function TrabajoFila({ item, selectable, selected, onToggle, actions }) {
+  return (
+    <div style={selectable ? styles.workRowSelectable : styles.workRow}>
+      {selectable ? (
+        <input type="checkbox" checked={selected} onChange={onToggle} style={styles.workCheckbox} />
+      ) : null}
+      <div style={styles.workRowItem}>
+        <strong>{item.descripcion_snapshot}</strong>
+        {Number(item.valor_cobertura_unitario || 0) > 0 ? (
+          <small style={styles.workCoverage}>
+            Cobertura {item.motivo_cobertura}: -
+            {formatMoney(Number(item.valor_cobertura_unitario) * Number(item.cantidad || 1))}
+          </small>
+        ) : null}
+      </div>
+      <span style={item.tipo_item === "servicio" ? styles.typeBadgeService : styles.typeBadgePart}>
+        {item.tipo_item === "servicio" ? "Servicio" : "Repuesto"}
+      </span>
+      <span style={styles.workRowText}>{formatNumber(item.cantidad)}</span>
+      <span style={styles.workRowPrice}>
+        <strong>{formatMoney(item.subtotal)}</strong>
+        <small>{formatMoney(item.precio_unitario)} c/u</small>
+      </span>
+      <span style={stageStyle(item.etapa)}>{labelEtapa(item.etapa)}</span>
+      <div style={styles.workRowActions}>{actions}</div>
+    </div>
+  );
+}
+
+function puedeQuitarItemBorrador(orden, item) {
+  return (
+    orden.estado === "ingresada" &&
+    item.etapa === "presupuestado" &&
+    !item.aprobado &&
+    !orden.id_venta_generada
+  );
+}
+
+function stageStyle(etapa) {
+  const tone =
+    etapa === "ejecutado"
+      ? "ok"
+      : etapa === "agregado"
+      ? "info"
+      : etapa === "cancelado"
+      ? "danger"
+      : "warning";
+
+  return {
+    ...styles.stageBadge,
+    ...(styles.stageTones[tone] || {}),
+  };
+}
+
+function TallerOrdenCompactHeader({
+  orden,
+  resumen,
+  esOrdenPostventa,
+  puedeTerminarTrabajo,
+  onRefresh,
+}) {
+  const proximaAccion =
+    resumen.pendientesEjecucion > 0
+      ? "Ejecutar pendientes"
+      : puedeTerminarTrabajo
+      ? "Terminar trabajo"
+      : resumen.pendientesAprobacion > 0
+      ? "Completar aprobacion"
+      : "Seguir panel lateral";
+
+  return (
+    <section style={styles.compactHeader}>
+      <div style={styles.compactHeaderTop}>
+        <div style={styles.compactTitleGroup}>
+          <p style={styles.eyebrow}>{esOrdenPostventa ? "Service postventa" : "Orden de taller"}</p>
+          <div style={styles.compactTitleRow}>
+            <h1 style={styles.compactTitle}>OT #{orden.id}</h1>
+            <EstadoBadge estado={orden.estado} />
+            <span style={styles.compactNextBadge}>Proxima: {proximaAccion}</span>
+          </div>
+          <p style={styles.compactSubtitle}>Ingresada: {formatDate(orden.fecha_ingreso)}</p>
+        </div>
+
+        <div style={styles.compactHeaderActions}>
+          <button type="button" onClick={onRefresh} style={styles.headerLink}>
+            <RefreshCw size={17} /> Refrescar
+          </button>
+          <Link to="/taller" style={styles.headerLink}>
+            <ArrowLeft size={17} /> Volver
+          </Link>
+        </div>
+      </div>
+
+      <div style={styles.compactFactsGrid}>
+        <CompactFact label="Cliente" value={nombreClienteOrden(orden)} />
+        <CompactFact label="Bicicleta" value={descripcionBicicletaOrden(orden)} />
+        <CompactFact label="Problema" value={orden.problema_reportado} strong />
+        <CompactFact
+          label={esOrdenPostventa ? "Diferencia a cobrar" : "Total de la orden"}
+          value={formatMoney(orden.total_final)}
+          accent
+        />
+      </div>
+      {orden.observaciones ? <p style={styles.compactObservation}>{orden.observaciones}</p> : null}
+    </section>
+  );
+}
+
+function CompactFact({ label, value, strong = false, accent = false }) {
+  return (
+    <div style={accent ? styles.compactFactAccent : styles.compactFact}>
+      <span style={styles.compactFactLabel}>{label}</span>
+      <strong style={strong ? styles.compactFactStrong : styles.compactFactValue}>
+        {value || "-"}
+      </strong>
+    </div>
+  );
+}
+
+function CollapsiblePanel({
+  title,
+  eyebrow,
+  children,
+  defaultOpen = false,
+  open,
+  onToggle,
+  style,
+}) {
+  return (
+    <details
+      open={open === undefined ? defaultOpen : open}
+      onToggle={(event) => onToggle?.(event.currentTarget.open)}
+      style={{ ...styles.collapsiblePanel, ...style }}
+    >
+      <summary style={styles.collapsibleSummary}>
+        <span style={styles.collapsibleTitleGroup}>
+          {eyebrow ? <small style={styles.eyebrow}>{eyebrow}</small> : null}
+          <strong>{title}</strong>
+        </span>
+        <span style={styles.collapsibleHint}>Ver</span>
+      </summary>
+      <div style={styles.collapsibleBody}>{children}</div>
+    </details>
   );
 }
 
@@ -1767,7 +2344,7 @@ function styleTipoNota(tipo) {
     borderRadius: 999,
     padding: "5px 9px",
     fontSize: 12,
-    fontWeight: 950,
+    fontWeight: 800,
     ...(tones[tipo] || tones.interna),
   };
 }
@@ -1782,7 +2359,7 @@ function styleEstadoNota(estado) {
     borderRadius: 999,
     padding: "5px 9px",
     fontSize: 12,
-    fontWeight: 900,
+    fontWeight: 700,
     ...(tones[estado] || tones.activa),
   };
 }

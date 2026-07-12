@@ -175,6 +175,7 @@ export default function CatalogoPage() {
         marca_id: marcaId || undefined,
         limit: LIMIT,
         offset: nextOffset,
+        solo_disponibles: true,
       });
 
       setItems(data?.items || []);

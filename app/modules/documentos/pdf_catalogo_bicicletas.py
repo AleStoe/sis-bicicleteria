@@ -7,6 +7,7 @@ from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
 
 from .pdf import _draw_image_fit, _money, _resolver_imagen_local, _text
+from .pdf_layout import wrap_text
 from .brand import (
     BORDER,
     BROWN,
@@ -209,7 +210,7 @@ def _draw_footer(c):
     c.drawCentredString(
         width / 2,
         9 * mm,
-        "Disponibilidad sujeta a confirmación. No incluye stock numérico.",
+        "Disponibilidad sujeta a confirmación.",
     )
 
 
@@ -229,21 +230,37 @@ def _draw_card(c, item, opciones_pago, x, y, w, h):
         c.setFont("Helvetica", 8)
         c.drawCentredString(x + w / 2, y + h - 29 * mm, "Sin imagen")
 
-    text_y = y + h - image_box_h - 10 * mm
+    text_y = y + h - image_box_h - 9 * mm
+    text_width = w - 8 * mm
     c.setFillColorRGB(*INK)
-    c.setFont("Helvetica-Bold", 9)
-    c.drawString(x + 4 * mm, text_y, _clip(_titulo_bicicleta(item), 38))
+    title_size = 8.8
+    title = _titulo_bicicleta(item)
+    title_lines = wrap_text(title, text_width, "Helvetica-Bold", title_size)
+    while len(title_lines) > 3 and title_size > 7:
+        title_size -= 0.3
+        title_lines = wrap_text(title, text_width, "Helvetica-Bold", title_size)
+    c.setFont("Helvetica-Bold", title_size)
+    for line in title_lines:
+        c.drawString(x + 4 * mm, text_y, line)
+        text_y -= (title_size + 1.4) * 0.3528 * mm
 
     detalles = _detalles_bicicleta(item)
     if detalles:
-        text_y -= 4.5 * mm
-        c.setFont("Helvetica", 7.3)
+        text_y -= 0.8 * mm
+        detail_size = 7.1
+        detail_lines = wrap_text(detalles, text_width, "Helvetica", detail_size)
+        while len(detail_lines) > 2 and detail_size > 6.2:
+            detail_size -= 0.25
+            detail_lines = wrap_text(detalles, text_width, "Helvetica", detail_size)
+        c.setFont("Helvetica", detail_size)
         c.setFillColorRGB(*MUTED)
-        c.drawString(x + 4 * mm, text_y, _clip(detalles, 44))
+        for line in detail_lines:
+            c.drawString(x + 4 * mm, text_y, line)
+            text_y -= (detail_size + 1.3) * 0.3528 * mm
 
     codigo = item.get("sku") or item.get("codigo_proveedor")
     if codigo:
-        text_y -= 4 * mm
+        text_y -= 0.6 * mm
         c.setFont("Helvetica", 6.8)
         c.drawString(x + 4 * mm, text_y, _clip(f"Cod. {codigo}", 42))
 
@@ -274,7 +291,7 @@ def generar_catalogo_bicicletas_pdf(data: dict) -> bytes:
     gap_x = 7 * mm
     gap_y = 8 * mm
     card_w = (width - margin_x * 2 - gap_x) / 2
-    card_h = 100 * mm
+    card_h = 112 * mm
     start_y = height - 24 * mm - card_h
 
     page_number = 1

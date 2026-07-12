@@ -1,9 +1,13 @@
-from datetime import date
+from datetime import date, timedelta
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import Response
 
 from app.core.security import CurrentUser, aplicar_actor_actual
+from app.modules.documentos.pdf_resultado_distribuible import (
+    generar_resultado_distribuible_pdf,
+)
 from app.modules.authz.service import requerir_permiso
 from app.shared.constants import PERMISO_VER_RENTABILIDAD
 
@@ -67,6 +71,47 @@ def rentabilidad_mensual_route(
     _usuario: CurrentUser = Depends(puede_ver_rentabilidad),
 ):
     return calcular_rentabilidad_mensual(periodo_mes, id_sucursal, id_regla_distribucion)
+
+
+@router.get("/resultado-distribuible/pdf")
+def resultado_distribuible_pdf_route(
+    periodo_mes: date,
+    id_sucursal: Optional[int] = Query(default=None, gt=0),
+    id_regla_distribucion: Optional[int] = Query(default=None, gt=0),
+    incluir_detalle: bool = False,
+    _usuario: CurrentUser = Depends(puede_ver_rentabilidad),
+):
+    data = calcular_rentabilidad_mensual(
+        periodo_mes,
+        id_sucursal,
+        id_regla_distribucion,
+    )
+
+    mes_anterior = date(periodo_mes.year, periodo_mes.month, 1) - timedelta(days=1)
+    periodo_anterior = calcular_rentabilidad_mensual(
+        date(mes_anterior.year, mes_anterior.month, 1),
+        id_sucursal,
+        id_regla_distribucion,
+    )
+
+    detalle_diario = []
+    if incluir_detalle:
+        dia = data["fecha_desde"]
+        while dia <= data["fecha_hasta"]:
+            detalle_diario.append(calcular_rentabilidad_diaria(dia, id_sucursal))
+            dia += timedelta(days=1)
+
+    pdf_bytes = generar_resultado_distribuible_pdf(
+        data,
+        periodo_anterior=periodo_anterior,
+        detalle_diario=detalle_diario,
+    )
+    filename = f"Resultado-Distribuible-{data['periodo_mes'].strftime('%Y-%m')}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/diaria", response_model=RentabilidadDiariaOutput)

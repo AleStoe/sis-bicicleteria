@@ -210,6 +210,7 @@ export function getAccionPrincipal({
   puedeMarcarRetirada,
   onPasarPresupuestada,
   onPasarEnReparacion,
+  onEjecutarPendientes,
   onTerminar,
   onGenerarVenta,
   onCobrar,
@@ -260,6 +261,16 @@ export function getAccionPrincipal({
   }
 
   if (orden.estado === "en_reparacion") {
+    if (!esPostventa && resumen.pendientesEjecucion > 0) {
+      return {
+        label: "Ejecutar pendientes",
+        onClick: onEjecutarPendientes,
+        disabled: false,
+        mensaje: `${resumen.pendientesEjecucion} item/s aprobados pendientes de ejecutar.`,
+        tipo: "info",
+      };
+    }
+
     return {
       label: esPostventa ? "Finalizar revisión" : "Marcar trabajo terminado",
       onClick: onTerminar,
@@ -274,6 +285,40 @@ export function getAccionPrincipal({
   }
 
   if (orden.estado === "terminada") {
+    if (!esPostventa && orden.id_venta_generada && Number(orden.saldo_pendiente || 0) > 0) {
+      return {
+        label: "Cobrar venta",
+        onClick: onCobrar,
+        disabled: false,
+        mensaje: "La venta quedo pendiente de cobro.",
+        tipo: "warning",
+      };
+    }
+
+    if (!esPostventa && orden.id_venta_generada && Number(orden.saldo_pendiente || 0) <= 0) {
+      return {
+        label: "Marcar lista para retirar",
+        onClick: onListaParaRetirar,
+        disabled: !puedeMarcarListaParaRetirar,
+        mensaje: "La venta esta saldada. Ya podes avisar al cliente para retirar.",
+        tipo: "info",
+      };
+    }
+
+    const ordenSinCargo =
+      Number(orden.total_final || 0) <= 0 ||
+      (Number(resumen.activos || 0) > 0 && Number(resumen.total || 0) <= 0);
+
+    if (!esPostventa && ordenSinCargo) {
+      return {
+        label: "Marcar lista para retirar",
+        onClick: onListaParaRetirar,
+        disabled: !puedeMarcarListaParaRetirar,
+        mensaje: "Trabajo sin cargo. No hace falta generar venta para continuar con el retiro.",
+        tipo: "info",
+      };
+    }
+
     return {
       label: esPostventa ? "Marcar lista para retirar" : "Generar venta",
       onClick: esPostventa ? onListaParaRetirar : onGenerarVenta,
@@ -292,13 +337,20 @@ export function getAccionPrincipal({
   }
 
   if (orden.estado === "facturada") {
+    if (Number(orden.saldo_pendiente || 0) <= 0) {
+      return {
+        label: "Marcar lista para retirar",
+        onClick: onListaParaRetirar,
+        disabled: !puedeMarcarListaParaRetirar,
+        mensaje: "La venta esta saldada. Ya podes marcar la bicicleta lista para retirar.",
+        tipo: "info",
+      };
+    }
+
     return {
       label: "Cobrar venta",
       onClick: onCobrar,
       disabled: !orden.id_venta_generada,
-      secondaryLabel: "Marcar lista para retirar",
-      secondaryOnClick: onListaParaRetirar,
-      secondaryDisabled: !puedeMarcarListaParaRetirar,
       mensaje:
         "Cobrada o con deuda autorizada, marcá la bicicleta como lista para retirar.",
       tipo: "info",

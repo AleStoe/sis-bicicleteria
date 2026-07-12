@@ -41,7 +41,7 @@ export default function VentaResumenCards({
       />
 
       <MetricCard
-        label="Cubierto sin caja"
+        label="Descuentos / bonificaciones"
         value={formatMoney(cubiertoNoPago)}
         tone={cubiertoNoPago > 0 ? "warning" : "default"}
       />

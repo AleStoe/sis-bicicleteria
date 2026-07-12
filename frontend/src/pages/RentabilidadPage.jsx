@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { CalendarDays } from "lucide-react";
+import { CalendarDays, FileDown } from "lucide-react";
 import {
   crearCierreRentabilidad,
+  descargarResultadoDistribuiblePdf,
   getBonificacionesGarantias,
   getCierresRentabilidad,
   getReglasRentabilidad,
@@ -50,6 +51,16 @@ const primaryButton = {
   cursor: "pointer",
 };
 
+const secondaryButton = {
+  border: "1px solid #d0d5dd",
+  borderRadius: 12,
+  padding: "11px 14px",
+  background: "#fff",
+  color: "#101828",
+  fontWeight: 800,
+  cursor: "pointer",
+};
+
 
 
 
@@ -65,6 +76,7 @@ export default function RentabilidadPage() {
   const [reglas, setReglas] = useState([]);
   const [cierres, setCierres] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [descargandoPdf, setDescargandoPdf] = useState(false);
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
 
@@ -156,16 +168,44 @@ export default function RentabilidadPage() {
     }
   }
 
+  async function descargarInforme() {
+    setError("");
+    setOk("");
+    setDescargandoPdf(true);
+    try {
+      await descargarResultadoDistribuiblePdf({
+        periodo_mes: periodoMes,
+        id_sucursal: SUCURSAL_ID,
+        id_regla_distribucion: idRegla,
+        incluir_detalle: true,
+      });
+    } catch (err) {
+      setError(err.message || "No se pudo descargar el informe");
+    } finally {
+      setDescargandoPdf(false);
+    }
+  }
+
   return (
     <div style={{ padding: isMobile ? 12 : 24, display: "grid", gap: isMobile ? 12 : 18, minWidth: 0 }}>
       <header style={{ display: isMobile ? "grid" : "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, minWidth: 0 }}>
         <div style={{ minWidth: 0 }}>
           <h1 style={{ margin: 0, color: "#101828", fontSize: isMobile ? 26 : 32, lineHeight: 1.1 }}>Rentabilidad mensual</h1>
           <p style={{ margin: "6px 0 0", color: "#667085" }}>
-            Margen real vendido menos gastos operativos, con distribución mensual congelable.
+            Separá venta comercial, capital recuperado y utilidad liberada.
           </p>
         </div>
-        <button style={{ ...primaryButton, width: isMobile ? "100%" : undefined }} onClick={cerrarMes}>Cerrar mes</button>
+        <div style={{ display: isMobile ? "grid" : "flex", gap: 10, width: isMobile ? "100%" : undefined }}>
+          <button
+            style={{ ...secondaryButton, width: isMobile ? "100%" : undefined, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}
+            onClick={descargarInforme}
+            disabled={descargandoPdf}
+          >
+            <FileDown size={18} />
+            {descargandoPdf ? "Generando..." : "Informe PDF"}
+          </button>
+          <button style={{ ...primaryButton, width: isMobile ? "100%" : undefined }} onClick={cerrarMes}>Cerrar mes</button>
+        </div>
       </header>
 
       {error && <div style={{ ...card, padding: 14, borderColor: "#fecaca", color: "#b91c1c", background: "#fef2f2" }}>{error}</div>}
@@ -186,15 +226,37 @@ export default function RentabilidadPage() {
       </section>
 
       <section style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(5, minmax(0, 1fr))", gap: isMobile ? 8 : 12, minWidth: 0 }}>
-        <Metric title="Ventas netas" value={money(rentabilidad?.ventas_netas)} />
-        <Metric title="Ingreso real neto" value={money(rentabilidad?.ingreso_real_neto)} />
+        <Metric title="Venta comercial" value={money(rentabilidad?.venta_comercial ?? rentabilidad?.ventas_netas)} />
+        <Metric title="CMV comercial" value={money(rentabilidad?.cmv_comercial ?? rentabilidad?.cmv_neto)} />
+        <Metric title="Margen esperado" value={money(rentabilidad?.margen_esperado ?? rentabilidad?.margen_bruto)} />
+        <Metric title="Cobrado comercial" value={money(rentabilidad?.cobrado_comercial_reconocido)} />
+        <Metric title="Saldo por cobrar" value={money(rentabilidad?.saldo_pendiente_por_cobrar)} />
         <Metric title="Financiación cobrada" value={money(rentabilidad?.financiacion_cobrada)} />
         <Metric title="Costos financieros" value={money(rentabilidad?.costos_financieros)} />
-        <Metric title="CMV neto" value={money(rentabilidad?.cmv_neto)} />
-        <Metric title="Margen comercial" value={money(rentabilidad?.margen_bruto)} />
+        <Metric title="Capital recuperado" value={money(rentabilidad?.capital_recuperado)} />
+        <Metric title="Capital inmovilizado" value={money(rentabilidad?.capital_inmovilizado)} />
+        <Metric title="Utilidad liberada" value={money(rentabilidad?.utilidad_liberada)} strong />
+        <Metric title="Utilidad pendiente" value={money(rentabilidad?.utilidad_pendiente)} />
         <Metric title="Resultado financiero" value={money(rentabilidad?.resultado_financiero)} />
-        <Metric title="Margen real" value={money(rentabilidad?.margen_real)} strong />
+        <Metric title="Resultado distribuible" value={money(rentabilidad?.resultado_distribuible)} strong />
         <Metric title="Gastos" value={money(rentabilidad?.gastos_operativos)} />
+      </section>
+
+      <section style={{ ...card, padding: isMobile ? 12 : 16, display: "grid", gap: 12, minWidth: 0 }}>
+        <div>
+          <p style={{ margin: 0, color: "#667085", fontSize: 12, fontWeight: 950, textTransform: "uppercase" }}>
+            Auditoría técnica
+          </p>
+          <p style={{ margin: "4px 0 0", color: "#667085", lineHeight: 1.45 }}>
+            Valores prorrateados para revisar cálculos. No son el KPI principal de utilidad.
+          </p>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))", gap: 10 }}>
+          <Metric title="Base prorrateada" value={money(rentabilidad?.ventas_cobradas)} />
+          <Metric title="CMV prorrateado" value={money(rentabilidad?.cmv_cobrado)} />
+          <Metric title="Margen prorrateado" value={money(rentabilidad?.margen_cobrado)} />
+          <Metric title="Ingreso neto liquidado" value={money(rentabilidad?.ingreso_real_neto)} />
+        </div>
       </section>
 
       <section style={{ ...card, padding: isMobile ? 12 : 18, display: isMobile ? "grid" : "flex", justifyContent: "space-between", alignItems: "center", gap: 14, minWidth: 0 }}>
@@ -384,7 +446,7 @@ export default function RentabilidadPage() {
                   {money(rentabilidad?.resultado_distribuible)}
                 </div>
                 <div style={{ color: "#667085" }}>
-                  Fórmula: ventas netas - costo mercadería vendida - gastos operativos.
+                  Fórmula: utilidad liberada + resultado financiero - gastos operativos.
                 </div>
                 <div style={{ overflowX: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
@@ -417,7 +479,7 @@ export default function RentabilidadPage() {
                 <thead>
                   <tr style={{ color: "#667085", textAlign: "left", borderBottom: "1px solid #eaecf0" }}>
                     <th style={{ padding: 10 }}>Mes</th>
-                    <th style={{ padding: 10 }}>Margen real</th>
+                    <th style={{ padding: 10 }}>Utilidad + financiero</th>
                     <th style={{ padding: 10 }}>Resultado</th>
                     <th style={{ padding: 10 }}>Regla</th>
                     <th style={{ padding: 10 }}>Estado</th>

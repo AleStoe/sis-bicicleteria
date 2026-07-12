@@ -355,6 +355,7 @@ def get_catalogo_pos(
     marca_id: int | None = None,
     limit: int = 50,
     offset: int = 0,
+    solo_disponibles: bool = False,
 ):
     filtros = [
         "v.activo = TRUE",
@@ -376,6 +377,33 @@ def get_catalogo_pos(
     if marca_id is not None:
         filtros.append("m.id = %(marca_id)s")
         params["marca_id"] = marca_id
+
+    if solo_disponibles:
+        filtros.append("""
+            (
+                (
+                    p.stockeable = FALSE
+                    OR (
+                        p.stockeable = TRUE
+                        AND p.serializable = TRUE
+                        AND COALESCE(serializadas.serializadas_disponibles, 0) > 0
+                    )
+                    OR (
+                        p.stockeable = TRUE
+                        AND p.serializable = FALSE
+                        AND (
+                            COALESCE(ss.stock_fisico, 0)
+                            - COALESCE(ss.stock_reservado, 0)
+                            - COALESCE(ss.stock_vendido_pendiente_entrega, 0)
+                        ) > 0
+                    )
+                )
+                AND (
+                    v.permite_precio_libre = TRUE
+                    OR COALESCE(v.precio_minorista, 0) > 0
+                )
+            )
+        """)
 
     if query:
         filtros.append("""
@@ -405,6 +433,16 @@ def get_catalogo_pos(
                 ON c.id = p.id_categoria
             LEFT JOIN marcas m
                 ON m.id = p.id_marca
+            LEFT JOIN stock_sucursal ss
+                ON ss.id_variante = v.id
+               AND ss.id_sucursal = %(id_sucursal)s
+            LEFT JOIN LATERAL (
+                SELECT COUNT(*)::int AS serializadas_disponibles
+                FROM bicicletas_serializadas bs
+                WHERE bs.id_variante = v.id
+                  AND bs.id_sucursal_actual = %(id_sucursal)s
+                  AND bs.estado = 'disponible'
+            ) serializadas ON TRUE
             WHERE {where_sql}
         """, params)
 
@@ -602,12 +640,23 @@ def get_catalogo_mayorista_pdf_items(
         "p.tipo_item = 'producto'",
         "COALESCE(v.precio_mayorista, 0) > 0",
         """
-        GREATEST(
-            COALESCE(ss.stock_fisico, 0)
-            - COALESCE(ss.stock_reservado, 0)
-            - COALESCE(ss.stock_vendido_pendiente_entrega, 0),
-            0
-        ) > 0
+        (
+            (
+                p.stockeable = TRUE
+                AND p.serializable = TRUE
+                AND COALESCE(serializadas.serializadas_disponibles, 0) > 0
+            )
+            OR (
+                p.stockeable = TRUE
+                AND p.serializable = FALSE
+                AND (
+                    COALESCE(ss.stock_fisico, 0)
+                    - COALESCE(ss.stock_reservado, 0)
+                    - COALESCE(ss.stock_vendido_pendiente_entrega, 0)
+                ) > 0
+            )
+            OR p.stockeable = FALSE
+        )
         """,
     ]
     params = {"id_sucursal": id_sucursal}
@@ -659,6 +708,13 @@ def get_catalogo_mayorista_pdf_items(
                 ON ss.id_variante = v.id
                AND ss.id_sucursal = %(id_sucursal)s
             LEFT JOIN LATERAL (
+                SELECT COUNT(*)::int AS serializadas_disponibles
+                FROM bicicletas_serializadas bs
+                WHERE bs.id_variante = v.id
+                  AND bs.id_sucursal_actual = %(id_sucursal)s
+                  AND bs.estado = 'disponible'
+            ) serializadas ON TRUE
+            LEFT JOIN LATERAL (
                 SELECT ci.url
                 FROM catalogo_imagenes ci
                 WHERE ci.id_variante = v.id
@@ -704,12 +760,23 @@ def get_catalogo_bicicletas_pdf_items(
         )
         """,
         """
-        GREATEST(
-            COALESCE(ss.stock_fisico, 0)
-            - COALESCE(ss.stock_reservado, 0)
-            - COALESCE(ss.stock_vendido_pendiente_entrega, 0),
-            0
-        ) > 0
+        (
+            (
+                p.stockeable = TRUE
+                AND p.serializable = TRUE
+                AND COALESCE(serializadas.serializadas_disponibles, 0) > 0
+            )
+            OR (
+                p.stockeable = TRUE
+                AND p.serializable = FALSE
+                AND (
+                    COALESCE(ss.stock_fisico, 0)
+                    - COALESCE(ss.stock_reservado, 0)
+                    - COALESCE(ss.stock_vendido_pendiente_entrega, 0)
+                ) > 0
+            )
+            OR p.stockeable = FALSE
+        )
         """,
     ]
     params = {"id_sucursal": id_sucursal}
@@ -760,6 +827,13 @@ def get_catalogo_bicicletas_pdf_items(
             LEFT JOIN stock_sucursal ss
                 ON ss.id_variante = v.id
                AND ss.id_sucursal = %(id_sucursal)s
+            LEFT JOIN LATERAL (
+                SELECT COUNT(*)::int AS serializadas_disponibles
+                FROM bicicletas_serializadas bs
+                WHERE bs.id_variante = v.id
+                  AND bs.id_sucursal_actual = %(id_sucursal)s
+                  AND bs.estado = 'disponible'
+            ) serializadas ON TRUE
             LEFT JOIN LATERAL (
                 SELECT ci.url
                 FROM catalogo_imagenes ci

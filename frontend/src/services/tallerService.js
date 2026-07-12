@@ -76,6 +76,13 @@ export function cancelarItemOrdenTaller(ordenId, itemId, data) {
   });
 }
 
+export function quitarItemBorradorOrdenTaller(ordenId, itemId, idUsuario) {
+  const qs = idUsuario ? `?id_usuario=${idUsuario}` : "";
+  return apiRequest(`/ordenes_taller/${ordenId}/items/${itemId}${qs}`, {
+    method: "DELETE",
+  });
+}
+
 
 export function generarVentaDesdeOrdenTaller(ordenId, data) {
   return apiRequest(`/ordenes_taller/${ordenId}/generar-venta`, {

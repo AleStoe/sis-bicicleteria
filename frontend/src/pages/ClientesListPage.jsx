@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { listarClientes } from "../services/clientesService";
 import {
@@ -46,10 +46,16 @@ export default function ClientesListPage() {
   const [error, setError] = useState("");
   const [busqueda, setBusqueda] = useState("");
   const [soloActivos, setSoloActivos] = useState(true);
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
-    cargarClientes();
-  }, [soloActivos]);
+    const delay = busqueda.trim() ? 300 : 100;
+    const timer = setTimeout(() => {
+      cargarClientes({ q: busqueda, soloActivosFiltro: soloActivos });
+    }, delay);
+
+    return () => clearTimeout(timer);
+  }, [busqueda, soloActivos]);
 
   const totalActivos = useMemo(
     () => clientes.filter((cliente) => cliente.activo).length,
@@ -61,33 +67,41 @@ export default function ClientesListPage() {
     [clientes]
   );
 
-  async function cargarClientes() {
+  async function cargarClientes({ q = busqueda, soloActivosFiltro = soloActivos } = {}) {
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+
     try {
       setBuscando(true);
       setError("");
 
       const data = await listarClientes({
-        q: busqueda.trim() || undefined,
-        solo_activos: soloActivos,
+        q: q.trim() || undefined,
+        solo_activos: soloActivosFiltro,
       });
 
-      setClientes(Array.isArray(data) ? data : []);
+      if (requestId === requestIdRef.current) {
+        setClientes(Array.isArray(data) ? data : []);
+      }
     } catch (err) {
-      setError(err.message || "No se pudieron cargar los clientes");
+      if (requestId === requestIdRef.current) {
+        setError(err.message || "No se pudieron cargar los clientes");
+      }
     } finally {
-      setLoading(false);
-      setBuscando(false);
+      if (requestId === requestIdRef.current) {
+        setLoading(false);
+        setBuscando(false);
+      }
     }
   }
 
   async function buscar(e) {
     e.preventDefault();
-    await cargarClientes();
+    await cargarClientes({ q: busqueda, soloActivosFiltro: soloActivos });
   }
 
   function limpiarBusqueda() {
     setBusqueda("");
-    setTimeout(() => cargarClientes(), 0);
   }
 
   function abrirCliente(clienteId) {
@@ -137,7 +151,7 @@ export default function ClientesListPage() {
             Solo activos
           </label>
 
-          <Button type="submit">Buscar</Button>
+          <Button type="submit">{buscando ? "Buscando..." : "Buscar ahora"}</Button>
           <Button type="button" variant="outline" onClick={limpiarBusqueda}>Limpiar</Button>
         </form>
       </Card>

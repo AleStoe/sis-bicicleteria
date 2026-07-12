@@ -227,7 +227,7 @@ def test_resumen_diario_consolida_caja_pagos_rentabilidad_y_documentos(
     assert float(data["rentabilidad"]["costo_mercaderia_vendida"]) == 10000.0
     assert float(data["rentabilidad"]["margen_bruto"]) == 14340.0
     assert float(data["rentabilidad"]["gastos_operativos"]) == 500.0
-    assert float(data["rentabilidad"]["ganancia_dia"]) == 13840.0
+    assert float(data["rentabilidad"]["ganancia_dia"]) == 13940.0
 
     assert data["documentos"]["comprobantes_x"] == 1
     assert data["documentos"]["recibos_pago"] == 1

@@ -52,7 +52,8 @@ def _label_tipo_precio(tipo_precio):
 
 def _format_percent(value):
     numero = _dec(value)
-    return f"{numero.normalize():f}".rstrip("0").rstrip(".")
+    texto = f"{numero:.4f}".rstrip("0").rstrip(".")
+    return texto
 
 
 def _monto_con_descuento(precio, porcentaje_descuento):

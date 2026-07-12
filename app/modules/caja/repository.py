@@ -1,6 +1,7 @@
 from psycopg.rows import dict_row
 from decimal import Decimal
 
+from app.modules.rentabilidad.repository import get_ventas_rentabilidad
 from app.shared.constants import VENTA_ESTADOS_REPORTING
 
 def get_sucursal_by_id(conn, sucursal_id: int):
@@ -506,20 +507,11 @@ def get_resumen_pagos_caja(conn, caja_id: int | None, *, fecha, id_sucursal: int
 
 
 def get_resumen_rentabilidad_dia(conn, *, fecha, id_sucursal: int | None = None):
-    sucursal_sql = ""
-    estados_operativos = list(VENTA_ESTADOS_REPORTING)
+    ventas_params = [fecha, list(VENTA_ESTADOS_REPORTING)]
+    ventas_sucursal_sql = ""
     if id_sucursal is not None:
-        sucursal_sql = "AND v.id_sucursal = %s"
-
-    bloque_ventas_params = [fecha, estados_operativos]
-    if id_sucursal is not None:
-        bloque_ventas_params.append(id_sucursal)
-
-    rentabilidad_params = [
-        *bloque_ventas_params,
-        *bloque_ventas_params,
-        *bloque_ventas_params,
-    ]
+        ventas_sucursal_sql = "AND v.id_sucursal = %s"
+        ventas_params.append(id_sucursal)
 
     gastos_params = [fecha]
     gastos_sucursal_sql = ""
@@ -532,59 +524,19 @@ def get_resumen_rentabilidad_dia(conn, *, fecha, id_sucursal: int | None = None)
             f"""
             SELECT
                 COUNT(DISTINCT v.id)::int AS cantidad_ventas,
-                COALESCE((
-                    SELECT SUM(
-                        GREATEST(v2.total_final - v2.recargo_total, 0)
-                    )
-                    FROM ventas v2
-                    WHERE v2.fecha::date = %s
-                      AND v2.estado = ANY(%s)
-                      {sucursal_sql.replace('v.', 'v2.')}
-                ), 0)::numeric(14,2) AS ventas_total,
-                COALESCE(SUM(vi.subtotal), 0)::numeric(14,2) AS ventas_items_total,
-                COALESCE(SUM(vi.costo_unitario_aplicado * vi.cantidad), 0)::numeric(14,2) AS costo_mercaderia_vendida,
-                (
-                    COALESCE((
-                        SELECT SUM(
-                            GREATEST(v2.total_final - v2.recargo_total, 0)
-                        )
-                        FROM ventas v2
-                        WHERE v2.fecha::date = %s
-                          AND v2.estado = ANY(%s)
-                          {sucursal_sql.replace('v.', 'v2.')}
-                    ), 0)
-                    - COALESCE(SUM(vi.costo_unitario_aplicado * vi.cantidad), 0)
-                )::numeric(14,2) AS margen_bruto
+                COALESCE(SUM(vi.subtotal), 0)::numeric(14,2)
+                    AS ventas_items_total
             FROM ventas v
             LEFT JOIN venta_items vi ON vi.id_venta = v.id
             WHERE v.fecha::date = %s
               AND v.estado = ANY(%s)
-              {sucursal_sql}
+              {ventas_sucursal_sql}
             """,
-            rentabilidad_params,
+            ventas_params,
         )
-        ventas = cur.fetchone()
-
-        cur.execute(
-            f"""
-            SELECT
-                COALESCE(SUM(p.monto_recargo_aplicado), 0)::numeric(14,2)
-                    AS financiacion_cobrada,
-                COALESCE(SUM(
-                    p.monto_costo_financiero
-                ), 0)::numeric(14,2) AS costos_financieros
-            FROM pagos p
-            INNER JOIN ventas v
-                ON p.origen_tipo = 'venta'
-               AND p.origen_id = v.id
-            WHERE v.fecha::date = %s
-              AND v.estado = ANY(%s)
-              AND p.estado = 'confirmado'
-              {sucursal_sql}
-            """,
-            bloque_ventas_params,
-        )
-        financiero = cur.fetchone()
+        ventas_operativas = cur.fetchone()
+        cantidad_ventas = ventas_operativas["cantidad_ventas"]
+        ventas_items_total = ventas_operativas["ventas_items_total"]
 
         cur.execute(
             f"""
@@ -598,15 +550,31 @@ def get_resumen_rentabilidad_dia(conn, *, fecha, id_sucursal: int | None = None)
         )
         gastos = cur.fetchone()["gastos_operativos"]
 
-    resultado_financiero = (
-        financiero["financiacion_cobrada"]
-        - financiero["costos_financieros"]
+    rent = get_ventas_rentabilidad(
+        conn,
+        fecha,
+        fecha,
+        id_sucursal,
+        estados=VENTA_ESTADOS_REPORTING,
     )
-    margen_real = ventas["margen_bruto"] + resultado_financiero
+    resultado_financiero = (
+        rent["financiacion_cobrada"]
+        - rent["costos_financieros"]
+    )
+    margen_real = rent["utilidad_liberada"] + resultado_financiero
 
     return {
-        **ventas,
-        **financiero,
+        "cantidad_ventas": cantidad_ventas,
+        "ventas_total": rent["ventas_netas"],
+        "ventas_items_total": ventas_items_total,
+        "costo_mercaderia_vendida": rent["cmv_neto"],
+        "margen_bruto": rent["ventas_netas"] - rent["cmv_neto"],
+        "financiacion_cobrada": rent["financiacion_cobrada"],
+        "costos_financieros": rent["costos_financieros"],
+        "capital_recuperado": rent["capital_recuperado"],
+        "capital_inmovilizado": rent["capital_inmovilizado"],
+        "utilidad_liberada": rent["utilidad_liberada"],
+        "utilidad_pendiente": rent["utilidad_pendiente"],
         "resultado_financiero": resultado_financiero,
         "margen_real": margen_real,
         "gastos_operativos": gastos,

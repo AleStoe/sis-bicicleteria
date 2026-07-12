@@ -10,6 +10,7 @@ from app.shared.constants import (
     ORDEN_TALLER_EVENTO_CREADA,
     ORDEN_TALLER_EVENTO_CAMBIO_ESTADO,
     ORDEN_TALLER_EVENTO_AGREGADO_ITEM,
+    ORDEN_TALLER_EVENTO_ITEM_QUITADO_BORRADOR,
     TIPO_MOVIMIENTO_USO_TALLER,
     TIPO_MOVIMIENTO_REVERSION_USO_TALLER,
     ORDEN_TALLER_EVENTO_ITEM_EJECUCION_REVERTIDA,
@@ -79,6 +80,8 @@ from .repository import (
     update_orden_taller_item_ejecutado, 
     update_orden_taller_item_agregado,
     update_orden_taller_item_cancelado,
+    existe_venta_item_por_orden_taller_item,
+    delete_orden_taller_item,
     update_orden_taller_venta_generada,
     get_venta_generada_por_orden_taller,
     get_venta_generada_con_deuda_por_id,
@@ -127,6 +130,20 @@ def _validar_venta_taller_habilitada_para_retiro(conn, orden: dict) -> None:
             "No se puede marcar lista para retirar: la venta generada no está "
             "pagada ni entregada con deuda formal."
         ),
+    )
+
+def _total_cobrable_items_taller(items: list[dict]) -> Decimal:
+    return sum(
+        Decimal(str(item.get("subtotal") or 0))
+        for item in items
+        if item.get("etapa") != "cancelado"
+    )
+
+def _tiene_trabajo_sin_cargo_ejecutado(items: list[dict]) -> bool:
+    return any(
+        item.get("etapa") == "ejecutado"
+        and item.get("aprobado") is True
+        for item in items
     )
 
 def _build_descripcion_snapshot(variante: dict) -> str:
@@ -364,6 +381,12 @@ def cambiar_estado_orden_taller(orden_id: int, data):
             )
 
             es_service_postventa = orden.get("es_service_postventa") is True
+            items_para_retiro = None
+            total_cobrable_retiro = Decimal(str(orden.get("total_final") or 0))
+            if data.nuevo_estado in {"lista_para_retirar", "retirada"}:
+                items_para_retiro = get_items_orden_taller(conn, orden_id)
+                if items_para_retiro:
+                    total_cobrable_retiro = _total_cobrable_items_taller(items_para_retiro)
 
             if (
                 orden["estado"] == "en_reparacion"
@@ -395,20 +418,22 @@ def cambiar_estado_orden_taller(orden_id: int, data):
 
             if (
                 data.nuevo_estado == "lista_para_retirar"
-                and (
-                    not es_service_postventa
-                    or Decimal(str(orden.get("total_final") or 0)) > 0
-                )
+                and total_cobrable_retiro > 0
             ):
                 _validar_venta_taller_habilitada_para_retiro(conn, orden)
+            elif (
+                data.nuevo_estado == "lista_para_retirar"
+                and not es_service_postventa
+            ):
+                items_sin_cargo = items_para_retiro or get_items_orden_taller(conn, orden_id)
+                tiene_trabajo_sin_cargo = _tiene_trabajo_sin_cargo_ejecutado(items_sin_cargo)
+                if not tiene_trabajo_sin_cargo:
+                    _validar_venta_taller_habilitada_para_retiro(conn, orden)
 
             if (
                 orden["estado"] == "lista_para_retirar"
                 and data.nuevo_estado == "retirada"
-                and (
-                    not es_service_postventa
-                    or Decimal(str(orden.get("total_final") or 0)) > 0
-                )
+                and total_cobrable_retiro > 0
             ):
                 _validar_venta_taller_habilitada_para_retiro(conn, orden)
 
@@ -892,6 +917,75 @@ def cancelar_item_orden_taller(orden_id: int, item_id: int, data):
             )
 
             return item_actualizado
+    finally:
+        conn.close()
+
+def quitar_item_borrador_orden_taller(orden_id: int, item_id: int, id_usuario: int):
+    conn = get_connection()
+    try:
+        with conn.transaction():
+            try:
+                validar_usuario_activo(conn, id_usuario)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+
+            orden = get_orden_taller_by_id_for_update(conn, orden_id)
+            if orden is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No existe la orden de taller {orden_id}",
+                )
+
+            if orden["estado"] != "ingresada":
+                raise HTTPException(
+                    status_code=400,
+                    detail="Solo se pueden quitar items mientras la orden está en borrador.",
+                )
+
+            if orden.get("id_venta_generada"):
+                raise HTTPException(
+                    status_code=400,
+                    detail="No se puede quitar un item de una orden con venta generada.",
+                )
+
+            item = get_item_orden_taller_by_id_for_update(conn, item_id)
+            if item is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No existe el item de taller {item_id}",
+                )
+
+            if item["id_orden_taller"] != orden_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="El item no pertenece a la orden informada",
+                )
+
+            if item["etapa"] != "presupuestado" or item["aprobado"] is True:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Solo se pueden quitar items no aprobados del borrador.",
+                )
+
+            if existe_venta_item_por_orden_taller_item(conn, item_id):
+                raise HTTPException(
+                    status_code=400,
+                    detail="No se puede quitar un item vinculado a una venta.",
+                )
+
+            descripcion = item["descripcion_snapshot"]
+            delete_orden_taller_item(conn, item_id)
+            recalcular_total_orden_taller(conn, orden_id)
+
+            insert_orden_taller_evento(
+                conn,
+                id_orden_taller=orden_id,
+                tipo_evento=ORDEN_TALLER_EVENTO_ITEM_QUITADO_BORRADOR,
+                detalle=f"Item quitado del borrador: {descripcion}",
+                id_usuario=id_usuario,
+            )
+
+            return {"ok": True}
     finally:
         conn.close()
 

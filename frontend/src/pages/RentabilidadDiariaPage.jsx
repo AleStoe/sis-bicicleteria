@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Package, Wrench } from "lucide-react";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import { ArrowLeft, ChevronDown, ChevronRight, ExternalLink, Package, Wrench, X } from "lucide-react";
 import { getRentabilidadDiaria } from "../services/rentabilidadService";
-import { formatMoney, formatPercent } from "../utils/formatters";
+import { formatMoney } from "../utils/formatters";
 import { formatProductoVariante } from "../utils/productPresentation";
 import useMediaQuery from "../hooks/useMediaQuery";
 
@@ -29,6 +29,15 @@ function fechaHora(value) {
   });
 }
 
+function numero(value) {
+  const n = Number(value || 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function sumar(items, campo) {
+  return items.reduce((total, item) => total + numero(item[campo]), 0);
+}
+
 const card = {
   background: "#fff",
   border: "1px solid #e5e7eb",
@@ -52,6 +61,16 @@ const secondaryButton = {
   background: "#fff",
   color: "#344054",
   fontWeight: 750,
+  cursor: "pointer",
+};
+
+const primaryTinyButton = {
+  border: "1px solid #ff6b00",
+  borderRadius: 12,
+  padding: "10px 12px",
+  background: "#ff6b00",
+  color: "#fff",
+  fontWeight: 850,
   cursor: "pointer",
 };
 
@@ -84,6 +103,9 @@ export default function RentabilidadDiariaPage() {
   const [rentabilidadDiaria, setRentabilidadDiaria] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [detalleAuditoria, setDetalleAuditoria] = useState(null);
+  const [vista, setVista] = useState("venta");
+  const [ventasAbiertas, setVentasAbiertas] = useState(() => new Set());
 
   async function cargarRentabilidadDiaria() {
     setLoading(true);
@@ -117,6 +139,72 @@ export default function RentabilidadDiariaPage() {
     );
   }, [rentabilidadDiaria]);
 
+  const ventasAgrupadas = useMemo(() => {
+    const grupos = new Map();
+
+    detalles.forEach((detalle) => {
+      const id = detalle.id_venta;
+      if (!grupos.has(id)) {
+        grupos.set(id, {
+          id_venta: id,
+          fecha: detalle.fecha,
+          cliente_nombre: detalle.cliente_nombre,
+          estado_venta: detalle.estado_venta,
+          origen: detalle.origen,
+          medios_pago: new Set(),
+          items: [],
+        });
+      }
+
+      const venta = grupos.get(id);
+      if (detalle.medios_pago) {
+        venta.medios_pago.add(detalle.medios_pago);
+      }
+      venta.items.push(detalle);
+    });
+
+    return Array.from(grupos.values())
+      .map((venta) => {
+        const items = venta.items;
+        const ventaComercial = sumar(items, "ingreso_comercial");
+        const cmvComercial = sumar(items, "costo_total");
+        const ventaCobrada = sumar(items, "venta_cobrada");
+        const financiacionCobrada = sumar(items, "financiacion_cobrada");
+        const costoFinanciero = sumar(items, "costo_financiero");
+        const resultadoFinanciero = financiacionCobrada - costoFinanciero;
+        return {
+          ...venta,
+          medios_pago_texto: Array.from(venta.medios_pago).filter(Boolean).join(", ") || "Sin pago confirmado",
+          cantidad_items: items.length,
+          cantidad_unidades: items.reduce((total, item) => total + numero(item.cantidad_neta), 0),
+          venta_comercial: ventaComercial,
+          cmv_comercial: cmvComercial,
+          margen_esperado: ventaComercial - cmvComercial,
+          cobrado_comercial_reconocido: sumar(items, "cobrado_comercial_reconocido"),
+          saldo_pendiente: Math.max(ventaComercial - ventaCobrada, 0),
+          capital_recuperado: sumar(items, "capital_recuperado"),
+          capital_inmovilizado: sumar(items, "capital_inmovilizado"),
+          utilidad_liberada: sumar(items, "utilidad_liberada"),
+          utilidad_pendiente: sumar(items, "utilidad_pendiente"),
+          resultado_financiero: resultadoFinanciero,
+          utilidad_mas_financiero: sumar(items, "utilidad_liberada") + resultadoFinanciero,
+        };
+      })
+      .sort((a, b) => new Date(b.fecha || 0) - new Date(a.fecha || 0));
+  }, [detalles]);
+
+  function toggleVenta(idVenta) {
+    setVentasAbiertas((actual) => {
+      const siguiente = new Set(actual);
+      if (siguiente.has(idVenta)) {
+        siguiente.delete(idVenta);
+      } else {
+        siguiente.add(idVenta);
+      }
+      return siguiente;
+    });
+  }
+
   return (
     <div style={{ padding: isMobile ? 12 : 24, display: "grid", gap: isMobile ? 12 : 18, minWidth: 0 }}>
       <header
@@ -147,7 +235,7 @@ export default function RentabilidadDiariaPage() {
             Lectura diaria de rentabilidad
           </h1>
           <p style={{ margin: "6px 0 0", color: "#667085" }}>
-            Vista completa del día, venta por venta e ítem por ítem. No está agrupada como el panel mensual.
+            Vista completa del día: separa negocio vendido, cobro real y margen pendiente.
           </p>
         </div>
         <label style={{ display: "grid", gap: 6, minWidth: isMobile ? 0 : 210, fontWeight: 850, color: "#344054" }}>
@@ -165,24 +253,34 @@ export default function RentabilidadDiariaPage() {
       <section
         style={{
           display: "grid",
-          gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(9, minmax(0, 1fr))",
+          gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(10, minmax(0, 1fr))",
           gap: isMobile ? 8 : 12,
           minWidth: 0,
         }}
       >
         <Metric title="Ventas" value={String(rentabilidadDiaria?.cantidad_ventas || 0)} />
         <Metric title="Ítems" value={String(detalles.length)} />
-        <Metric title="Ventas netas" value={money(rentabilidadDiaria?.ventas_netas)} />
-        <Metric title="Ingreso real neto" value={money(rentabilidadDiaria?.ingreso_real_neto)} />
+        <Metric title="Venta comercial" value={money(rentabilidadDiaria?.venta_comercial ?? rentabilidadDiaria?.ventas_netas)} />
+        <Metric title="CMV comercial" value={money(rentabilidadDiaria?.cmv_comercial ?? rentabilidadDiaria?.cmv)} tone="cost" />
+        <Metric title="Margen esperado" value={money(rentabilidadDiaria?.margen_esperado ?? rentabilidadDiaria?.margen_bruto)} />
+        <Metric title="Cobrado comercial" value={money(rentabilidadDiaria?.cobrado_comercial_reconocido)} />
+        <Metric title="Saldo por cobrar" value={money(rentabilidadDiaria?.saldo_pendiente_por_cobrar)} />
         <Metric title="Financiación cobrada" value={money(rentabilidadDiaria?.financiacion_cobrada)} />
         <Metric title="Costo financiero" value={money(rentabilidadDiaria?.costos_financieros)} tone="danger" />
-        <Metric title="CMV" value={money(rentabilidadDiaria?.cmv)} tone="cost" />
+        <Metric title="Capital recuperado" value={money(rentabilidadDiaria?.capital_recuperado)} />
+        <Metric title="Capital inmovilizado" value={money(rentabilidadDiaria?.capital_inmovilizado)} tone="danger" />
+        <Metric title="Utilidad liberada" value={money(rentabilidadDiaria?.utilidad_liberada)} tone="positive" />
+        <Metric title="Utilidad pendiente" value={money(rentabilidadDiaria?.utilidad_pendiente)} />
         <Metric
-          title="Margen real"
+          title="Resultado financiero"
+          value={money(rentabilidadDiaria?.resultado_financiero)}
+          tone={Number(rentabilidadDiaria?.resultado_financiero || 0) < 0 ? "danger" : "positive"}
+        />
+        <Metric
+          title="Utilidad + financiero"
           value={money(rentabilidadDiaria?.margen_real)}
           tone={Number(rentabilidadDiaria?.margen_real || 0) < 0 ? "danger" : "positive"}
         />
-        <Metric title="Margen" value={formatPercent(rentabilidadDiaria?.margen_porcentaje || 0)} />
       </section>
 
       <section style={{ ...card, padding: isMobile ? 12 : 18, display: "grid", gap: 14, minWidth: 0 }}>
@@ -193,93 +291,219 @@ export default function RentabilidadDiariaPage() {
             </p>
             <h2 style={{ margin: "4px 0 0", color: "#101828" }}>Ventas e ítems</h2>
             <p style={{ margin: "5px 0 0", color: "#667085", lineHeight: 1.45 }}>
-              Esta tabla muestra cada línea vendida. Acá deberían aparecer más registros que en el resumen agrupado por producto.
+              Vista principal por venta. Abrí una operación para ver todos los productos y servicios incluidos.
             </p>
           </div>
-          <button type="button" onClick={cargarRentabilidadDiaria} style={{ ...secondaryButton, width: isMobile ? "100%" : undefined }}>
-            Actualizar
-          </button>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: isMobile ? "stretch" : "flex-end" }}>
+            <button
+              type="button"
+              onClick={() => setVista("venta")}
+              style={{ ...(vista === "venta" ? primaryTinyButton : secondaryButton), width: isMobile ? "100%" : undefined }}
+            >
+              Por venta
+            </button>
+            <button
+              type="button"
+              onClick={() => setVista("item")}
+              style={{ ...(vista === "item" ? primaryTinyButton : secondaryButton), width: isMobile ? "100%" : undefined }}
+            >
+              Por ítem
+            </button>
+            <button type="button" onClick={cargarRentabilidadDiaria} style={{ ...secondaryButton, width: isMobile ? "100%" : undefined }}>
+              Actualizar
+            </button>
+          </div>
         </div>
 
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", minWidth: 1780, borderCollapse: "collapse", fontSize: 12 }}>
+        <div style={{ overflowX: "auto", border: "1px solid #eaecf0", borderRadius: 14 }}>
+          {vista === "venta" ? (
+            <table style={{ width: "100%", minWidth: 1180, borderCollapse: "collapse", fontSize: 12 }}>
+              <thead>
+                <tr style={{ color: "#475467", textAlign: "left", borderBottom: "1px solid #eaecf0", background: "#f8fafc" }}>
+                  <th style={th}>Venta</th>
+                  <th style={th}>Cliente</th>
+                  <th style={th}>Origen</th>
+                  <th style={{ ...th, textAlign: "right" }}>Vendido</th>
+                  <th style={{ ...th, textAlign: "right" }}>Costo</th>
+                  <th style={{ ...th, textAlign: "right" }}>Margen</th>
+                  <th style={th}>Cobro</th>
+                  <th style={{ ...th, textAlign: "right" }}>Capital</th>
+                  <th style={{ ...th, textAlign: "right" }}>Utilidad</th>
+                  <th style={{ ...th, textAlign: "right" }}>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan="10" style={{ padding: 22, color: "#667085", textAlign: "center" }}>
+                      Calculando lectura diaria...
+                    </td>
+                  </tr>
+                ) : ventasAgrupadas.length === 0 ? (
+                  <tr>
+                    <td colSpan="10" style={{ padding: 22, color: "#667085", textAlign: "center" }}>
+                      No hay ventas para analizar en esta fecha.
+                    </td>
+                  </tr>
+                ) : (
+                  ventasAgrupadas.map((venta) => {
+                    const abierta = ventasAbiertas.has(venta.id_venta);
+                    return (
+                      <Fragment key={venta.id_venta}>
+                        <tr key={`venta-${venta.id_venta}`} style={{ borderBottom: abierta ? "0" : "1px solid #f2f4f7" }}>
+                          <td style={{ ...td, whiteSpace: "nowrap" }}>
+                            <button type="button" onClick={() => toggleVenta(venta.id_venta)} style={expandButton}>
+                              {abierta ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                              <strong>Venta #{venta.id_venta}</strong>
+                            </button>
+                            <div style={{ color: "#667085", marginTop: 2 }}>{fechaHora(venta.fecha)}</div>
+                            <div style={{ color: "#667085", marginTop: 2 }}>
+                              {venta.cantidad_items} ítem(s) · {venta.cantidad_unidades} unidad(es)
+                            </div>
+                          </td>
+                          <td style={{ ...td, minWidth: 160, fontWeight: 750 }}>{venta.cliente_nombre}</td>
+                          <td style={{ ...td, minWidth: 120 }}>
+                            <strong style={{ textTransform: "capitalize" }}>{venta.origen}</strong>
+                            <div style={{ color: "#667085", marginTop: 2 }}>{venta.estado_venta}</div>
+                          </td>
+                          <td style={{ ...td, textAlign: "right", minWidth: 110 }}>
+                            <MoneyLine label="Venta" value={venta.venta_comercial} strong />
+                          </td>
+                          <td style={{ ...td, textAlign: "right", minWidth: 110 }}>
+                            <MoneyLine label="CMV" value={venta.cmv_comercial} />
+                          </td>
+                          <td style={{ ...td, textAlign: "right", minWidth: 110 }}>
+                            <MoneyLine label="Esperado" value={venta.margen_esperado} strong />
+                          </td>
+                          <td style={{ ...td, minWidth: 150 }}>
+                            <div style={{ fontWeight: 850 }}>{venta.medios_pago_texto}</div>
+                            <MoneyLine label="Cobrado" value={venta.cobrado_comercial_reconocido} strong color="#2563eb" />
+                            <MoneyLine label="Pendiente" value={venta.saldo_pendiente} color="#b54708" />
+                          </td>
+                          <td style={{ ...td, textAlign: "right", minWidth: 125 }}>
+                            <MoneyLine label="Recuperado" value={venta.capital_recuperado} />
+                            <MoneyLine label="Inmov." value={venta.capital_inmovilizado} color="#b42318" />
+                          </td>
+                          <td style={{ ...td, textAlign: "right", minWidth: 125 }}>
+                            <MoneyLine label="Liberada" value={venta.utilidad_liberada} strong color="#067647" />
+                            <MoneyLine label="Pendiente" value={venta.utilidad_pendiente} color="#b54708" />
+                            <MoneyLine label="+ financiero" value={venta.utilidad_mas_financiero} color={venta.utilidad_mas_financiero < 0 ? "#b42318" : "#067647"} />
+                          </td>
+                          <td style={{ ...td, textAlign: "right", minWidth: 130 }}>
+                            <a href={`/ventas/${venta.id_venta}`} style={openSaleButton}>
+                              Abrir venta <ExternalLink size={14} />
+                            </a>
+                          </td>
+                        </tr>
+                        {abierta ? (
+                          <tr key={`detalle-${venta.id_venta}`} style={{ borderBottom: "1px solid #f2f4f7", background: "#fbfcfe" }}>
+                            <td colSpan="10" style={{ padding: 12 }}>
+                              <VentaItemsDetalle items={venta.items} onAudit={setDetalleAuditoria} />
+                            </td>
+                          </tr>
+                        ) : null}
+                      </Fragment>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          ) : (
+          <table style={{ width: "100%", minWidth: 1480, borderCollapse: "collapse", fontSize: 12 }}>
             <thead>
-              <tr style={{ color: "#667085", textAlign: "left", borderBottom: "1px solid #eaecf0" }}>
-                <th style={{ padding: 8 }}>Venta / Fecha</th>
-                <th style={{ padding: 8 }}>Cliente</th>
-                <th style={{ padding: 8 }}>Origen / Estado</th>
-                <th style={{ padding: 8 }}>Tipo</th>
-                <th style={{ padding: 8 }}>Producto</th>
-                <th style={{ padding: 8 }}>Medio</th>
-                <th style={{ padding: 8, textAlign: "right" }}>Cant.</th>
-                <th style={{ padding: 8, textAlign: "right" }}>Lista</th>
-                <th style={{ padding: 8, textAlign: "right" }}>Aplicado</th>
-                <th style={{ padding: 8, textAlign: "right" }}>Bonif.</th>
-                <th style={{ padding: 8, textAlign: "right" }}>Desc.</th>
-                <th style={{ padding: 8, textAlign: "right" }}>Financ.</th>
-                <th style={{ padding: 8, textAlign: "right" }}>Costo fin.</th>
-                <th style={{ padding: 8, textAlign: "right" }}>Dev.</th>
-                <th style={{ padding: 8, textAlign: "right" }}>Ingreso</th>
-                <th style={{ padding: 8, textAlign: "right" }}>Costo</th>
-                <th style={{ padding: 8, textAlign: "right" }}>Margen real</th>
+              <tr style={{ color: "#475467", textAlign: "left", borderBottom: "1px solid #eaecf0", background: "#f8fafc" }}>
+                <th style={th}>Venta</th>
+                <th style={th}>Cliente</th>
+                <th style={th}>Producto</th>
+                <th style={th}>Medio</th>
+                <th style={{ ...th, textAlign: "right" }}>Cant.</th>
+                <th style={{ ...th, textAlign: "right" }}>Precio</th>
+                <th style={{ ...th, textAlign: "right" }}>Ajustes</th>
+                <th style={{ ...th, textAlign: "right" }}>Financiación</th>
+                <th style={{ ...th, textAlign: "right" }}>Comercial</th>
+                <th style={{ ...th, textAlign: "right" }}>Caja / capital</th>
+                <th style={{ ...th, textAlign: "right" }}>Utilidad</th>
+                <th style={{ ...th, textAlign: "right" }}>Utilidad + financiero</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="17" style={{ padding: 22, color: "#667085", textAlign: "center" }}>
+                  <td colSpan="12" style={{ padding: 22, color: "#667085", textAlign: "center" }}>
                     Calculando lectura diaria...
                   </td>
                 </tr>
               ) : detalles.length === 0 ? (
                 <tr>
-                  <td colSpan="17" style={{ padding: 22, color: "#667085", textAlign: "center" }}>
+                  <td colSpan="12" style={{ padding: 22, color: "#667085", textAlign: "center" }}>
                     No hay productos ni servicios vendidos en esta fecha.
                   </td>
                 </tr>
               ) : (
                 detalles.map((detalle) => (
-                  <tr key={detalle.id_venta_item} style={{ borderBottom: "1px solid #f2f4f7" }}>
-                    <td style={{ padding: 8, whiteSpace: "nowrap" }}>
+                  <tr
+                    key={detalle.id_venta_item}
+                    title="Doble click para ver auditoría completa"
+                    onDoubleClick={() => setDetalleAuditoria(detalle)}
+                    style={{
+                      borderBottom: "1px solid #f2f4f7",
+                      cursor: "zoom-in",
+                    }}
+                  >
+                    <td style={{ ...td, whiteSpace: "nowrap" }}>
                       <strong>Venta #{detalle.id_venta}</strong>
                       <div style={{ color: "#667085", marginTop: 2 }}>{fechaHora(detalle.fecha)}</div>
+                      <div style={{ color: "#667085", marginTop: 2 }}>{detalle.origen} · {detalle.estado_venta}</div>
                     </td>
-                    <td style={{ padding: 8, minWidth: 150 }}>{detalle.cliente_nombre}</td>
-                    <td style={{ padding: 8 }}>
-                      <strong>{detalle.origen}</strong>
-                      <div style={{ color: "#667085", marginTop: 2 }}>{detalle.estado_venta}</div>
-                    </td>
-                    <td style={{ padding: 8 }}>
+                    <td style={{ ...td, minWidth: 150 }}>{detalle.cliente_nombre}</td>
+                    <td style={{ ...td, minWidth: 300 }}>
                       <span style={detalle.tipo_item_grupo === "servicio_taller" ? serviceBadge : productBadge}>
                         {detalle.tipo_item_grupo === "servicio_taller" ? <Wrench size={13} /> : <Package size={13} />}
                         {detalle.tipo_item_grupo === "servicio_taller" ? "Servicio" : "Producto"}
                       </span>
-                    </td>
-                    <td style={{ padding: 8, minWidth: 230, fontWeight: 850 }}>
-                      {detalle.articulo_nombre || detalle.descripcion_snapshot}
+                      <div style={{ marginTop: 6, fontWeight: 850, lineHeight: 1.25 }}>
+                        {detalle.articulo_nombre || detalle.descripcion_snapshot}
+                      </div>
                       {detalle.descripcion_snapshot && detalle.descripcion_snapshot !== detalle.articulo_nombre ? (
                         <div style={{ color: "#667085", marginTop: 2, fontWeight: 500 }}>{detalle.descripcion_snapshot}</div>
                       ) : null}
                     </td>
-                    <td style={{ padding: 8, minWidth: 130 }}>{detalle.medios_pago}</td>
-                    <td style={{ padding: 8, textAlign: "right" }}>
+                    <td style={{ ...td, minWidth: 120 }}>{detalle.medios_pago}</td>
+                    <td style={{ ...td, textAlign: "right" }}>
                       {detalle.cantidad_neta}
                       {Number(detalle.cantidad_devuelta || 0) > 0 ? (
                         <div style={{ color: "#b42318", marginTop: 2 }}>Dev. {detalle.cantidad_devuelta}</div>
                       ) : null}
                     </td>
-                    <td style={{ padding: 8, textAlign: "right" }}>{money(detalle.precio_lista)}</td>
-                    <td style={{ padding: 8, textAlign: "right" }}>{money(detalle.precio_final)}</td>
-                    <td style={{ padding: 8, textAlign: "right" }}>{money(detalle.bonificacion_total)}</td>
-                    <td style={{ padding: 8, textAlign: "right" }}>{money(detalle.descuento_comercial_asignado)}</td>
-                    <td style={{ padding: 8, textAlign: "right", color: "#b54708" }}>{money(detalle.financiacion_cobrada)}</td>
-                    <td style={{ padding: 8, textAlign: "right", color: "#b42318" }}>{money(detalle.costo_financiero)}</td>
-                    <td style={{ padding: 8, textAlign: "right" }}>{money(detalle.devolucion_comercial)}</td>
-                    <td style={{ padding: 8, textAlign: "right", fontWeight: 850 }}>{money(detalle.ingreso_comercial)}</td>
-                    <td style={{ padding: 8, textAlign: "right" }}>{money(detalle.costo_total)}</td>
+                    <td style={{ ...td, textAlign: "right", minWidth: 110 }}>
+                      <MoneyLine label="Lista" value={detalle.precio_lista} />
+                      <MoneyLine label="Aplicado" value={detalle.precio_final} strong />
+                    </td>
+                    <td style={{ ...td, textAlign: "right", minWidth: 110 }}>
+                      <MoneyLine label="Bonif." value={detalle.bonificacion_total} />
+                      <MoneyLine label="Desc." value={detalle.descuento_comercial_asignado} />
+                      <MoneyLine label="Dev." value={detalle.devolucion_comercial} />
+                    </td>
+                    <td style={{ ...td, textAlign: "right", minWidth: 120 }}>
+                      <MoneyLine label="Cobrada" value={detalle.financiacion_cobrada} color="#b54708" />
+                      <MoneyLine label="Costo" value={detalle.costo_financiero} color="#b42318" />
+                    </td>
+                    <td style={{ ...td, textAlign: "right", minWidth: 120 }}>
+                      <MoneyLine label="Ingreso" value={detalle.ingreso_comercial} strong />
+                      <MoneyLine label="CMV" value={detalle.costo_total} />
+                    </td>
+                    <td style={{ ...td, textAlign: "right", minWidth: 120 }}>
+                      <MoneyLine label="Cobrado" value={detalle.cobrado_comercial_reconocido} strong color="#2563eb" />
+                      <MoneyLine label="Recuperado" value={detalle.capital_recuperado} />
+                      <MoneyLine label="Inmov." value={detalle.capital_inmovilizado} color="#b42318" />
+                    </td>
+                    <td style={{ ...td, textAlign: "right", minWidth: 120 }}>
+                      <MoneyLine label="Liberada" value={detalle.utilidad_liberada} strong color="#067647" />
+                      <MoneyLine label="Pendiente" value={detalle.utilidad_pendiente} color="#b54708" />
+                    </td>
                     <td
                       style={{
-                        padding: 8,
+                        ...td,
                         textAlign: "right",
                         fontWeight: 900,
                         color: Number(detalle.margen_real || 0) < 0 ? "#b42318" : "#067647",
@@ -292,11 +516,306 @@ export default function RentabilidadDiariaPage() {
               )}
             </tbody>
           </table>
+          )}
+        </div>
+      </section>
+
+      {detalleAuditoria && (
+        <AuditoriaDetalleModal
+          detalle={detalleAuditoria}
+          onClose={() => setDetalleAuditoria(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+const th = {
+  padding: "10px 8px",
+  fontSize: 11,
+  fontWeight: 900,
+  textTransform: "uppercase",
+  letterSpacing: 0,
+  whiteSpace: "nowrap",
+  verticalAlign: "bottom",
+};
+
+const td = {
+  padding: "10px 8px",
+  verticalAlign: "top",
+};
+
+const expandButton = {
+  border: 0,
+  background: "transparent",
+  padding: 0,
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  color: "#101828",
+  cursor: "pointer",
+  font: "inherit",
+};
+
+const openSaleButton = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 6,
+  border: "1px solid #d0d5dd",
+  borderRadius: 10,
+  padding: "8px 10px",
+  background: "#fff",
+  color: "#344054",
+  fontWeight: 850,
+  textDecoration: "none",
+  whiteSpace: "nowrap",
+};
+
+function MoneyLine({ label, value, strong = false, color = "#101828" }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        gap: 8,
+        alignItems: "baseline",
+        whiteSpace: "nowrap",
+        lineHeight: 1.45,
+        fontWeight: strong ? 900 : 650,
+        color,
+      }}
+    >
+      <span style={{ color: "#667085", fontSize: 11, fontWeight: 800 }}>{label}</span>
+      <span>{money(value)}</span>
+    </div>
+  );
+}
+
+function VentaItemsDetalle({ items, onAudit }) {
+  return (
+    <div style={{ display: "grid", gap: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+        <strong style={{ color: "#101828" }}>Detalle de productos y servicios</strong>
+        <span style={{ color: "#667085", fontSize: 12, fontWeight: 800 }}>Doble click en un ítem para auditoría completa</span>
+      </div>
+      <div style={{ overflowX: "auto", border: "1px solid #eaecf0", borderRadius: 12, background: "#fff" }}>
+        <table style={{ width: "100%", minWidth: 940, borderCollapse: "collapse", fontSize: 12 }}>
+          <thead>
+            <tr style={{ color: "#475467", textAlign: "left", borderBottom: "1px solid #eaecf0", background: "#f8fafc" }}>
+              <th style={th}>Ítem</th>
+              <th style={{ ...th, textAlign: "right" }}>Cant.</th>
+              <th style={{ ...th, textAlign: "right" }}>Precio</th>
+              <th style={{ ...th, textAlign: "right" }}>Comercial</th>
+              <th style={{ ...th, textAlign: "right" }}>Caja / capital</th>
+              <th style={{ ...th, textAlign: "right" }}>Utilidad</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((detalle) => (
+              <tr
+                key={detalle.id_venta_item}
+                title="Doble click para ver auditoría completa"
+                onDoubleClick={() => onAudit(detalle)}
+                style={{ borderBottom: "1px solid #f2f4f7", cursor: "zoom-in" }}
+              >
+                <td style={{ ...td, minWidth: 300 }}>
+                  <span style={detalle.tipo_item_grupo === "servicio_taller" ? serviceBadge : productBadge}>
+                    {detalle.tipo_item_grupo === "servicio_taller" ? <Wrench size={13} /> : <Package size={13} />}
+                    {detalle.tipo_item_grupo === "servicio_taller" ? "Servicio" : "Producto"}
+                  </span>
+                  <div style={{ marginTop: 6, fontWeight: 850, lineHeight: 1.25 }}>
+                    {detalle.articulo_nombre || detalle.descripcion_snapshot}
+                  </div>
+                  {detalle.descripcion_snapshot && detalle.descripcion_snapshot !== detalle.articulo_nombre ? (
+                    <div style={{ color: "#667085", marginTop: 2, fontWeight: 500 }}>{detalle.descripcion_snapshot}</div>
+                  ) : null}
+                </td>
+                <td style={{ ...td, textAlign: "right" }}>
+                  {detalle.cantidad_neta}
+                  {Number(detalle.cantidad_devuelta || 0) > 0 ? (
+                    <div style={{ color: "#b42318", marginTop: 2 }}>Dev. {detalle.cantidad_devuelta}</div>
+                  ) : null}
+                </td>
+                <td style={{ ...td, textAlign: "right", minWidth: 110 }}>
+                  <MoneyLine label="Lista" value={detalle.precio_lista} />
+                  <MoneyLine label="Aplicado" value={detalle.precio_final} strong />
+                </td>
+                <td style={{ ...td, textAlign: "right", minWidth: 120 }}>
+                  <MoneyLine label="Ingreso" value={detalle.ingreso_comercial} strong />
+                  <MoneyLine label="CMV" value={detalle.costo_total} />
+                  <MoneyLine label="Margen" value={detalle.margen_bruto} />
+                </td>
+                <td style={{ ...td, textAlign: "right", minWidth: 130 }}>
+                  <MoneyLine label="Cobrado" value={detalle.cobrado_comercial_reconocido} strong color="#2563eb" />
+                  <MoneyLine label="Recuperado" value={detalle.capital_recuperado} />
+                  <MoneyLine label="Inmov." value={detalle.capital_inmovilizado} color="#b42318" />
+                </td>
+                <td style={{ ...td, textAlign: "right", minWidth: 130 }}>
+                  <MoneyLine label="Liberada" value={detalle.utilidad_liberada} strong color="#067647" />
+                  <MoneyLine label="Pendiente" value={detalle.utilidad_pendiente} color="#b54708" />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function AuditoriaDetalleModal({ detalle, onClose }) {
+  const comercialRows = [
+    ["Precio lista unitario", money(detalle.precio_lista)],
+    ["Precio aplicado unitario", money(detalle.precio_final)],
+    ["Cantidad original", detalle.cantidad],
+    ["Cantidad devuelta", detalle.cantidad_devuelta],
+    ["Cantidad neta", detalle.cantidad_neta],
+    ["Ingreso comercial", money(detalle.ingreso_comercial)],
+    ["CMV comercial", money(detalle.costo_total)],
+    ["Margen comercial", money(detalle.margen_bruto)],
+  ];
+
+  const cobroRows = [
+    ["Medio/s de pago", detalle.medios_pago],
+    ["Cobrado comercial reconocido", money(detalle.cobrado_comercial_reconocido)],
+    ["Capital recuperado", money(detalle.capital_recuperado)],
+    ["Capital inmovilizado", money(detalle.capital_inmovilizado)],
+    ["Utilidad liberada", money(detalle.utilidad_liberada)],
+    ["Utilidad pendiente", money(detalle.utilidad_pendiente)],
+    ["Utilidad + financiero", money(detalle.margen_real)],
+  ];
+
+  const ajusteRows = [
+    ["Bonificación", money(detalle.bonificacion_total)],
+    ["Descuento comercial asignado", money(detalle.descuento_comercial_asignado)],
+    ["Financiación excluida", money(detalle.financiacion_excluida)],
+    ["Financiación cobrada", money(detalle.financiacion_cobrada)],
+    ["Costo financiero", money(detalle.costo_financiero)],
+    ["Devolución comercial", money(detalle.devolucion_comercial)],
+    ["Ingreso neto liquidado asignado", money(detalle.ingreso_real_neto)],
+    ["Base prorrateada", money(detalle.venta_cobrada)],
+    ["CMV prorrateado", money(detalle.costo_cobrado)],
+    ["Margen prorrateado", money(detalle.margen_cobrado)],
+    ["Margen prorrateado pendiente", money(detalle.margen_pendiente)],
+  ];
+
+  const tecnicoRows = [
+    ["ID venta item", detalle.id_venta_item],
+    ["ID venta", detalle.id_venta],
+    ["Fecha", fechaHora(detalle.fecha)],
+    ["Cliente", detalle.cliente_nombre],
+    ["Origen", detalle.origen],
+    ["Estado venta", detalle.estado_venta],
+    ["Tipo item", detalle.tipo_item],
+    ["ID variante", detalle.id_variante || "-"],
+    ["ID servicio taller", detalle.id_servicio_taller || "-"],
+  ];
+
+  return (
+    <div style={modalOverlay} onClick={onClose}>
+      <section style={modalCard} onClick={(event) => event.stopPropagation()}>
+        <header
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 12,
+            alignItems: "flex-start",
+            borderBottom: "1px solid #eaecf0",
+            paddingBottom: 14,
+          }}
+        >
+          <div>
+            <p style={{ margin: 0, color: "#2563eb", fontSize: 12, fontWeight: 950, textTransform: "uppercase" }}>
+              Auditoría de rentabilidad
+            </p>
+            <h2 style={{ margin: "4px 0 0", color: "#101828" }}>
+              Venta #{detalle.id_venta} · Ítem #{detalle.id_venta_item}
+            </h2>
+            <p style={{ margin: "6px 0 0", color: "#667085", lineHeight: 1.45 }}>
+              {detalle.articulo_nombre || detalle.descripcion_snapshot}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} style={closeButton} aria-label="Cerrar">
+            <X size={18} />
+          </button>
+        </header>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
+          <AuditSection title="Comercial" rows={comercialRows} />
+          <AuditSection title="Caja y capital" rows={cobroRows} highlight />
+          <AuditSection title="Auditoría técnica" rows={ajusteRows} />
+          <AuditSection title="Datos técnicos" rows={tecnicoRows} />
+        </div>
+
+        <div style={{ ...auditBox, display: "grid", gap: 6 }}>
+          <strong>Descripción snapshot</strong>
+          <span style={{ color: "#475467", lineHeight: 1.45 }}>
+            {detalle.descripcion_snapshot || "-"}
+          </span>
         </div>
       </section>
     </div>
   );
 }
+
+function AuditSection({ title, rows, highlight = false }) {
+  return (
+    <div style={{ ...auditBox, background: highlight ? "#ecfdf3" : "#fff" }}>
+      <h3 style={{ margin: "0 0 10px", color: "#101828", fontSize: 16 }}>{title}</h3>
+      <div style={{ display: "grid", gap: 8 }}>
+        {rows.map(([label, value]) => (
+          <div key={label} style={{ display: "flex", justifyContent: "space-between", gap: 10, borderBottom: "1px solid #f2f4f7", paddingBottom: 6 }}>
+            <span style={{ color: "#667085", fontSize: 12, fontWeight: 800 }}>{label}</span>
+            <strong style={{ color: "#101828", textAlign: "right" }}>{value}</strong>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const modalOverlay = {
+  position: "fixed",
+  inset: 0,
+  zIndex: 70,
+  background: "rgba(15, 23, 42, 0.58)",
+  display: "grid",
+  placeItems: "center",
+  padding: 18,
+};
+
+const modalCard = {
+  width: "min(1040px, 100%)",
+  maxHeight: "92vh",
+  overflowY: "auto",
+  background: "#fff",
+  borderRadius: 18,
+  border: "1px solid #e5e7eb",
+  boxShadow: "0 24px 70px rgba(15,23,42,.28)",
+  padding: 18,
+  display: "grid",
+  gap: 14,
+};
+
+const closeButton = {
+  border: "1px solid #d0d5dd",
+  background: "#fff",
+  borderRadius: 12,
+  width: 40,
+  height: 40,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  cursor: "pointer",
+};
+
+const auditBox = {
+  border: "1px solid #e5e7eb",
+  borderRadius: 14,
+  padding: 14,
+  boxShadow: "0 8px 22px rgba(15,23,42,.05)",
+};
 
 function Metric({ title, value, tone = "default" }) {
   const tones = {

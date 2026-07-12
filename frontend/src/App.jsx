@@ -1,4 +1,5 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useEffect } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import AppLayout from "./components/layout/AppLayout";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 
@@ -59,6 +60,76 @@ const OPERACION_TALLER = ["administrador", "encargado", "operador", "mecanico"];
 const TALLER = ["administrador", "encargado", "mecanico"];
 const ADMIN_ENCARGADO = ["administrador", "encargado"];
 
+const TITULOS_RUTA = [
+  [/^\/ventas\/nueva$/, "Nueva venta"],
+  [/^\/ventas\/checkout$/, "Checkout"],
+  [/^\/ventas\/\d+\/cobro$/, "Cobro de venta"],
+  [/^\/ventas\/\d+$/, "Detalle de venta"],
+  [/^\/ventas$/, "Ventas"],
+  [/^\/caja$/, "Caja"],
+  [/^\/clientes\/nuevo$/, "Nuevo cliente"],
+  [/^\/clientes\/\d+\/editar$/, "Editar cliente"],
+  [/^\/clientes\/\d+\/bicicletas\/\d+$/, "Bicicleta del cliente"],
+  [/^\/clientes\/\d+$/, "Detalle de cliente"],
+  [/^\/clientes$/, "Clientes"],
+  [/^\/taller\/nueva$/, "Nueva orden de taller"],
+  [/^\/taller\/\d+$/, "Orden de taller"],
+  [/^\/taller$/, "Ordenes de taller"],
+  [/^\/agenda-taller$/, "Agenda taller"],
+  [/^\/servicios-taller$/, "Servicios taller"],
+  [/^\/deudas\/\d+$/, "Detalle de deuda"],
+  [/^\/deudas$/, "Deudas"],
+  [/^\/pagos$/, "Pagos"],
+  [/^\/creditos\/\d+$/, "Detalle de credito"],
+  [/^\/creditos$/, "Creditos"],
+  [/^\/reservas\/nueva$/, "Nueva reserva"],
+  [/^\/reservas\/\d+$/, "Detalle de reserva"],
+  [/^\/reservas$/, "Reservas"],
+  [/^\/stock$/, "Stock"],
+  [/^\/serializadas$/, "Bicicletas"],
+  [/^\/inventario-fisico$/, "Inventario fisico"],
+  [/^\/alertas-operativas$/, "Salud operativa"],
+  [/^\/salud-operativa$/, "Salud operativa"],
+  [/^\/etiquetas$/, "Etiquetas"],
+  [/^\/catalogo\/categorias$/, "Categorias"],
+  [/^\/catalogo\/productos\/\d+$/, "Detalle de catalogo"],
+  [/^\/catalogo$/, "Catalogo"],
+  [/^\/mercaderia\/alta$/, "Alta mercaderia"],
+  [/^\/mercaderia\/bicicletas\/alta$/, "Alta bicicletas"],
+  [/^\/proveedores$/, "Proveedores"],
+  [/^\/precios$/, "Precios"],
+  [/^\/cotizaciones\/\d+$/, "Detalle de cotizacion"],
+  [/^\/cotizaciones$/, "Cotizaciones"],
+  [/^\/configuracion-comercial$/, "Config. comercial"],
+  [/^\/configuracion-negocio$/, "Config. negocio"],
+  [/^\/dashboard$/, "Dashboard admin"],
+  [/^\/admin\/dashboard$/, "Dashboard admin"],
+  [/^\/auditoria$/, "Auditoria"],
+  [/^\/capital-retiros\/participantes\/\d+$/, "Perfil de capital"],
+  [/^\/capital-retiros$/, "Capital y retiros"],
+  [/^\/rentabilidad\/diaria$/, "Rentabilidad diaria"],
+  [/^\/rentabilidad$/, "Rentabilidad"],
+  [/^\/gastos$/, "Gastos"],
+  [/^\/usuarios$/, "Usuarios"],
+  [/^\/backups$/, "Backups"],
+];
+
+function PageTitle() {
+  const location = useLocation();
+
+  useEffect(() => {
+    const titulo =
+      TITULOS_RUTA.find(([patron]) => patron.test(location.pathname))?.[1] ||
+      "Emprendimiento Agus";
+    document.title =
+      titulo === "Emprendimiento Agus"
+        ? titulo
+        : `${titulo} | Emprendimiento Agus`;
+  }, [location.pathname]);
+
+  return null;
+}
+
 export default function App() {
   const { usuarioActual, cargandoSesion } = useSession();
 
@@ -72,6 +143,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <PageTitle />
       <AppLayout>
         <Routes>
           <Route path="/" element={<Navigate to="/ventas/nueva" replace />} />

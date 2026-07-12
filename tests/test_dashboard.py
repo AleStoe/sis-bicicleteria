@@ -155,13 +155,13 @@ def test_dashboard_excluye_creada_y_usa_total_final_para_resultados(
 
     assert _dec(data["kpis"]["ventas_mes"]) == Decimal("22000.00")
     assert _dec(data["kpis"]["margen_bruto_mes"]) == Decimal("12000.00")
-    assert _dec(data["kpis"]["resultado_estimado"]) == Decimal("12000.00")
+    assert _dec(data["kpis"]["resultado_estimado"]) == Decimal("0.00")
     assert _dec(data["kpis"]["ticket_promedio_mes"]) == Decimal("22000.00")
     assert data["kpis"]["cantidad_ventas_mes"] == 1
 
     assert _dec(data["resultado_hoy"]["ventas_total"]) == Decimal("22000.00")
     assert _dec(data["resultado_hoy"]["margen_bruto"]) == Decimal("12000.00")
-    assert _dec(data["resultado_hoy"]["resultado_estimado"]) == Decimal("12000.00")
+    assert _dec(data["resultado_hoy"]["resultado_estimado"]) == Decimal("0.00")
     assert _dec(data["ventas_ultimos_meses"][-1]["ventas_total"]) == Decimal("22000.00")
     assert _dec(data["top_clientes"][0]["total_comprado"]) == Decimal("22000.00")
     assert _dec(data["top_productos_cantidad"][0]["venta_total"]) == Decimal("22000.00")

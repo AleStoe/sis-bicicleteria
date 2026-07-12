@@ -163,6 +163,7 @@ def catalogo_pos(
     marca_id: int | None = None,
     limit: int = 50,
     offset: int = 0,
+    solo_disponibles: bool = False,
 ):
     return listar_catalogo_pos(
         id_sucursal=id_sucursal,
@@ -171,6 +172,7 @@ def catalogo_pos(
         marca_id=marca_id,
         limit=limit,
         offset=offset,
+        solo_disponibles=solo_disponibles,
     )
 
 

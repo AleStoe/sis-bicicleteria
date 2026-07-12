@@ -4,6 +4,9 @@ from psycopg.rows import dict_row
 from app.shared.constants import VENTA_ESTADOS_REPORTING
 
 
+RENTABILIDAD_ESTADOS_COMERCIALES = ("creada", *VENTA_ESTADOS_REPORTING)
+
+
 def get_participante_by_id(conn, participante_id: int):
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
@@ -132,8 +135,15 @@ def update_regla_estado(conn, regla_id: int, activa: bool):
         return cur.fetchone()
 
 
-def get_ventas_rentabilidad(conn, fecha_desde, fecha_hasta, id_sucursal=None):
+def get_ventas_rentabilidad(
+    conn,
+    fecha_desde,
+    fecha_hasta,
+    id_sucursal=None,
+    estados=None,
+):
     params = [fecha_desde, fecha_hasta]
+    estados_rentabilidad = list(estados or RENTABILIDAD_ESTADOS_COMERCIALES)
     sucursal_sql = ""
     if id_sucursal is not None:
         sucursal_sql = " AND v.id_sucursal = %s"
@@ -145,6 +155,7 @@ def get_ventas_rentabilidad(conn, fecha_desde, fecha_hasta, id_sucursal=None):
             WITH ventas_filtradas AS (
                 SELECT
                     v.id,
+                    v.subtotal_base,
                     v.total_final,
                     v.recargo_total,
                     GREATEST(v.total_final - v.recargo_total, 0) AS total_comercial
@@ -158,6 +169,8 @@ def get_ventas_rentabilidad(conn, fecha_desde, fecha_hasta, id_sucursal=None):
                 SELECT
                     vi.id,
                     vf.id AS id_venta,
+                    vf.subtotal_base,
+                    vf.total_comercial,
                     vi.cantidad,
                     vi.subtotal,
                     vi.costo_unitario_aplicado,
@@ -178,20 +191,26 @@ def get_ventas_rentabilidad(conn, fecha_desde, fecha_hasta, id_sucursal=None):
                 GROUP BY
                     vi.id,
                     vf.id,
+                    vf.subtotal_base,
                     vf.total_final,
                     vf.total_comercial,
                     vi.cantidad,
                     vi.subtotal,
                     vi.costo_unitario_aplicado
             ),
-            ventas AS (
+            pagos_venta AS (
                 SELECT
-                    COALESCE(SUM(total_comercial), 0)::numeric(14,2) AS ventas_total_comercial,
-                    COALESCE(SUM(recargo_total), 0)::numeric(14,2) AS financiacion_total
-                FROM ventas_filtradas
-            ),
-            pagos_financieros AS (
-                SELECT
+                    p.origen_id AS id_venta,
+                    COALESCE(SUM(p.monto_base_aplicado), 0)::numeric(14,2)
+                        AS base_comercial_cobrada,
+                    COALESCE(SUM(p.monto_descuento_aplicado), 0)::numeric(14,2)
+                        AS descuentos_cobrados,
+                    COALESCE(SUM(
+                        GREATEST(
+                            p.monto_base_aplicado - p.monto_descuento_aplicado,
+                            0
+                        )
+                    ), 0)::numeric(14,2) AS cobrado_comercial_reconocido,
                     COALESCE(SUM(p.monto_recargo_aplicado), 0)::numeric(14,2)
                         AS financiacion_cobrada,
                     COALESCE(SUM(
@@ -205,6 +224,7 @@ def get_ventas_rentabilidad(conn, fecha_desde, fecha_hasta, id_sucursal=None):
                     ON p.origen_tipo = 'venta'
                    AND p.origen_id = vf.id
                 WHERE p.estado = 'confirmado'
+                GROUP BY p.origen_id
             ),
             devoluciones AS (
                 SELECT
@@ -216,27 +236,127 @@ def get_ventas_rentabilidad(conn, fecha_desde, fecha_hasta, id_sucursal=None):
                     COALESCE(SUM(costo_unitario_aplicado * cantidad), 0)::numeric(14,2) AS cmv_bruto,
                     COALESCE(SUM(costo_unitario_aplicado * cantidad_devuelta), 0)::numeric(14,2) AS cmv_devoluciones
                 FROM items
+            ),
+            costos_venta AS (
+                SELECT
+                    id_venta,
+                    COALESCE(SUM(costo_unitario_aplicado * cantidad), 0)::numeric(14,2)
+                        AS cmv_bruto,
+                    COALESCE(SUM(costo_unitario_aplicado * cantidad_devuelta), 0)::numeric(14,2)
+                        AS cmv_devoluciones,
+                    COALESCE(SUM(monto_devuelto_comercial), 0)::numeric(14,2)
+                        AS devoluciones_total
+                FROM items
+                GROUP BY id_venta
+            ),
+            ventas_metricas AS (
+                SELECT
+                    vf.id,
+                    vf.total_comercial::numeric(14,2) AS ventas_brutas,
+                    vf.recargo_total::numeric(14,2) AS financiacion_total,
+                    COALESCE(cv.devoluciones_total, 0)::numeric(14,2)
+                        AS devoluciones_total,
+                    (
+                        vf.total_comercial - COALESCE(cv.devoluciones_total, 0)
+                    )::numeric(14,2) AS ventas_netas,
+                    COALESCE(cv.cmv_bruto, 0)::numeric(14,2) AS cmv_bruto,
+                    COALESCE(cv.cmv_devoluciones, 0)::numeric(14,2)
+                        AS cmv_devoluciones,
+                    (
+                        COALESCE(cv.cmv_bruto, 0)
+                        - COALESCE(cv.cmv_devoluciones, 0)
+                    )::numeric(14,2) AS cmv_neto,
+                    COALESCE(pv.base_comercial_cobrada, 0)::numeric(14,2)
+                        AS base_comercial_cobrada,
+                    COALESCE(pv.descuentos_cobrados, 0)::numeric(14,2)
+                        AS descuentos_cobrados,
+                    COALESCE(pv.cobrado_comercial_reconocido, 0)::numeric(14,2)
+                        AS cobrado_comercial_reconocido,
+                    COALESCE(pv.financiacion_cobrada, 0)::numeric(14,2)
+                        AS financiacion_cobrada,
+                    COALESCE(pv.costos_financieros, 0)::numeric(14,2)
+                        AS costos_financieros,
+                    COALESCE(pv.ingreso_real_neto, 0)::numeric(14,2)
+                        AS ingreso_real_neto,
+                    CASE
+                        WHEN vf.subtotal_base > 0
+                            THEN LEAST(
+                                COALESCE(pv.base_comercial_cobrada, 0)
+                                / vf.subtotal_base,
+                                1
+                            )
+                        ELSE 0
+                    END AS porcentaje_cobrado
+                FROM ventas_filtradas vf
+                LEFT JOIN costos_venta cv ON cv.id_venta = vf.id
+                LEFT JOIN pagos_venta pv ON pv.id_venta = vf.id
             )
             SELECT
-                ventas.ventas_total_comercial AS ventas_brutas,
-                ventas.financiacion_total,
-                pagos_financieros.financiacion_cobrada,
-                pagos_financieros.costos_financieros,
-                pagos_financieros.ingreso_real_neto,
-                devoluciones.devoluciones_total,
+                COUNT(vm.id)::int AS cantidad_ventas,
+                COALESCE(SUM(vm.ventas_brutas), 0)::numeric(14,2) AS ventas_brutas,
+                COALESCE(SUM(vm.financiacion_total), 0)::numeric(14,2)
+                    AS financiacion_total,
+                COALESCE(SUM(vm.financiacion_cobrada), 0)::numeric(14,2)
+                    AS financiacion_cobrada,
+                COALESCE(SUM(vm.costos_financieros), 0)::numeric(14,2)
+                    AS costos_financieros,
+                COALESCE(SUM(vm.ingreso_real_neto), 0)::numeric(14,2)
+                    AS ingreso_real_neto,
+                COALESCE(MAX(devoluciones.devoluciones_total), 0)::numeric(14,2)
+                    AS devoluciones_total,
+                COALESCE(SUM(vm.ventas_netas), 0)::numeric(14,2) AS ventas_netas,
+                COALESCE(SUM(vm.ventas_netas * vm.porcentaje_cobrado), 0)::numeric(14,2)
+                    AS ventas_cobradas,
+                COALESCE(SUM(vm.cobrado_comercial_reconocido), 0)::numeric(14,2)
+                    AS cobrado_comercial_reconocido,
+                COALESCE(
+                    SUM(vm.ventas_netas * (1 - vm.porcentaje_cobrado)),
+                    0
+                )::numeric(14,2) AS saldo_pendiente_por_cobrar,
+                COALESCE(MAX(costos.cmv_bruto), 0)::numeric(14,2) AS cmv_bruto,
+                COALESCE(MAX(costos.cmv_devoluciones), 0)::numeric(14,2)
+                    AS cmv_devoluciones,
                 (
-                    ventas.ventas_total_comercial
-                    - devoluciones.devoluciones_total
-                )::numeric(14,2) AS ventas_netas,
-                costos.cmv_bruto,
-                costos.cmv_devoluciones,
-                (costos.cmv_bruto - costos.cmv_devoluciones)::numeric(14,2) AS cmv_neto
-            FROM ventas
-            CROSS JOIN pagos_financieros
+                    COALESCE(MAX(costos.cmv_bruto), 0)
+                    - COALESCE(MAX(costos.cmv_devoluciones), 0)
+                )::numeric(14,2) AS cmv_neto,
+                COALESCE(SUM(vm.cmv_neto * vm.porcentaje_cobrado), 0)::numeric(14,2)
+                    AS cmv_cobrado,
+                COALESCE(
+                    SUM(LEAST(vm.cobrado_comercial_reconocido, vm.cmv_neto)),
+                    0
+                )::numeric(14,2) AS capital_recuperado,
+                COALESCE(
+                    SUM(GREATEST(vm.cmv_neto - vm.cobrado_comercial_reconocido, 0)),
+                    0
+                )::numeric(14,2) AS capital_inmovilizado,
+                COALESCE(
+                    SUM(GREATEST(vm.cobrado_comercial_reconocido - vm.cmv_neto, 0)),
+                    0
+                )::numeric(14,2) AS utilidad_liberada,
+                COALESCE(
+                    SUM((vm.ventas_netas - vm.cmv_neto) * vm.porcentaje_cobrado),
+                    0
+                )::numeric(14,2) AS margen_cobrado,
+                COALESCE(
+                    SUM((vm.ventas_netas - vm.cmv_neto) * (1 - vm.porcentaje_cobrado)),
+                    0
+                )::numeric(14,2) AS margen_pendiente,
+                COALESCE(
+                    SUM(
+                        GREATEST(
+                            (vm.ventas_netas - vm.cmv_neto)
+                            - GREATEST(vm.cobrado_comercial_reconocido - vm.cmv_neto, 0),
+                            0
+                        )
+                    ),
+                    0
+                )::numeric(14,2) AS utilidad_pendiente
+            FROM ventas_metricas vm
             CROSS JOIN devoluciones
             CROSS JOIN costos
             """,
-            (*params[:2], list(VENTA_ESTADOS_REPORTING), *params[2:]),
+            (*params[:2], estados_rentabilidad, *params[2:]),
         )
         return cur.fetchone()
 
@@ -352,7 +472,7 @@ def get_detalle_rentabilidad_diaria(
     fecha,
     id_sucursal=None,
 ):
-    params = [fecha, list(VENTA_ESTADOS_REPORTING)]
+    params = [fecha, list(RENTABILIDAD_ESTADOS_COMERCIALES)]
     sucursal_sql = ""
     if id_sucursal is not None:
         sucursal_sql = "AND v.id_sucursal = %s"
@@ -372,6 +492,16 @@ def get_detalle_rentabilidad_diaria(
             pagos_venta AS (
                 SELECT
                     p.origen_id AS id_venta,
+                    COALESCE(SUM(p.monto_base_aplicado), 0)::numeric(14,2)
+                        AS base_comercial_cobrada,
+                    COALESCE(SUM(p.monto_descuento_aplicado), 0)::numeric(14,2)
+                        AS descuentos_cobrados,
+                    COALESCE(SUM(
+                        GREATEST(
+                            p.monto_base_aplicado - p.monto_descuento_aplicado,
+                            0
+                        )
+                    ), 0)::numeric(14,2) AS cobrado_comercial_reconocido,
                     COALESCE(SUM(p.monto_recargo_aplicado), 0)::numeric(14,2)
                         AS financiacion_cobrada,
                     COALESCE(SUM(
@@ -488,6 +618,18 @@ def get_detalle_rentabilidad_diaria(
                     2
                 )::numeric(14,2) AS ingreso_real_neto,
                 ROUND(
+                    CASE
+                        WHEN v.subtotal_base > 0
+                            THEN vi.subtotal
+                                * (
+                                    COALESCE(pv.cobrado_comercial_reconocido, 0)
+                                    / v.subtotal_base
+                                  )
+                        ELSE 0
+                    END,
+                    2
+                )::numeric(14,2) AS cobrado_comercial_reconocido,
+                ROUND(
                     COALESCE(d.monto_devuelto, 0)
                     * CASE
                         WHEN v.total_final > 0
@@ -556,25 +698,267 @@ def get_detalle_rentabilidad_diaria(
                     CASE
                         WHEN v.subtotal_base > 0
                             THEN (
-                                vi.subtotal
-                                * (
-                                    GREATEST(v.total_final - v.recargo_total, 0)
-                                    / v.subtotal_base
+                                (
+                                    vi.subtotal
+                                    * (
+                                        GREATEST(v.total_final - v.recargo_total, 0)
+                                        / v.subtotal_base
+                                      )
+                                    - COALESCE(d.monto_devuelto, 0)
+                                      * CASE
+                                          WHEN v.total_final > 0
+                                              THEN GREATEST(v.total_final - v.recargo_total, 0)
+                                                  / v.total_final
+                                          ELSE 1
+                                        END
+                                )
+                                * LEAST(
+                                    COALESCE(pv.base_comercial_cobrada, 0)
+                                    / v.subtotal_base,
+                                    1
                                   )
-                                - COALESCE(d.monto_devuelto, 0)
-                                  * CASE
-                                      WHEN v.total_final > 0
-                                          THEN GREATEST(v.total_final - v.recargo_total, 0)
-                                              / v.total_final
-                                      ELSE 1
-                                    END
-                              )
-                              - (
-                                  vi.costo_unitario_aplicado
-                                  * GREATEST(
-                                      vi.cantidad - COALESCE(d.cantidad_devuelta, 0),
-                                      0
+                            )
+                        ELSE 0
+                    END,
+                    2
+                )::numeric(14,2) AS venta_cobrada,
+                ROUND(
+                    CASE
+                        WHEN v.subtotal_base > 0
+                            THEN (
+                                vi.costo_unitario_aplicado
+                                * GREATEST(
+                                    vi.cantidad - COALESCE(d.cantidad_devuelta, 0),
+                                    0
+                                  )
+                                * LEAST(
+                                    COALESCE(pv.base_comercial_cobrada, 0)
+                                    / v.subtotal_base,
+                                    1
+                                  )
+                            )
+                        ELSE 0
+                    END,
+                    2
+                )::numeric(14,2) AS costo_cobrado,
+                LEAST(
+                    ROUND(
+                        CASE
+                            WHEN v.subtotal_base > 0
+                                THEN vi.subtotal
+                                    * (
+                                        COALESCE(pv.cobrado_comercial_reconocido, 0)
+                                        / v.subtotal_base
+                                      )
+                            ELSE 0
+                        END,
+                        2
+                    ),
+                    ROUND(
+                        vi.costo_unitario_aplicado
+                        * GREATEST(
+                            vi.cantidad - COALESCE(d.cantidad_devuelta, 0),
+                            0
+                          ),
+                        2
+                    )
+                )::numeric(14,2) AS capital_recuperado,
+                GREATEST(
+                    ROUND(
+                        vi.costo_unitario_aplicado
+                        * GREATEST(
+                            vi.cantidad - COALESCE(d.cantidad_devuelta, 0),
+                            0
+                          ),
+                        2
+                    )
+                    - ROUND(
+                        CASE
+                            WHEN v.subtotal_base > 0
+                                THEN vi.subtotal
+                                    * (
+                                        COALESCE(pv.cobrado_comercial_reconocido, 0)
+                                        / v.subtotal_base
+                                      )
+                            ELSE 0
+                        END,
+                        2
+                    ),
+                    0
+                )::numeric(14,2) AS capital_inmovilizado,
+                GREATEST(
+                    ROUND(
+                        CASE
+                            WHEN v.subtotal_base > 0
+                                THEN vi.subtotal
+                                    * (
+                                        COALESCE(pv.cobrado_comercial_reconocido, 0)
+                                        / v.subtotal_base
+                                      )
+                            ELSE 0
+                        END,
+                        2
+                    )
+                    - ROUND(
+                        vi.costo_unitario_aplicado
+                        * GREATEST(
+                            vi.cantidad - COALESCE(d.cantidad_devuelta, 0),
+                            0
+                          ),
+                        2
+                    ),
+                    0
+                )::numeric(14,2) AS utilidad_liberada,
+                ROUND(
+                    CASE
+                        WHEN v.subtotal_base > 0
+                            THEN (
+                                (
+                                    (
+                                        vi.subtotal
+                                        * (
+                                            GREATEST(v.total_final - v.recargo_total, 0)
+                                            / v.subtotal_base
+                                          )
+                                        - COALESCE(d.monto_devuelto, 0)
+                                          * CASE
+                                              WHEN v.total_final > 0
+                                                  THEN GREATEST(v.total_final - v.recargo_total, 0)
+                                                      / v.total_final
+                                              ELSE 1
+                                            END
                                     )
+                                    - (
+                                        vi.costo_unitario_aplicado
+                                        * GREATEST(
+                                            vi.cantidad - COALESCE(d.cantidad_devuelta, 0),
+                                            0
+                                          )
+                                      )
+                                )
+                                * LEAST(
+                                    COALESCE(pv.base_comercial_cobrada, 0)
+                                    / v.subtotal_base,
+                                    1
+                                  )
+                            )
+                        ELSE 0
+                    END,
+                    2
+                )::numeric(14,2) AS margen_cobrado,
+                ROUND(
+                    CASE
+                        WHEN v.subtotal_base > 0
+                            THEN (
+                                (
+                                    (
+                                        vi.subtotal
+                                        * (
+                                            GREATEST(v.total_final - v.recargo_total, 0)
+                                            / v.subtotal_base
+                                          )
+                                        - COALESCE(d.monto_devuelto, 0)
+                                          * CASE
+                                              WHEN v.total_final > 0
+                                                  THEN GREATEST(v.total_final - v.recargo_total, 0)
+                                                      / v.total_final
+                                              ELSE 1
+                                            END
+                                    )
+                                    - (
+                                        vi.costo_unitario_aplicado
+                                        * GREATEST(
+                                            vi.cantidad - COALESCE(d.cantidad_devuelta, 0),
+                                            0
+                                          )
+                                      )
+                                )
+                                * (
+                                    1 - LEAST(
+                                        COALESCE(pv.base_comercial_cobrada, 0)
+                                        / v.subtotal_base,
+                                        1
+                                    )
+                                  )
+                            )
+                        ELSE 0
+                    END,
+                    2
+                )::numeric(14,2) AS margen_pendiente,
+                GREATEST(
+                    ROUND(
+                        CASE
+                            WHEN v.subtotal_base > 0
+                                THEN (
+                                    (
+                                        vi.subtotal
+                                        * (
+                                            GREATEST(v.total_final - v.recargo_total, 0)
+                                            / v.subtotal_base
+                                          )
+                                        - COALESCE(d.monto_devuelto, 0)
+                                          * CASE
+                                              WHEN v.total_final > 0
+                                                  THEN GREATEST(v.total_final - v.recargo_total, 0)
+                                                      / v.total_final
+                                              ELSE 1
+                                            END
+                                    )
+                                    - (
+                                        vi.costo_unitario_aplicado
+                                        * GREATEST(
+                                            vi.cantidad - COALESCE(d.cantidad_devuelta, 0),
+                                            0
+                                          )
+                                      )
+                                )
+                            ELSE 0
+                        END,
+                        2
+                    )
+                    - GREATEST(
+                        ROUND(
+                            CASE
+                                WHEN v.subtotal_base > 0
+                                    THEN vi.subtotal
+                                        * (
+                                            COALESCE(pv.cobrado_comercial_reconocido, 0)
+                                            / v.subtotal_base
+                                          )
+                                ELSE 0
+                            END,
+                            2
+                        )
+                        - ROUND(
+                            vi.costo_unitario_aplicado
+                            * GREATEST(
+                                vi.cantidad - COALESCE(d.cantidad_devuelta, 0),
+                                0
+                              ),
+                            2
+                        ),
+                        0
+                    ),
+                    0
+                )::numeric(14,2) AS utilidad_pendiente,
+                ROUND(
+                    CASE
+                        WHEN v.subtotal_base > 0
+                            THEN (
+                                GREATEST(
+                                    vi.subtotal
+                                    * (
+                                        COALESCE(pv.cobrado_comercial_reconocido, 0)
+                                        / v.subtotal_base
+                                      )
+                                    - (
+                                        vi.costo_unitario_aplicado
+                                        * GREATEST(
+                                            vi.cantidad - COALESCE(d.cantidad_devuelta, 0),
+                                            0
+                                          )
+                                      ),
+                                    0
                                 )
                               + vi.subtotal
                                 * (
@@ -586,6 +970,7 @@ def get_detalle_rentabilidad_diaria(
                                     COALESCE(pv.costo_financiero, 0)
                                     / v.subtotal_base
                                   )
+                            )
                         ELSE 0
                     END,
                     2

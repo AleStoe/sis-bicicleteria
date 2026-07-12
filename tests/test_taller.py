@@ -431,6 +431,121 @@ def test_no_permite_lista_para_retirar_sin_venta_generada(client, db_conn, seed_
     assert "generá la venta" in response.json()["detail"]
 
 
+def test_ot_con_servicio_sin_cargo_puede_cerrar_sin_generar_venta(client, seed_taller_basico):
+    servicio = _crear_servicio_taller_test(
+        client,
+        nombre="Service bonificado test",
+        precio=0,
+    )
+    orden = _crear_orden_taller_test(
+        client,
+        seed_taller_basico,
+        problema="Service bonificado de carga inicial",
+    )
+
+    item_response = client.post(
+        f"/ordenes_taller/{orden['id']}/items",
+        json={
+            "tipo_item": "servicio",
+            "id_servicio_taller": servicio["id"],
+            "cantidad": 1,
+            "precio_unitario": 0,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert item_response.status_code == 201, item_response.text
+    item_id = item_response.json()["id"]
+    assert _to_decimal(item_response.json()["subtotal"]) == Decimal("0.00")
+
+    aprobar = client.post(
+        f"/ordenes_taller/{orden['id']}/items/{item_id}/aprobacion",
+        json={"aprobado": True, "id_usuario": seed_taller_basico["usuario_id"]},
+    )
+    assert aprobar.status_code == 200, aprobar.text
+
+    ejecutar = client.post(
+        f"/ordenes_taller/{orden['id']}/items/{item_id}/ejecutar",
+        params={"id_usuario": seed_taller_basico["usuario_id"]},
+    )
+    assert ejecutar.status_code == 200, ejecutar.text
+
+    for estado in ["presupuestada", "en_reparacion", "terminada", "lista_para_retirar", "retirada"]:
+        response = client.post(
+            f"/ordenes_taller/{orden['id']}/estado",
+            json={"nuevo_estado": estado, "id_usuario": seed_taller_basico["usuario_id"]},
+        )
+        assert response.status_code == 200, response.text
+
+    detalle = client.get(f"/ordenes_taller/{orden['id']}").json()
+    assert detalle["estado"] == "retirada"
+    assert detalle["id_venta_generada"] is None
+    assert _to_decimal(detalle["total_final"]) == Decimal("0.00")
+
+
+def test_ot_con_servicio_bonificado_total_puede_retirar_sin_venta(
+    client,
+    seed_taller_basico,
+):
+    servicio = _crear_servicio_taller_test(
+        client,
+        nombre="Service cubierto por atencion comercial",
+        precio=5000,
+    )
+    orden = _crear_orden_taller_test(
+        client,
+        seed_taller_basico,
+        problema="Service bonificado sin cobro",
+    )
+    usuario_id = seed_taller_basico["usuario_id"]
+
+    item_response = client.post(
+        f"/ordenes_taller/{orden['id']}/items",
+        json={
+            "tipo_item": "servicio",
+            "id_servicio_taller": servicio["id"],
+            "cantidad": 1,
+            "precio_unitario": 5000,
+            "valor_cobertura_unitario": 5000,
+            "motivo_cobertura": "Atencion comercial",
+            "observacion_cobertura": "Service sin cargo",
+            "id_usuario": usuario_id,
+        },
+    )
+    assert item_response.status_code == 201, item_response.text
+    assert _to_decimal(item_response.json()["subtotal"]) == Decimal("0")
+
+    item_id = item_response.json()["id"]
+    aprobar = client.post(
+        f"/ordenes_taller/{orden['id']}/items/{item_id}/aprobacion",
+        json={"aprobado": True, "id_usuario": usuario_id},
+    )
+    assert aprobar.status_code == 200, aprobar.text
+
+    ejecutar = client.post(
+        f"/ordenes_taller/{orden['id']}/items/{item_id}/ejecutar",
+        params={"id_usuario": usuario_id},
+    )
+    assert ejecutar.status_code == 200, ejecutar.text
+
+    for estado in ["presupuestada", "en_reparacion", "terminada"]:
+        response = client.post(
+            f"/ordenes_taller/{orden['id']}/estado",
+            json={"nuevo_estado": estado, "id_usuario": usuario_id},
+        )
+        assert response.status_code == 200, response.text
+
+    for estado in ["lista_para_retirar", "retirada"]:
+        response = client.post(
+            f"/ordenes_taller/{orden['id']}/estado",
+            json={"nuevo_estado": estado, "id_usuario": usuario_id},
+        )
+        assert response.status_code == 200, response.text
+
+    detalle = client.get(f"/ordenes_taller/{orden['id']}").json()
+    assert detalle["estado"] == "retirada"
+    assert detalle["id_venta_generada"] is None
+
+
 def test_aprobar_item_taller(client, seed_taller_basico, seed_venta_basica):
     crear = client.post(
         "/ordenes_taller/",
@@ -1266,6 +1381,135 @@ def test_cancelar_item_no_ejecutado(client, seed_taller_basico, seed_venta_basic
     assert response.status_code == 200
     assert response.json()["etapa"] == "cancelado"
     assert response.json()["aprobado"] is False
+
+def test_quitar_item_borrador_elimina_item_sin_cancelarlo(
+    client,
+    db_conn,
+    seed_taller_basico,
+    seed_venta_basica,
+):
+    orden = _crear_orden_taller_test(
+        client,
+        seed_taller_basico,
+        problema="Armado de presupuesto editable",
+    )
+    usuario_id = seed_taller_basico["usuario_id"]
+
+    item_response = client.post(
+        f"/ordenes_taller/{orden['id']}/items",
+        json={
+            "id_variante": seed_venta_basica["variante_id"],
+            "cantidad": 1,
+            "precio_unitario": 1000,
+            "id_usuario": usuario_id,
+        },
+    )
+    assert item_response.status_code == 201, item_response.text
+    item_id = item_response.json()["id"]
+
+    response = client.delete(
+        f"/ordenes_taller/{orden['id']}/items/{item_id}",
+        params={"id_usuario": usuario_id},
+    )
+
+    assert response.status_code == 204, response.text
+
+    detalle = client.get(f"/ordenes_taller/{orden['id']}").json()
+    assert detalle["items"] == []
+    assert _to_decimal(detalle["total_final"]) == Decimal("0.00")
+
+    row = db_conn.execute(
+        "SELECT id FROM ordenes_taller_items WHERE id = %s",
+        (item_id,),
+    ).fetchone()
+    assert row is None
+
+    evento = db_conn.execute(
+        """
+        SELECT tipo_evento, detalle
+        FROM ordenes_taller_eventos
+        WHERE id_orden_taller = %s
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (orden["id"],),
+    ).fetchone()
+    assert evento["tipo_evento"] == "item_quitado_borrador"
+    assert "Item quitado del borrador" in evento["detalle"]
+
+
+def test_no_permite_quitar_item_borrador_si_ot_ya_esta_presupuestada(
+    client,
+    seed_taller_basico,
+    seed_venta_basica,
+):
+    orden = _crear_orden_taller_test(
+        client,
+        seed_taller_basico,
+        problema="Presupuesto formalizado",
+    )
+    usuario_id = seed_taller_basico["usuario_id"]
+    item_response = client.post(
+        f"/ordenes_taller/{orden['id']}/items",
+        json={
+            "id_variante": seed_venta_basica["variante_id"],
+            "cantidad": 1,
+            "precio_unitario": 1000,
+            "id_usuario": usuario_id,
+        },
+    )
+    assert item_response.status_code == 201, item_response.text
+
+    cambio = client.post(
+        f"/ordenes_taller/{orden['id']}/estado",
+        json={"nuevo_estado": "presupuestada", "id_usuario": usuario_id},
+    )
+    assert cambio.status_code == 200, cambio.text
+
+    response = client.delete(
+        f"/ordenes_taller/{orden['id']}/items/{item_response.json()['id']}",
+        params={"id_usuario": usuario_id},
+    )
+
+    assert response.status_code == 400
+    assert "borrador" in response.json()["detail"]
+
+
+def test_no_permite_quitar_item_borrador_aprobado(
+    client,
+    seed_taller_basico,
+    seed_venta_basica,
+):
+    orden = _crear_orden_taller_test(
+        client,
+        seed_taller_basico,
+        problema="Item aprobado no borrable",
+    )
+    usuario_id = seed_taller_basico["usuario_id"]
+    item_response = client.post(
+        f"/ordenes_taller/{orden['id']}/items",
+        json={
+            "id_variante": seed_venta_basica["variante_id"],
+            "cantidad": 1,
+            "precio_unitario": 1000,
+            "id_usuario": usuario_id,
+        },
+    )
+    assert item_response.status_code == 201, item_response.text
+
+    aprobar = client.post(
+        f"/ordenes_taller/{orden['id']}/items/{item_response.json()['id']}/aprobacion",
+        json={"aprobado": True, "id_usuario": usuario_id},
+    )
+    assert aprobar.status_code == 200, aprobar.text
+
+    response = client.delete(
+        f"/ordenes_taller/{orden['id']}/items/{item_response.json()['id']}",
+        params={"id_usuario": usuario_id},
+    )
+
+    assert response.status_code == 400
+    assert "no aprobados" in response.json()["detail"]
 
 def _crear_servicio_taller_test(client, nombre="Centrado de rueda", precio=8000):
     response = client.post(

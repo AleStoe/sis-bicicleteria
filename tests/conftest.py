@@ -124,6 +124,21 @@ def clean_db(db_conn):
             """
         )
 
+        cur.execute(
+            """
+            INSERT INTO tipos_evento_taller (codigo, descripcion, activo)
+            VALUES (
+                'item_quitado_borrador',
+                'Item quitado durante el armado del presupuesto',
+                TRUE
+            )
+            ON CONFLICT (codigo) DO UPDATE
+            SET
+                descripcion = EXCLUDED.descripcion,
+                activo = TRUE
+            """
+        )
+
         cur.execute("SELECT setval('cotizaciones_numero_seq', 1, false)")
 
     db_conn.commit()

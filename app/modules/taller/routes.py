@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from app.core.security import CurrentUser, aplicar_actor_actual
 from app.modules.authz.service import exigir_permiso_actual, requerir_permiso
@@ -39,6 +39,7 @@ from .service import (
     ejecutar_item_orden_taller,
     revertir_ejecucion_item_orden_taller,
     cancelar_item_orden_taller,
+    quitar_item_borrador_orden_taller,
     generar_venta_desde_orden_taller,
     actualizar_datos_operativos_orden_taller,
     generar_mensaje_lista_retiro_orden_taller,
@@ -230,6 +231,16 @@ def cancelar_item(
 ):
     aplicar_actor_actual(payload, usuario)
     return cancelar_item_orden_taller(orden_id, item_id, payload)
+
+@router.delete("/{orden_id}/items/{item_id}", status_code=204)
+def quitar_item_borrador(
+    orden_id: int,
+    item_id: int,
+    id_usuario: int | None = Query(default=None),
+    usuario: CurrentUser = Depends(puede_gestionar_taller),
+):
+    actor_id = id_usuario if usuario.auth_disabled and id_usuario else usuario.id
+    quitar_item_borrador_orden_taller(orden_id, item_id, actor_id)
 
 @router.post(
     "/{orden_id}/generar-venta",

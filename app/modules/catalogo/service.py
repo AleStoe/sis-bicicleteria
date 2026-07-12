@@ -292,6 +292,7 @@ def listar_catalogo_pos(
     marca_id: int | None = None,
     limit: int = 50,
     offset: int = 0,
+    solo_disponibles: bool = False,
 ):
     if limit < 1:
         raise HTTPException(status_code=400, detail="El límite debe ser mayor a 0")
@@ -312,6 +313,7 @@ def listar_catalogo_pos(
             marca_id=marca_id,
             limit=limit,
             offset=offset,
+            solo_disponibles=solo_disponibles,
         )
     finally:
         conn.close()

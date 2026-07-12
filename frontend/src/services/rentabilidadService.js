@@ -1,4 +1,6 @@
+import { API_BASE_URL } from "../config/appConfig";
 import { apiRequest } from "./api";
+import { clearStoredSession, getStoredAuthToken } from "./sessionStore";
 
 function cleanParams(params = {}) {
   const search = new URLSearchParams();
@@ -61,4 +63,55 @@ export function getCierresRentabilidad(params = {}) {
 
 export function getCierreRentabilidad(cierreId) {
   return apiRequest(`/rentabilidad/cierres/${cierreId}`);
+}
+
+function filenameFromDisposition(disposition, fallback) {
+  const match = String(disposition || "").match(/filename="?([^"]+)"?/i);
+  return match?.[1] || fallback;
+}
+
+export async function descargarResultadoDistribuiblePdf(params = {}) {
+  const query = cleanParams(params);
+  const token = getStoredAuthToken();
+  let response;
+
+  try {
+    response = await fetch(
+      `${API_BASE_URL}/rentabilidad/resultado-distribuible/pdf${query ? `?${query}` : ""}`,
+      {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      },
+    );
+  } catch {
+    throw new Error("No se pudo conectar con el servidor para descargar el informe.");
+  }
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      clearStoredSession();
+      window.dispatchEvent(new Event("session-expired"));
+    }
+
+    const contentType = response.headers.get("content-type") || "";
+    const data = contentType.includes("application/json")
+      ? await response.json()
+      : null;
+
+    throw new Error(
+      data?.detail || `No se pudo descargar el informe (${response.status}).`,
+    );
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filenameFromDisposition(
+    response.headers.get("content-disposition"),
+    "Resultado-Distribuible.pdf",
+  );
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }

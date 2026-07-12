@@ -94,6 +94,23 @@ def test_rentabilidad_mensual_devuelve_estructura(client, seed_venta_basica):
     assert len(data["distribuciones_sugeridas"]) == 3
 
 
+def test_resultado_distribuible_pdf(client, seed_venta_basica):
+    ale = _crear_participante(client, "Ale pdf")
+    angel = _crear_participante(client, "Angel pdf")
+    fondo = _crear_participante(client, "Fondo pdf", "fondo")
+    _crear_regla(client, ale["id"], angel["id"], fondo["id"], "Regla pdf")
+
+    response = client.get(
+        "/rentabilidad/resultado-distribuible/pdf",
+        params={"periodo_mes": "2026-06-01", "incluir_detalle": "true"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"].startswith("application/pdf")
+    assert "Resultado-Distribuible-2026-06.pdf" in response.headers["content-disposition"]
+    assert response.content.startswith(b"%PDF")
+
+
 def test_rentabilidad_mensual_usa_total_final_de_ventas(client, db_conn, seed_venta_basica):
     crear = client.post(
         "/ventas/",
@@ -125,6 +142,34 @@ def test_rentabilidad_mensual_usa_total_final_de_ventas(client, db_conn, seed_ve
             WHERE id = %s
             """,
             (venta_id,),
+        )
+        cur.execute(
+            """
+            INSERT INTO pagos (
+                id_cliente,
+                origen_tipo,
+                origen_id,
+                medio_pago,
+                monto_total_cobrado,
+                monto_base_aplicado,
+                monto_descuento_aplicado,
+                monto_recargo_aplicado,
+                monto_costo_financiero,
+                monto_neto_liquidado,
+                estado,
+                id_usuario
+            )
+            VALUES (
+                %s, 'venta', %s, 'efectivo',
+                22000, 24440, 2440, 0,
+                0, 22000, 'confirmado', %s
+            )
+            """,
+            (
+                seed_venta_basica["cliente_id"],
+                venta_id,
+                seed_venta_basica["usuario_id"],
+            ),
         )
     db_conn.commit()
 
@@ -177,6 +222,34 @@ def test_rentabilidad_diaria_detalla_ganancia_por_articulo(
             """,
             (venta_id,),
         )
+        cur.execute(
+            """
+            INSERT INTO pagos (
+                id_cliente,
+                origen_tipo,
+                origen_id,
+                medio_pago,
+                monto_total_cobrado,
+                monto_base_aplicado,
+                monto_descuento_aplicado,
+                monto_recargo_aplicado,
+                monto_costo_financiero,
+                monto_neto_liquidado,
+                estado,
+                id_usuario
+            )
+            VALUES (
+                %s, 'venta', %s, 'efectivo',
+                44000, 48880, 4880, 0,
+                0, 44000, 'confirmado', %s
+            )
+            """,
+            (
+                seed_venta_basica["cliente_id"],
+                venta_id,
+                seed_venta_basica["usuario_id"],
+            ),
+        )
     db_conn.commit()
 
     response = client.get(
@@ -192,8 +265,11 @@ def test_rentabilidad_diaria_detalla_ganancia_por_articulo(
     assert data["fecha"] == "2026-07-04"
     assert data["cantidad_ventas"] == 1
     assert _dec(data["ventas_netas"]) == Decimal("44000.00")
+    assert _dec(data["ventas_cobradas"]) == Decimal("44000.00")
     assert _dec(data["cmv"]) == Decimal("20000.00")
+    assert _dec(data["cmv_cobrado"]) == Decimal("20000.00")
     assert _dec(data["margen_bruto"]) == Decimal("24000.00")
+    assert _dec(data["margen_cobrado"]) == Decimal("24000.00")
     assert _dec(data["margen_porcentaje"]).quantize(Decimal("0.01")) == Decimal(
         "54.55"
     )
@@ -203,8 +279,285 @@ def test_rentabilidad_diaria_detalla_ganancia_por_articulo(
     assert articulo["id_variante"] == seed_venta_basica["variante_id"]
     assert _dec(articulo["cantidad_vendida"]) == Decimal("2")
     assert _dec(articulo["venta_total"]) == Decimal("44000.00")
+    assert _dec(articulo["venta_cobrada"]) == Decimal("44000.00")
     assert _dec(articulo["costo_total"]) == Decimal("20000.00")
+    assert _dec(articulo["costo_cobrado"]) == Decimal("20000.00")
     assert _dec(articulo["margen_bruto"]) == Decimal("24000.00")
+    assert _dec(articulo["margen_cobrado"]) == Decimal("24000.00")
+
+
+def test_rentabilidad_parcial_menor_al_cmv_no_libera_utilidad(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    crear = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 1,
+                    "precio_unitario_manual": 650000,
+                    "motivo_precio_manual": "Precio test rentabilidad parcial",
+                }
+            ],
+        },
+    )
+    assert crear.status_code == 200, crear.text
+    venta_id = crear.json()["venta_id"]
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE venta_items
+            SET precio_lista = 650000,
+                precio_final = 650000,
+                subtotal = 650000,
+                costo_unitario_aplicado = 500000
+            WHERE id_venta = %s
+            """,
+            (venta_id,),
+        )
+        cur.execute(
+            """
+            UPDATE ventas
+            SET fecha = '2026-07-06 10:00:00-03',
+                estado = 'pagada_parcial',
+                subtotal_base = 650000,
+                descuento_total = 0,
+                recargo_total = 0,
+                total_final = 650000,
+                saldo_pendiente = 400000
+            WHERE id = %s
+            """,
+            (venta_id,),
+        )
+        cur.execute(
+            """
+            INSERT INTO pagos (
+                id_cliente,
+                origen_tipo,
+                origen_id,
+                medio_pago,
+                monto_total_cobrado,
+                monto_base_aplicado,
+                monto_descuento_aplicado,
+                monto_recargo_aplicado,
+                monto_costo_financiero,
+                monto_neto_liquidado,
+                estado,
+                id_usuario
+            )
+            VALUES (
+                %s, 'venta', %s, 'transferencia',
+                250000, 250000, 0, 0,
+                0, 250000, 'confirmado', %s
+            )
+            """,
+            (
+                seed_venta_basica["cliente_id"],
+                venta_id,
+                seed_venta_basica["usuario_id"],
+            ),
+        )
+    db_conn.commit()
+
+    mensual = client.get(
+        "/rentabilidad/mensual",
+        params={"periodo_mes": "2026-07-01"},
+    )
+    assert mensual.status_code == 200, mensual.text
+    mensual_data = mensual.json()
+
+    assert _dec(mensual_data["ventas_netas"]) == Decimal("650000.00")
+    assert _dec(mensual_data["ventas_cobradas"]) == Decimal("250000.00")
+    assert _dec(mensual_data["cobrado_comercial_reconocido"]) == Decimal("250000.00")
+    assert _dec(mensual_data["saldo_pendiente_por_cobrar"]) == Decimal("400000.00")
+    assert _dec(mensual_data["cmv_neto"]) == Decimal("500000.00")
+    assert _dec(mensual_data["cmv_cobrado"]) == Decimal("192307.69")
+    assert _dec(mensual_data["capital_recuperado"]) == Decimal("250000.00")
+    assert _dec(mensual_data["capital_inmovilizado"]) == Decimal("250000.00")
+    assert _dec(mensual_data["margen_bruto"]) == Decimal("150000.00")
+    assert _dec(mensual_data["margen_esperado"]) == Decimal("150000.00")
+    # Auditoria tecnica: margen prorrateado, no KPI principal.
+    assert _dec(mensual_data["margen_cobrado"]) == Decimal("57692.31")
+    assert _dec(mensual_data["margen_pendiente"]) == Decimal("92307.69")
+    assert _dec(mensual_data["utilidad_liberada"]) == Decimal("0.00")
+    assert _dec(mensual_data["utilidad_pendiente"]) == Decimal("150000.00")
+    assert _dec(mensual_data["margen_real"]) == Decimal("0.00")
+    assert _dec(mensual_data["resultado_distribuible"]) == Decimal("0.00")
+
+    diaria = client.get(
+        "/rentabilidad/diaria",
+        params={
+            "fecha": "2026-07-06",
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+        },
+    )
+    assert diaria.status_code == 200, diaria.text
+    diaria_data = diaria.json()
+    assert _dec(diaria_data["ventas_cobradas"]) == Decimal("250000.00")
+    assert _dec(diaria_data["cobrado_comercial_reconocido"]) == Decimal("250000.00")
+    assert _dec(diaria_data["capital_recuperado"]) == Decimal("250000.00")
+    assert _dec(diaria_data["capital_inmovilizado"]) == Decimal("250000.00")
+    assert _dec(diaria_data["margen_cobrado"]) == Decimal("57692.31")
+    assert _dec(diaria_data["margen_pendiente"]) == Decimal("92307.69")
+    assert _dec(diaria_data["utilidad_liberada"]) == Decimal("0.00")
+    assert _dec(diaria_data["utilidad_pendiente"]) == Decimal("150000.00")
+    assert _dec(diaria_data["margen_real"]) == Decimal("0.00")
+
+
+def test_rentabilidad_venta_creada_sin_pago_no_reconoce_ganancia_cobrada(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    crear = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 1,
+                }
+            ],
+        },
+    )
+    assert crear.status_code == 200, crear.text
+    venta_id = crear.json()["venta_id"]
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE ventas
+            SET fecha = '2026-07-07 10:00:00-03',
+                estado = 'creada'
+            WHERE id = %s
+            """,
+            (venta_id,),
+        )
+    db_conn.commit()
+
+    mensual = client.get(
+        "/rentabilidad/mensual",
+        params={"periodo_mes": "2026-07-01"},
+    )
+    assert mensual.status_code == 200, mensual.text
+    mensual_data = mensual.json()
+
+    assert _dec(mensual_data["ventas_netas"]) == Decimal("24440.00")
+    assert _dec(mensual_data["cmv_neto"]) == Decimal("10000.00")
+    assert _dec(mensual_data["margen_bruto"]) == Decimal("14440.00")
+    assert _dec(mensual_data["ventas_cobradas"]) == Decimal("0.00")
+    assert _dec(mensual_data["cmv_cobrado"]) == Decimal("0.00")
+    assert _dec(mensual_data["margen_cobrado"]) == Decimal("0.00")
+    assert _dec(mensual_data["margen_pendiente"]) == Decimal("14440.00")
+    assert _dec(mensual_data["margen_real"]) == Decimal("0.00")
+
+
+def test_rentabilidad_parcial_mayor_al_cmv_libera_solo_excedente(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    crear = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 1,
+                    "precio_unitario_manual": 650000,
+                    "motivo_precio_manual": "Precio test rentabilidad parcial",
+                }
+            ],
+        },
+    )
+    assert crear.status_code == 200, crear.text
+    venta_id = crear.json()["venta_id"]
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE venta_items
+            SET precio_lista = 650000,
+                precio_final = 650000,
+                subtotal = 650000,
+                costo_unitario_aplicado = 420000
+            WHERE id_venta = %s
+            """,
+            (venta_id,),
+        )
+        cur.execute(
+            """
+            UPDATE ventas
+            SET fecha = '2026-07-08 10:00:00-03',
+                estado = 'pagada_parcial',
+                subtotal_base = 650000,
+                descuento_total = 0,
+                recargo_total = 0,
+                total_final = 650000,
+                saldo_pendiente = 150000
+            WHERE id = %s
+            """,
+            (venta_id,),
+        )
+        cur.execute(
+            """
+            INSERT INTO pagos (
+                id_cliente,
+                origen_tipo,
+                origen_id,
+                medio_pago,
+                monto_total_cobrado,
+                monto_base_aplicado,
+                monto_descuento_aplicado,
+                monto_recargo_aplicado,
+                monto_costo_financiero,
+                monto_neto_liquidado,
+                estado,
+                id_usuario
+            )
+            VALUES (
+                %s, 'venta', %s, 'transferencia',
+                500000, 500000, 0, 0,
+                0, 500000, 'confirmado', %s
+            )
+            """,
+            (
+                seed_venta_basica["cliente_id"],
+                venta_id,
+                seed_venta_basica["usuario_id"],
+            ),
+        )
+    db_conn.commit()
+
+    response = client.get(
+        "/rentabilidad/mensual",
+        params={"periodo_mes": "2026-07-01"},
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+
+    assert _dec(data["venta_comercial"]) == Decimal("650000.00")
+    assert _dec(data["cmv_comercial"]) == Decimal("420000.00")
+    assert _dec(data["margen_esperado"]) == Decimal("230000.00")
+    assert _dec(data["cobrado_comercial_reconocido"]) == Decimal("500000.00")
+    assert _dec(data["capital_recuperado"]) == Decimal("420000.00")
+    assert _dec(data["capital_inmovilizado"]) == Decimal("0.00")
+    assert _dec(data["utilidad_liberada"]) == Decimal("80000.00")
+    assert _dec(data["utilidad_pendiente"]) == Decimal("150000.00")
+    assert _dec(data["margen_real"]) == Decimal("80000.00")
 
 
 def test_financiacion_tarjeta_no_se_cuenta_como_ganancia(

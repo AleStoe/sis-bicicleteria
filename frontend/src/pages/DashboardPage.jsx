@@ -145,7 +145,7 @@ export default function DashboardPage() {
       <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: isMobile ? 8 : 12, minWidth: 0 }}>
         <Metric title="Ventas netas del mes" value={money(k.ventas_mes)} strong loading={loading} />
         <Metric
-          title="Resultado del mes"
+          title="Resultado distribuible"
           value={money(k.resultado_estimado)}
           tone={Number(k.resultado_estimado || 0) >= 0 ? "positive" : "negative"}
           loading={loading}
@@ -160,7 +160,7 @@ export default function DashboardPage() {
           loading={loading}
         />
         <Metric
-          title="Margen real"
+          title="Utilidad + financiero"
           value={money(k.margen_real_mes)}
           detail={formatPercent(k.margen_real_porcentaje || 0, {
             minimumFractionDigits: 0,

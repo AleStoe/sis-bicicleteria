@@ -1,5 +1,6 @@
 from psycopg.rows import dict_row
 
+from app.modules.rentabilidad.repository import get_ventas_rentabilidad
 from app.shared.constants import VENTA_ESTADOS_REPORTING
 
 NO_BICICLETAS_SQL = """
@@ -84,102 +85,45 @@ def get_resultado_estimado(conn, fecha_desde, fecha_hasta, id_sucursal=None):
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             f"""
-            WITH ventas_filtradas AS (
-              SELECT
-                v.id,
-                v.total_final,
-                v.recargo_total,
-                GREATEST(v.total_final - v.recargo_total, 0) AS total_comercial
-              FROM ventas v
-              WHERE v.fecha::date >= %s
-                AND v.fecha::date <= %s
-                AND v.estado = ANY(%s)
-                {sucursal_sql}
-            ),
-            devoluciones_item AS (
-              SELECT
-                vid.id_venta_item,
-                COALESCE(SUM(vid.cantidad_devuelta), 0) AS cantidad_devuelta,
-                COALESCE(SUM(vid.monto_credito_generado), 0) AS monto_devuelto
-              FROM venta_item_devoluciones vid
-              GROUP BY vid.id_venta_item
-            ),
-            items AS (
-              SELECT
-                vi.cantidad,
-                vi.costo_unitario_aplicado,
-                COALESCE(di.cantidad_devuelta, 0) AS cantidad_devuelta,
-                COALESCE(di.monto_devuelto, 0)
-                  * CASE
-                      WHEN vf.total_final > 0
-                        THEN vf.total_comercial / vf.total_final
-                      ELSE 1
-                    END AS monto_devuelto
-              FROM ventas_filtradas vf
-              INNER JOIN venta_items vi ON vi.id_venta = vf.id
-              LEFT JOIN devoluciones_item di ON di.id_venta_item = vi.id
-            ),
-            ventas AS (
-              SELECT
-                COALESCE(SUM(total_comercial), 0) AS ventas_brutas,
-                COUNT(*)::int AS cantidad_ventas
-              FROM ventas_filtradas
-            ),
-            pagos_financieros AS (
-              SELECT
-                COALESCE(SUM(p.monto_recargo_aplicado), 0) AS financiacion_cobrada,
-                COALESCE(SUM(
-                  p.monto_costo_financiero
-                ), 0) AS costos_financieros
-              FROM pagos p
-              INNER JOIN ventas_filtradas vf
-                ON p.origen_tipo = 'venta'
-               AND p.origen_id = vf.id
-              WHERE p.estado = 'confirmado'
-            ),
-            ajustes AS (
-              SELECT
-                COALESCE(SUM(monto_devuelto), 0) AS devoluciones_total,
-                COALESCE(
-                  SUM(costo_unitario_aplicado * (cantidad - cantidad_devuelta)),
-                  0
-                ) AS cmv_neto
-              FROM items
-            )
-            SELECT
-              ventas.ventas_brutas::numeric(14,2) AS ventas_brutas,
-              ventas.cantidad_ventas,
-              ajustes.devoluciones_total::numeric(14,2) AS devoluciones_total,
-              (ventas.ventas_brutas - ajustes.devoluciones_total)::numeric(14,2) AS ventas_netas,
-              ajustes.cmv_neto::numeric(14,2) AS cmv,
-              (
-                ventas.ventas_brutas
-                - ajustes.devoluciones_total
-                - ajustes.cmv_neto
-              )::numeric(14,2) AS margen_bruto
-              ,
-              pagos_financieros.financiacion_cobrada::numeric(14,2)
-                AS financiacion_cobrada,
-              pagos_financieros.costos_financieros::numeric(14,2)
-                AS costos_financieros,
-              (
-                pagos_financieros.financiacion_cobrada
-                - pagos_financieros.costos_financieros
-              )::numeric(14,2) AS resultado_financiero,
-              (
-                ventas.ventas_brutas
-                - ajustes.devoluciones_total
-                - ajustes.cmv_neto
-                + pagos_financieros.financiacion_cobrada
-                - pagos_financieros.costos_financieros
-              )::numeric(14,2) AS margen_real
-            FROM ventas
-            CROSS JOIN ajustes
-            CROSS JOIN pagos_financieros
+            SELECT COUNT(*)::int AS cantidad_ventas
+            FROM ventas v
+            WHERE v.fecha::date >= %s
+              AND v.fecha::date <= %s
+              AND v.estado = ANY(%s)
+              {sucursal_sql}
             """,
             params,
         )
-        return cur.fetchone()
+        cantidad_ventas = cur.fetchone()["cantidad_ventas"]
+
+    rent = get_ventas_rentabilidad(
+        conn,
+        fecha_desde,
+        fecha_hasta,
+        id_sucursal,
+        estados=VENTA_ESTADOS_REPORTING,
+    )
+    financiacion_cobrada = rent["financiacion_cobrada"] or 0
+    costos_financieros = rent["costos_financieros"] or 0
+    resultado_financiero = financiacion_cobrada - costos_financieros
+    utilidad_liberada = rent["utilidad_liberada"] or 0
+
+    return {
+        "ventas_brutas": rent["ventas_brutas"],
+        "cantidad_ventas": cantidad_ventas,
+        "devoluciones_total": rent["devoluciones_total"],
+        "ventas_netas": rent["ventas_netas"],
+        "cmv": rent["cmv_neto"],
+        "margen_bruto": rent["ventas_netas"] - rent["cmv_neto"],
+        "financiacion_cobrada": financiacion_cobrada,
+        "costos_financieros": costos_financieros,
+        "resultado_financiero": resultado_financiero,
+        "capital_recuperado": rent["capital_recuperado"],
+        "capital_inmovilizado": rent["capital_inmovilizado"],
+        "utilidad_liberada": utilidad_liberada,
+        "utilidad_pendiente": rent["utilidad_pendiente"],
+        "margen_real": utilidad_liberada + resultado_financiero,
+    }
 
 
 def get_resultado_dia(conn, fecha, id_sucursal=None):

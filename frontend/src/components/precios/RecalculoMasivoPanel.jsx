@@ -125,7 +125,7 @@ export default function RecalculoMasivoPanel({
                 <th style={styles.th}>Actual</th>
                 <th style={styles.th}>Sugerido</th>
                 <th style={styles.th}>Dif.</th>
-                <th style={styles.th}>Margen real</th>
+                <th style={styles.th}>Margen sobre costo</th>
                 <th style={styles.th}>Regla</th>
                 <th style={styles.th}>Estado</th>
               </tr>

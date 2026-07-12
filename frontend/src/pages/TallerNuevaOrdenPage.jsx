@@ -13,6 +13,8 @@ export default function TallerNuevaOrdenPage() {
   const [clientes, setClientes] = useState([]);
   const [bicicletas, setBicicletas] = useState([]);
   const [clienteId, setClienteId] = useState("");
+  const [clienteBusqueda, setClienteBusqueda] = useState("");
+  const [mostrarResultadosClientes, setMostrarResultadosClientes] = useState(false);
   const [bicicletaId, setBicicletaId] = useState("");
   const [problema, setProblema] = useState("");
   const [fechaPrometida, setFechaPrometida] = useState("");
@@ -34,6 +36,7 @@ export default function TallerNuevaOrdenPage() {
     if (!clienteId) {
       setBicicletas([]);
       setBicicletaId("");
+      setMostrarNuevaBici(false);
       return;
     }
 
@@ -46,9 +49,6 @@ export default function TallerNuevaOrdenPage() {
       setError("");
       const data = await listarClientes({ solo_activos: true });
       setClientes(data || []);
-
-      const primerClienteReal = (data || []).find((cliente) => cliente.id !== 1) || data?.[0];
-      if (primerClienteReal) setClienteId(String(primerClienteReal.id));
     } catch (err) {
       setError(err.message || "No se pudieron cargar los clientes");
     } finally {
@@ -62,7 +62,7 @@ export default function TallerNuevaOrdenPage() {
       setError("");
       const data = await listarBicicletasCliente(id);
       setBicicletas(data || []);
-      setBicicletaId(data?.[0]?.id ? String(data[0].id) : "");
+      setBicicletaId("");
     } catch (err) {
       setError(err.message || "No se pudieron cargar las bicicletas del cliente");
       setBicicletas([]);
@@ -157,10 +157,50 @@ export default function TallerNuevaOrdenPage() {
     [clientes, clienteId]
   );
 
+  const clientesFiltrados = useMemo(() => {
+    const termino = normalizarBusqueda(clienteBusqueda.trim());
+
+    if (!termino) {
+      return clientes.slice(0, 12);
+    }
+
+    return clientes
+      .filter((cliente) => {
+        const valores = [
+          cliente.id,
+          cliente.nombre,
+          cliente.telefono,
+          cliente.documento,
+          cliente.dni,
+          cliente.cuit,
+        ];
+
+        return valores.some((valor) =>
+          normalizarBusqueda(valor).includes(termino)
+        );
+      })
+      .slice(0, 12);
+  }, [clientes, clienteBusqueda]);
+
+  function seleccionarCliente(cliente) {
+    setClienteId(String(cliente.id));
+    setClienteBusqueda(
+      `#${cliente.id} - ${cliente.nombre}${cliente.telefono ? ` (${cliente.telefono})` : ""}`
+    );
+    setMostrarResultadosClientes(false);
+  }
+
   const bicicletaSeleccionada = useMemo(
     () => bicicletas.find((bici) => String(bici.id) === String(bicicletaId)),
     [bicicletas, bicicletaId]
   );
+
+  const puedeCrearOrden =
+    !guardando &&
+    Boolean(clienteId) &&
+    Number(clienteId) !== 1 &&
+    Boolean(bicicletaId) &&
+    Boolean(problema.trim());
 
   if (loading) {
     return <EmptyState icon={Bike} title="Cargando nueva orden..." description="Preparando clientes y bicicletas." />;
@@ -192,17 +232,68 @@ export default function TallerNuevaOrdenPage() {
           </div>
 
           <form onSubmit={crearOrden} style={styles.form}>
-            <label style={styles.field}>
+            <div style={styles.field}>
               <span style={styles.label}>Cliente *</span>
-              <select value={clienteId} onChange={(e) => setClienteId(e.target.value)} style={styles.input}>
-                <option value="">Seleccionar cliente</option>
-                {clientes.map((cliente) => (
-                  <option key={cliente.id} value={cliente.id}>
-                    #{cliente.id} - {cliente.nombre}{cliente.telefono ? ` (${cliente.telefono})` : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
+              <div style={styles.customerSearchWrap}>
+                <input
+                  type="search"
+                  value={clienteBusqueda}
+                  onFocus={() => setMostrarResultadosClientes(true)}
+                  onChange={(e) => {
+                    setClienteBusqueda(e.target.value);
+                    setMostrarResultadosClientes(true);
+                    if (clienteId) setClienteId("");
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") {
+                      setMostrarResultadosClientes(false);
+                    }
+
+                    if (e.key === "Enter" && mostrarResultadosClientes && clientesFiltrados.length > 0) {
+                      e.preventDefault();
+                      seleccionarCliente(clientesFiltrados[0]);
+                    }
+                  }}
+                  placeholder="Buscar por nombre, teléfono, DNI/CUIT o número de cliente..."
+                  autoComplete="off"
+                  style={styles.input}
+                />
+
+                {mostrarResultadosClientes && (
+                  <div style={styles.customerResults}>
+                    {clientesFiltrados.length === 0 ? (
+                      <div style={styles.customerResultEmpty}>No se encontraron clientes.</div>
+                    ) : (
+                      clientesFiltrados.map((cliente) => (
+                        <button
+                          key={cliente.id}
+                          type="button"
+                          onClick={() => seleccionarCliente(cliente)}
+                          style={styles.customerResultButton}
+                        >
+                          <strong>#{cliente.id} - {cliente.nombre}</strong>
+                          <span>
+                            {[cliente.telefono, cliente.documento || cliente.dni || cliente.cuit]
+                              .filter(Boolean)
+                              .join(" · ") || "Sin teléfono ni documento"}
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {clienteSeleccionado && (
+                <div style={styles.selectedCustomer}>
+                  <span>Cliente seleccionado</span>
+                  <strong>
+                    #{clienteSeleccionado.id} - {clienteSeleccionado.nombre}
+                    {clienteSeleccionado.telefono ? ` (${clienteSeleccionado.telefono})` : ""}
+                  </strong>
+                </div>
+              )}
+            </div>
 
             {Number(clienteId) === 1 && (
               <div style={styles.warning}>Taller no debería trabajar con Consumidor final. Cargá el cliente real antes de crear la orden.</div>
@@ -210,12 +301,15 @@ export default function TallerNuevaOrdenPage() {
 
             <div style={styles.field}>
               <span style={styles.label}>Bicicleta *</span>
-              {cargandoBicis ? (
+              {!clienteId ? (
+                <div style={styles.emptyInline}>Elegí un cliente para ver sus bicicletas.</div>
+              ) : cargandoBicis ? (
                 <div style={styles.emptyInline}>Cargando bicicletas...</div>
               ) : bicicletas.length === 0 ? (
                 <div style={styles.warning}>Este cliente todavía no tiene bicicletas cargadas.</div>
               ) : (
                 <select value={bicicletaId} onChange={(e) => setBicicletaId(e.target.value)} style={styles.input}>
+                  <option value="">Seleccionar bicicleta</option>
                   {bicicletas.map((bici) => (
                     <option key={bici.id} value={bici.id}>#{bici.id} - {describirBicicleta(bici)}</option>
                   ))}
@@ -223,7 +317,16 @@ export default function TallerNuevaOrdenPage() {
               )}
             </div>
 
-            <button type="button" onClick={() => setMostrarNuevaBici((v) => !v)} style={{ ...styles.secondaryButton, ...(isMobile ? styles.buttonMobile : {}) }}>
+            <button
+              type="button"
+              disabled={!clienteId || Number(clienteId) === 1}
+              onClick={() => setMostrarNuevaBici((v) => !v)}
+              style={{
+                ...styles.secondaryButton,
+                ...((!clienteId || Number(clienteId) === 1) ? styles.disabledButton : {}),
+                ...(isMobile ? styles.buttonMobile : {}),
+              }}
+            >
               {mostrarNuevaBici ? "Ocultar carga de bicicleta" : "＋ Cargar bicicleta del cliente"}
             </button>
 
@@ -257,7 +360,16 @@ export default function TallerNuevaOrdenPage() {
               />
             </label>
 
-            <button type="submit" disabled={guardando} style={{ ...styles.primaryButton, ...(isMobile ? styles.buttonMobile : {}) }}>
+            <button
+              type="submit"
+              disabled={!puedeCrearOrden}
+              title={!puedeCrearOrden ? "Completá cliente, bicicleta y problema para crear la OT" : undefined}
+              style={{
+                ...styles.primaryButton,
+                ...(!puedeCrearOrden ? styles.disabledButton : {}),
+                ...(isMobile ? styles.buttonMobile : {}),
+              }}
+            >
               {guardando ? "Creando..." : "Crear orden de taller"}
             </button>
           </form>
@@ -287,6 +399,10 @@ export default function TallerNuevaOrdenPage() {
           </div>
 
           <form onSubmit={guardarBicicleta} style={{ ...styles.bikeGrid, ...(isMobile ? styles.bikeGridMobile : {}) }}>
+            <div style={{ ...styles.clientTarget, gridColumn: "1 / -1" }}>
+              <span>Se va a asociar a</span>
+              <strong>{clienteSeleccionado ? `#${clienteSeleccionado.id} - ${clienteSeleccionado.nombre}` : "Seleccioná un cliente"}</strong>
+            </div>
             <Input label="Marca" value={nuevaBici.marca} onChange={(v) => cambiarNuevaBici("marca", v)} required />
             <Input label="Modelo" value={nuevaBici.modelo} onChange={(v) => cambiarNuevaBici("modelo", v)} required />
             <Input label="Rodado" value={nuevaBici.rodado} onChange={(v) => cambiarNuevaBici("rodado", v)} />
@@ -323,6 +439,14 @@ function Info({ label, value }) {
   );
 }
 
+function normalizarBusqueda(valor) {
+  return String(valor ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
 function describirBicicleta(bici) {
   return [bici.marca, bici.modelo, bici.rodado ? `Rod. ${bici.rodado}` : null, bici.color, bici.numero_cuadro ? `Cuadro ${bici.numero_cuadro}` : null]
     .filter(Boolean)
@@ -346,15 +470,22 @@ const styles = {
   field: { display: "grid", gap: spacing.sm, fontSize: typography.label.fontSize, fontWeight: typography.label.fontWeight },
   label: { color: colors.text },
   input: { width: "100%", minHeight: controls.minHeight, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: controls.padding, fontSize: typography.body.fontSize, color: colors.text, boxSizing: "border-box", background: colors.surface },
+  customerSearchWrap: { position: "relative" },
+  customerResults: { position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0, zIndex: 20, maxHeight: 320, overflowY: "auto", background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: radius.md, boxShadow: shadows.md },
+  customerResultButton: { width: "100%", border: "none", borderBottom: `1px solid ${colors.borderSoft}`, background: colors.surface, color: colors.text, padding: spacing.md, display: "grid", gap: 4, textAlign: "left", cursor: "pointer", fontSize: typography.body.fontSize },
+  customerResultEmpty: { padding: spacing.md, color: colors.textMuted, background: colors.surface },
+  selectedCustomer: { background: colors.primarySoft, color: colors.secondary, border: `1px solid ${colors.primaryBorder}`, borderRadius: radius.md, padding: spacing.md, display: "grid", gap: 4 },
   primaryButton: { minHeight: controls.minHeight, border: "none", background: colors.primary, color: colors.surface, borderRadius: radius.md, padding: controls.padding, fontWeight: typography.button.fontWeight, cursor: "pointer", boxShadow: shadows.sm },
   secondaryButton: { minHeight: controls.minHeight, border: `1px solid ${colors.border}`, background: colors.surface, color: colors.text, borderRadius: radius.md, padding: controls.padding, fontWeight: typography.button.fontWeight, cursor: "pointer", width: "fit-content" },
+  disabledButton: { opacity: 0.55, cursor: "not-allowed", boxShadow: "none" },
   warning: { background: colors.warningSoft, color: colors.warningDark, padding: spacing.md, borderRadius: radius.md, border: `1px solid ${colors.warning}`, fontWeight: typography.label.fontWeight },
   emptyInline: { color: colors.textMuted, padding: spacing.md, background: colors.surfaceMuted, borderRadius: radius.md },
+  clientTarget: { background: colors.primarySoft, color: colors.secondary, border: `1px solid ${colors.primaryBorder}`, borderRadius: radius.md, padding: spacing.md, display: "grid", gap: 4, fontWeight: typography.label.fontWeight },
   sidePanel: { position: "sticky", top: 16 },
   infoBox: { background: colors.surfaceMuted, border: `1px solid ${colors.borderSoft}`, borderRadius: radius.md, padding: spacing.md, display: "grid", gap: 5, color: colors.textMuted },
   note: { marginTop: spacing.sm, background: colors.primarySoft, border: `1px solid ${colors.primaryBorder}`, color: colors.secondary, borderRadius: radius.md, padding: spacing.md, fontWeight: typography.label.fontWeight },
   bikeGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 14 },
-  state: { padding: 24, fontWeight: 900 },
+  state: { padding: 24, fontWeight: 700 },
   pageMobile: { overflowX: "hidden" },
   heroMobile: { display: "grid", gridTemplateColumns: "1fr", gap: 14, padding: 18, borderRadius: 22, marginBottom: 12 },
   titleMobile: { fontSize: 27, lineHeight: 1.08 },

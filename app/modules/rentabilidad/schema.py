@@ -67,9 +67,14 @@ class RentabilidadMensualOutput(BaseModel):
     fecha_hasta: date
     id_sucursal: Optional[int] = None
 
+    cantidad_ventas: int = 0
     ventas_brutas: Decimal
     devoluciones_total: Decimal
     ventas_netas: Decimal
+    venta_comercial: Decimal = Decimal("0")
+    ventas_cobradas: Decimal = Decimal("0")
+    cobrado_comercial_reconocido: Decimal = Decimal("0")
+    saldo_pendiente_por_cobrar: Decimal = Decimal("0")
     financiacion_excluida: Decimal = Decimal("0")
     financiacion_cobrada: Decimal = Decimal("0")
     costos_financieros: Decimal = Decimal("0")
@@ -79,8 +84,17 @@ class RentabilidadMensualOutput(BaseModel):
     cmv_bruto: Decimal
     cmv_devoluciones: Decimal
     cmv_neto: Decimal
+    cmv_comercial: Decimal = Decimal("0")
+    cmv_cobrado: Decimal = Decimal("0")
+    capital_recuperado: Decimal = Decimal("0")
+    capital_inmovilizado: Decimal = Decimal("0")
 
     margen_bruto: Decimal
+    margen_esperado: Decimal = Decimal("0")
+    margen_cobrado: Decimal = Decimal("0")
+    margen_pendiente: Decimal = Decimal("0")
+    utilidad_liberada: Decimal = Decimal("0")
+    utilidad_pendiente: Decimal = Decimal("0")
     margen_real: Decimal
     gastos_operativos: Decimal
     resultado_distribuible: Decimal
@@ -151,10 +165,19 @@ class RentabilidadDetalleDiarioOutput(BaseModel):
     financiacion_cobrada: Decimal = Decimal("0")
     costo_financiero: Decimal = Decimal("0")
     ingreso_real_neto: Decimal = Decimal("0")
+    cobrado_comercial_reconocido: Decimal = Decimal("0")
     devolucion_comercial: Decimal
     ingreso_comercial: Decimal
+    venta_cobrada: Decimal = Decimal("0")
     costo_total: Decimal
+    costo_cobrado: Decimal = Decimal("0")
+    capital_recuperado: Decimal = Decimal("0")
+    capital_inmovilizado: Decimal = Decimal("0")
+    utilidad_liberada: Decimal = Decimal("0")
     margen_bruto: Decimal
+    margen_cobrado: Decimal = Decimal("0")
+    margen_pendiente: Decimal = Decimal("0")
+    utilidad_pendiente: Decimal = Decimal("0")
     margen_real: Decimal
     medios_pago: str
 
@@ -174,10 +197,19 @@ class RentabilidadArticuloDiarioOutput(BaseModel):
     financiacion_cobrada: Decimal = Decimal("0")
     costo_financiero: Decimal = Decimal("0")
     ingreso_real_neto: Decimal = Decimal("0")
+    cobrado_comercial_reconocido: Decimal = Decimal("0")
     devoluciones_total: Decimal = Decimal("0")
     venta_total: Decimal
+    venta_cobrada: Decimal = Decimal("0")
     costo_total: Decimal
+    costo_cobrado: Decimal = Decimal("0")
+    capital_recuperado: Decimal = Decimal("0")
+    capital_inmovilizado: Decimal = Decimal("0")
+    utilidad_liberada: Decimal = Decimal("0")
     margen_bruto: Decimal
+    margen_cobrado: Decimal = Decimal("0")
+    margen_pendiente: Decimal = Decimal("0")
+    utilidad_pendiente: Decimal = Decimal("0")
     margen_real: Decimal
     margen_porcentaje: Decimal
     detalles: List[RentabilidadDetalleDiarioOutput] = []
@@ -188,6 +220,10 @@ class RentabilidadDiariaOutput(BaseModel):
     id_sucursal: Optional[int] = None
     cantidad_ventas: int
     ventas_netas: Decimal
+    venta_comercial: Decimal = Decimal("0")
+    ventas_cobradas: Decimal = Decimal("0")
+    cobrado_comercial_reconocido: Decimal = Decimal("0")
+    saldo_pendiente_por_cobrar: Decimal = Decimal("0")
     financiacion_excluida: Decimal = Decimal("0")
     financiacion_cobrada: Decimal = Decimal("0")
     costos_financieros: Decimal = Decimal("0")
@@ -195,7 +231,16 @@ class RentabilidadDiariaOutput(BaseModel):
     resultado_financiero: Decimal = Decimal("0")
     devoluciones_total: Decimal
     cmv: Decimal
+    cmv_comercial: Decimal = Decimal("0")
+    cmv_cobrado: Decimal = Decimal("0")
+    capital_recuperado: Decimal = Decimal("0")
+    capital_inmovilizado: Decimal = Decimal("0")
     margen_bruto: Decimal
+    margen_esperado: Decimal = Decimal("0")
+    margen_cobrado: Decimal = Decimal("0")
+    margen_pendiente: Decimal = Decimal("0")
+    utilidad_liberada: Decimal = Decimal("0")
+    utilidad_pendiente: Decimal = Decimal("0")
     margen_real: Decimal
     margen_porcentaje: Decimal
     articulos: List[RentabilidadArticuloDiarioOutput] = []

@@ -978,6 +978,29 @@ def update_orden_taller_item_cancelado(conn, item_id: int):
         )
         return cur.fetchone()
 
+def existe_venta_item_por_orden_taller_item(conn, item_id: int) -> bool:
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT 1
+            FROM venta_items
+            WHERE id_orden_taller_item = %s
+            LIMIT 1
+            """,
+            (item_id,),
+        )
+        return cur.fetchone() is not None
+
+def delete_orden_taller_item(conn, item_id: int) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            DELETE FROM ordenes_taller_items
+            WHERE id = %s
+            """,
+            (item_id,),
+        )
+
 def update_orden_taller_venta_generada(conn, orden_id: int, venta_id: int) -> None:
     with conn.cursor() as cur:
         cur.execute(

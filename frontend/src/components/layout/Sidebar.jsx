@@ -52,6 +52,9 @@ const groups = [
     title: "Acciones rapidas",
     links: [
       { to: "/ventas/nueva", label: "Nueva Venta", icon: ShoppingCart, roles: OPERACION, highlight: true },
+      { to: "/catalogo", label: "Catalogo", icon: Tags, roles: OPERACION_TALLER },
+      { to: "/taller", label: "Ordenes Taller", icon: Wrench, roles: TALLER },
+      { to: "/mercaderia/alta", label: "Ingresar Mercaderia", icon: PackagePlus, roles: ADMIN_ENCARGADO },
       { to: "/agenda-taller", label: "Nuevo turno taller", icon: CalendarDays, roles: OPERACION_TALLER },
       { to: "/clientes/nuevo", label: "Nuevo cliente", icon: UserPlus, roles: OPERACION },
     ],
