@@ -17,6 +17,10 @@ def get_venta_comprobante_by_id(conn, venta_id: int):
                 v.observaciones,
 
                 c.nombre AS cliente_nombre,
+                c.telefono AS cliente_telefono,
+                c.dni AS cliente_dni,
+                c.cuit AS cliente_cuit,
+                c.condicion_iva AS cliente_condicion_iva,
 
                 s.nombre AS sucursal_nombre
 

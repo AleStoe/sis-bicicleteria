@@ -26,7 +26,7 @@ class VariantePrecioOutput(BaseModel):
     codigo_proveedor: Optional[str] = None
     precio_minorista: Decimal
     precio_mayorista: Decimal
-    costo_promedio_vigente: Decimal
+    costo_promedio_vigente: Optional[Decimal] = None
     activo: bool
 
 

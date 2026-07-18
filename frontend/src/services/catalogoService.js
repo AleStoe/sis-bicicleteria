@@ -131,6 +131,20 @@ export function cambiarEstadoVariante(varianteId, data) {
   });
 }
 
+export function cambiarReponerStockVariante(varianteId, data) {
+  return apiRequest(`/catalogo/variantes/${varianteId}/reponer-stock`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function cambiarReponerStockVariantesMasivo(data) {
+  return apiRequest("/catalogo/variantes/reponer-stock-masivo", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
 export function listarCatalogoPOS(params = {}) {
   return apiRequest(`/catalogo/pos${buildQuery(params)}`);
 }

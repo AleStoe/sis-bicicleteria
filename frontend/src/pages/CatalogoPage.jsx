@@ -65,6 +65,13 @@ function getTituloItem(item) {
 }
 
 function getMotivoTexto(item) {
+  if (
+    item.serializable &&
+    Number(item.serializadas_disponibles || 0) <= 0 &&
+    Number(item.stock_disponible || 0) > 0
+  ) {
+    return "Pendiente de armado";
+  }
   if (item.disponible_para_venta) return "Listo para vender";
   if (item.motivo_no_disponible === "sin_stock") return "Sin exhibición";
   if (item.motivo_no_disponible === "precio_no_definido") return "Falta definir precio";

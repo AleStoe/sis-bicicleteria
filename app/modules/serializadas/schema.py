@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from typing import Optional
 
 from pydantic import BaseModel, Field, ConfigDict
@@ -78,3 +79,6 @@ class BicicletaSerializadaDetalleOutput(BaseModel):
     operacion_id: Optional[int] = None
     venta_id: Optional[int] = None
     reserva_id: Optional[int] = None
+    id_orden_armado_origen: Optional[int] = None
+    costo_fabricacion_final: Optional[Decimal] = None
+    codigo_orden_armado: Optional[str] = None

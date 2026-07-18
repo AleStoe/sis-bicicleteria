@@ -209,6 +209,8 @@ class VentaDetalleItemOutput(BaseModel):
     id_servicio_taller: Optional[int] = None
     id_bicicleta_serializada: Optional[int] = None
     id_orden_taller_item: Optional[int] = None
+    stockeable: Optional[bool] = None
+    serializable: Optional[bool] = None
     descripcion_snapshot: str
     cantidad: Decimal
     precio_lista: Decimal
@@ -228,6 +230,9 @@ class VentaDetalleItemOutput(BaseModel):
     precio_catalogo_original: Decimal | None = None
     descuento_oferta_unitario: Decimal = Decimal("0")
     oferta_nombre_snapshot: str | None = None
+    origen_costo: Optional[str] = None
+    id_orden_armado_origen: Optional[int] = None
+    codigo_orden_armado: Optional[str] = None
 
 class VentaDeudaAbiertaResumenOutput(BaseModel):
     id: int

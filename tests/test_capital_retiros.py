@@ -215,6 +215,57 @@ def test_retiro_personal_con_impacto_en_caja_genera_egreso(client, db_conn, seed
     assert _dec(egresos[0]["monto"]) == Decimal("70000.00")
 
 
+def test_devolucion_prestamo_con_impacto_en_caja_genera_egreso(client, db_conn, seed_venta_basica):
+    participante = _crear_participante(client, "Ale devolucion caja", "persona")
+
+    _crear_movimiento(
+        client,
+        seed_venta_basica,
+        participante["id"],
+        "prestamo_socio",
+        monto=120000,
+        impacta_caja=False,
+        medio_pago="transferencia",
+    )
+
+    abrir = client.post(
+        "/cajas/abrir",
+        json={
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "monto_apertura": 150000,
+        },
+    )
+    assert abrir.status_code == 200, abrir.text
+    caja_id = abrir.json()["caja_id"]
+
+    data = _crear_movimiento(
+        client,
+        seed_venta_basica,
+        participante["id"],
+        "devolucion_prestamo",
+        monto=65000,
+        impacta_caja=True,
+        medio_pago="transferencia",
+    )
+
+    movimiento = _get_movimiento(db_conn, data["movimiento_id"])
+    assert movimiento["impacta_caja"] is True
+    assert movimiento["id_caja_movimiento"] == data["caja_movimiento_id"]
+
+    movimientos_caja = get_caja_movimientos(db_conn, caja_id)
+    egresos = [
+        m for m in movimientos_caja
+        if m["tipo_movimiento"] == "egreso"
+        and m["origen_tipo"] == "capital_retiros"
+        and m["origen_id"] == data["movimiento_id"]
+    ]
+
+    assert len(egresos) == 1
+    assert _dec(egresos[0]["monto"]) == Decimal("65000.00")
+    assert egresos[0]["submedio"] == "transferencia"
+
+
 def test_no_permite_devolver_mas_prestamo_que_saldo(client, seed_venta_basica):
     participante = _crear_participante(client, "Ale saldo préstamo", "persona")
 

@@ -21,6 +21,35 @@ def get_bicicleta_serializada_for_update(conn, bicicleta_id: int):
         return cur.fetchone()
 
 
+def get_bicicleta_serializada_costo_venta_for_update(conn, bicicleta_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT
+                bs.id,
+                bs.id_variante,
+                bs.id_sucursal_actual,
+                bs.numero_cuadro,
+                bs.estado,
+                bs.id_orden_armado_origen,
+                bs.costo_fabricacion_final,
+                ao.estado AS orden_armado_estado,
+                ao.id_bicicleta_serializada_resultante,
+                av.id_variante_final,
+                ao.codigo AS orden_armado_codigo
+            FROM bicicletas_serializadas bs
+            LEFT JOIN armado_ordenes ao
+                ON ao.id = bs.id_orden_armado_origen
+            LEFT JOIN armado_versiones av
+                ON av.id = ao.id_version
+            WHERE bs.id = %s
+            FOR UPDATE OF bs
+            """,
+            (bicicleta_id,),
+        )
+        return cur.fetchone()
+
+
 def insert_bicicleta_serializada(conn, data: dict):
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
@@ -238,11 +267,16 @@ def get_bicicletas_serializadas(conn, *, id_variante=None, id_sucursal=None, est
                 op.operacion_tipo,
                 op.operacion_id,
                 op.venta_id,
-                op.reserva_id
+                op.reserva_id,
+                bs.id_orden_armado_origen,
+                bs.costo_fabricacion_final,
+                ao.codigo AS codigo_orden_armado
             FROM bicicletas_serializadas bs
             INNER JOIN variantes v ON v.id = bs.id_variante
             INNER JOIN productos p ON p.id = v.id_producto
             INNER JOIN sucursales s ON s.id = bs.id_sucursal_actual
+            LEFT JOIN armado_ordenes ao
+                ON ao.id = bs.id_orden_armado_origen
             LEFT JOIN LATERAL (
                 SELECT ci.url
                 FROM catalogo_imagenes ci

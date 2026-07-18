@@ -202,6 +202,8 @@ PERMISO_GESTIONAR_GARANTIAS = "gestionar_garantias"
 PERMISO_GESTIONAR_CATALOGO = "gestionar_catalogo"
 PERMISO_GESTIONAR_PRECIOS = "gestionar_precios"
 PERMISO_GESTIONAR_OFERTAS = "gestionar_ofertas"
+PERMISO_GESTIONAR_ARMADO = "gestionar_armado"
+PERMISO_GESTIONAR_CORRECCIONES = "gestionar_correcciones"
 PERMISO_CONFIGURACION_COMERCIAL = "configuracion_comercial"
 PERMISO_VER_AUDITORIA = "ver_auditoria"
 PERMISO_GESTIONAR_BACKUPS = "gestionar_backups"
@@ -209,6 +211,8 @@ PERMISO_GESTIONAR_BACKUPS = "gestionar_backups"
 AUDITORIA_ENTIDAD_BACKUP = "backup"
 AUDITORIA_ACCION_BACKUP_GENERADO = "backup_generado"
 AUDITORIA_ACCION_BACKUP_DESCARGADO = "backup_descargado"
+AUDITORIA_ENTIDAD_CORRECCION = "correccion_operativa"
+AUDITORIA_ACCION_CORRECCION_APLICADA = "correccion_aplicada"
 
 CREDITO_MOVIMIENTO_REINTEGRO = "reintegro"
 
@@ -217,6 +221,10 @@ AUDITORIA_ACCION_CREDITO_REINTEGRADO = "credito_reintegrado"
 TIPO_MOVIMIENTO_USO_TALLER = "uso_taller"
 
 TIPO_MOVIMIENTO_REVERSION_USO_TALLER = "reversion_uso_taller"
+
+TIPO_MOVIMIENTO_USO_ARMADO = "uso_armado"
+
+TIPO_MOVIMIENTO_REVERSION_USO_ARMADO = "reversion_uso_armado"
 
 ORDEN_TALLER_EVENTO_ITEM_EJECUCION_REVERTIDA = "item_ejecucion_revertida"
 

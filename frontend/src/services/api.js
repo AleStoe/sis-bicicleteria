@@ -31,10 +31,21 @@ export async function apiRequest(path, options = {}) {
   }
 
   const contentType = response.headers.get("content-type") || "";
+  const rawBody =
+    response.status === 204 || response.status === 205
+      ? ""
+      : await response.text();
+  let data = null;
 
-  const data = contentType.includes("application/json")
-    ? await response.json()
-    : null;
+  if (rawBody && contentType.includes("application/json")) {
+    try {
+      data = JSON.parse(rawBody);
+    } catch (err) {
+      if (response.ok) {
+        throw new Error("El servidor devolvió una respuesta inválida.");
+      }
+    }
+  }
 
   if (!response.ok) {
     if (response.status === 401 && path !== "/auth/login") {
@@ -51,6 +62,7 @@ export async function apiRequest(path, options = {}) {
     throw new Error(
       detail ||
         data?.message ||
+        rawBody ||
         `Error del servidor (${response.status}). Probá refrescar y revisar el backend.`
     );
   }

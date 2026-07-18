@@ -13,6 +13,7 @@ from app.modules.reglas_comerciales.service import (
     simular_reglas_comerciales,
 )
 from app.modules.ofertas.repository import get_oferta_vigente_variante
+from app.modules.ventas.costos import resolver_costo_unitario_venta_serializada
 from app.db.connection import get_connection
 from app.modules.stock import service as stock_service
 from app.modules.creditos import service as creditos_service
@@ -1014,6 +1015,12 @@ def crear_venta(data, *, conn=None):
                 variante = fila["variante"]
                 precio_minorista = redondear_monto(variante["precio_minorista"])
                 costo_promedio = redondear_monto(variante["costo_promedio_vigente"] or 0)
+                costo_resuelto = resolver_costo_unitario_venta_serializada(
+                    conn,
+                    id_bicicleta_serializada=item["id_bicicleta_serializada"],
+                    id_variante=variante["id"],
+                    costo_promedio_variante=costo_promedio,
+                )
 
                 insert_venta_item(
                     conn,
@@ -1039,7 +1046,9 @@ def crear_venta(data, *, conn=None):
                         ),
                         "motivo_bonificacion": fila.get("motivo_bonificacion"),
                         "motivo_precio_manual": fila.get("motivo_precio_manual"),
-                        "costo_unitario_aplicado": costo_promedio,
+                        "costo_unitario_aplicado": costo_resuelto[
+                            "costo_unitario_aplicado"
+                        ],
                         "subtotal": subtotal,
                         "id_oferta": (
                             fila["oferta"]["id"] if fila.get("oferta") else None
@@ -1450,7 +1459,17 @@ def entregar_venta(venta_id: int, data):
             fecha_compra = date.today()
 
             for item in items:
-                if item.get("serializable") and item.get("id_bicicleta_serializada") is None:
+                entrega_en_caja_sin_unidad = (
+                    item.get("serializable")
+                    and item.get("id_bicicleta_serializada") is None
+                    and data.condicion_entrega_bicicleta == "en_caja"
+                )
+
+                if (
+                    item.get("serializable")
+                    and item.get("id_bicicleta_serializada") is None
+                    and not entrega_en_caja_sin_unidad
+                ):
                     raise HTTPException(
                         status_code=400,
                         detail=(

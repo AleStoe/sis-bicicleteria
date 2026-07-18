@@ -36,6 +36,8 @@ from .service import (
     obtener_variante,
     editar_variante,
     cambiar_estado_variante,
+    cambiar_reponer_stock_variante,
+    cambiar_reponer_stock_variantes_masivo,
     buscar_catalogo_pos_por_codigo,
     obtener_ficha_tecnica_producto,
     reemplazar_ficha_tecnica_producto_service,
@@ -67,6 +69,9 @@ from .schema import (
     ProductoEstadoUpdate,
     VarianteUpdate,
     VarianteEstadoUpdate,
+    VarianteReponerStockUpdate,
+    VariantesReponerStockMasivoUpdate,
+    VariantesReponerStockMasivoOut,
     CatalogoPOSPaginatedOut,
     ProductoFichaTecnicaItemOut,
     ProductoFichaTecnicaReplaceInput,
@@ -319,6 +324,25 @@ def cambiar_estado_variante_route(
 ):
     aplicar_actor_actual(data, usuario)
     return cambiar_estado_variante(variante_id, data)
+
+
+@router.post("/variantes/{variante_id}/reponer-stock", response_model=VarianteOut)
+def cambiar_reponer_stock_variante_route(
+    variante_id: int,
+    data: VarianteReponerStockUpdate,
+    usuario: CurrentUser = Depends(puede_gestionar_catalogo),
+):
+    aplicar_actor_actual(data, usuario)
+    return cambiar_reponer_stock_variante(variante_id, data)
+
+
+@router.post("/variantes/reponer-stock-masivo", response_model=VariantesReponerStockMasivoOut)
+def cambiar_reponer_stock_variantes_masivo_route(
+    data: VariantesReponerStockMasivoUpdate,
+    usuario: CurrentUser = Depends(puede_gestionar_catalogo),
+):
+    aplicar_actor_actual(data, usuario)
+    return cambiar_reponer_stock_variantes_masivo(data)
 
 @router.get("/pos/buscar-exacto", response_model=CatalogoPOSItemOut)
 def catalogo_pos_buscar_exacto(

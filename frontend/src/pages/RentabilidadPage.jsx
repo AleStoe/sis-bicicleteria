@@ -61,6 +61,27 @@ const secondaryButton = {
   cursor: "pointer",
 };
 
+const metricHelp = {
+  ventaComercial: "Total vendido en el periodo seleccionado, sin depender de si ya se cobro o no.",
+  cmvComercial: "Costo de mercaderia vendida asociado a las ventas del periodo.",
+  margenEsperado: "Venta comercial menos CMV comercial. Es la utilidad esperada del negocio vendido.",
+  cobradoComercial: "Parte comercial de las ventas que ya fue cobrada o reconocida por pagos confirmados.",
+  saldoPorCobrar: "Importe comercial que todavia queda pendiente de cobro.",
+  financiacionCobrada: "Financiacion o recargos cobrados al cliente por medios de pago.",
+  costosFinancieros: "Comisiones o costos del medio de pago, congelados al registrar el cobro.",
+  capitalRecuperado: "Parte del costo de la mercaderia que ya se recupero con cobros reconocidos.",
+  capitalInmovilizado: "Costo de mercaderia que todavia no se recupero con cobros.",
+  utilidadLiberada: "Utilidad disponible por caja. Aparece cuando lo cobrado supera el CMV.",
+  utilidadPendiente: "Margen esperado que todavia no quedo liberado porque falta cobrar o recuperar capital.",
+  resultadoFinanciero: "Financiacion cobrada menos costos financieros.",
+  resultadoDistribuible: "Utilidad liberada mas resultado financiero menos gastos operativos.",
+  gastos: "Gastos operativos registrados en el periodo.",
+  baseProrrateada: "Dato tecnico: base comercial reconocida proporcionalmente por cobros.",
+  cmvProrrateado: "Dato tecnico: CMV reconocido proporcionalmente por cobros.",
+  margenProrrateado: "Dato tecnico: margen calculado por prorrateo. No es el KPI principal.",
+  ingresoNetoLiquidado: "Dato tecnico: neto liquidado de pagos despues de costos financieros.",
+};
+
 
 
 
@@ -73,6 +94,7 @@ export default function RentabilidadPage() {
   const [rentabilidad, setRentabilidad] = useState(null);
   const [bonificaciones, setBonificaciones] = useState(null);
   const [bonificacionesError, setBonificacionesError] = useState("");
+  const [mostrarDetalleBonificaciones, setMostrarDetalleBonificaciones] = useState(false);
   const [reglas, setReglas] = useState([]);
   const [cierres, setCierres] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -186,6 +208,12 @@ export default function RentabilidadPage() {
     }
   }
 
+  const bonificacionesItems = bonificaciones?.items || [];
+  const bonificacionesVisibles = mostrarDetalleBonificaciones
+    ? bonificacionesItems
+    : bonificacionesItems.slice(0, 5);
+  const hayMasBonificaciones = bonificacionesItems.length > bonificacionesVisibles.length;
+
   return (
     <div style={{ padding: isMobile ? 12 : 24, display: "grid", gap: isMobile ? 12 : 18, minWidth: 0 }}>
       <header style={{ display: isMobile ? "grid" : "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, minWidth: 0 }}>
@@ -226,20 +254,20 @@ export default function RentabilidadPage() {
       </section>
 
       <section style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(5, minmax(0, 1fr))", gap: isMobile ? 8 : 12, minWidth: 0 }}>
-        <Metric title="Venta comercial" value={money(rentabilidad?.venta_comercial ?? rentabilidad?.ventas_netas)} />
-        <Metric title="CMV comercial" value={money(rentabilidad?.cmv_comercial ?? rentabilidad?.cmv_neto)} />
-        <Metric title="Margen esperado" value={money(rentabilidad?.margen_esperado ?? rentabilidad?.margen_bruto)} />
-        <Metric title="Cobrado comercial" value={money(rentabilidad?.cobrado_comercial_reconocido)} />
-        <Metric title="Saldo por cobrar" value={money(rentabilidad?.saldo_pendiente_por_cobrar)} />
-        <Metric title="Financiación cobrada" value={money(rentabilidad?.financiacion_cobrada)} />
-        <Metric title="Costos financieros" value={money(rentabilidad?.costos_financieros)} />
-        <Metric title="Capital recuperado" value={money(rentabilidad?.capital_recuperado)} />
-        <Metric title="Capital inmovilizado" value={money(rentabilidad?.capital_inmovilizado)} />
-        <Metric title="Utilidad liberada" value={money(rentabilidad?.utilidad_liberada)} strong />
-        <Metric title="Utilidad pendiente" value={money(rentabilidad?.utilidad_pendiente)} />
-        <Metric title="Resultado financiero" value={money(rentabilidad?.resultado_financiero)} />
-        <Metric title="Resultado distribuible" value={money(rentabilidad?.resultado_distribuible)} strong />
-        <Metric title="Gastos" value={money(rentabilidad?.gastos_operativos)} />
+        <Metric title="Venta comercial" value={money(rentabilidad?.venta_comercial ?? rentabilidad?.ventas_netas)} help={metricHelp.ventaComercial} />
+        <Metric title="CMV comercial" value={money(rentabilidad?.cmv_comercial ?? rentabilidad?.cmv_neto)} help={metricHelp.cmvComercial} />
+        <Metric title="Margen esperado" value={money(rentabilidad?.margen_esperado ?? rentabilidad?.margen_bruto)} help={metricHelp.margenEsperado} />
+        <Metric title="Cobrado comercial" value={money(rentabilidad?.cobrado_comercial_reconocido)} help={metricHelp.cobradoComercial} />
+        <Metric title="Saldo por cobrar" value={money(rentabilidad?.saldo_pendiente_por_cobrar)} help={metricHelp.saldoPorCobrar} />
+        <Metric title="Financiación cobrada" value={money(rentabilidad?.financiacion_cobrada)} help={metricHelp.financiacionCobrada} />
+        <Metric title="Costos financieros" value={money(rentabilidad?.costos_financieros)} help={metricHelp.costosFinancieros} />
+        <Metric title="Capital recuperado" value={money(rentabilidad?.capital_recuperado)} help={metricHelp.capitalRecuperado} />
+        <Metric title="Capital inmovilizado" value={money(rentabilidad?.capital_inmovilizado)} help={metricHelp.capitalInmovilizado} />
+        <Metric title="Utilidad liberada" value={money(rentabilidad?.utilidad_liberada)} help={metricHelp.utilidadLiberada} strong />
+        <Metric title="Utilidad pendiente" value={money(rentabilidad?.utilidad_pendiente)} help={metricHelp.utilidadPendiente} />
+        <Metric title="Resultado financiero" value={money(rentabilidad?.resultado_financiero)} help={metricHelp.resultadoFinanciero} />
+        <Metric title="Resultado distribuible" value={money(rentabilidad?.resultado_distribuible)} help={metricHelp.resultadoDistribuible} strong />
+        <Metric title="Gastos" value={money(rentabilidad?.gastos_operativos)} help={metricHelp.gastos} />
       </section>
 
       <section style={{ ...card, padding: isMobile ? 12 : 16, display: "grid", gap: 12, minWidth: 0 }}>
@@ -252,10 +280,10 @@ export default function RentabilidadPage() {
           </p>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))", gap: 10 }}>
-          <Metric title="Base prorrateada" value={money(rentabilidad?.ventas_cobradas)} />
-          <Metric title="CMV prorrateado" value={money(rentabilidad?.cmv_cobrado)} />
-          <Metric title="Margen prorrateado" value={money(rentabilidad?.margen_cobrado)} />
-          <Metric title="Ingreso neto liquidado" value={money(rentabilidad?.ingreso_real_neto)} />
+          <Metric title="Base prorrateada" value={money(rentabilidad?.ventas_cobradas)} help={metricHelp.baseProrrateada} />
+          <Metric title="CMV prorrateado" value={money(rentabilidad?.cmv_cobrado)} help={metricHelp.cmvProrrateado} />
+          <Metric title="Margen prorrateado" value={money(rentabilidad?.margen_cobrado)} help={metricHelp.margenProrrateado} />
+          <Metric title="Ingreso neto liquidado" value={money(rentabilidad?.ingreso_real_neto)} help={metricHelp.ingresoNetoLiquidado} />
         </div>
       </section>
 
@@ -369,7 +397,31 @@ export default function RentabilidadPage() {
           Los services gratuitos sin venta asociada no se valúan acá porque el sistema no registra un costo de mano de obra.
         </div>
 
-        <div style={{ overflowX: "auto" }}>
+        <div style={{ border: "1px solid #eaecf0", borderRadius: 14, overflow: "hidden", background: "#ffffff" }}>
+          <div style={{ display: isMobile ? "grid" : "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "12px 14px", background: "#f8fafc", borderBottom: "1px solid #eaecf0" }}>
+            <div>
+              <strong style={{ color: "#101828" }}>Detalle de operaciones</strong>
+              <div style={{ color: "#667085", fontSize: 13, marginTop: 2 }}>
+                {bonificacionesItems.length === 0
+                  ? "Sin movimientos para revisar."
+                  : mostrarDetalleBonificaciones
+                    ? `${bonificacionesItems.length} item(s) visibles`
+                    : `Mostrando ${bonificacionesVisibles.length} de ${bonificacionesItems.length}`}
+              </div>
+            </div>
+
+            {bonificacionesItems.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setMostrarDetalleBonificaciones((value) => !value)}
+                style={{ ...secondaryButton, padding: "9px 12px", width: isMobile ? "100%" : undefined }}
+              >
+                {mostrarDetalleBonificaciones ? "Ocultar detalle" : "Ver detalle completo"}
+              </button>
+            )}
+          </div>
+
+          <div style={{ overflowX: "auto", maxHeight: mostrarDetalleBonificaciones ? 520 : 260 }}>
           <table style={{ width: "100%", minWidth: 980, borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ color: "#667085", textAlign: "left", borderBottom: "1px solid #eaecf0" }}>
@@ -384,14 +436,14 @@ export default function RentabilidadPage() {
               </tr>
             </thead>
             <tbody>
-              {(bonificaciones?.items || []).length === 0 ? (
+              {bonificacionesItems.length === 0 ? (
                 <tr>
                   <td colSpan="8" style={{ padding: 22, color: "#667085", textAlign: "center" }}>
                     No hay bonificaciones ni garantías con valor económico en este mes.
                   </td>
                 </tr>
               ) : (
-                (bonificaciones?.items || []).map((item) => (
+                bonificacionesVisibles.map((item) => (
                   <tr key={item.id_venta_item} style={{ borderBottom: "1px solid #f2f4f7" }}>
                     <td style={{ padding: 10, whiteSpace: "nowrap" }}>
                       {new Date(item.fecha).toLocaleDateString("es-AR")}
@@ -433,6 +485,13 @@ export default function RentabilidadPage() {
               )}
             </tbody>
           </table>
+          </div>
+
+          {hayMasBonificaciones && (
+            <div style={{ padding: "10px 14px", color: "#667085", background: "#f8fafc", borderTop: "1px solid #eaecf0", fontSize: 13, fontWeight: 800 }}>
+              Hay {bonificacionesItems.length - bonificacionesVisibles.length} item(s) mas. Abrí el detalle completo para auditar todo.
+            </div>
+          )}
         </div>
       </section>
 
@@ -543,10 +602,34 @@ export default function RentabilidadPage() {
   );
 }
 
-function Metric({ title, value, strong = false }) {
+function Metric({ title, value, strong = false, help = "" }) {
   return (
-    <div style={{ ...card, padding: 16 }}>
-      <div style={{ color: "#667085", fontSize: 13, fontWeight: 800 }}>{title}</div>
+    <div style={{ ...card, padding: 16 }} title={help || title}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+        <div style={{ color: "#667085", fontSize: 13, fontWeight: 800 }}>{title}</div>
+        {help && (
+          <span
+            aria-label={help}
+            title={help}
+            style={{
+              width: 18,
+              height: 18,
+              borderRadius: 999,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "#eff6ff",
+              color: "#2563eb",
+              fontSize: 12,
+              fontWeight: 950,
+              cursor: "help",
+              flexShrink: 0,
+            }}
+          >
+            ?
+          </span>
+        )}
+      </div>
       <div style={{ color: strong ? "#f97316" : "#101828", fontSize: 22, fontWeight: 950, marginTop: 6 }}>{value}</div>
     </div>
   );

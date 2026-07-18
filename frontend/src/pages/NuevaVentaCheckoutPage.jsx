@@ -6,7 +6,7 @@ import CheckoutResumenLateral from "../components/ventas/checkout/CheckoutResume
 import { ConfirmModal } from "../components/ui/ConfirmModal";
 import { crearVenta, entregarVenta } from "../services/ventasService";
 import { listarDeudas } from "../services/deudasService";
-import { buildVentaPayload } from "../builders/ventasPayloadBuilder";
+import { buildEntregaVentaPayload, buildVentaPayload } from "../builders/ventasPayloadBuilder";
 import { validarVentaAntesDeCrear } from "../validators/ventasValidator";
 import { useToast } from "../hooks/useToast";
 import { useSession } from "../context/SessionContext";
@@ -218,9 +218,13 @@ export default function NuevaVentaCheckoutPage() {
       const resultado = await crearVenta(payload);
 
       if (entregar_ahora) {
-        await entregarVenta(resultado.venta_id, {
-          id_usuario: draft.idUsuario ?? usuarioId,
-        });
+        await entregarVenta(
+          resultado.venta_id,
+          buildEntregaVentaPayload({
+            usuarioId: draft.idUsuario ?? usuarioId,
+            items: draft.items,
+          })
+        );
       }
 
       borrarVentaDraftGuardado({

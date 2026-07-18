@@ -29,15 +29,25 @@ END
 
 def _stock_base_select():
     return f"""
-        WITH ultimas_ventas AS (
+        WITH ventas_stats AS (
             SELECT
                 vi.id_variante,
+                COALESCE(SUM(vi.cantidad), 0)::numeric(14,3) AS unidades_vendidas_total,
+                COUNT(DISTINCT v.id)::int AS ventas_distintas_total,
                 MAX(v.fecha) AS ultima_venta
             FROM venta_items vi
             INNER JOIN ventas v ON v.id = vi.id_venta
             WHERE v.estado NOT IN ('anulada', 'devuelta')
               AND vi.tipo_item = 'producto'
             GROUP BY vi.id_variante
+        ),
+        primeros_movimientos AS (
+            SELECT
+                ms.id_variante,
+                ms.id_sucursal,
+                MIN(ms.fecha) AS primer_movimiento_stock
+            FROM movimientos_stock ms
+            GROUP BY ms.id_variante, ms.id_sucursal
         )
         SELECT
             s.id AS sucursal_id,
@@ -65,14 +75,18 @@ def _stock_base_select():
             pr.nombre AS proveedor_nombre,
             p.tipo_item AS producto_tipo_item,
             p.serializable,
+            v.reponer_stock,
             {TIPO_OPERATIVO_SQL} AS tipo_operativo,
             v.costo_promedio_vigente,
             (COALESCE(ss.stock_fisico, 0) * v.costo_promedio_vigente)::numeric(14,2) AS capital_inmovilizado,
-            uv.ultima_venta,
+            COALESCE(vs.unidades_vendidas_total, 0)::numeric(14,3) AS unidades_vendidas_total,
+            COALESCE(vs.ventas_distintas_total, 0)::int AS ventas_distintas_total,
+            vs.ultima_venta,
             CASE
-                WHEN uv.ultima_venta IS NULL THEN NULL
-                ELSE (CURRENT_DATE - uv.ultima_venta::date)::int
-            END AS dias_sin_movimiento
+                WHEN vs.ultima_venta IS NULL THEN NULL
+                ELSE (CURRENT_DATE - vs.ultima_venta::date)::int
+            END AS dias_sin_movimiento,
+            pm.primer_movimiento_stock
         FROM variantes v
         INNER JOIN productos p ON p.id = v.id_producto
         INNER JOIN categorias c ON c.id = p.id_categoria
@@ -82,7 +96,10 @@ def _stock_base_select():
            AND ss.id_sucursal = s.id
         LEFT JOIN marcas m ON m.id = p.id_marca
         LEFT JOIN proveedores pr ON pr.id = v.proveedor_preferido_id
-        LEFT JOIN ultimas_ventas uv ON uv.id_variante = v.id
+        LEFT JOIN ventas_stats vs ON vs.id_variante = v.id
+        LEFT JOIN primeros_movimientos pm
+            ON pm.id_variante = v.id
+           AND pm.id_sucursal = s.id
     """
 
 
@@ -95,6 +112,7 @@ def _build_stock_filters(
     id_proveedor=None,
     tipo_operativo=None,
     estado_stock=None,
+    reponer_stock=None,
     stock_bajo_umbral=2,
     dias_sin_movimiento=None,
 ):
@@ -148,6 +166,10 @@ def _build_stock_filters(
             where.append(f"({TIPO_OPERATIVO_SQL}) = %s")
             params.append(tipo_operativo)
 
+    if reponer_stock is not None:
+        where.append("v.reponer_stock = %s")
+        params.append(reponer_stock)
+
     disponible_sql = """
     (
         COALESCE(ss.stock_fisico, 0)
@@ -162,7 +184,7 @@ def _build_stock_filters(
         elif estado_stock in {"sin_stock", "sin_disponible"}:
             where.append(f"{disponible_sql} <= 0")
         elif estado_stock in {"stock_bajo", "bajo"}:
-            where.append(f"{disponible_sql} > 0 AND {disponible_sql} <= %s")
+            where.append(f"{disponible_sql} > 0 AND {disponible_sql} <= %s AND v.reponer_stock = TRUE")
             params.append(stock_bajo_umbral)
         elif estado_stock == "reservado":
             where.append("COALESCE(ss.stock_reservado, 0) > 0")
@@ -183,7 +205,7 @@ def _build_stock_filters(
         where.append(
             """
             COALESCE(ss.stock_fisico, 0) > 0
-            AND (uv.ultima_venta IS NULL OR uv.ultima_venta::date <= CURRENT_DATE - (%s::int))
+            AND (vs.ultima_venta IS NULL OR vs.ultima_venta::date <= CURRENT_DATE - (%s::int))
             """
         )
         params.append(dias_sin_movimiento)
@@ -201,6 +223,7 @@ def get_stock_sucursal(
     id_proveedor=None,
     tipo_operativo=None,
     estado_stock=None,
+    reponer_stock=None,
     stock_bajo_umbral=2,
     dias_sin_movimiento=None,
     ordenar_por="producto",
@@ -214,7 +237,7 @@ def get_stock_sucursal(
         "stock": "stock_disponible",
         "fisico": "COALESCE(ss.stock_fisico, 0)",
         "capital": "capital_inmovilizado",
-        "ultima_venta": "uv.ultima_venta",
+        "ultima_venta": "vs.ultima_venta",
         "categoria": "c.nombre",
         "marca": "m.nombre",
         "proveedor": "pr.nombre",
@@ -230,6 +253,7 @@ def get_stock_sucursal(
         id_proveedor=id_proveedor,
         tipo_operativo=tipo_operativo,
         estado_stock=estado_stock,
+        reponer_stock=reponer_stock,
         stock_bajo_umbral=stock_bajo_umbral,
         dias_sin_movimiento=dias_sin_movimiento,
     )
@@ -259,6 +283,7 @@ def get_stock_resumen(
     id_proveedor=None,
     tipo_operativo=None,
     estado_stock=None,
+    reponer_stock=None,
     stock_bajo_umbral=2,
     dias_sin_movimiento=None,
 ):
@@ -270,6 +295,7 @@ def get_stock_resumen(
         id_proveedor=id_proveedor,
         tipo_operativo=tipo_operativo,
         estado_stock=estado_stock,
+        reponer_stock=reponer_stock,
         stock_bajo_umbral=stock_bajo_umbral,
         dias_sin_movimiento=dias_sin_movimiento,
     )
@@ -304,6 +330,7 @@ def get_stock_resumen(
                         - COALESCE(ss.stock_reservado, 0)
                         - COALESCE(ss.stock_vendido_pendiente_entrega, 0)
                     ) <= %s
+                    AND v.reponer_stock = TRUE
                 )::int AS stock_bajo,
                 COUNT(*) FILTER (
                     WHERE COALESCE(ss.stock_reservado, 0) > 0
@@ -347,7 +374,7 @@ def get_stock_resumen(
                 WHERE v2.estado NOT IN ('anulada', 'devuelta')
                   AND vi.tipo_item = 'producto'
                 GROUP BY vi.id_variante
-            ) uv ON uv.id_variante = v.id
+            ) vs ON vs.id_variante = v.id
             WHERE {' AND '.join(where)}
             """,
             [stock_bajo_umbral, *params],
@@ -1110,6 +1137,70 @@ def registrar_salida_taller(
         origen_tipo=origen_tipo,
         origen_id=origen_id,
         nota=nota,
+    )
+
+
+def registrar_salida_armado(
+    conn,
+    *,
+    id_sucursal: int,
+    id_variante: int,
+    cantidad: Decimal,
+    id_usuario: int,
+    origen_id: int,
+    origen_tipo: str = "orden_armado",
+    costo_unitario_aplicado: Decimal | None = None,
+    nota: str | None = None,
+):
+    """
+    Consume stock fisico para una orden de armado/fabricacion.
+    Efecto:
+    - stock_fisico -= cantidad
+    """
+    return _aplicar_operacion_stock(
+        conn,
+        id_sucursal=id_sucursal,
+        id_variante=id_variante,
+        id_usuario=id_usuario,
+        tipo_movimiento="uso_armado",
+        cantidad=cantidad,
+        delta_fisico=-cantidad,
+        origen_tipo=origen_tipo,
+        origen_id=origen_id,
+        nota=nota,
+        costo_unitario_aplicado=costo_unitario_aplicado,
+    )
+
+
+def registrar_reversion_salida_armado(
+    conn,
+    *,
+    id_sucursal: int,
+    id_variante: int,
+    cantidad: Decimal,
+    id_usuario: int,
+    origen_id: int,
+    origen_tipo: str = "orden_armado",
+    costo_unitario_aplicado: Decimal | None = None,
+    nota: str | None = None,
+):
+    """
+    Revierte consumo fisico de una orden de armado/fabricacion.
+    Efecto:
+    - stock_fisico += cantidad
+    """
+    return _aplicar_operacion_stock(
+        conn,
+        id_sucursal=id_sucursal,
+        id_variante=id_variante,
+        id_usuario=id_usuario,
+        tipo_movimiento="reversion_uso_armado",
+        cantidad=cantidad,
+        delta_fisico=+cantidad,
+        origen_tipo=origen_tipo,
+        origen_id=origen_id,
+        nota=nota,
+        costo_unitario_aplicado=costo_unitario_aplicado,
     )
 
 

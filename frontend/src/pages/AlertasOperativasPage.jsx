@@ -4,6 +4,7 @@ import {
   obtenerAlertasOperativas,
   sincronizarSaldoVentaDesdeDeuda,
 } from "../services/alertasOperativasService";
+import { obtenerCorreccionesPendientes } from "../services/correccionesService";
 import { formatMoney } from "../utils/formatters";
 import { useSession } from "../context/SessionContext";
 import { formatProductoVariante } from "../utils/productPresentation";
@@ -24,13 +25,15 @@ const ALERTA_KEYS = [
 ];
 
 export default function AlertasOperativasPage() {
-  const { usuarioId } = useSession();
+  const { usuarioId, rolActual } = useSession();
   const [data, setData] = useState(null);
+  const [correcciones, setCorrecciones] = useState(null);
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
   const [loading, setLoading] = useState(false);
   const [sincronizandoId, setSincronizandoId] = useState(null);
   const [informeIndex, setInformeIndex] = useState(0);
+  const puedeVerCorrecciones = rolActual === "administrador";
 
   useEffect(() => {
     cargar();
@@ -41,6 +44,15 @@ export default function AlertasOperativasPage() {
     setError("");
     try {
       setData(await obtenerAlertasOperativas());
+      if (puedeVerCorrecciones) {
+        try {
+          setCorrecciones(await obtenerCorreccionesPendientes());
+        } catch {
+          setCorrecciones(null);
+        }
+      } else {
+        setCorrecciones(null);
+      }
     } catch (err) {
       setError(err.message || "No se pudo cargar la salud operativa");
     } finally {
@@ -81,6 +93,19 @@ export default function AlertasOperativasPage() {
 
   const informeOperativo = useMemo(() => crearInformeOperativo(data, totalPendientes), [data, totalPendientes]);
   const informeActual = informeOperativo[informeIndex % Math.max(informeOperativo.length, 1)];
+  const totalCorrecciones = useMemo(() => {
+    if (!correcciones) return 0;
+    return Object.values(correcciones).reduce((total, items) => total + (Array.isArray(items) ? items.length : 0), 0);
+  }, [correcciones]);
+  const detalleCorrecciones = useMemo(() => {
+    if (!correcciones) return [];
+    return [
+      ["Capital sin caja", correcciones.capital_sin_caja?.length || 0],
+      ["Saldos sin deuda", correcciones.ventas_saldo_sin_deuda?.length || 0],
+      ["Creditos a revisar", correcciones.creditos_anulacion_dudosos?.length || 0],
+      ["Cajas viejas", correcciones.cajas_abiertas_anteriores?.length || 0],
+    ];
+  }, [correcciones]);
 
   useEffect(() => {
     setInformeIndex(0);
@@ -140,6 +165,43 @@ export default function AlertasOperativasPage() {
             </div>
             <strong style={totalPendientes ? styles.agentCountHot : styles.agentCount}>{totalPendientes}</strong>
           </section>
+
+          {puedeVerCorrecciones && (
+            <Link
+              to="/correcciones"
+              style={{
+                ...styles.correccionesLink,
+                ...(totalCorrecciones > 0 ? styles.correccionesLinkHot : {}),
+              }}
+            >
+              <div>
+                <p style={styles.agentLabel}>Centro de correcciones</p>
+                <h2 style={styles.agentTitle}>
+                  {totalCorrecciones > 0
+                    ? `${totalCorrecciones} correccion${totalCorrecciones === 1 ? "" : "es"} que pueden afectar caja, capital o saldos`
+                    : "Sin correcciones operativas pendientes"}
+                </h2>
+                <p style={styles.agentText}>
+                  {totalCorrecciones > 0
+                    ? "Conviene revisarlas antes de cerrar el dia: el sistema guia cada caso y deja la correccion auditada."
+                    : "No veo movimientos de capital sin caja, saldos raros ni creditos dudosos para corregir ahora."}
+                </p>
+                {detalleCorrecciones.length > 0 && (
+                  <div style={styles.correccionesSummary}>
+                    {detalleCorrecciones.map(([label, count]) => (
+                      <span key={label} style={count > 0 ? styles.correccionesChipHot : styles.correccionesChip}>
+                        {label}: {count}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div style={styles.correccionesAction}>
+                <strong style={totalCorrecciones ? styles.agentCountHot : styles.agentCount}>{totalCorrecciones}</strong>
+                <span style={styles.correccionesActionText}>Abrir</span>
+              </div>
+            </Link>
+          )}
 
           <Seccion titulo="Ventas y caja">
             <AlertaCard
@@ -466,6 +528,52 @@ const styles = {
   },
   agentCount: { background: "#ecfdf5", color: "#047857", borderRadius: 999, padding: "10px 14px", minWidth: 48, textAlign: "center" },
   agentCountHot: { background: "#fff7ed", color: "#c2410c", borderRadius: 999, padding: "10px 14px", minWidth: 48, textAlign: "center", boxShadow: "0 8px 18px rgba(255,247,237,.22)" },
+  correccionesLink: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 16,
+    alignItems: "center",
+    background: "linear-gradient(135deg, #1e293b 0%, #7c2d12 120%)",
+    color: "white",
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 18,
+    textDecoration: "none",
+    boxShadow: "0 14px 30px rgba(15,23,42,.14)",
+  },
+  correccionesLinkHot: {
+    background: "linear-gradient(135deg, #7c2d12 0%, #b42318 120%)",
+    boxShadow: "0 16px 34px rgba(180,35,24,.18)",
+  },
+  correccionesSummary: { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 },
+  correccionesChip: {
+    display: "inline-flex",
+    alignItems: "center",
+    borderRadius: 999,
+    padding: "5px 9px",
+    background: "rgba(255,255,255,.12)",
+    color: "#e2e8f0",
+    fontSize: 12,
+    fontWeight: 900,
+  },
+  correccionesChipHot: {
+    display: "inline-flex",
+    alignItems: "center",
+    borderRadius: 999,
+    padding: "5px 9px",
+    background: "#fff7ed",
+    color: "#c2410c",
+    fontSize: 12,
+    fontWeight: 1000,
+  },
+  correccionesAction: { display: "grid", justifyItems: "center", gap: 6, flexShrink: 0 },
+  correccionesActionText: {
+    color: "#fff7ed",
+    fontSize: 12,
+    fontWeight: 950,
+    textTransform: "uppercase",
+    letterSpacing: ".02em",
+  },
   section: { marginTop: 18 },
   sectionTitle: { margin: "0 0 10px", fontSize: 20, color: "#1e293b" },
   grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14 },

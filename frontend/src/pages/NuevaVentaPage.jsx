@@ -14,7 +14,7 @@ import CatalogoPOSPanel from "../components/ventas/catalogo/CatalogoPOSPanel";
 import VentaCarritoSidebar from "../components/ventas/pos/VentaCarritoSidebar";
 import { ConfirmModal } from "../components/ui/ConfirmModal";
 import { validarVentaAntesDeCrear } from "../validators/ventasValidator";
-import { buildVentaPayload } from "../builders/ventasPayloadBuilder";
+import { buildEntregaVentaPayload, buildVentaPayload } from "../builders/ventasPayloadBuilder";
 import {
   crearLineId,
   getCodigoItemCatalogo,
@@ -130,6 +130,10 @@ function useIsMobile(breakpoint = MOBILE_BREAKPOINT) {
 export default function NuevaVentaPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const clienteInicialDesdeUrl = useMemo(
+    () => new URLSearchParams(location.search).get("cliente_id"),
+    [location.search]
+  );
   const searchRef = useRef(null);
   const consumidorFinalAvisadoRef = useRef(false);
   const { usuarioId, sucursalId, usuarioActual } = useSession();
@@ -326,21 +330,32 @@ export default function NuevaVentaPage() {
       ]);
 
       setCategorias(categoriasData || []);
-      setClientes(clientesData || []);
+      const clientesActivos = clientesData || [];
+
+      setClientes(clientesActivos);
       setCatalogo(Array.isArray(catalogoData) ? catalogoData : catalogoData?.items || []);
 
-      const consumidorFinal = (clientesData || []).find((c) => Number(c.id) === 1);
+      const clienteDesdeUrl = clienteInicialDesdeUrl
+        ? clientesActivos.find((c) => Number(c.id) === Number(clienteInicialDesdeUrl))
+        : null;
+      const consumidorFinal = clientesActivos.find((c) => Number(c.id) === 1);
       let clienteInicialId = "1";
       let tipoPrecioInicial = consumidorFinal
         ? tipoPrecioParaCliente(consumidorFinal)
         : "minorista";
 
-      if (consumidorFinal) {
-        setClienteId("1");
+      if (clienteDesdeUrl) {
+        clienteInicialId = String(clienteDesdeUrl.id);
+        tipoPrecioInicial = tipoPrecioParaCliente(clienteDesdeUrl);
+        setClienteId(clienteInicialId);
+        setTipoPrecio(tipoPrecioInicial);
+        setClienteQuery(formatearClienteParaBusqueda(clienteDesdeUrl));
+      } else if (consumidorFinal) {
+        setClienteId(clienteInicialId);
         setTipoPrecio(tipoPrecioInicial);
         setClienteQuery(formatearClienteParaBusqueda(consumidorFinal));
-      } else if ((clientesData || []).length > 0) {
-        const primerCliente = clientesData[0];
+      } else if (clientesActivos.length > 0) {
+        const primerCliente = clientesActivos[0];
         clienteInicialId = String(primerCliente.id);
         tipoPrecioInicial = tipoPrecioParaCliente(primerCliente);
         setClienteId(clienteInicialId);
@@ -355,7 +370,7 @@ export default function NuevaVentaPage() {
           ...draftGuardado,
           clienteInicialId,
           tipoPrecioInicial,
-          clienteGuardadoExiste: (clientesData || []).some(
+          clienteGuardadoExiste: clientesActivos.some(
             (cliente) => Number(cliente.id) === Number(draftGuardado.clienteId)
           ),
         };
@@ -845,9 +860,10 @@ async function handleBuscarEnter(e) {
       const resultado = await crearVenta(payload);
 
       if (entregar_ahora) {
-        await entregarVenta(resultado.venta_id, {
-          id_usuario: usuarioId,
-        });
+        await entregarVenta(
+          resultado.venta_id,
+          buildEntregaVentaPayload({ usuarioId, items })
+        );
       }
 
       borrarVentaDraftGuardado({ sucursalId, usuarioId });

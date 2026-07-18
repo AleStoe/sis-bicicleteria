@@ -17,6 +17,12 @@ export default function MovimientoCajaBadge({ movimiento }) {
 }
 
 export function getMovimientoLabel(movimiento) {
+  if (movimiento.origen_tipo === "correccion_operativa") {
+    return movimiento.tipo_movimiento === "egreso"
+      ? "Egreso por correccion"
+      : "Correccion operativa";
+  }
+
   if (movimiento.tipo_movimiento === "ajuste") {
     return movimiento.direccion_ajuste === "negativo"
       ? "Ajuste negativo"
@@ -40,6 +46,8 @@ export function getMovimientoMontoColor(movimiento) {
 }
 
 function getMovimientoTone(movimiento) {
+  if (movimiento.origen_tipo === "correccion_operativa") return "warning";
+
   if (movimiento.tipo_movimiento === "egreso") return "danger";
 
   if (movimiento.tipo_movimiento === "ajuste") {

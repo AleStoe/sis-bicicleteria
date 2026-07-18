@@ -95,6 +95,9 @@ def venta_detalle(
     if not puede_ver_costos:
         for item in detalle["items"]:
             item["costo_unitario_aplicado"] = None
+            item["origen_costo"] = None
+            item["id_orden_armado_origen"] = None
+            item["codigo_orden_armado"] = None
 
     return detalle
 

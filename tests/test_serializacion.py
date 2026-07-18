@@ -731,7 +731,7 @@ def test_reserva_items_no_guarda_snapshot_duplicado_de_numero_cuadro(db_conn):
     assert columnas == []
 
 
-def test_venta_sin_serie_crea_venta_generica_pero_no_entrega_serializable(
+def test_venta_sin_serie_entrega_en_caja_desde_stock_fisico(
     client,
     db_conn,
     seed_serializacion,
@@ -746,6 +746,12 @@ def test_venta_sin_serie_crea_venta_generica_pero_no_entrega_serializable(
     venta_id = data["venta_id"]
     venta = get_venta(db_conn, venta_id)
     assert venta["estado"] == "creada"
+
+    detalle = client.get(f"/ventas/{venta_id}")
+    assert detalle.status_code == 200, detalle.text
+    detalle_item = detalle.json()["items"][0]
+    assert detalle_item["serializable"] is True
+    assert detalle_item["id_bicicleta_serializada"] is None
 
     stock = get_stock_row(
         db_conn,
@@ -772,7 +778,55 @@ def test_venta_sin_serie_crea_venta_generica_pero_no_entrega_serializable(
 
     entregar = client.post(
         f"/ventas/{venta_id}/entregar",
-        json={"id_usuario": seed_serializacion["usuario_id"]},
+        json={
+            "id_usuario": seed_serializacion["usuario_id"],
+            "condicion_entrega_bicicleta": "en_caja",
+        },
+    )
+    assert entregar.status_code == 200, entregar.text
+
+    venta_entregada = get_venta(db_conn, venta_id)
+    assert venta_entregada["estado"] == "entregada"
+
+    stock = get_stock_row(
+        db_conn,
+        seed_serializacion["sucursal_id"],
+        seed_serializacion["variante_id"],
+    )
+    assert float(stock["stock_fisico"]) == 0.0
+    assert float(stock["stock_vendido_pendiente_entrega"]) == 0.0
+
+    movimientos = get_movimientos_by_venta(db_conn, venta_id)
+    tipos = [mov["tipo_movimiento"] for mov in movimientos]
+    assert tipos == ["venta", "entrega"]
+    assert all(mov["id_bicicleta_serializada"] is None for mov in movimientos)
+
+
+def test_venta_sin_serie_sigue_bloqueando_entrega_armada(
+    client,
+    db_conn,
+    seed_serializacion,
+):
+    response = _crear_venta_sin_serie(client, seed_serializacion)
+    assert response.status_code == 200, response.text
+    venta_id = response.json()["venta_id"]
+
+    abrir = _abrir_caja(
+        client,
+        seed_serializacion["sucursal_id"],
+        seed_serializacion["usuario_id"],
+    )
+    assert abrir.status_code == 200, abrir.text
+
+    pago = _pagar_venta_total(client, venta_id, seed_serializacion)
+    assert pago.status_code == 200, pago.text
+
+    entregar = client.post(
+        f"/ventas/{venta_id}/entregar",
+        json={
+            "id_usuario": seed_serializacion["usuario_id"],
+            "condicion_entrega_bicicleta": "armada",
+        },
     )
     assert entregar.status_code == 400
     assert "unidad asignada" in entregar.json()["detail"].lower()

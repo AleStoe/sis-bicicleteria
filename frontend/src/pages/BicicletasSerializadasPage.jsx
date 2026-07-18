@@ -15,7 +15,7 @@ const ESTADOS = [
   { value: "reservada", label: "Reservadas", emoji: "🟡" },
   { value: "vendida_pendiente_entrega", label: "Pendientes", emoji: "📦" },
   { value: "entregada", label: "Entregadas", emoji: "🏁" },
-  { value: "fuera_de_stock", label: "Fuera stock", emoji: "⛔" },
+  { value: "fuera_de_stock", label: "Stock bicis", emoji: "📦" },
   { value: "", label: "Todos", emoji: "📋" },
 ];
 
@@ -100,6 +100,7 @@ export default function BicicletasSerializadasPage() {
   const isMobile = useMediaQuery("(max-width: 760px)");
   const isNarrow = useMediaQuery("(max-width: 1120px)");
   const [bicis, setBicis] = useState([]);
+  const [stockBicis, setStockBicis] = useState([]);
   const [estado, setEstado] = useState("disponible");
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -107,6 +108,7 @@ export default function BicicletasSerializadasPage() {
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
   const [seleccionadaId, setSeleccionadaId] = useState(null);
+  const [stockSeleccionadoId, setStockSeleccionadoId] = useState(null);
   const [mostrarAlta, setMostrarAlta] = useState(false);
   const [panelAyudaAbierto, setPanelAyudaAbierto] = useState(false);
   const [queryVariante, setQueryVariante] = useState("");
@@ -114,6 +116,8 @@ export default function BicicletasSerializadasPage() {
   const [buscandoVariantes, setBuscandoVariantes] = useState(false);
   const [varianteSeleccionada, setVarianteSeleccionada] = useState(null);
   const [corrigiendoCuadro, setCorrigiendoCuadro] = useState(null);
+
+  const esVistaStockBicis = estado === "fuera_de_stock";
 
   const [form, setForm] = useState({
       id_variante: "",
@@ -123,7 +127,7 @@ export default function BicicletasSerializadasPage() {
     });
 
   useEffect(() => {
-    cargarSerializadas();
+    cargarVistaActual();
   }, [estado]);
 
   useEffect(() => {
@@ -180,6 +184,54 @@ export default function BicicletasSerializadasPage() {
       cancelado = true;
     };
   }, [mostrarAlta, queryVariante]);
+
+  async function cargarVistaActual() {
+    if (esVistaStockBicis) {
+      await cargarStockBicicletas();
+      return;
+    }
+
+    await cargarSerializadas();
+  }
+
+  async function cargarStockBicicletas() {
+    try {
+      setLoading(true);
+      setError("");
+
+      let offset = 0;
+      const limit = 100;
+      const items = [];
+
+      while (true) {
+        const data = await listarCatalogoPOS({
+          id_sucursal: sucursalId,
+          limit,
+          offset,
+        });
+
+        const pageItems = Array.isArray(data) ? data : data?.items || [];
+        items.push(...pageItems);
+
+        if (pageItems.length < limit) break;
+        offset += limit;
+      }
+
+      const bicisCatalogo = items
+        .filter((item) => Boolean(item.serializable))
+        .sort((a, b) => getStockDisponibleVariante(a) - getStockDisponibleVariante(b));
+
+      setStockBicis(bicisCatalogo);
+
+      if (!stockSeleccionadoId && bicisCatalogo.length) {
+        setStockSeleccionadoId(bicisCatalogo[0].id_variante || bicisCatalogo[0].id);
+      }
+    } catch (err) {
+      setError(err.message || "No se pudo cargar el stock de bicicletas");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function cargarSerializadas() {
     try {
@@ -246,7 +298,7 @@ export default function BicicletasSerializadasPage() {
         observaciones: "",
       }));
 
-      await cargarSerializadas();
+      await cargarVistaActual();
       setSeleccionadaId(res.bicicleta_id);
       setMostrarAlta(false);
       setVarianteSeleccionada(null);
@@ -261,15 +313,20 @@ export default function BicicletasSerializadasPage() {
   const filtradas = useMemo(() => {
     const q = query.trim().toLowerCase();
 
-    if (!q) return bicis;
+    const source = esVistaStockBicis ? stockBicis : bicis;
 
-    return bicis.filter((bici) => {
+    if (!q) return source;
+
+    return source.filter((bici) => {
       const texto = [
         bici.id,
         bici.id_producto,
         bici.id_variante,
         bici.producto_nombre,
+        bici.nombre_producto,
+        bici.producto,
         bici.nombre_variante,
+        bici.variante_nombre,
         bici.sucursal_nombre,
         bici.numero_cuadro,
         bici.estado,
@@ -289,9 +346,33 @@ export default function BicicletasSerializadasPage() {
 
       return texto.includes(q);
     });
-  }, [bicis, query]);
+  }, [bicis, stockBicis, query, esVistaStockBicis]);
 
   const resumen = useMemo(() => {
+    if (esVistaStockBicis) {
+      return stockBicis.reduce(
+        (acc, item) => {
+          const disponible = getStockDisponibleVariante(item);
+          acc.total += 1;
+          acc.disponible += disponible > 0 ? 1 : 0;
+          acc.fuera_de_stock += disponible <= 0 ? 1 : 0;
+          acc.stock_fisico += Number(item.stock_fisico ?? item.stock ?? 0);
+          acc.stock_disponible += disponible;
+          return acc;
+        },
+        {
+          total: 0,
+          disponible: 0,
+          reservada: 0,
+          vendida_pendiente_entrega: 0,
+          entregada: 0,
+          fuera_de_stock: 0,
+          stock_fisico: 0,
+          stock_disponible: 0,
+        }
+      );
+    }
+
     return bicis.reduce(
       (acc, bici) => {
         acc.total += 1;
@@ -307,11 +388,21 @@ export default function BicicletasSerializadasPage() {
         fuera_de_stock: 0,
       }
     );
-  }, [bicis]);
+  }, [bicis, stockBicis, esVistaStockBicis]);
 
   const seleccionada = useMemo(() => {
+    if (esVistaStockBicis) {
+      return (
+        filtradas.find(
+          (item) => String(item.id_variante || item.id) === String(stockSeleccionadoId)
+        ) ||
+        filtradas[0] ||
+        null
+      );
+    }
+
     return filtradas.find((bici) => bici.id === seleccionadaId) || filtradas[0] || null;
-  }, [filtradas, seleccionadaId]);
+  }, [filtradas, seleccionadaId, stockSeleccionadoId, esVistaStockBicis]);
 
   if (loading) {
     return (
@@ -341,7 +432,7 @@ export default function BicicletasSerializadasPage() {
             ＋ Serializar bicicleta
           </button>
 
-          <button onClick={cargarSerializadas} disabled={procesando} style={refreshButtonStyle}>
+          <button onClick={cargarVistaActual} disabled={procesando} style={refreshButtonStyle}>
             ↻ Refrescar
           </button>
         </div>
@@ -351,11 +442,23 @@ export default function BicicletasSerializadasPage() {
       {error && <div style={alertStyle}>Error: {error}</div>}
 
       <section style={isMobile ? metricGridMobileStyle : metricGridStyle}>
-        <Metric label="Vista actual" value={resumen.total} tone="dark" />
-        <Metric label="Disponibles" value={resumen.disponible} tone="ok" />
-        <Metric label="Reservadas" value={resumen.reservada} tone="warning" />
-        <Metric label="Pendientes" value={resumen.vendida_pendiente_entrega} tone="info" />
-        <Metric label="Entregadas" value={resumen.entregada} tone="muted" />
+        {esVistaStockBicis ? (
+          <>
+            <Metric label="Modelos / variantes" value={resumen.total} tone="dark" />
+            <Metric label="Con stock" value={resumen.disponible} tone="ok" />
+            <Metric label="Sin stock" value={resumen.fuera_de_stock} tone="danger" />
+            <Metric label="Físico total" value={resumen.stock_fisico} tone="info" />
+            <Metric label="Disponible total" value={resumen.stock_disponible} tone="ok" />
+          </>
+        ) : (
+          <>
+            <Metric label="Vista actual" value={resumen.total} tone="dark" />
+            <Metric label="Disponibles" value={resumen.disponible} tone="ok" />
+            <Metric label="Reservadas" value={resumen.reservada} tone="warning" />
+            <Metric label="Pendientes" value={resumen.vendida_pendiente_entrega} tone="info" />
+            <Metric label="Entregadas" value={resumen.entregada} tone="muted" />
+          </>
+        )}
       </section>
 
       {panelAyudaAbierto && (
@@ -376,7 +479,11 @@ export default function BicicletasSerializadasPage() {
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Buscar por cuadro, producto, variante, SKU, cliente o venta"
+                placeholder={
+                  esVistaStockBicis
+                    ? "Buscar bicicleta por producto, variante, SKU o código"
+                    : "Buscar por cuadro, producto, variante, SKU, cliente o venta"
+                }
                 style={searchInputStyle}
               />
             </div>
@@ -400,14 +507,26 @@ export default function BicicletasSerializadasPage() {
             <div style={emptyListStyle}>No hay bicicletas para mostrar.</div>
           ) : (
             <div style={isMobile ? cardsGridMobileStyle : cardsGridStyle}>
-              {filtradas.map((bici) => (
-                <BiciCard
-                  key={bici.id}
-                  bici={bici}
-                  selected={seleccionada?.id === bici.id}
-                  onClick={() => setSeleccionadaId(bici.id)}
-                />
-              ))}
+              {filtradas.map((bici) =>
+                esVistaStockBicis ? (
+                  <StockBiciCard
+                    key={bici.id_variante || bici.id}
+                    item={bici}
+                    selected={
+                      String(seleccionada?.id_variante || seleccionada?.id) ===
+                      String(bici.id_variante || bici.id)
+                    }
+                    onClick={() => setStockSeleccionadoId(bici.id_variante || bici.id)}
+                  />
+                ) : (
+                  <BiciCard
+                    key={bici.id}
+                    bici={bici}
+                    selected={seleccionada?.id === bici.id}
+                    onClick={() => setSeleccionadaId(bici.id)}
+                  />
+                )
+              )}
             </div>
           )}
         </section>
@@ -415,13 +534,17 @@ export default function BicicletasSerializadasPage() {
         <aside style={sideStyle}>
           <section style={detailCardStyle}>
             <h2 style={cardTitleStyle}>Detalle operativo</h2>
-            {seleccionada ? (
+            {seleccionada && esVistaStockBicis ? (
+              <StockBiciDetalle item={seleccionada} />
+            ) : seleccionada ? (
               <BiciDetalle
                 bici={seleccionada}
                 onCorregirNumeroCuadro={() => setCorrigiendoCuadro(seleccionada)}
               />
             ) : (
-              <p style={mutedStyle}>Seleccioná una unidad.</p>
+              <p style={mutedStyle}>
+                {esVistaStockBicis ? "Seleccioná una bicicleta." : "Seleccioná una unidad."}
+              </p>
             )}
           </section>
 
@@ -510,7 +633,18 @@ export default function BicicletasSerializadasPage() {
 
                 {varianteSeleccionada && (
                   <div style={selectedVariantStyle}>
-                    <span>Seleccionada</span>
+                    <div style={selectedVariantImageBoxStyle}>
+                      {getImagenVariante(varianteSeleccionada) ? (
+                        <img
+                          src={getImagenVariante(varianteSeleccionada)}
+                          alt={getTituloVariante(varianteSeleccionada)}
+                          style={selectedVariantImageStyle}
+                        />
+                      ) : (
+                        <span style={selectedVariantFallbackStyle}>🚲</span>
+                      )}
+                    </div>
+                    <span>Seleccionada para serializar</span>
                     <strong>{getTituloVariante(varianteSeleccionada)}</strong>
                     <small>
                       Variante #{varianteSeleccionada.id_variante || varianteSeleccionada.id} · Stock disponible: {getStockDisponibleVariante(varianteSeleccionada)}
@@ -621,6 +755,45 @@ function BiciCard({ bici, selected, onClick }) {
   );
 }
 
+function StockBiciCard({ item, selected, onClick }) {
+  const imagen = getImagenVariante(item);
+  const stockDisponible = getStockDisponibleVariante(item);
+  const stockFisico = Number(item.stock_fisico ?? item.stock ?? 0);
+  const serializadas = Number(item.serializadas_disponibles ?? 0);
+
+  return (
+    <button type="button" onClick={onClick} style={selected ? biciCardSelectedStyle : biciCardStyle}>
+      <div style={imageBoxStyle}>
+        {imagen ? (
+          <img src={imagen} alt={getTituloVariante(item)} style={imageStyle} />
+        ) : (
+          <span style={imageFallbackStyle}>🚲</span>
+        )}
+      </div>
+
+      <div style={biciInfoStyle}>
+        <div style={biciTopRowStyle}>
+          <strong style={biciTitleStyle}>{getTituloVariante(item)}</strong>
+          <span style={stockDisponible > 0 ? okPillStyle : dangerPillStyle}>
+            {stockDisponible > 0 ? "Con stock" : "Sin stock"}
+          </span>
+        </div>
+
+        <div style={stockMiniGridStyle}>
+          <span>Disponible <strong>{stockDisponible}</strong></span>
+          <span>Físico <strong>{stockFisico}</strong></span>
+          <span>Serializadas <strong>{serializadas}</strong></span>
+        </div>
+
+        <div style={metaRowStyle}>
+          <span>Variante #{item.id_variante || item.id}</span>
+          <span>{item.sku || item.codigo_barras || item.codigo_proveedor || "Sin código"}</span>
+        </div>
+      </div>
+    </button>
+  );
+}
+
 function BiciDetalle({ bici, onCorregirNumeroCuadro }) {
   const imagen = getImagenBici(bici);
 
@@ -668,6 +841,48 @@ function BiciDetalle({ bici, onCorregirNumeroCuadro }) {
       </div>
 
 
+    </div>
+  );
+}
+
+function StockBiciDetalle({ item }) {
+  const imagen = getImagenVariante(item);
+  const stockDisponible = getStockDisponibleVariante(item);
+  const stockFisico = Number(item.stock_fisico ?? item.stock ?? 0);
+  const reservado = Number(item.stock_reservado ?? 0);
+  const pendiente = Number(item.stock_vendido_pendiente_entrega ?? 0);
+  const serializadas = Number(item.serializadas_disponibles ?? 0);
+
+  return (
+    <div style={detalleWrapStyle}>
+      <div style={detalleImageBoxStyle}>
+        {imagen ? (
+          <img src={imagen} alt={getTituloVariante(item)} style={detalleImageStyle} />
+        ) : (
+          <span style={detalleFallbackStyle}>🚲</span>
+        )}
+      </div>
+
+      <div>
+        <span style={stockDisponible > 0 ? okPillStyle : dangerPillStyle}>
+          {stockDisponible > 0 ? "Con stock" : "Sin stock"}
+        </span>
+        <h3 style={detalleTitleStyle}>{getTituloVariante(item)}</h3>
+      </div>
+
+      <div style={detalleGridStyle}>
+        <Info label="Disponible" value={stockDisponible} />
+        <Info label="Físico" value={stockFisico} />
+        <Info label="Reservado" value={reservado} />
+        <Info label="Pendiente entrega" value={pendiente} />
+        <Info label="Serializadas disponibles" value={serializadas} />
+        <Info label="Variante" value={`#${item.id_variante || item.id}`} />
+      </div>
+
+      <div style={obsBoxStyle}>
+        <span>Código</span>
+        <p>{item.sku || item.codigo_barras || item.codigo_proveedor || "Sin código visible"}</p>
+      </div>
     </div>
   );
 }
@@ -753,6 +968,7 @@ const metricToneStyles = {
   ok: { color: "#047857", background: "#ecfdf5", borderColor: "#bbf7d0" },
   warning: { color: "#b45309", background: "#fffbeb", borderColor: "#fde68a" },
   info: { color: "#1d4ed8", background: "#eff6ff", borderColor: "#bfdbfe" },
+  danger: { color: "#b42318", background: "#fff1f0", borderColor: "#f4c7c3" },
   muted: { color: "#475569", background: "#f8fafc" },
 };
 
@@ -780,6 +996,7 @@ const biciTitleStyle = { fontSize: 14, lineHeight: 1.25 };
 const cuadroBoxStyle = { border: "1px solid #dbeafe", background: "#eff6ff", color: "#1d4ed8", borderRadius: 12, padding: "8px 10px", display: "grid", gap: 2 };
 const ownerMiniStyle = { border: "1px solid #fed7aa", background: "#fff7ed", color: "#c2410c", borderRadius: 12, padding: "8px 10px", display: "grid", gap: 2, fontSize: 12 };
 const metaRowStyle = { display: "flex", gap: 8, flexWrap: "wrap", color: "#64748b", fontSize: 12, fontWeight: 800 };
+const stockMiniGridStyle = { display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6, color: "#334155", fontSize: 12, fontWeight: 800 };
 
 const sideStyle = { display: "grid", gap: 16, position: "sticky", top: 16 };
 const cardStyle = { background: "white", borderRadius: 20, border: "1px solid #e2e8f0", boxShadow: "0 16px 34px rgba(15, 23, 42, 0.08)", padding: 16 };
@@ -807,14 +1024,17 @@ const closeButtonStyle = { border: "1px solid #e2e8f0", background: "#f8fafc", c
 const modalFormStyle = { display: "grid", gap: 12 };
 const modalGridStyle = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 };
 const variantSearchPanelStyle = { border: "1px solid #e2e8f0", background: "#f8fafc", borderRadius: 16, padding: 12, display: "grid", gap: 12 };
-const variantResultsStyle = { display: "grid", gap: 8, maxHeight: 260, overflowY: "auto", paddingRight: 4 };
+const variantResultsStyle = { display: "grid", gap: 10, maxHeight: 300, overflowY: "auto", paddingRight: 4 };
 const variantEmptyStyle = { border: "1px dashed #cbd5e1", background: "white", color: "#64748b", borderRadius: 14, padding: 14, fontWeight: 800, textAlign: "center" };
-const variantOptionStyle = { width: "100%", border: "1px solid #e2e8f0", background: "white", color: "#0f172a", borderRadius: 14, padding: 10, display: "grid", gridTemplateColumns: "74px minmax(0, 1fr)", gap: 10, textAlign: "left", cursor: "pointer" };
+const variantOptionStyle = { width: "100%", border: "1px solid #e2e8f0", background: "white", color: "#0f172a", borderRadius: 16, padding: 12, display: "grid", gridTemplateColumns: "104px minmax(0, 1fr)", gap: 12, textAlign: "left", cursor: "pointer", alignItems: "center" };
 const variantOptionSelectedStyle = { ...variantOptionStyle, borderColor: "#f97316", boxShadow: "0 10px 22px rgba(249, 115, 22, 0.18)" };
-const variantImageBoxStyle = { height: 66, borderRadius: 12, background: "#f1f5f9", display: "grid", placeItems: "center", overflow: "hidden", padding: 6, boxSizing: "border-box" };
+const variantImageBoxStyle = { height: 86, borderRadius: 14, background: "#f1f5f9", display: "grid", placeItems: "center", overflow: "hidden", padding: 6, boxSizing: "border-box" };
 const variantImageStyle = { width: "100%", height: "100%", objectFit: "contain", objectPosition: "center" };
-const variantInfoStyle = { minWidth: 0, display: "grid", gap: 3, fontSize: 12, color: "#64748b" };
-const selectedVariantStyle = { border: "1px solid #bbf7d0", background: "#ecfdf5", color: "#047857", borderRadius: 14, padding: 12, display: "grid", gap: 3, fontWeight: 900 };
+const variantInfoStyle = { minWidth: 0, display: "grid", gap: 5, fontSize: 12, color: "#64748b" };
+const selectedVariantStyle = { border: "1px solid #86efac", background: "#ecfdf5", color: "#047857", borderRadius: 18, padding: 14, display: "grid", gridTemplateColumns: "190px minmax(0, 1fr)", gap: 14, fontWeight: 900, alignItems: "center" };
+const selectedVariantImageBoxStyle = { gridRow: "1 / span 3", minHeight: 150, borderRadius: 16, background: "white", border: "1px solid #bbf7d0", display: "grid", placeItems: "center", overflow: "hidden", padding: 10, boxSizing: "border-box" };
+const selectedVariantImageStyle = { width: "100%", height: 140, objectFit: "contain", objectPosition: "center" };
+const selectedVariantFallbackStyle = { fontSize: 58 };
 const dangerNoteStyle = { border: "1px solid #fed7aa", background: "#fff7ed", color: "#c2410c", borderRadius: 14, padding: 12, display: "grid", gap: 4, fontWeight: 800 };
 const modalActionsStyle = { display: "grid", gridTemplateColumns: "1fr 1.4fr", gap: 10, marginTop: 4 };
 const modalActionsMobileStyle = { display: "grid", gridTemplateColumns: "1fr", gap: 8, marginTop: 4 };
@@ -833,6 +1053,7 @@ const obsBoxStyle = { background: "#1e293b", borderRadius: 14, padding: 12, colo
 
 const basePillStyle = { borderRadius: 999, padding: "5px 9px", fontWeight: 1000, fontSize: 12, whiteSpace: "nowrap" };
 const okPillStyle = { ...basePillStyle, background: "#dcfce7", color: "#047857" };
+const dangerPillStyle = { ...basePillStyle, background: "#fee2e2", color: "#b42318" };
 const warningPillStyle = { ...basePillStyle, background: "#fef3c7", color: "#b45309" };
 const infoPillStyle = { ...basePillStyle, background: "#dbeafe", color: "#1d4ed8" };
 const mutedPillStyle = { ...basePillStyle, background: "#e2e8f0", color: "#475569" };

@@ -341,6 +341,7 @@ def get_venta_items_by_venta_id(conn, venta_id: int):
                 vi.tipo_item,
                 vi.id_servicio_taller,
                 vi.id_bicicleta_serializada,
+                p.serializable,
                 vi.id_orden_taller_item,
                 vi.descripcion_snapshot,
                 vi.cantidad,
@@ -358,6 +359,13 @@ def get_venta_items_by_venta_id(conn, venta_id: int):
                 vi.precio_catalogo_original,
                 vi.descuento_oferta_unitario,
                 vi.oferta_nombre_snapshot,
+                CASE
+                    WHEN bs.id_orden_armado_origen IS NOT NULL
+                        THEN 'fabricacion_propia'
+                    ELSE 'costo_promedio_variante'
+                END AS origen_costo,
+                bs.id_orden_armado_origen,
+                ao.codigo AS codigo_orden_armado,
                 COALESCE(dev.cantidad_devuelta, 0) AS cantidad_devuelta,
                 CASE
                     WHEN COALESCE(dev.cantidad_devuelta, 0) >= vi.cantidad
@@ -365,6 +373,14 @@ def get_venta_items_by_venta_id(conn, venta_id: int):
                     ELSE FALSE
                 END AS devuelto_total
             FROM venta_items vi
+            LEFT JOIN variantes v
+                ON v.id = vi.id_variante
+            LEFT JOIN productos p
+                ON p.id = v.id_producto
+            LEFT JOIN bicicletas_serializadas bs
+                ON bs.id = vi.id_bicicleta_serializada
+            LEFT JOIN armado_ordenes ao
+                ON ao.id = bs.id_orden_armado_origen
             LEFT JOIN (
                 SELECT
                     id_venta_item,
@@ -414,12 +430,23 @@ def get_venta_items_detallados_by_venta_id(conn, venta_id: int):
                 vi.id_oferta,
                 vi.precio_catalogo_original,
                 vi.descuento_oferta_unitario,
-                vi.oferta_nombre_snapshot
+                vi.oferta_nombre_snapshot,
+                CASE
+                    WHEN bs.id_orden_armado_origen IS NOT NULL
+                        THEN 'fabricacion_propia'
+                    ELSE 'costo_promedio_variante'
+                END AS origen_costo,
+                bs.id_orden_armado_origen,
+                ao.codigo AS codigo_orden_armado
             FROM venta_items vi
             LEFT JOIN variantes v
                 ON v.id = vi.id_variante
             LEFT JOIN productos p
                 ON p.id = v.id_producto
+            LEFT JOIN bicicletas_serializadas bs
+                ON bs.id = vi.id_bicicleta_serializada
+            LEFT JOIN armado_ordenes ao
+                ON ao.id = bs.id_orden_armado_origen
             WHERE vi.id_venta = %s
             ORDER BY vi.id
             """,

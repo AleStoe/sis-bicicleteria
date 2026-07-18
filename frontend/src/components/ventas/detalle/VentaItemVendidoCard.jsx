@@ -102,6 +102,27 @@ export default function VentaItemVendidoCard({
               isMobile={isMobile}
             />
           )}
+
+          {item.costo_unitario_aplicado !== null &&
+            item.costo_unitario_aplicado !== undefined && (
+              <Metric
+                label={
+                  item.origen_costo === "fabricacion_propia"
+                    ? "Costo fabricacion"
+                    : "Costo aplicado"
+                }
+                value={formatMoney(item.costo_unitario_aplicado)}
+                isMobile={isMobile}
+              />
+            )}
+
+          {item.origen_costo === "fabricacion_propia" && item.id_orden_armado_origen ? (
+            <Metric
+              label="Origen costo"
+              value={item.codigo_orden_armado || `Armado #${item.id_orden_armado_origen}`}
+              isMobile={isMobile}
+            />
+          ) : null}
         </div>
 
         {item.motivo_bonificacion ? (

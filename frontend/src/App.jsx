@@ -53,6 +53,13 @@ import EtiquetasPage from "./pages/EtiquetasPage";
 import InventarioFisicoPage from "./pages/InventarioFisicoPage";
 import AlertasOperativasPage from "./pages/AlertasOperativasPage";
 import BackupPage from "./pages/BackupPage";
+import ArmadoPage from "./pages/ArmadoPage";
+import ArmadoModeloDetallePage from "./pages/ArmadoModeloDetallePage";
+import ArmadoConfiguracionDetallePage from "./pages/ArmadoConfiguracionDetallePage";
+import ArmadoSimuladorPage from "./pages/ArmadoSimuladorPage";
+import ArmadoOrdenesPage from "./pages/ArmadoOrdenesPage";
+import ArmadoOrdenDetallePage from "./pages/ArmadoOrdenDetallePage";
+import CorreccionesPage from "./pages/CorreccionesPage";
 
 const ADMIN = ["administrador"];
 const OPERACION = ["administrador", "encargado", "operador"];
@@ -86,10 +93,17 @@ const TITULOS_RUTA = [
   [/^\/reservas\/\d+$/, "Detalle de reserva"],
   [/^\/reservas$/, "Reservas"],
   [/^\/stock$/, "Stock"],
+  [/^\/armado\/configuraciones\/\d+\/simular$/, "Simulador de armado"],
+  [/^\/armado\/configuraciones\/\d+$/, "Configuracion de armado"],
+  [/^\/armado\/ordenes\/\d+$/, "Orden de armado"],
+  [/^\/armado\/ordenes$/, "Ordenes de armado"],
+  [/^\/armado\/modelos\/\d+$/, "Modelo de armado"],
+  [/^\/armado$/, "Armado"],
   [/^\/serializadas$/, "Bicicletas"],
   [/^\/inventario-fisico$/, "Inventario fisico"],
   [/^\/alertas-operativas$/, "Salud operativa"],
   [/^\/salud-operativa$/, "Salud operativa"],
+  [/^\/correcciones$/, "Correcciones"],
   [/^\/etiquetas$/, "Etiquetas"],
   [/^\/catalogo\/categorias$/, "Categorias"],
   [/^\/catalogo\/productos\/\d+$/, "Detalle de catalogo"],
@@ -230,6 +244,54 @@ export default function App() {
             }
           />
           <Route
+            path="/armado"
+            element={
+              <ProtectedRoute rolesPermitidos={ADMIN_ENCARGADO}>
+                <ArmadoPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/armado/modelos/:modeloId"
+            element={
+              <ProtectedRoute rolesPermitidos={ADMIN_ENCARGADO}>
+                <ArmadoModeloDetallePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/armado/configuraciones/:configuracionId"
+            element={
+              <ProtectedRoute rolesPermitidos={ADMIN_ENCARGADO}>
+                <ArmadoConfiguracionDetallePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/armado/configuraciones/:configuracionId/simular"
+            element={
+              <ProtectedRoute rolesPermitidos={ADMIN_ENCARGADO}>
+                <ArmadoSimuladorPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/armado/ordenes"
+            element={
+              <ProtectedRoute rolesPermitidos={ADMIN_ENCARGADO}>
+                <ArmadoOrdenesPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/armado/ordenes/:ordenId"
+            element={
+              <ProtectedRoute rolesPermitidos={ADMIN_ENCARGADO}>
+                <ArmadoOrdenDetallePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/alertas-operativas"
             element={
               <ProtectedRoute rolesPermitidos={OPERACION_TALLER}>
@@ -242,6 +304,14 @@ export default function App() {
             element={
               <ProtectedRoute rolesPermitidos={OPERACION_TALLER}>
                 <AlertasOperativasPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/correcciones"
+            element={
+              <ProtectedRoute rolesPermitidos={ADMIN}>
+                <CorreccionesPage />
               </ProtectedRoute>
             }
           />

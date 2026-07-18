@@ -28,6 +28,8 @@ from app.modules.alertas_operativas.routes import router as alertas_operativas_r
 from app.modules.configuracion_negocio.routes import router as configuracion_negocio_router
 from app.modules.backups.routes import router as backups_router
 from app.modules.ofertas.routes import router as ofertas_router
+from app.modules.armado.routes import router as armado_router
+from app.modules.correcciones.routes import router as correcciones_router
 
 router = APIRouter()
 
@@ -60,3 +62,5 @@ router.include_router(alertas_operativas_router, prefix="/alertas-operativas", t
 router.include_router(configuracion_negocio_router, prefix="/configuracion-negocio", tags=["Configuracion Negocio"])
 router.include_router(backups_router, prefix="/backups", tags=["Backups"])
 router.include_router(ofertas_router, prefix="/ofertas", tags=["Ofertas"])
+router.include_router(armado_router, prefix="/armado", tags=["Armado"])
+router.include_router(correcciones_router, prefix="/correcciones", tags=["Correcciones"])

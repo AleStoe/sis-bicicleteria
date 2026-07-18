@@ -1103,6 +1103,57 @@ def test_catalogo_pos_serializable_con_stock_fisico_cero_y_serie_disponible_es_v
     assert item["motivo_no_disponible"] is None
 
 
+def test_catalogo_pos_serializable_con_stock_fisico_sin_serie_aparece_disponible(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    categoria = _get_first_categoria(client)
+    producto = _crear_producto(
+        client,
+        categoria_id=categoria["id"],
+        nombre="Bicicleta En Caja POS Disponible",
+        serializable=True,
+    )
+    codigo_barras_input = f"779{uuid.uuid4().int % 10_000_000_000:010d}"
+    variante = _crear_variante(
+        client,
+        producto_id=producto["id"],
+        nombre_variante="Talle M Caja",
+        sku=f"SKU-BICI-CAJA-{uuid.uuid4().hex[:8].upper()}",
+        codigo_barras=codigo_barras_input,
+        precio_minorista=210000,
+        precio_mayorista=180000,
+    )
+
+    _upsert_stock_sucursal(
+        db_conn,
+        id_sucursal=seed_venta_basica["sucursal_id"],
+        id_variante=variante["id"],
+        stock_fisico=3,
+    )
+
+    pos = client.get(
+        f"/catalogo/pos?id_sucursal={seed_venta_basica['sucursal_id']}&query=Bicicleta En Caja POS Disponible&limit=50&offset=0&solo_disponibles=true"
+    )
+    exacta = client.get(
+        f"/catalogo/pos/buscar-exacto?id_sucursal={seed_venta_basica['sucursal_id']}&codigo={variante['codigo_barras']}"
+    )
+
+    assert pos.status_code == 200, pos.text
+    assert exacta.status_code == 200, exacta.text
+
+    item_pos = next(i for i in pos.json()["items"] if i["id_variante"] == variante["id"])
+    item_exacto = exacta.json()
+
+    assert item_pos["stock_disponible"] == "3.000"
+    assert item_pos["serializadas_disponibles"] == 0
+    assert item_pos["disponible_para_venta"] is True
+    assert item_pos["motivo_no_disponible"] is None
+    assert item_exacto["disponible_para_venta"] is True
+    assert item_exacto["motivo_no_disponible"] is None
+
+
 def test_catalogo_pos_y_busqueda_exacta_son_consistentes_para_serializables(
     client,
     db_conn,

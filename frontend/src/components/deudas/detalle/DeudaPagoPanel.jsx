@@ -18,6 +18,7 @@ export default function DeudaPagoPanel({
   registrarPago,
   guardando,
   simulando,
+  planesTarjeta = [],
 }) {
   const deudaAbierta = deuda.estado === "abierta";
   const montoCliente = Number(pagoForm.monto_cliente || 0);
@@ -78,33 +79,34 @@ export default function DeudaPagoPanel({
           </Select>
 
           {pagoForm.medio_pago === "tarjeta" && (
-            <div style={tarjetaGridStyle}>
-              <Input
-                label="Cuotas"
-                type="number"
-                min="1"
-                step="1"
-                value={pagoForm.cuotas}
-                onChange={(e) =>
-                  setPagoForm((prev) => ({
-                    ...prev,
-                    cuotas: e.target.value,
-                  }))
-                }
-              />
+            <Select
+              label="Plan de tarjeta"
+              value={`${pagoForm.cuotas || ""}__${pagoForm.entidad || ""}`}
+              disabled={guardando || simulando || planesTarjeta.length === 0}
+              onChange={(e) => {
+                const plan = planesTarjeta.find(
+                  (item) => `${item.cuotas}__${item.entidad || ""}` === e.target.value
+                );
 
-              <Input
-                label="Entidad"
-                value={pagoForm.entidad}
-                onChange={(e) =>
-                  setPagoForm((prev) => ({
-                    ...prev,
-                    entidad: e.target.value,
-                  }))
-                }
-                placeholder="Opcional"
-              />
-            </div>
+                if (!plan) return;
+
+                setPagoForm((prev) => ({
+                  ...prev,
+                  cuotas: String(plan.cuotas),
+                  entidad: plan.entidad || "",
+                }));
+              }}
+            >
+              {planesTarjeta.length === 0 ? (
+                <option value="">Sin planes activos</option>
+              ) : (
+                planesTarjeta.map((plan) => (
+                  <option key={plan.id} value={`${plan.cuotas}__${plan.entidad || ""}`}>
+                    {formatPlanTarjeta(plan)}
+                  </option>
+                ))
+              )}
+            </Select>
           )}
 
           <label style={textareaLabelStyle}>
@@ -236,12 +238,6 @@ const textareaStyle = {
   fontSize: 14,
 };
 
-const tarjetaGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "0.7fr 1.3fr",
-  gap: 10,
-};
-
 const previewStyle = {
   border: "1px solid #d0d5dd",
   borderRadius: 14,
@@ -289,3 +285,18 @@ const tarjetaInfoStyle = {
   color: "#667085",
   fontSize: 13,
 };
+
+function formatPlanTarjeta(plan) {
+  const partes = [];
+
+  if (plan.nombre) partes.push(plan.nombre);
+  if (plan.entidad) partes.push(plan.entidad);
+  partes.push(`${plan.cuotas} cuota${Number(plan.cuotas) === 1 ? "" : "s"}`);
+
+  const recargo = Number(plan.porcentaje_recargo_cliente || 0);
+  if (Number.isFinite(recargo)) {
+    partes.push(`${recargo.toFixed(2)}% al cliente`);
+  }
+
+  return partes.join(" · ");
+}

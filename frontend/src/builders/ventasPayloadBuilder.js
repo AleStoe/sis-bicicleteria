@@ -77,3 +77,25 @@ export function buildPagoVentaPayload(pago) {
     nota: pago.nota || null,
   };
 }
+
+export function esBicicletaSerializableEnCaja(item) {
+  if (!item || item.id_bicicleta_serializada) return false;
+
+  if (item.serializable) return true;
+
+  const descripcion = String(
+    item.descripcion_snapshot || item.descripcion || item.producto_nombre || ""
+  ).toUpperCase();
+
+  return descripcion.includes("BICICLETA");
+}
+
+export function buildEntregaVentaPayload({ usuarioId, items = [], condicionEntregaBicicleta = null }) {
+  const tieneBicicletaSerializableEnCaja = items.some(esBicicletaSerializableEnCaja);
+
+  return {
+    id_usuario: usuarioId,
+    condicion_entrega_bicicleta:
+      condicionEntregaBicicleta || (tieneBicicletaSerializableEnCaja ? "en_caja" : "armada"),
+  };
+}

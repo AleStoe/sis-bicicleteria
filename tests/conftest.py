@@ -93,6 +93,14 @@ def clean_db(db_conn):
                 reserva_eventos,
                 reserva_items,
                 reservas,
+                armado_orden_controles,
+                armado_orden_costos,
+                armado_orden_items,
+                armado_ordenes,
+                armado_configuracion_items,
+                armado_configuraciones,
+                armado_versiones,
+                armado_modelos,
                 bicicletas_serializadas,
                 ingresos_stock,
                 stock_sucursal,
@@ -111,6 +119,7 @@ def clean_db(db_conn):
             RESTART IDENTITY CASCADE
             """
         )
+        cur.execute("ALTER SEQUENCE IF EXISTS armado_orden_codigo_seq RESTART WITH 1")
 
         cur.execute(
             """

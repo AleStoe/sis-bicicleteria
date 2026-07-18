@@ -334,6 +334,18 @@ export default function ClienteBicicletaDetallePage() {
                 </button>
               )}
             </div>
+            {bicicleta.id_orden_armado_origen ? (
+              <>
+                <Info
+                  label="Fabricacion"
+                  value={bicicleta.codigo_orden_armado || `Armado #${bicicleta.id_orden_armado_origen}`}
+                />
+                <Info
+                  label="Costo fabricacion"
+                  value={formatMoney(bicicleta.costo_fabricacion_final || 0)}
+                />
+              </>
+            ) : null}
             <Info label="Notas" value={bicicleta.notas || "-"} full />
           </div>
         </div>

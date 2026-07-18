@@ -297,33 +297,44 @@ def _draw_cliente(c, venta, y, margin_x, width):
     value_x = margin_x + 22 * mm
     value_width = width - margin_x - value_x
 
-    c.setFont("Helvetica-Bold", 10)
-    c.drawString(margin_x, y, "Cliente:")
-    y = draw_wrapped_text(
-        c,
-        collapse_repeated_words(venta.get("cliente_nombre")),
-        x=value_x,
-        y=y,
-        max_width=value_width,
-        font_name="Helvetica",
-        font_size=10,
-        leading=5 * mm,
-    )
-    y -= 1 * mm
+    rows = [
+        ("Cliente:", collapse_repeated_words(venta.get("cliente_nombre"))),
+        ("Telefono:", venta.get("cliente_telefono")),
+        ("DNI:", venta.get("cliente_dni")),
+        ("CUIT:", venta.get("cliente_cuit")),
+        ("IVA:", _format_condicion_iva(venta.get("cliente_condicion_iva"))),
+        ("Sucursal:", collapse_repeated_words(venta.get("sucursal_nombre"))),
+    ]
 
-    c.setFont("Helvetica-Bold", 10)
-    c.drawString(margin_x, y, "Sucursal:")
-    y = draw_wrapped_text(
-        c,
-        collapse_repeated_words(venta.get("sucursal_nombre")),
-        x=value_x,
-        y=y,
-        max_width=value_width,
-        font_name="Helvetica",
-        font_size=10,
-        leading=5 * mm,
-    )
+    for label, value in rows:
+        if not value:
+            continue
+
+        c.setFont("Helvetica-Bold", 10)
+        c.drawString(margin_x, y, label)
+        y = draw_wrapped_text(
+            c,
+            _text(value),
+            x=value_x,
+            y=y,
+            max_width=value_width,
+            font_name="Helvetica",
+            font_size=10,
+            leading=5 * mm,
+        )
+        y -= 1 * mm
+
     return y - 7 * mm
+
+
+def _format_condicion_iva(value) -> str:
+    labels = {
+        "consumidor_final": "Consumidor final",
+        "responsable_inscripto": "Responsable inscripto",
+        "monotributo": "Monotributo",
+        "exento": "Exento",
+    }
+    return labels.get(_text(value), _text(value))
 
 
 def _draw_table_header(c, y, width, margin_x):

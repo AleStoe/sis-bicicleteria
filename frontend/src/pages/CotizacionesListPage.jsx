@@ -47,6 +47,8 @@ export default function CotizacionesListPage() {
   const [servicios, setServicios] = useState([]);
   const [estadoFiltro, setEstadoFiltro] = useState("");
   const [busqueda, setBusqueda] = useState("");
+  const [clienteBusqueda, setClienteBusqueda] = useState("");
+  const [mostrarResultadosClientes, setMostrarResultadosClientes] = useState(false);
   const [catalogoQuery, setCatalogoQuery] = useState("");
   const [carritoItems, setCarritoItems] = useState([]);
   const [lineaLibre, setLineaLibre] = useState(lineaLibreInicial);
@@ -182,14 +184,59 @@ export default function CotizacionesListPage() {
     );
   }, [carritoItems]);
 
-  function seleccionarCliente(clienteId) {
-    const cliente = clientes.find((item) => String(item.id) === String(clienteId));
+  const clienteSeleccionado = useMemo(
+    () => clientes.find((cliente) => String(cliente.id) === String(form.id_cliente)),
+    [clientes, form.id_cliente]
+  );
+
+  const clientesFiltrados = useMemo(() => {
+    const termino = normalizarBusqueda(clienteBusqueda.trim());
+
+    if (!termino) {
+      return clientes.slice(0, 10);
+    }
+
+    return clientes
+      .filter((cliente) => {
+        const valores = [
+          cliente.id,
+          cliente.nombre,
+          cliente.telefono,
+          cliente.documento,
+          cliente.dni,
+          cliente.cuit,
+          cliente.razon_social,
+        ];
+
+        return valores.some((valor) =>
+          normalizarBusqueda(valor).includes(termino)
+        );
+      })
+      .slice(0, 10);
+  }, [clientes, clienteBusqueda]);
+
+  function seleccionarCliente(cliente) {
     setForm((prev) => ({
       ...prev,
-      id_cliente: clienteId,
+      id_cliente: String(cliente.id),
       cliente_nombre_snapshot: cliente ? cliente.nombre : prev.cliente_nombre_snapshot,
       cliente_telefono_snapshot: cliente?.telefono || prev.cliente_telefono_snapshot,
     }));
+    setClienteBusqueda(
+      `#${cliente.id} - ${cliente.nombre}${cliente.telefono ? ` (${cliente.telefono})` : ""}`
+    );
+    setMostrarResultadosClientes(false);
+  }
+
+  function limpiarClienteSeleccionado() {
+    setForm((prev) => ({
+      ...prev,
+      id_cliente: "",
+      cliente_nombre_snapshot: "",
+      cliente_telefono_snapshot: "",
+    }));
+    setClienteBusqueda("");
+    setMostrarResultadosClientes(false);
   }
 
   function agregarProducto(variante) {
@@ -356,15 +403,84 @@ export default function CotizacionesListPage() {
               </select>
             </label>
 
-            <label style={styles.field}>
+            <div style={styles.field}>
               <span>Cliente</span>
-              <select value={form.id_cliente} onChange={(e) => seleccionarCliente(e.target.value)} style={styles.input}>
-                <option value="">Cliente mostrador / sin registrar</option>
-                {clientes.map((cliente) => (
-                  <option key={cliente.id} value={cliente.id}>{cliente.nombre}</option>
-                ))}
-              </select>
-            </label>
+              <div style={styles.customerSearchWrap}>
+                <input
+                  type="search"
+                  value={clienteBusqueda}
+                  onFocus={() => setMostrarResultadosClientes(true)}
+                  onChange={(e) => {
+                    setClienteBusqueda(e.target.value);
+                    setMostrarResultadosClientes(true);
+                    if (form.id_cliente) {
+                      setForm((prev) => ({
+                        ...prev,
+                        id_cliente: "",
+                        cliente_nombre_snapshot: "",
+                        cliente_telefono_snapshot: "",
+                      }));
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") {
+                      setMostrarResultadosClientes(false);
+                    }
+
+                    if (e.key === "Enter" && mostrarResultadosClientes && clientesFiltrados.length > 0) {
+                      e.preventDefault();
+                      seleccionarCliente(clientesFiltrados[0]);
+                    }
+                  }}
+                  placeholder="Buscar por nombre, telefono, DNI/CUIT o numero de cliente..."
+                  autoComplete="off"
+                  style={styles.input}
+                />
+
+                {mostrarResultadosClientes && (
+                  <div style={styles.customerResults}>
+                    <button
+                      type="button"
+                      onClick={limpiarClienteSeleccionado}
+                      style={styles.customerResultButton}
+                    >
+                      <strong>Cliente mostrador / sin registrar</strong>
+                      <span>Usar nombre y telefono manual para esta cotizacion.</span>
+                    </button>
+
+                    {clientesFiltrados.length === 0 ? (
+                      <div style={styles.customerResultEmpty}>No se encontraron clientes.</div>
+                    ) : (
+                      clientesFiltrados.map((cliente) => (
+                        <button
+                          key={cliente.id}
+                          type="button"
+                          onClick={() => seleccionarCliente(cliente)}
+                          style={styles.customerResultButton}
+                        >
+                          <strong>#{cliente.id} - {cliente.nombre}</strong>
+                          <span>
+                            {[cliente.telefono, cliente.documento || cliente.dni || cliente.cuit]
+                              .filter(Boolean)
+                              .join(" · ") || "Sin telefono ni documento"}
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {clienteSeleccionado && (
+                <div style={styles.selectedCustomer}>
+                  <span>Cliente seleccionado</span>
+                  <strong>
+                    #{clienteSeleccionado.id} - {clienteSeleccionado.nombre}
+                    {clienteSeleccionado.telefono ? ` (${clienteSeleccionado.telefono})` : ""}
+                  </strong>
+                </div>
+              )}
+            </div>
 
             {!form.id_cliente && (
               <div style={styles.twoCols}>
@@ -731,6 +847,13 @@ function labelTipoItem(tipo) {
   return labels[tipo] || tipo;
 }
 
+function normalizarBusqueda(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
 function labelEstado(estado) {
   const labels = {
     borrador: "Borrador",
@@ -788,6 +911,48 @@ const styles = {
   segmentActive: { border: "1px solid #f97316", background: "#fff7ed", color: "#c2410c", borderRadius: 12, padding: "11px 12px", fontWeight: 1000, cursor: "pointer" },
   field: { display: "grid", gap: spacing.sm, fontSize: typography.label.fontSize, fontWeight: typography.label.fontWeight, color: colors.text },
   input: { width: "100%", minHeight: controls.minHeight, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: controls.padding, boxSizing: "border-box", background: colors.surface, color: colors.text },
+  customerSearchWrap: { position: "relative" },
+  customerResults: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: "calc(100% + 6px)",
+    zIndex: 30,
+    background: colors.surface,
+    border: `1px solid ${colors.border}`,
+    borderRadius: radius.md,
+    boxShadow: shadows.lg,
+    overflow: "hidden",
+    maxHeight: 280,
+    overflowY: "auto",
+  },
+  customerResultButton: {
+    width: "100%",
+    border: "none",
+    borderBottom: `1px solid ${colors.borderSoft}`,
+    background: colors.surface,
+    padding: "10px 12px",
+    textAlign: "left",
+    display: "grid",
+    gap: 3,
+    cursor: "pointer",
+    color: colors.text,
+  },
+  customerResultEmpty: {
+    padding: "12px",
+    color: colors.textMuted,
+    fontWeight: 800,
+    background: "#f8fafc",
+  },
+  selectedCustomer: {
+    display: "grid",
+    gap: 3,
+    border: "1px solid #bfdbfe",
+    background: "#eff6ff",
+    color: "#1d4ed8",
+    borderRadius: radius.md,
+    padding: "10px 12px",
+  },
   compactSelect: { border: "1px solid #cbd5e1", borderRadius: 999, padding: "8px 10px", fontWeight: 900, background: "white" },
   textarea: { width: "100%", minHeight: 76, border: "1px solid #cbd5e1", borderRadius: 12, padding: "11px 12px", fontWeight: 700, resize: "vertical", boxSizing: "border-box" },
   twoCols: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 },

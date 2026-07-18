@@ -26,12 +26,16 @@ class StockSucursalOut(BaseModel):
     proveedor_nombre: str | None = None
     producto_tipo_item: str | None = None
     serializable: bool | None = None
+    reponer_stock: bool = True
     tipo_operativo: str | None = None
 
     costo_promedio_vigente: Decimal | None = None
     capital_inmovilizado: Decimal | None = None
     ultima_venta: datetime | None = None
     dias_sin_movimiento: int | None = None
+    unidades_vendidas_total: Decimal = Decimal("0")
+    ventas_distintas_total: int = 0
+    primer_movimiento_stock: datetime | None = None
 
 
 class StockResumenOut(BaseModel):

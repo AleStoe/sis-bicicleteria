@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { crearAjusteStock, crearIngresoStock, listarStock, obtenerResumenStock } from "../services/stockService";
+import {
+  cambiarReponerStockVariante,
+  cambiarReponerStockVariantesMasivo,
+} from "../services/catalogoService";
 import { listarProveedores } from "../services/proveedoresService";
 import { useSession } from "../context/SessionContext";
 import { formatMoney, formatNumber } from "../utils/formatters";
@@ -19,11 +23,28 @@ import {
 import { Boxes, PackagePlus, RefreshCw, Tags } from "lucide-react";
 import { colors, controls, radius, shadows, spacing, typography } from "../theme";
 
+const stockPageRequestsEnVuelo = new Map();
+
+function requestStockPageUnaVez(clave, requester) {
+  if (stockPageRequestsEnVuelo.has(clave)) {
+    return stockPageRequestsEnVuelo.get(clave);
+  }
+
+  const promesa = requester().finally(() => {
+    stockPageRequestsEnVuelo.delete(clave);
+  });
+
+  stockPageRequestsEnVuelo.set(clave, promesa);
+  return promesa;
+}
+
 
 export default function StockPage() {
   const navigate = useNavigate();
   const { usuarioId, sucursalId } = useSession();
   const searchInputRef = useRef(null);
+  const filtrosMontadosRef = useRef(false);
+  const busquedaMontadaRef = useRef(false);
   const isMobile = useMediaQuery("(max-width: 760px)");
 
   const [stock, setStock] = useState([]);
@@ -38,6 +59,7 @@ export default function StockPage() {
   const [idMarca, setIdMarca] = useState("");
   const [idProveedor, setIdProveedor] = useState("");
   const [diasSinMovimiento, setDiasSinMovimiento] = useState("");
+  const [filtroReponerStock, setFiltroReponerStock] = useState("todos");
   const [stockBajoUmbral, setStockBajoUmbral] = useState(2);
   const [ordenarPor, setOrdenarPor] = useState("producto");
   const [orden, setOrden] = useState("asc");
@@ -51,6 +73,7 @@ export default function StockPage() {
 
   const [seleccionado, setSeleccionado] = useState(null);
   const [modoPanel, setModoPanel] = useState("detalle");
+  const [seleccionMasiva, setSeleccionMasiva] = useState(new Set());
 
   const [ingresoForm, setIngresoForm] = useState({
     id_sucursal: sucursalId,
@@ -83,6 +106,17 @@ export default function StockPage() {
   }, []);
 
   useEffect(() => {
+    if (!filtrosAvanzadosAbiertos) return;
+    cargarDatosAuxiliares();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtrosAvanzadosAbiertos]);
+
+  useEffect(() => {
+    if (!filtrosMontadosRef.current) {
+      filtrosMontadosRef.current = true;
+      return;
+    }
+
     cargarStock();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -92,12 +126,18 @@ export default function StockPage() {
     idMarca,
     idProveedor,
     diasSinMovimiento,
+    filtroReponerStock,
     stockBajoUmbral,
     ordenarPor,
     orden,
   ]);
 
   useEffect(() => {
+    if (!busquedaMontadaRef.current) {
+      busquedaMontadaRef.current = true;
+      return;
+    }
+
     const handle = setTimeout(() => {
       cargarStock({ silencioso: true });
     }, 260);
@@ -107,7 +147,33 @@ export default function StockPage() {
   }, [query]);
 
   async function cargarTodo() {
-    await Promise.all([cargarStockBase(), cargarStock(), cargarProveedores()]);
+    const tareas = [cargarStock()];
+
+    if (filtrosAvanzadosAbiertos || stockBase.length > 0) {
+      tareas.push(cargarStockBase());
+    }
+
+    if (filtrosAvanzadosAbiertos || proveedores.length > 0) {
+      tareas.push(cargarProveedores());
+    }
+
+    await Promise.all(tareas);
+  }
+
+  async function cargarDatosAuxiliares() {
+    const tareas = [];
+
+    if (stockBase.length === 0) {
+      tareas.push(cargarStockBase());
+    }
+
+    if (proveedores.length === 0) {
+      tareas.push(cargarProveedores());
+    }
+
+    if (tareas.length > 0) {
+      await Promise.all(tareas);
+    }
   }
 
   function stockParams(extra = {}) {
@@ -119,6 +185,8 @@ export default function StockPage() {
       id_marca: idMarca,
       id_proveedor: idProveedor,
       dias_sin_movimiento: diasSinMovimiento,
+      reponer_stock:
+        filtroReponerStock === "todos" ? "" : filtroReponerStock === "reponer",
       stock_bajo_umbral: stockBajoUmbral,
       ordenar_por: ordenarPor,
       orden,
@@ -129,7 +197,10 @@ export default function StockPage() {
 
   async function cargarStockBase() {
     try {
-      const data = await listarStock({ limit: 2000, ordenar_por: "producto" });
+      const data = await requestStockPageUnaVez(
+        "stock-base",
+        () => listarStock({ limit: 2000, ordenar_por: "producto" })
+      );
       setStockBase(data || []);
     } catch (err) {
       setError(err.message || "No se pudo cargar base de filtros de stock");
@@ -152,9 +223,10 @@ export default function StockPage() {
 
       setError("");
       const params = stockParams(paramsExtra);
+      const claveParams = JSON.stringify(params);
       const [data, resumen] = await Promise.all([
-        listarStock(params),
-        obtenerResumenStock(params),
+        requestStockPageUnaVez(`stock:${claveParams}`, () => listarStock(params)),
+        requestStockPageUnaVez(`stock-resumen:${claveParams}`, () => obtenerResumenStock(params)),
       ]);
       const items = data || [];
       setStock(items);
@@ -184,12 +256,16 @@ export default function StockPage() {
   function limpiarBusqueda() {
     setQuery("");
     setFiltroEstado("todos");
+    setFiltroReponerStock("todos");
     setTimeout(() => searchInputRef.current?.focus(), 0);
   }
 
   async function cargarProveedores() {
     try {
-      const data = await listarProveedores({ solo_activos: true });
+      const data = await requestStockPageUnaVez(
+        "proveedores-activos",
+        () => listarProveedores({ solo_activos: true })
+      );
       setProveedores(data || []);
     } catch (err) {
       setError(err.message || "No se pudieron cargar proveedores");
@@ -197,6 +273,10 @@ export default function StockPage() {
   }
 
   function seleccionarItem(item, modo = "detalle") {
+    if (modo === "ingreso" && proveedores.length === 0) {
+      cargarProveedores();
+    }
+
     setSeleccionado(item);
     setModoPanel(modo);
 
@@ -218,6 +298,14 @@ export default function StockPage() {
     setModoPanel("detalle");
   }
 
+  function cambiarModoPanelStock(modo) {
+    if (modo === "ingreso" && proveedores.length === 0) {
+      cargarProveedores();
+    }
+
+    setModoPanel(modo);
+  }
+
   function ordenarTabla(campo) {
     const camposDescPorDefecto = new Set([
       "stock",
@@ -233,6 +321,81 @@ export default function StockPage() {
 
     setOrdenarPor(campo);
     setOrden(camposDescPorDefecto.has(campo) ? "desc" : "asc");
+  }
+
+  function toggleSeleccionMasiva(item) {
+    const clave = String(item.variante_id);
+    setSeleccionMasiva((actual) => {
+      const siguiente = new Set(actual);
+      if (siguiente.has(clave)) {
+        siguiente.delete(clave);
+      } else {
+        siguiente.add(clave);
+      }
+      return siguiente;
+    });
+  }
+
+  function limpiarSeleccionMasiva() {
+    setSeleccionMasiva(new Set());
+  }
+
+  async function cambiarReposicionItem(item, reponerStock) {
+    try {
+      setProcesando(true);
+      setError("");
+      setMensaje("");
+      await cambiarReponerStockVariante(item.variante_id, {
+        reponer_stock: reponerStock,
+        id_usuario: usuarioId,
+      });
+      setMensaje(
+        reponerStock
+          ? "La variante vuelve a aparecer en alertas de reposicion."
+          : "La variante ya no aparecera en alertas de stock critico. Sigue visible y vendible."
+      );
+      await Promise.all([cargarStockBase(), cargarStock()]);
+    } catch (err) {
+      setError(err.message || "No se pudo actualizar la reposicion");
+    } finally {
+      setProcesando(false);
+    }
+  }
+
+  async function cambiarReposicionMasiva(reponerStock) {
+    const ids = [...seleccionMasiva].map((id) => Number(id));
+    if (ids.length === 0) {
+      setError("Selecciona al menos una variante.");
+      return;
+    }
+
+    const accion = reponerStock ? "marcar como reponer" : "marcar como no reponer";
+    const ok = window.confirm(
+      `Vas a ${accion} ${ids.length} variante(s).\n\nEsto no cambia stock, ventas ni visibilidad en POS. Solo afecta alertas de reposicion.\n\nConfirmas el cambio?`
+    );
+    if (!ok) return;
+
+    try {
+      setProcesando(true);
+      setError("");
+      setMensaje("");
+      await cambiarReponerStockVariantesMasivo({
+        ids_variantes: ids,
+        reponer_stock: reponerStock,
+        id_usuario: usuarioId,
+      });
+      limpiarSeleccionMasiva();
+      setMensaje(
+        reponerStock
+          ? `${ids.length} variante(s) marcadas para reponer.`
+          : `${ids.length} variante(s) marcadas como no reponer.`
+      );
+      await Promise.all([cargarStockBase(), cargarStock()]);
+    } catch (err) {
+      setError(err.message || "No se pudo actualizar la reposicion masiva");
+    } finally {
+      setProcesando(false);
+    }
   }
 
   const ordenLabel = {
@@ -587,6 +750,15 @@ export default function StockPage() {
           </label>
 
           <label style={styles.filterField}>
+            <span style={styles.filterLabel}>Reposicion</span>
+            <select value={filtroReponerStock} onChange={(e) => setFiltroReponerStock(e.target.value)} style={styles.select}>
+              <option value="todos">Todos</option>
+              <option value="reponer">Reponer</option>
+              <option value="no_reponer">No reponer</option>
+            </select>
+          </label>
+
+          <label style={styles.filterField}>
             <span style={styles.filterLabel}>Umbral bajo</span>
             <input type="number" min="0" value={stockBajoUmbral} onChange={(e) => setStockBajoUmbral(Number(e.target.value))} style={styles.select} />
           </label>
@@ -632,6 +804,30 @@ export default function StockPage() {
               {stockFiltrado.length} resultado(s). Ordenado por {ordenLabel[ordenarPor] || ordenarPor} {orden === "asc" ? "ascendente" : "descendente"}. Click en columnas para ordenar.
             </p>
           </div>
+          {seleccionMasiva.size > 0 && (
+            <div style={styles.bulkActions}>
+              <strong>{seleccionMasiva.size} seleccionada(s)</strong>
+              <button
+                type="button"
+                style={styles.actionButton}
+                onClick={() => cambiarReposicionMasiva(true)}
+                disabled={procesando}
+              >
+                Marcar reponer
+              </button>
+              <button
+                type="button"
+                style={styles.dangerOutlineButton}
+                onClick={() => cambiarReposicionMasiva(false)}
+                disabled={procesando}
+              >
+                Marcar no reponer
+              </button>
+              <button type="button" style={styles.ghostButton} onClick={limpiarSeleccionMasiva}>
+                Limpiar
+              </button>
+            </div>
+          )}
         </div>
 
         {stockFiltrado.length === 0 ? (
@@ -646,6 +842,10 @@ export default function StockPage() {
               ordenarPor={ordenarPor}
               orden={orden}
               onOrdenar={ordenarTabla}
+              seleccionMasiva={seleccionMasiva}
+              toggleSeleccionMasiva={toggleSeleccionMasiva}
+              cambiarReposicionItem={cambiarReposicionItem}
+              procesando={procesando}
               styles={{
                 table: styles.table,
                 thead: styles.thead,
@@ -663,6 +863,7 @@ export default function StockPage() {
                 variantName: styles.variantName,
                 actionButton: styles.actionButton,
                 dangerOutlineButton: styles.dangerOutlineButton,
+                ghostButton: styles.ghostButton,
               }}
             />
           </div>
@@ -674,7 +875,7 @@ export default function StockPage() {
           seleccionado={seleccionado}
           cerrarPanel={cerrarPanel}
           modoPanel={modoPanel}
-          setModoPanel={setModoPanel}
+          setModoPanel={cambiarModoPanelStock}
           handleIngreso={handleIngreso}
           handleAjuste={handleAjuste}
           ingresoForm={ingresoForm}
@@ -1005,7 +1206,15 @@ const styles = {
     boxShadow: shadows.sm,
     overflow: "hidden",
   },
-  tableHeader: { padding: "16px 18px", borderBottom: "1px solid #e5e7eb" },
+  tableHeader: {
+    padding: "16px 18px",
+    borderBottom: "1px solid #e5e7eb",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "12px",
+    flexWrap: "wrap",
+  },
   cardTitle: { margin: 0, fontSize: "20px", fontWeight: 900 },
   muted: { color: "#6b7280", margin: "4px 0 0" },
   mutedSmall: { color: "#6b7280", fontSize: "13px", marginTop: "4px" },
@@ -1051,6 +1260,13 @@ const styles = {
   productName: { display: "block", fontSize: "14px" },
   variantName: { marginTop: "3px", color: "#374151" },
   rowActions: { display: "flex", gap: "6px", flexWrap: "wrap" },
+  bulkActions: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: "8px",
+    flexWrap: "wrap",
+  },
   actionButton: {
     border: "1px solid #bfdbfe",
     background: "#eff6ff",
@@ -1064,6 +1280,15 @@ const styles = {
     border: "1px solid #fecaca",
     background: "#fef2f2",
     color: "#991b1b",
+    borderRadius: "10px",
+    padding: "8px 10px",
+    fontWeight: 900,
+    cursor: "pointer",
+  },
+  ghostButton: {
+    border: "1px solid #d1d5db",
+    background: "#ffffff",
+    color: "#374151",
     borderRadius: "10px",
     padding: "8px 10px",
     fontWeight: 900,

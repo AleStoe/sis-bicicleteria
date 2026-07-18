@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useSession } from "../context/SessionContext";
 import { crearVenta, entregarVenta } from "../services/ventasService";
 import { validarVentaAntesDeCrear } from "../validators/ventasValidator";
-import { buildVentaPayload } from "../builders/ventasPayloadBuilder";
+import { buildEntregaVentaPayload, buildVentaPayload } from "../builders/ventasPayloadBuilder";
 
 
 export default function useVentaFinalizacion({
@@ -54,9 +54,10 @@ export default function useVentaFinalizacion({
       const resultado = await crearVenta(payload);
 
       if (entregar_ahora) {
-        await entregarVenta(resultado.venta_id, {
-          id_usuario: usuarioId,
-        });
+        await entregarVenta(
+          resultado.venta_id,
+          buildEntregaVentaPayload({ usuarioId, items })
+        );
       }
 
       navigate(`/ventas/${resultado.venta_id}`);

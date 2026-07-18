@@ -138,6 +138,7 @@ export default function VentaCobroPage() {
       ) : puedeCobrarDirecto ? (
         <PagoVentaPanel
           ventaId={venta.id}
+          venta={venta}
           saldoPendiente={venta.saldo_pendiente}
           estadoVenta={venta.estado}
           autoFocusPago

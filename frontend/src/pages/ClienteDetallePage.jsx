@@ -21,9 +21,11 @@ import {
   desactivarCliente,
   activarCliente,
   listarBicicletasCliente,
+  crearBicicletaCliente,
   obtenerHistorialCliente,
   obtenerTallerCliente,
 } from "../services/clientesService";
+import { normalizeTextUpper } from "../utils/textNormalization";
 
 const TAB_RESUMEN = "resumen";
 const TAB_HISTORIAL = "historial";
@@ -91,6 +93,9 @@ export default function ClienteDetallePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [confirmConfig, setConfirmConfig] = useState(null);
+  const [mostrarAltaBici, setMostrarAltaBici] = useState(false);
+  const [guardandoBici, setGuardandoBici] = useState(false);
+  const [nuevaBici, setNuevaBici] = useState({ marca: "", modelo: "", rodado: "", color: "", numero_cuadro: "", notas: "" });
   const isMobile = useBreakpoint();
 
   useEffect(() => {
@@ -185,6 +190,48 @@ export default function ClienteDetallePage() {
     }
   }
 
+  function abrirAltaBicicleta() {
+    setTabActiva(TAB_BICICLETAS);
+    setMostrarAltaBici(true);
+    setError("");
+  }
+
+  function cerrarAltaBicicleta() {
+    setMostrarAltaBici(false);
+    setNuevaBici({ marca: "", modelo: "", rodado: "", color: "", numero_cuadro: "", notas: "" });
+  }
+
+  function cambiarNuevaBici(campo, valor) {
+    const upper = ["marca", "modelo", "color", "numero_cuadro"].includes(campo);
+    setNuevaBici((prev) => ({
+      ...prev,
+      [campo]: upper ? normalizeTextUpper(valor) : valor,
+    }));
+  }
+
+  async function guardarBicicletaCliente(e) {
+    e.preventDefault();
+
+    if (!nuevaBici.marca.trim() || !nuevaBici.modelo.trim()) {
+      setError("Marca y modelo son obligatorios para cargar la bicicleta.");
+      return;
+    }
+
+    try {
+      setGuardandoBici(true);
+      setError("");
+      await crearBicicletaCliente(clienteId, limpiarObjeto(nuevaBici));
+      const bicisActualizadas = await listarBicicletasCliente(clienteId);
+      setBicicletas(Array.isArray(bicisActualizadas) ? bicisActualizadas : []);
+      cerrarAltaBicicleta();
+      setTabActiva(TAB_BICICLETAS);
+    } catch (err) {
+      setError(err.message || "No se pudo cargar la bicicleta del cliente");
+    } finally {
+      setGuardandoBici(false);
+    }
+  }
+
   const cliente = data?.cliente;
   const resumen = data?.resumen_ventas || {};
   const ventas = data?.ventas_recientes || [];
@@ -237,6 +284,7 @@ export default function ClienteDetallePage() {
   const tieneCredito = Number(resumenFinanciero.saldoCredito || 0) > 0;
   const ultimaInteraccion = historialCliente[0] || null;
   const accionRecomendada = getAccionRecomendadaCliente({
+    cliente,
     tieneDeuda,
     deudasAbiertas: resumenFinanciero.deudasAbiertas,
     bicicletas,
@@ -262,23 +310,29 @@ export default function ClienteDetallePage() {
           }
           actions={
             <>
-              <Button type="button" variant="outline" onClick={cargarTodo} fullWidth={isMobile}>
+              <ActionButton type="button" variant="outline" onClick={cargarTodo} fullWidth={isMobile}>
                 Refrescar
-              </Button>
+              </ActionButton>
 
-              {cliente.id !== 1 && (
+              {Number(cliente.id) !== 1 && (
                 <ActionLink to={`/clientes/${cliente.id}/editar`} variant="secondary">
                   Editar datos
                 </ActionLink>
               )}
 
-              <ActionLink to="/ventas/nueva" variant="primary">
+              <ActionLink to={`/ventas/nueva?cliente_id=${cliente.id}`} variant="primary">
                 Nueva venta
               </ActionLink>
 
-              <ActionLink to="/taller/nueva" variant="outline">
+              <ActionLink to={`/taller/nueva?cliente_id=${cliente.id}`} variant="outline">
                 Nueva orden taller
               </ActionLink>
+
+              {Number(cliente.id) !== 1 && (
+                <ActionButton type="button" variant="outline" onClick={abrirAltaBicicleta} fullWidth={isMobile}>
+                  Agregar bicicleta
+                </ActionButton>
+              )}
             </>
           }
           actionsColumns={2}
@@ -417,6 +471,13 @@ export default function ClienteDetallePage() {
 
       {tabActiva === TAB_BICICLETAS && (
         <Card title="Bicicletas del cliente" subtitle="Bicicletas registradas y acceso al historial de taller.">
+          {Number(cliente.id) !== 1 && (
+            <div style={styles.sectionToolbar}>
+              <Button type="button" variant="primary" onClick={abrirAltaBicicleta}>
+                Agregar bicicleta
+              </Button>
+            </div>
+          )}
           <BicicletasGrid cliente={cliente} bicicletas={bicicletas} />
         </Card>
       )}
@@ -444,7 +505,7 @@ export default function ClienteDetallePage() {
         </TwoColumnGrid>
       )}
 
-      {cliente.id !== 1 && cliente.activo && (
+      {Number(cliente.id) !== 1 && cliente.activo && (
         <AdministrativeAction
           title="Acciones administrativas"
           text="Desactivar evita nuevas operaciones, pero conserva el historial."
@@ -452,11 +513,23 @@ export default function ClienteDetallePage() {
         />
       )}
 
-      {cliente.id !== 1 && !cliente.activo && (
+      {Number(cliente.id) !== 1 && !cliente.activo && (
         <AdministrativeAction
           title="Cliente inactivo"
           text="Podés reactivarlo si vuelve a operar."
           action={<Button type="button" variant="primary" onClick={handleActivar}>Activar cliente</Button>}
+        />
+      )}
+
+      {mostrarAltaBici && (
+        <BicicletaClienteModal
+          cliente={cliente}
+          values={nuevaBici}
+          guardando={guardandoBici}
+          isMobile={isMobile}
+          onChange={cambiarNuevaBici}
+          onSubmit={guardarBicicletaCliente}
+          onClose={cerrarAltaBicicleta}
         />
       )}
 
@@ -481,8 +554,9 @@ function getEstadoCuenta(tieneDeuda, tieneCredito) {
   return "Cuenta sin pendientes";
 }
 
-function getAccionRecomendadaCliente({ tieneDeuda, deudasAbiertas, bicicletas }) {
+function getAccionRecomendadaCliente({ cliente, tieneDeuda, deudasAbiertas, bicicletas }) {
   const primeraDeuda = deudasAbiertas?.[0];
+  const clienteId = cliente?.id;
 
   if (tieneDeuda && primeraDeuda) {
     return {
@@ -499,7 +573,7 @@ function getAccionRecomendadaCliente({ tieneDeuda, deudasAbiertas, bicicletas })
       title: "Crear OT",
       description: "Tiene bicicleta registrada. Podes iniciar taller sin perder trazabilidad.",
       label: "Crear OT",
-      to: "/taller/nueva",
+      to: clienteId ? `/taller/nueva?cliente_id=${clienteId}` : "/taller/nueva",
       variant: "secondary",
     };
   }
@@ -508,7 +582,7 @@ function getAccionRecomendadaCliente({ tieneDeuda, deudasAbiertas, bicicletas })
     title: "Nueva venta",
     description: "Cuenta sin deuda abierta. Podes iniciar una venta normal.",
     label: "Nueva venta",
-    to: "/ventas/nueva",
+    to: clienteId ? `/ventas/nueva?cliente_id=${clienteId}` : "/ventas/nueva",
     variant: "primary",
   };
 }
@@ -797,6 +871,35 @@ function PagosList({ pagos }) {
 }
 
 function ActionLink({ to, children, variant = "outline" }) {
+  const variantStyle = getActionVariantStyle(variant);
+
+  return (
+    <Link to={to} style={{ ...styles.actionLink, ...variantStyle }}>
+      {children}
+    </Link>
+  );
+}
+
+function ActionButton({ children, variant = "outline", fullWidth = false, style, ...props }) {
+  const variantStyle = getActionVariantStyle(variant);
+
+  return (
+    <button
+      style={{
+        ...styles.actionLink,
+        ...styles.actionButtonReset,
+        width: fullWidth ? "100%" : undefined,
+        ...variantStyle,
+        ...style,
+      }}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+}
+
+function getActionVariantStyle(variant) {
   const stylesByVariant = {
     primary: {
       background: "#ff6a00",
@@ -815,11 +918,7 @@ function ActionLink({ to, children, variant = "outline" }) {
     },
   };
 
-  return (
-    <Link to={to} style={{ ...styles.actionLink, ...(stylesByVariant[variant] || stylesByVariant.outline) }}>
-      {children}
-    </Link>
-  );
+  return stylesByVariant[variant] || stylesByVariant.outline;
 }
 
 function TwoColumnGrid({ children }) {
@@ -844,6 +943,61 @@ function Info({ label, value, full = false, strong = false, tone }) {
 
 function StatusBadge({ active }) {
   return <Badge variant={active ? "success" : "default"}>{active ? "Activo" : "Inactivo"}</Badge>;
+}
+
+function BicicletaClienteModal({ cliente, values, guardando, isMobile, onChange, onSubmit, onClose }) {
+  return (
+    <div style={styles.modalOverlay}>
+      <form onSubmit={onSubmit} style={{ ...styles.modalCard, ...(isMobile ? styles.modalCardMobile : {}) }}>
+        <div style={styles.modalHeader}>
+          <div>
+            <p style={styles.kicker}>Bicicleta del cliente</p>
+            <h2 style={styles.modalTitle}>Agregar bicicleta</h2>
+            <p style={styles.accountText}>Se va a asociar a {cliente?.nombre || "este cliente"}.</p>
+          </div>
+          <button type="button" onClick={onClose} style={styles.closeButton} aria-label="Cerrar">
+            x
+          </button>
+        </div>
+
+        <div style={styles.clientTarget}>
+          <span>Cliente destino</span>
+          <strong>#{cliente?.id} - {cliente?.nombre}</strong>
+        </div>
+
+        <div style={{ ...styles.modalFormGrid, ...(isMobile ? styles.modalFormGridMobile : {}) }}>
+          <ModalField label="Marca" value={values.marca} onChange={(value) => onChange("marca", value)} required />
+          <ModalField label="Modelo" value={values.modelo} onChange={(value) => onChange("modelo", value)} required />
+          <ModalField label="Rodado" value={values.rodado} onChange={(value) => onChange("rodado", value)} />
+          <ModalField label="Color" value={values.color} onChange={(value) => onChange("color", value)} />
+          <ModalField label="Numero de cuadro" value={values.numero_cuadro} onChange={(value) => onChange("numero_cuadro", value)} />
+          <ModalField label="Notas" value={values.notas} onChange={(value) => onChange("notas", value)} full />
+        </div>
+
+        <div style={styles.modalActions}>
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit" variant="primary" disabled={guardando}>
+            {guardando ? "Guardando..." : "Guardar bicicleta"}
+          </Button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function ModalField({ label, value, onChange, required = false, full = false }) {
+  return (
+    <label style={{ ...styles.modalField, ...(full ? styles.modalFieldFull : {}) }}>
+      <span style={styles.infoLabel}>{label}{required ? " *" : ""}</span>
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        style={styles.modalInput}
+      />
+    </label>
+  );
 }
 
 function VentasTable({ ventas, navigate }) {
@@ -1029,9 +1183,16 @@ function BicicletasGrid({ cliente, bicicletas }) {
           </div>
           {bici.notas && <div style={styles.bikeNotes}>{bici.notas}</div>}
 
-          <Link to={`/clientes/${cliente.id}/bicicletas/${bici.id}`} style={styles.linkAction}>
-            Ver historial
-          </Link>
+          <div style={styles.bikeActions}>
+            <Link to={`/clientes/${cliente.id}/bicicletas/${bici.id}`} style={styles.linkAction}>
+              Ver historial
+            </Link>
+            {Number(cliente.id) !== 1 && (
+              <Link to={`/taller/nueva?cliente_id=${cliente.id}&bicicleta_id=${bici.id}`} style={styles.linkAction}>
+                Nueva OT
+              </Link>
+            )}
+          </div>
         </article>
       ))}
     </div>
@@ -1140,6 +1301,16 @@ function renderCondicionIva(condicion) {
   };
   return map[condicion] || condicion || "-";
 }
+
+function limpiarObjeto(obj) {
+  return Object.fromEntries(
+    Object.entries(obj).map(([key, value]) => [
+      key,
+      typeof value === "string" && value.trim() === "" ? null : value,
+    ])
+  );
+}
+
 function renderEntrega(valor) {
   const map = {
     armada: "Armada",
@@ -1217,10 +1388,116 @@ const styles = {
     textAlign: "center",
     textDecoration: "none",
     borderRadius: 12,
-    padding: "10px 14px",
+    padding: "11px 16px",
     fontWeight: 800,
-    minHeight: 40,
+    fontSize: 14,
+    lineHeight: 1.2,
+    minHeight: 44,
+    minWidth: 92,
     boxSizing: "border-box",
+    whiteSpace: "nowrap",
+    boxShadow: "0 1px 3px rgba(16, 24, 40, 0.08)",
+  },
+  actionButtonReset: {
+    fontFamily: "inherit",
+    cursor: "pointer",
+  },
+  sectionToolbar: {
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: 10,
+    marginBottom: 14,
+    flexWrap: "wrap",
+  },
+  modalOverlay: {
+    position: "fixed",
+    inset: 0,
+    zIndex: 60,
+    background: "rgba(15, 23, 42, 0.42)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 18,
+  },
+  modalCard: {
+    width: "min(720px, 100%)",
+    maxHeight: "92vh",
+    overflowY: "auto",
+    background: "#fff",
+    borderRadius: 18,
+    border: "1px solid #e2e8f0",
+    boxShadow: "0 24px 70px rgba(15, 23, 42, 0.26)",
+    padding: 20,
+    display: "grid",
+    gap: 16,
+  },
+  modalCardMobile: {
+    padding: 14,
+    borderRadius: 16,
+  },
+  modalHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  modalTitle: {
+    margin: "3px 0 0",
+    fontSize: 24,
+    lineHeight: 1.15,
+  },
+  closeButton: {
+    border: "1px solid #cbd5e1",
+    background: "#fff",
+    color: "#0f172a",
+    borderRadius: 12,
+    width: 40,
+    height: 40,
+    cursor: "pointer",
+    fontWeight: 1000,
+    fontSize: 18,
+  },
+  clientTarget: {
+    border: "1px solid #bfdbfe",
+    background: "#eff6ff",
+    borderRadius: 14,
+    padding: 12,
+    display: "grid",
+    gap: 4,
+    color: "#1e3a8a",
+    fontWeight: 800,
+  },
+  modalFormGrid: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 12,
+  },
+  modalFormGridMobile: {
+    gridTemplateColumns: "1fr",
+  },
+  modalField: {
+    display: "grid",
+    gap: 6,
+  },
+  modalFieldFull: {
+    gridColumn: "1 / -1",
+  },
+  modalInput: {
+    border: "1px solid #cbd5e1",
+    borderRadius: 12,
+    padding: "11px 12px",
+    minHeight: 42,
+    fontSize: 15,
+    fontWeight: 700,
+    color: "#0f172a",
+    boxSizing: "border-box",
+    width: "100%",
+  },
+  modalActions: {
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: 10,
+    flexWrap: "wrap",
   },
   accountDesktop: {
     display: "flex",
@@ -1541,6 +1818,13 @@ const styles = {
     background: "#fff",
     display: "grid",
     gap: 12,
+  },
+  bikeActions: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    flexWrap: "wrap",
   },
   bikeTitle: {
     fontSize: 17,

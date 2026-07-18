@@ -59,8 +59,9 @@ class VarianteOut(BaseModel):
     precio_minorista: Decimal
     precio_mayorista: Decimal
     permite_precio_libre: bool
-    costo_promedio_vigente: Decimal
+    costo_promedio_vigente: Decimal | None = None
     ventas_historicas: int = 0
+    reponer_stock: bool = True
 
     activo: bool
     imagen_principal: str | None = None
@@ -114,6 +115,7 @@ class CatalogoPOSItemOut(BaseModel):
     precio_mayorista: Decimal
     codigo_proveedor: str | None = None
     permite_precio_libre: bool
+    reponer_stock: bool = True
     sku: str | None = None
     codigo_barras: str | None = None
     imagen_principal: str | None = None
@@ -210,7 +212,8 @@ class VarianteCreateOut(BaseModel):
     precio_minorista: Decimal
     precio_mayorista: Decimal
     permite_precio_libre: bool
-    costo_promedio_vigente: Decimal
+    costo_promedio_vigente: Decimal | None = None
+    reponer_stock: bool = True
     activo: bool
     talle: str | None = None
     color: str | None = None
@@ -266,11 +269,29 @@ class VarianteUpdate(BaseModel):
     permite_precio_libre: bool | None = None
     talle: str | None = Field(default=None, max_length=50)
     color: str | None = Field(default=None, max_length=120)
+    reponer_stock: bool | None = None
 
 
 class VarianteEstadoUpdate(BaseModel):
     activo: bool
     id_usuario: int = Field(gt=0)
+
+
+class VarianteReponerStockUpdate(BaseModel):
+    reponer_stock: bool
+    id_usuario: int = Field(gt=0)
+
+
+class VariantesReponerStockMasivoUpdate(BaseModel):
+    ids_variantes: list[int] = Field(min_length=1, max_length=500)
+    reponer_stock: bool
+    id_usuario: int = Field(gt=0)
+
+
+class VariantesReponerStockMasivoOut(BaseModel):
+    ok: bool
+    actualizadas: int
+    reponer_stock: bool
 
 class ProductoFichaTecnicaItemInput(BaseModel):
     grupo: str = Field(min_length=1, max_length=80)

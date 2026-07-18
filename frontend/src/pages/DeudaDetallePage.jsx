@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import {
@@ -12,6 +12,7 @@ import DeudaPagoPanel from "../components/deudas/detalle/DeudaPagoPanel";
 import DeudaMovimientosTable from "../components/deudas/detalle/DeudaMovimientosTable";
 import DeudaOrigenPanel from "../components/deudas/detalle/DeudaOrigenPanel";
 import { useSession } from "../context/SessionContext";
+import { listarTarjetaPlanes } from "../services/reglasComercialesService";
 const MOBILE_BREAKPOINT = 760;
 
 const PAGO_FORM_INICIAL = {
@@ -104,13 +105,40 @@ export default function DeudaDetallePage() {
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
   const [previewPago, setPreviewPago] = useState(null);
+  const [planesTarjeta, setPlanesTarjeta] = useState([]);
   const preservarPreviewRef = useRef(false);
   const { usuarioId } = useSession();
   const [pagoForm, setPagoForm] = useState(PAGO_FORM_INICIAL);
 
   useEffect(() => {
     cargarDetalle();
+    cargarPlanesTarjeta();
   }, [deudaId]);
+
+  const planesMedioPago = useMemo(
+    () => planesTarjeta.filter((plan) => plan.medio_pago === pagoForm.medio_pago),
+    [pagoForm.medio_pago, planesTarjeta]
+  );
+
+  useEffect(() => {
+    if (pagoForm.medio_pago !== "tarjeta") {
+      return;
+    }
+
+    const planActual = planesMedioPago.find(
+      (plan) =>
+        Number(plan.cuotas) === Number(pagoForm.cuotas) &&
+        (plan.entidad || "") === (pagoForm.entidad || "")
+    );
+
+    if (!planActual && planesMedioPago[0]) {
+      setPagoForm((prev) => ({
+        ...prev,
+        cuotas: String(planesMedioPago[0].cuotas),
+        entidad: planesMedioPago[0].entidad || "",
+      }));
+    }
+  }, [pagoForm.cuotas, pagoForm.entidad, pagoForm.medio_pago, planesMedioPago]);
 
   useEffect(() => {
     if (preservarPreviewRef.current) {
@@ -142,6 +170,17 @@ export default function DeudaDetallePage() {
     }
   }
 
+  async function cargarPlanesTarjeta() {
+    try {
+      const data = await listarTarjetaPlanes(true);
+      setPlanesTarjeta(
+        (data || []).filter((plan) => plan.medio_pago === "tarjeta")
+      );
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
   function validarPagoLocal() {
     const montoCliente = normalizarMonto(pagoForm.monto_cliente);
 
@@ -149,8 +188,16 @@ export default function DeudaDetallePage() {
       return "El importe que paga el cliente debe ser mayor a cero";
     }
 
-    if (pagoForm.medio_pago === "tarjeta" && Number(pagoForm.cuotas || 0) <= 0) {
-      return "Las cuotas deben ser mayores a cero";
+    if (pagoForm.medio_pago === "tarjeta") {
+      const planValido = planesMedioPago.some(
+        (plan) =>
+          Number(plan.cuotas) === Number(pagoForm.cuotas) &&
+          (plan.entidad || "") === (pagoForm.entidad || "")
+      );
+
+      if (!planValido) {
+        return "Seleccioná un plan de tarjeta activo";
+      }
     }
 
     return "";
@@ -190,8 +237,8 @@ export default function DeudaDetallePage() {
       return;
     }
 
-    if (pagoForm.medio_pago === "tarjeta" && Number(pagoForm.cuotas || 0) <= 0) {
-      setError("Las cuotas deben ser mayores a cero");
+    if (pagoForm.medio_pago === "tarjeta" && planesMedioPago.length === 0) {
+      setError("No hay planes de tarjeta activos para cobrar esta deuda");
       return;
     }
 
@@ -289,6 +336,7 @@ export default function DeudaDetallePage() {
           registrarPago={registrarPago}
           guardando={guardando}
           simulando={simulando}
+          planesTarjeta={planesMedioPago}
         />
       </section>
 

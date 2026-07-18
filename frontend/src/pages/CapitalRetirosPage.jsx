@@ -27,6 +27,7 @@ const tiposMovimiento = [
 ];
 
 const mediosPago = ["efectivo", "transferencia", "mercadopago", "tarjeta"];
+const movimientosQueSalenDeCaja = new Set(["devolucion_prestamo", "retiro_personal", "distribucion_ganancia"]);
 
 function tipoLabel(value) {
   return tiposMovimiento.find((t) => t.value === value)?.label || value;
@@ -34,6 +35,10 @@ function tipoLabel(value) {
 
 function money(value) {
   return formatMoney ? formatMoney(value || 0) : `$${Number(value || 0).toLocaleString("es-AR")}`;
+}
+
+function sugerirImpactoCaja(tipoMovimiento) {
+  return movimientosQueSalenDeCaja.has(tipoMovimiento) || tipoMovimiento === "aporte_capital" || tipoMovimiento === "prestamo_socio";
 }
 
 const card = {
@@ -312,7 +317,18 @@ export default function CapitalRetirosPage() {
 
               <label style={label}>
                 Tipo
-                <select style={input} value={movForm.tipo_movimiento} onChange={(e) => setMovForm((s) => ({ ...s, tipo_movimiento: e.target.value }))}>
+                <select
+                  style={input}
+                  value={movForm.tipo_movimiento}
+                  onChange={(e) => {
+                    const tipoMovimiento = e.target.value;
+                    setMovForm((s) => ({
+                      ...s,
+                      tipo_movimiento: tipoMovimiento,
+                      impacta_caja: sugerirImpactoCaja(tipoMovimiento),
+                    }));
+                  }}
+                >
                   {tiposMovimiento.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                 </select>
               </label>
@@ -345,6 +361,11 @@ export default function CapitalRetirosPage() {
                   <input type="checkbox" checked={movForm.impacta_caja} onChange={(e) => setMovForm((s) => ({ ...s, impacta_caja: e.target.checked }))} />
                   Registrar en caja abierta
                 </label>
+                <span style={{ color: movForm.impacta_caja ? "#067647" : "#b54708", fontSize: 12, fontWeight: 750, lineHeight: 1.35 }}>
+                  {movForm.impacta_caja
+                    ? "Va a crear un movimiento en la caja abierta."
+                    : "No va a aparecer en Caja. Usalo solo para cargar historial o movimientos fuera de caja."}
+                </span>
               </label>
 
               <div style={{ alignSelf: "end" }}>
@@ -380,21 +401,38 @@ export default function CapitalRetirosPage() {
                     <th style={{ padding: 10 }}>Participante</th>
                     <th style={{ padding: 10 }}>Tipo</th>
                     <th style={{ padding: 10 }}>Monto</th>
+                    <th style={{ padding: 10 }}>Caja</th>
                     <th style={{ padding: 10 }}>Estado</th>
                     <th style={{ padding: 10 }}></th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr><td colSpan="6" style={{ padding: 18 }}>Cargando...</td></tr>
+                    <tr><td colSpan="7" style={{ padding: 18 }}>Cargando...</td></tr>
                   ) : movimientos.length === 0 ? (
-                    <tr><td colSpan="6" style={{ padding: 18, color: "#667085" }}>Sin movimientos</td></tr>
+                    <tr><td colSpan="7" style={{ padding: 18, color: "#667085" }}>Sin movimientos</td></tr>
                   ) : movimientos.map((m) => (
                     <tr key={m.id} style={{ borderBottom: "1px solid #f2f4f7" }}>
                       <td style={{ padding: 10 }}>{m.fecha}</td>
                       <td style={{ padding: 10, fontWeight: 800 }}>{m.participante_nombre}</td>
                       <td style={{ padding: 10 }}>{tipoLabel(m.tipo_movimiento)}</td>
                       <td style={{ padding: 10, fontWeight: 900 }}>{money(m.monto)}</td>
+                      <td style={{ padding: 10 }}>
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            borderRadius: 999,
+                            padding: "4px 9px",
+                            fontSize: 12,
+                            fontWeight: 850,
+                            background: m.impacta_caja ? "#ecfdf3" : "#fff7ed",
+                            color: m.impacta_caja ? "#067647" : "#b54708",
+                          }}
+                        >
+                          {m.impacta_caja ? `Si #${m.id_caja_movimiento || "-"}` : "No"}
+                        </span>
+                      </td>
                       <td style={{ padding: 10 }}>{m.estado}</td>
                       <td style={{ padding: 10, textAlign: "right" }}>
                         <button style={secondaryButton} onClick={() => verDetalle(m.id)}>Ver</button>

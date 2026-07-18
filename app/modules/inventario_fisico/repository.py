@@ -11,6 +11,8 @@ TIPOS_MOVIMIENTO_STOCK_FISICO = (
     "ajuste",
     "uso_taller",
     "reversion_uso_taller",
+    "uso_armado",
+    "reversion_uso_armado",
     "serializacion",
 )
 # "venta" mueve unidades a pendiente de entrega; el físico cambia en "entrega".

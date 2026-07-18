@@ -752,31 +752,38 @@ def get_bicicleta_cliente_detalle(conn, cliente_id: int, bicicleta_id: int):
         cur.execute(
             """
             SELECT
-                id,
-                id_cliente,
-                id_bicicleta_serializada,
-                id_venta_origen,
-                marca,
-                modelo,
-                rodado,
-                color,
-                numero_cuadro,
-                notas,
-                fecha_compra,
-                condicion_entrega,
-                plan_postventa,
-                fecha_limite_service_gratis,
-                service_gratis_usado,
-                id_orden_service_gratis,
-                created_at,
-                updated_at,
-                service_gratis_autorizado_fuera_plazo,
-                motivo_service_gratis_fuera_plazo,
-                id_usuario_autoriza_service_gratis,
-                fecha_autoriza_service_gratis
-            FROM bicicletas_clientes
-            WHERE id = %s
-              AND id_cliente = %s
+                bc.id,
+                bc.id_cliente,
+                bc.id_bicicleta_serializada,
+                bc.id_venta_origen,
+                bc.marca,
+                bc.modelo,
+                bc.rodado,
+                bc.color,
+                bc.numero_cuadro,
+                bc.notas,
+                bc.fecha_compra,
+                bc.condicion_entrega,
+                bc.plan_postventa,
+                bc.fecha_limite_service_gratis,
+                bc.service_gratis_usado,
+                bc.id_orden_service_gratis,
+                bc.created_at,
+                bc.updated_at,
+                bc.service_gratis_autorizado_fuera_plazo,
+                bc.motivo_service_gratis_fuera_plazo,
+                bc.id_usuario_autoriza_service_gratis,
+                bc.fecha_autoriza_service_gratis,
+                bs.id_orden_armado_origen,
+                bs.costo_fabricacion_final,
+                ao.codigo AS codigo_orden_armado
+            FROM bicicletas_clientes bc
+            LEFT JOIN bicicletas_serializadas bs
+                ON bs.id = bc.id_bicicleta_serializada
+            LEFT JOIN armado_ordenes ao
+                ON ao.id = bs.id_orden_armado_origen
+            WHERE bc.id = %s
+              AND bc.id_cliente = %s
             """,
             (bicicleta_id, cliente_id),
         )

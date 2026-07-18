@@ -88,6 +88,8 @@ const groups = [
       { to: "/catalogo/categorias", label: "Categorias", icon: Tags, roles: ADMIN_ENCARGADO },
       { to: "/mercaderia/alta", label: "Ingresar Mercaderia", icon: PackagePlus, roles: ADMIN_ENCARGADO },
       { to: "/inventario-fisico", label: "Inventario Fisico", icon: ClipboardList, roles: ADMIN_ENCARGADO },
+      { to: "/armado", label: "Armado bicis", icon: Bike, roles: ADMIN_ENCARGADO },
+      { to: "/armado/ordenes", label: "Ordenes armado", icon: ClipboardList, roles: ADMIN_ENCARGADO },
       { to: "/serializadas", label: "Serializadas", icon: ClipboardList, roles: OPERACION_TALLER },
       { to: "/precios", label: "Precios", icon: Calculator, roles: ADMIN_ENCARGADO },
       { to: "/proveedores", label: "Proveedores", icon: HandCoins, roles: ADMIN_ENCARGADO },
@@ -98,6 +100,7 @@ const groups = [
     title: "Control",
     links: [
       { to: "/salud-operativa", label: "Salud Operativa", icon: Gauge, roles: OPERACION_TALLER, badge: "alertas" },
+      { to: "/correcciones", label: "Correcciones", icon: Wrench, roles: ADMIN },
       { to: "/admin/dashboard", label: "Dashboard Admin", icon: LayoutDashboard, roles: ADMIN },
       { to: "/gastos", label: "Gastos", icon: Receipt, roles: ADMIN_ENCARGADO },
       { to: "/deudas", label: "Deudas", icon: FileSearch, roles: OPERACION },

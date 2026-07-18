@@ -164,3 +164,130 @@ def test_variante_sin_fila_stock_aparece_y_permite_primer_ingreso(
     assert listado_final.status_code == 200, listado_final.text
     assert listado_final.json()[0]["stock_fisico"] == "5.000"
     assert listado_final.json()[0]["stock_disponible"] == "5.000"
+
+
+def test_reponer_stock_filtra_stock_bajo_sin_alterar_stock(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO productos (
+                id_categoria,
+                nombre,
+                tipo_item,
+                stockeable,
+                serializable,
+                activo
+            )
+            VALUES (%s, 'Repuesto beta stock bajo', 'producto', TRUE, FALSE, TRUE)
+            RETURNING id
+            """,
+            (seed_venta_basica["categoria_id"],),
+        )
+        producto_id = cur.fetchone()["id"]
+
+        cur.execute(
+            """
+            INSERT INTO variantes (
+                id_producto,
+                nombre_variante,
+                sku,
+                codigo_proveedor,
+                precio_minorista,
+                precio_mayorista,
+                activo
+            )
+            VALUES (%s, 'UNICA', 'REPONER-STOCK-TEST', 'REPONER-STOCK-TEST', 1000, 800, TRUE)
+            RETURNING id
+            """,
+            (producto_id,),
+        )
+        variante_id = cur.fetchone()["id"]
+
+        cur.execute(
+            """
+            INSERT INTO stock_sucursal (
+                id_sucursal,
+                id_variante,
+                stock_fisico,
+                stock_reservado,
+                stock_vendido_pendiente_entrega
+            )
+            VALUES (%s, %s, 1, 0, 0)
+            """,
+            (seed_venta_basica["sucursal_id"], variante_id),
+        )
+    db_conn.commit()
+
+    stock_bajo = client.get(
+        "/stock/",
+        params={
+            "estado_stock": "stock_bajo",
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "stock_bajo_umbral": 2,
+            "q": "Repuesto beta stock bajo",
+        },
+    )
+    assert stock_bajo.status_code == 200, stock_bajo.text
+    assert [item["variante_id"] for item in stock_bajo.json()] == [variante_id]
+
+    marcar_no_reponer = client.post(
+        f"/catalogo/variantes/{variante_id}/reponer-stock",
+        json={
+            "reponer_stock": False,
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert marcar_no_reponer.status_code == 200, marcar_no_reponer.text
+    assert marcar_no_reponer.json()["reponer_stock"] is False
+
+    stock_bajo = client.get(
+        "/stock/",
+        params={
+            "estado_stock": "stock_bajo",
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "stock_bajo_umbral": 2,
+            "q": "Repuesto beta stock bajo",
+        },
+    )
+    assert stock_bajo.status_code == 200, stock_bajo.text
+    assert stock_bajo.json() == []
+
+    visible = client.get(
+        "/stock/",
+        params={
+            "estado_stock": "todos",
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "q": "Repuesto beta stock bajo",
+        },
+    )
+    assert visible.status_code == 200, visible.text
+    assert visible.json()[0]["variante_id"] == variante_id
+    assert visible.json()[0]["reponer_stock"] is False
+    assert visible.json()[0]["stock_fisico"] == "1.000"
+
+    marcar_masivo = client.post(
+        "/catalogo/variantes/reponer-stock-masivo",
+        json={
+            "ids_variantes": [variante_id],
+            "reponer_stock": True,
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert marcar_masivo.status_code == 200, marcar_masivo.text
+    assert marcar_masivo.json()["actualizadas"] == 1
+
+    visible = client.get(
+        "/stock/",
+        params={
+            "estado_stock": "todos",
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "q": "Repuesto beta stock bajo",
+        },
+    )
+    assert visible.status_code == 200, visible.text
+    assert visible.json()[0]["reponer_stock"] is True
+    assert visible.json()[0]["stock_fisico"] == "1.000"

@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict ie4jQ7Ut23nx3niOBsuVc21NV3rfYRAoX1htnXtzm1cLZfOUz64BDzbVNhMdDwR
+\restrict JSK8T6Gd2txBBrhDesSQxRsfZwxq6fWdP3kbCFeQlmcajZsMPa9f4ray894zaRF
 
 -- Dumped from database version 18.3
 -- Dumped by pg_dump version 18.3
@@ -116,6 +116,379 @@ ALTER SEQUENCE public.agenda_taller_id_seq OWNED BY public.agenda_taller.id;
 
 
 --
+-- Name: armado_configuracion_items; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.armado_configuracion_items (
+    id bigint NOT NULL,
+    id_configuracion bigint NOT NULL,
+    id_variante_componente bigint NOT NULL,
+    cantidad numeric(14,3) NOT NULL,
+    orden integer DEFAULT 0 NOT NULL,
+    nota text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT chk_armado_config_items_cantidad CHECK ((cantidad > (0)::numeric)),
+    CONSTRAINT chk_armado_config_items_orden CHECK ((orden >= 0))
+);
+
+
+--
+-- Name: armado_configuracion_items_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.armado_configuracion_items_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: armado_configuracion_items_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.armado_configuracion_items_id_seq OWNED BY public.armado_configuracion_items.id;
+
+
+--
+-- Name: armado_configuraciones; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.armado_configuraciones (
+    id bigint NOT NULL,
+    id_version bigint NOT NULL,
+    nombre character varying(150) NOT NULL,
+    descripcion text,
+    numero_revision integer NOT NULL,
+    estado character varying(20) DEFAULT 'borrador'::character varying NOT NULL,
+    id_configuracion_origen bigint,
+    id_usuario_creador bigint NOT NULL,
+    id_usuario_actualizador bigint,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT chk_armado_config_estado CHECK (((estado)::text = ANY ((ARRAY['borrador'::character varying, 'activa'::character varying, 'archivada'::character varying])::text[]))),
+    CONSTRAINT chk_armado_config_nombre CHECK ((length(TRIM(BOTH FROM nombre)) > 0)),
+    CONSTRAINT chk_armado_config_numero_revision CHECK ((numero_revision > 0))
+);
+
+
+--
+-- Name: armado_configuraciones_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.armado_configuraciones_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: armado_configuraciones_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.armado_configuraciones_id_seq OWNED BY public.armado_configuraciones.id;
+
+
+--
+-- Name: armado_modelos; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.armado_modelos (
+    id bigint NOT NULL,
+    nombre character varying(150) NOT NULL,
+    descripcion text,
+    activo boolean DEFAULT true NOT NULL,
+    id_usuario_creador bigint NOT NULL,
+    id_usuario_actualizador bigint,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT chk_armado_modelos_nombre CHECK ((length(TRIM(BOTH FROM nombre)) > 0))
+);
+
+
+--
+-- Name: armado_modelos_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.armado_modelos_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: armado_modelos_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.armado_modelos_id_seq OWNED BY public.armado_modelos.id;
+
+
+--
+-- Name: armado_ordenes; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.armado_ordenes (
+    id bigint NOT NULL,
+    codigo character varying(20) NOT NULL,
+    id_modelo bigint NOT NULL,
+    id_version bigint NOT NULL,
+    id_configuracion bigint NOT NULL,
+    id_sucursal bigint NOT NULL,
+    estado character varying(30) DEFAULT 'borrador'::character varying NOT NULL,
+    talle character varying(80),
+    color character varying(120),
+    numero_cuadro character varying(120),
+    descripcion_final text,
+    id_usuario_responsable bigint,
+    id_usuario_creacion bigint NOT NULL,
+    costo_componentes_previsto numeric(14,2) DEFAULT 0 NOT NULL,
+    costo_adicional_previsto numeric(14,2) DEFAULT 0 NOT NULL,
+    costo_total_previsto numeric(14,2) DEFAULT 0 NOT NULL,
+    precio_objetivo numeric(14,2),
+    margen_objetivo numeric(8,2),
+    observaciones text,
+    fecha_creacion timestamp with time zone DEFAULT now() NOT NULL,
+    fecha_actualizacion timestamp with time zone DEFAULT now() NOT NULL,
+    fecha_cancelacion timestamp with time zone,
+    fecha_inicio timestamp with time zone,
+    id_usuario_inicio bigint,
+    costo_componentes_real numeric(14,4) DEFAULT 0 NOT NULL,
+    costo_total_real numeric(14,4) DEFAULT 0 NOT NULL,
+    desvio_componentes numeric(14,4) DEFAULT 0 NOT NULL,
+    motivo_cancelacion text,
+    id_usuario_cancelacion bigint,
+    id_bicicleta_serializada_resultante bigint,
+    costo_componentes_final numeric(14,4) DEFAULT 0 NOT NULL,
+    costo_adicional_final numeric(14,4) DEFAULT 0 NOT NULL,
+    costo_fabricacion_final numeric(14,4) DEFAULT 0 NOT NULL,
+    desvio_total numeric(14,4) DEFAULT 0 NOT NULL,
+    fecha_control_final timestamp with time zone,
+    fecha_finalizacion timestamp with time zone,
+    id_usuario_control_final bigint,
+    id_usuario_finalizacion bigint,
+    CONSTRAINT chk_armado_orden_costos CHECK (((costo_componentes_previsto >= (0)::numeric) AND (costo_adicional_previsto >= (0)::numeric) AND (costo_total_previsto >= (0)::numeric) AND ((precio_objetivo IS NULL) OR (precio_objetivo >= (0)::numeric)) AND ((margen_objetivo IS NULL) OR ((margen_objetivo >= (0)::numeric) AND (margen_objetivo < (100)::numeric))))),
+    CONSTRAINT chk_armado_orden_estado CHECK (((estado)::text = ANY ((ARRAY['borrador'::character varying, 'pendiente_componentes'::character varying, 'lista_para_armar'::character varying, 'en_armado'::character varying, 'control_final'::character varying, 'terminada'::character varying, 'cancelada'::character varying])::text[])))
+);
+
+
+--
+-- Name: armado_orden_codigo_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.armado_orden_codigo_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: armado_orden_codigo_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.armado_orden_codigo_seq OWNED BY public.armado_ordenes.codigo;
+
+
+--
+-- Name: armado_orden_controles; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.armado_orden_controles (
+    id bigint NOT NULL,
+    id_orden bigint NOT NULL,
+    codigo_control character varying(80) NOT NULL,
+    aprobado boolean DEFAULT false NOT NULL,
+    observaciones text,
+    id_usuario bigint,
+    fecha_control timestamp with time zone DEFAULT now() NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: armado_orden_controles_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.armado_orden_controles_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: armado_orden_controles_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.armado_orden_controles_id_seq OWNED BY public.armado_orden_controles.id;
+
+
+--
+-- Name: armado_orden_costos; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.armado_orden_costos (
+    id bigint NOT NULL,
+    id_orden bigint NOT NULL,
+    tipo character varying(40) NOT NULL,
+    descripcion character varying(220) NOT NULL,
+    cantidad numeric(14,3) DEFAULT 1 NOT NULL,
+    costo_unitario numeric(14,2) NOT NULL,
+    total numeric(14,2) NOT NULL,
+    observaciones text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    costo_unitario_final numeric(14,4),
+    total_final numeric(14,4),
+    fecha_confirmacion_final timestamp with time zone,
+    id_usuario_confirmacion_final bigint,
+    CONSTRAINT chk_armado_orden_costos_final_no_negativo CHECK ((((costo_unitario_final IS NULL) OR (costo_unitario_final >= (0)::numeric)) AND ((total_final IS NULL) OR (total_final >= (0)::numeric)))),
+    CONSTRAINT chk_armado_orden_costos_montos CHECK (((cantidad > (0)::numeric) AND (costo_unitario >= (0)::numeric) AND (total >= (0)::numeric))),
+    CONSTRAINT chk_armado_orden_costos_tipo CHECK (((tipo)::text = ANY ((ARRAY['mano_obra'::character varying, 'consumible_no_inventariado'::character varying, 'trabajo_externo'::character varying, 'otro'::character varying])::text[])))
+);
+
+
+--
+-- Name: armado_orden_costos_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.armado_orden_costos_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: armado_orden_costos_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.armado_orden_costos_id_seq OWNED BY public.armado_orden_costos.id;
+
+
+--
+-- Name: armado_orden_items; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.armado_orden_items (
+    id bigint NOT NULL,
+    id_orden bigint NOT NULL,
+    id_configuracion_item_origen bigint,
+    grupo character varying(80),
+    id_variante_prevista bigint NOT NULL,
+    id_variante_utilizada bigint NOT NULL,
+    cantidad_prevista numeric(14,3) NOT NULL,
+    cantidad_utilizada numeric(14,3) NOT NULL,
+    costo_unitario_previsto numeric(14,4),
+    subtotal_previsto numeric(14,2),
+    es_sustitucion boolean DEFAULT false NOT NULL,
+    motivo_sustitucion text,
+    id_usuario_sustitucion bigint,
+    fecha_sustitucion timestamp with time zone,
+    observaciones text,
+    estado character varying(30) DEFAULT 'pendiente'::character varying NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    cantidad_consumida numeric(14,3) DEFAULT 0 NOT NULL,
+    costo_unitario_real numeric(14,4),
+    subtotal_real numeric(14,4),
+    id_movimiento_consumo bigint,
+    id_movimiento_reversion bigint,
+    fecha_consumo timestamp with time zone,
+    fecha_reversion timestamp with time zone,
+    CONSTRAINT chk_armado_orden_items_cantidades CHECK (((cantidad_prevista > (0)::numeric) AND (cantidad_utilizada > (0)::numeric))),
+    CONSTRAINT chk_armado_orden_items_costos CHECK ((((costo_unitario_previsto IS NULL) OR (costo_unitario_previsto >= (0)::numeric)) AND ((subtotal_previsto IS NULL) OR (subtotal_previsto >= (0)::numeric)) AND ((costo_unitario_real IS NULL) OR (costo_unitario_real >= (0)::numeric)) AND ((subtotal_real IS NULL) OR (subtotal_real >= (0)::numeric)) AND (cantidad_consumida >= (0)::numeric))),
+    CONSTRAINT chk_armado_orden_items_estado CHECK (((estado)::text = ANY ((ARRAY['pendiente'::character varying, 'disponible'::character varying, 'faltante'::character varying, 'sustituido'::character varying, 'omitido'::character varying, 'consumido'::character varying, 'revertido'::character varying])::text[])))
+);
+
+
+--
+-- Name: armado_orden_items_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.armado_orden_items_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: armado_orden_items_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.armado_orden_items_id_seq OWNED BY public.armado_orden_items.id;
+
+
+--
+-- Name: armado_ordenes_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.armado_ordenes_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: armado_ordenes_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.armado_ordenes_id_seq OWNED BY public.armado_ordenes.id;
+
+
+--
+-- Name: armado_versiones; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.armado_versiones (
+    id bigint NOT NULL,
+    id_modelo bigint NOT NULL,
+    nombre character varying(120) NOT NULL,
+    descripcion text,
+    id_variante_final bigint NOT NULL,
+    activo boolean DEFAULT true NOT NULL,
+    id_usuario_creador bigint NOT NULL,
+    id_usuario_actualizador bigint,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT chk_armado_versiones_nombre CHECK ((length(TRIM(BOTH FROM nombre)) > 0))
+);
+
+
+--
+-- Name: armado_versiones_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.armado_versiones_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: armado_versiones_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.armado_versiones_id_seq OWNED BY public.armado_versiones.id;
+
+
+--
 -- Name: auditoria_eventos; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -217,6 +590,10 @@ CREATE TABLE public.bicicletas_serializadas (
     observaciones text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    id_orden_armado_origen bigint,
+    costo_fabricacion_final numeric(14,4),
+    fecha_fabricacion timestamp with time zone,
+    id_usuario_fabricacion bigint,
     CONSTRAINT chk_bicicletas_serializadas_estado CHECK (((estado)::text = ANY (ARRAY[('disponible'::character varying)::text, ('reservada'::character varying)::text, ('vendida_pendiente_entrega'::character varying)::text, ('entregada'::character varying)::text, ('fuera_de_stock'::character varying)::text])))
 );
 
@@ -368,7 +745,7 @@ CREATE TABLE public.capital_movimientos_historial (
     id_usuario bigint NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT chk_capital_historial_monto CHECK ((monto > (0)::numeric)),
-    CONSTRAINT chk_capital_historial_tipo CHECK (((tipo_evento)::text = ANY (ARRAY[('creacion'::character varying)::text, ('anulacion'::character varying)::text])))
+    CONSTRAINT chk_capital_historial_tipo CHECK (((tipo_evento)::text = ANY (ARRAY[('creacion'::character varying)::text, ('anulacion'::character varying)::text, ('correccion_caja'::character varying)::text])))
 );
 
 
@@ -1343,8 +1720,8 @@ CREATE TABLE public.movimientos_stock (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT chk_movimientos_stock_cantidad_no_cero CHECK ((cantidad <> (0)::numeric)),
     CONSTRAINT chk_movimientos_stock_costo_no_negativo CHECK (((costo_unitario_aplicado IS NULL) OR (costo_unitario_aplicado >= (0)::numeric))),
-    CONSTRAINT chk_movimientos_stock_origen_tipo CHECK (((origen_tipo)::text = ANY (ARRAY[('ingreso_stock'::character varying)::text, ('venta'::character varying)::text, ('reserva'::character varying)::text, ('orden_taller'::character varying)::text, ('ajuste_manual'::character varying)::text, ('devolucion_venta'::character varying)::text, ('transferencia'::character varying)::text, ('bicicleta_serializada'::character varying)::text, ('inventario_fisico'::character varying)::text]))),
-    CONSTRAINT chk_movimientos_stock_tipo CHECK (((tipo_movimiento)::text = ANY (ARRAY[('ingreso'::character varying)::text, ('reserva'::character varying)::text, ('cancelacion_reserva'::character varying)::text, ('venta'::character varying)::text, ('cancelacion_venta'::character varying)::text, ('entrega'::character varying)::text, ('devolucion_venta'::character varying)::text, ('devolucion'::character varying)::text, ('ajuste'::character varying)::text, ('uso_taller'::character varying)::text, ('reversion_uso_taller'::character varying)::text, ('serializacion'::character varying)::text, ('venta_serializada'::character varying)::text, ('entrega_serializada'::character varying)::text, ('anulacion_serializada'::character varying)::text, ('devolucion_serializada'::character varying)::text])))
+    CONSTRAINT chk_movimientos_stock_origen_tipo CHECK (((origen_tipo)::text = ANY ((ARRAY['ingreso_stock'::character varying, 'venta'::character varying, 'reserva'::character varying, 'orden_taller'::character varying, 'orden_armado'::character varying, 'ajuste_manual'::character varying, 'devolucion_venta'::character varying, 'transferencia'::character varying, 'bicicleta_serializada'::character varying, 'inventario_fisico'::character varying])::text[]))),
+    CONSTRAINT chk_movimientos_stock_tipo CHECK (((tipo_movimiento)::text = ANY ((ARRAY['ingreso'::character varying, 'reserva'::character varying, 'cancelacion_reserva'::character varying, 'venta'::character varying, 'cancelacion_venta'::character varying, 'entrega'::character varying, 'devolucion_venta'::character varying, 'devolucion'::character varying, 'ajuste'::character varying, 'uso_taller'::character varying, 'reversion_uso_taller'::character varying, 'uso_armado'::character varying, 'reversion_uso_armado'::character varying, 'serializacion'::character varying, 'venta_serializada'::character varying, 'entrega_serializada'::character varying, 'anulacion_serializada'::character varying, 'devolucion_serializada'::character varying])::text[])))
 );
 
 
@@ -2580,7 +2957,8 @@ CREATE TABLE public.variantes (
     precio_minorista numeric(14,2) DEFAULT 0 NOT NULL,
     precio_mayorista numeric(14,2) DEFAULT 0 NOT NULL,
     permite_precio_libre boolean DEFAULT false NOT NULL,
-    costo_promedio_vigente numeric(14,4) DEFAULT 0 NOT NULL,
+    costo_promedio_vigente numeric(14,4) DEFAULT 0,
+    reponer_stock boolean DEFAULT true NOT NULL,
     activo boolean DEFAULT true NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
@@ -2588,7 +2966,7 @@ CREATE TABLE public.variantes (
     talle character varying(50),
     color character varying(120),
     CONSTRAINT chk_variantes_alicuota_iva CHECK ((alicuota_iva = ANY (ARRAY[(0)::numeric, 10.50, 21.00, 27.00]))),
-    CONSTRAINT chk_variantes_precios_no_negativos CHECK (((precio_minorista >= (0)::numeric) AND (precio_mayorista >= (0)::numeric) AND (costo_promedio_vigente >= (0)::numeric)))
+    CONSTRAINT chk_variantes_precios_no_negativos CHECK (((precio_minorista >= (0)::numeric) AND (precio_mayorista >= (0)::numeric) AND ((costo_promedio_vigente IS NULL) OR (costo_promedio_vigente >= (0)::numeric))))
 );
 
 
@@ -2851,6 +3229,69 @@ ALTER TABLE ONLY public.agenda_taller ALTER COLUMN id SET DEFAULT nextval('publi
 --
 
 ALTER TABLE ONLY public.agenda_taller_historial ALTER COLUMN id SET DEFAULT nextval('public.agenda_taller_historial_id_seq'::regclass);
+
+
+--
+-- Name: armado_configuracion_items id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_configuracion_items ALTER COLUMN id SET DEFAULT nextval('public.armado_configuracion_items_id_seq'::regclass);
+
+
+--
+-- Name: armado_configuraciones id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_configuraciones ALTER COLUMN id SET DEFAULT nextval('public.armado_configuraciones_id_seq'::regclass);
+
+
+--
+-- Name: armado_modelos id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_modelos ALTER COLUMN id SET DEFAULT nextval('public.armado_modelos_id_seq'::regclass);
+
+
+--
+-- Name: armado_orden_controles id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_orden_controles ALTER COLUMN id SET DEFAULT nextval('public.armado_orden_controles_id_seq'::regclass);
+
+
+--
+-- Name: armado_orden_costos id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_orden_costos ALTER COLUMN id SET DEFAULT nextval('public.armado_orden_costos_id_seq'::regclass);
+
+
+--
+-- Name: armado_orden_items id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_orden_items ALTER COLUMN id SET DEFAULT nextval('public.armado_orden_items_id_seq'::regclass);
+
+
+--
+-- Name: armado_ordenes id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_ordenes ALTER COLUMN id SET DEFAULT nextval('public.armado_ordenes_id_seq'::regclass);
+
+
+--
+-- Name: armado_ordenes codigo; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_ordenes ALTER COLUMN codigo SET DEFAULT ('OA-'::text || lpad((nextval('public.armado_orden_codigo_seq'::regclass))::text, 6, '0'::text));
+
+
+--
+-- Name: armado_versiones id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_versiones ALTER COLUMN id SET DEFAULT nextval('public.armado_versiones_id_seq'::regclass);
 
 
 --
@@ -3301,6 +3742,86 @@ ALTER TABLE ONLY public.agenda_taller_historial
 
 ALTER TABLE ONLY public.agenda_taller
     ADD CONSTRAINT agenda_taller_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: armado_configuracion_items armado_configuracion_items_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_configuracion_items
+    ADD CONSTRAINT armado_configuracion_items_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: armado_configuraciones armado_configuraciones_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_configuraciones
+    ADD CONSTRAINT armado_configuraciones_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: armado_modelos armado_modelos_nombre_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_modelos
+    ADD CONSTRAINT armado_modelos_nombre_key UNIQUE (nombre);
+
+
+--
+-- Name: armado_modelos armado_modelos_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_modelos
+    ADD CONSTRAINT armado_modelos_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: armado_orden_controles armado_orden_controles_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_orden_controles
+    ADD CONSTRAINT armado_orden_controles_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: armado_orden_costos armado_orden_costos_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_orden_costos
+    ADD CONSTRAINT armado_orden_costos_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: armado_orden_items armado_orden_items_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_orden_items
+    ADD CONSTRAINT armado_orden_items_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: armado_ordenes armado_ordenes_codigo_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_ordenes
+    ADD CONSTRAINT armado_ordenes_codigo_key UNIQUE (codigo);
+
+
+--
+-- Name: armado_ordenes armado_ordenes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_ordenes
+    ADD CONSTRAINT armado_ordenes_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: armado_versiones armado_versiones_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_versiones
+    ADD CONSTRAINT armado_versiones_pkey PRIMARY KEY (id);
 
 
 --
@@ -3824,6 +4345,22 @@ ALTER TABLE ONLY public.tipos_evento_taller
 
 
 --
+-- Name: armado_configuraciones uq_armado_config_version_revision; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_configuraciones
+    ADD CONSTRAINT uq_armado_config_version_revision UNIQUE (id_version, numero_revision);
+
+
+--
+-- Name: armado_versiones uq_armado_versiones_modelo_nombre; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_versiones
+    ADD CONSTRAINT uq_armado_versiones_modelo_nombre UNIQUE (id_modelo, nombre);
+
+
+--
 -- Name: categorias uq_categorias_nombre; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3968,6 +4505,14 @@ ALTER TABLE ONLY public.usuarios
 
 
 --
+-- Name: armado_orden_controles ux_armado_orden_controles_codigo; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_orden_controles
+    ADD CONSTRAINT ux_armado_orden_controles_codigo UNIQUE (id_orden, codigo_control);
+
+
+--
 -- Name: variantes variantes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -4091,6 +4636,90 @@ CREATE INDEX idx_agenda_taller_sucursal_fecha_estado ON public.agenda_taller USI
 --
 
 CREATE INDEX idx_agenda_taller_venta_origen ON public.agenda_taller USING btree (id_venta_origen);
+
+
+--
+-- Name: idx_armado_config_items_configuracion; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_armado_config_items_configuracion ON public.armado_configuracion_items USING btree (id_configuracion);
+
+
+--
+-- Name: idx_armado_config_items_variante; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_armado_config_items_variante ON public.armado_configuracion_items USING btree (id_variante_componente);
+
+
+--
+-- Name: idx_armado_configuraciones_origen; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_armado_configuraciones_origen ON public.armado_configuraciones USING btree (id_configuracion_origen);
+
+
+--
+-- Name: idx_armado_configuraciones_version; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_armado_configuraciones_version ON public.armado_configuraciones USING btree (id_version);
+
+
+--
+-- Name: idx_armado_orden_costos_orden; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_armado_orden_costos_orden ON public.armado_orden_costos USING btree (id_orden);
+
+
+--
+-- Name: idx_armado_orden_items_orden; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_armado_orden_items_orden ON public.armado_orden_items USING btree (id_orden);
+
+
+--
+-- Name: idx_armado_orden_items_utilizada; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_armado_orden_items_utilizada ON public.armado_orden_items USING btree (id_variante_utilizada);
+
+
+--
+-- Name: idx_armado_ordenes_configuracion; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_armado_ordenes_configuracion ON public.armado_ordenes USING btree (id_configuracion);
+
+
+--
+-- Name: idx_armado_ordenes_estado; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_armado_ordenes_estado ON public.armado_ordenes USING btree (estado);
+
+
+--
+-- Name: idx_armado_ordenes_sucursal; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_armado_ordenes_sucursal ON public.armado_ordenes USING btree (id_sucursal);
+
+
+--
+-- Name: idx_armado_versiones_modelo; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_armado_versiones_modelo ON public.armado_versiones USING btree (id_modelo);
+
+
+--
+-- Name: idx_armado_versiones_variante_final; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_armado_versiones_variante_final ON public.armado_versiones USING btree (id_variante_final);
 
 
 --
@@ -4913,6 +5542,13 @@ CREATE INDEX idx_variantes_proveedor_preferido ON public.variantes USING btree (
 
 
 --
+-- Name: idx_variantes_reponer_stock; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_variantes_reponer_stock ON public.variantes USING btree (reponer_stock);
+
+
+--
 -- Name: idx_variantes_sku_lookup; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -5060,6 +5696,34 @@ CREATE INDEX ix_venta_items_id_orden_taller_item ON public.venta_items USING btr
 
 
 --
+-- Name: uq_armado_config_activa_por_version; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_armado_config_activa_por_version ON public.armado_configuraciones USING btree (id_version) WHERE ((estado)::text = 'activa'::text);
+
+
+--
+-- Name: ux_armado_orden_items_mov_consumo; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX ux_armado_orden_items_mov_consumo ON public.armado_orden_items USING btree (id_movimiento_consumo) WHERE (id_movimiento_consumo IS NOT NULL);
+
+
+--
+-- Name: ux_armado_orden_items_mov_reversion; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX ux_armado_orden_items_mov_reversion ON public.armado_orden_items USING btree (id_movimiento_reversion) WHERE (id_movimiento_reversion IS NOT NULL);
+
+
+--
+-- Name: ux_bicicletas_serializadas_orden_armado_origen; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX ux_bicicletas_serializadas_orden_armado_origen ON public.bicicletas_serializadas USING btree (id_orden_armado_origen) WHERE (id_orden_armado_origen IS NOT NULL);
+
+
+--
 -- Name: ux_ordenes_taller_id_venta_generada; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -5145,6 +5809,270 @@ ALTER TABLE ONLY public.agenda_taller
 
 
 --
+-- Name: armado_configuracion_items armado_configuracion_items_id_configuracion_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_configuracion_items
+    ADD CONSTRAINT armado_configuracion_items_id_configuracion_fkey FOREIGN KEY (id_configuracion) REFERENCES public.armado_configuraciones(id) ON DELETE CASCADE;
+
+
+--
+-- Name: armado_configuracion_items armado_configuracion_items_id_variante_componente_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_configuracion_items
+    ADD CONSTRAINT armado_configuracion_items_id_variante_componente_fkey FOREIGN KEY (id_variante_componente) REFERENCES public.variantes(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: armado_configuraciones armado_configuraciones_id_configuracion_origen_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_configuraciones
+    ADD CONSTRAINT armado_configuraciones_id_configuracion_origen_fkey FOREIGN KEY (id_configuracion_origen) REFERENCES public.armado_configuraciones(id) ON DELETE SET NULL;
+
+
+--
+-- Name: armado_configuraciones armado_configuraciones_id_usuario_actualizador_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_configuraciones
+    ADD CONSTRAINT armado_configuraciones_id_usuario_actualizador_fkey FOREIGN KEY (id_usuario_actualizador) REFERENCES public.usuarios(id);
+
+
+--
+-- Name: armado_configuraciones armado_configuraciones_id_usuario_creador_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_configuraciones
+    ADD CONSTRAINT armado_configuraciones_id_usuario_creador_fkey FOREIGN KEY (id_usuario_creador) REFERENCES public.usuarios(id);
+
+
+--
+-- Name: armado_configuraciones armado_configuraciones_id_version_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_configuraciones
+    ADD CONSTRAINT armado_configuraciones_id_version_fkey FOREIGN KEY (id_version) REFERENCES public.armado_versiones(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: armado_modelos armado_modelos_id_usuario_actualizador_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_modelos
+    ADD CONSTRAINT armado_modelos_id_usuario_actualizador_fkey FOREIGN KEY (id_usuario_actualizador) REFERENCES public.usuarios(id);
+
+
+--
+-- Name: armado_modelos armado_modelos_id_usuario_creador_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_modelos
+    ADD CONSTRAINT armado_modelos_id_usuario_creador_fkey FOREIGN KEY (id_usuario_creador) REFERENCES public.usuarios(id);
+
+
+--
+-- Name: armado_orden_controles armado_orden_controles_id_orden_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_orden_controles
+    ADD CONSTRAINT armado_orden_controles_id_orden_fkey FOREIGN KEY (id_orden) REFERENCES public.armado_ordenes(id) ON DELETE CASCADE;
+
+
+--
+-- Name: armado_orden_controles armado_orden_controles_id_usuario_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_orden_controles
+    ADD CONSTRAINT armado_orden_controles_id_usuario_fkey FOREIGN KEY (id_usuario) REFERENCES public.usuarios(id);
+
+
+--
+-- Name: armado_orden_costos armado_orden_costos_id_orden_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_orden_costos
+    ADD CONSTRAINT armado_orden_costos_id_orden_fkey FOREIGN KEY (id_orden) REFERENCES public.armado_ordenes(id) ON DELETE CASCADE;
+
+
+--
+-- Name: armado_orden_costos armado_orden_costos_id_usuario_confirmacion_final_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_orden_costos
+    ADD CONSTRAINT armado_orden_costos_id_usuario_confirmacion_final_fkey FOREIGN KEY (id_usuario_confirmacion_final) REFERENCES public.usuarios(id);
+
+
+--
+-- Name: armado_orden_items armado_orden_items_id_configuracion_item_origen_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_orden_items
+    ADD CONSTRAINT armado_orden_items_id_configuracion_item_origen_fkey FOREIGN KEY (id_configuracion_item_origen) REFERENCES public.armado_configuracion_items(id) ON DELETE SET NULL;
+
+
+--
+-- Name: armado_orden_items armado_orden_items_id_movimiento_consumo_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_orden_items
+    ADD CONSTRAINT armado_orden_items_id_movimiento_consumo_fkey FOREIGN KEY (id_movimiento_consumo) REFERENCES public.movimientos_stock(id);
+
+
+--
+-- Name: armado_orden_items armado_orden_items_id_movimiento_reversion_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_orden_items
+    ADD CONSTRAINT armado_orden_items_id_movimiento_reversion_fkey FOREIGN KEY (id_movimiento_reversion) REFERENCES public.movimientos_stock(id);
+
+
+--
+-- Name: armado_orden_items armado_orden_items_id_orden_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_orden_items
+    ADD CONSTRAINT armado_orden_items_id_orden_fkey FOREIGN KEY (id_orden) REFERENCES public.armado_ordenes(id) ON DELETE CASCADE;
+
+
+--
+-- Name: armado_orden_items armado_orden_items_id_usuario_sustitucion_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_orden_items
+    ADD CONSTRAINT armado_orden_items_id_usuario_sustitucion_fkey FOREIGN KEY (id_usuario_sustitucion) REFERENCES public.usuarios(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: armado_orden_items armado_orden_items_id_variante_prevista_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_orden_items
+    ADD CONSTRAINT armado_orden_items_id_variante_prevista_fkey FOREIGN KEY (id_variante_prevista) REFERENCES public.variantes(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: armado_orden_items armado_orden_items_id_variante_utilizada_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_orden_items
+    ADD CONSTRAINT armado_orden_items_id_variante_utilizada_fkey FOREIGN KEY (id_variante_utilizada) REFERENCES public.variantes(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: armado_ordenes armado_ordenes_id_configuracion_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_ordenes
+    ADD CONSTRAINT armado_ordenes_id_configuracion_fkey FOREIGN KEY (id_configuracion) REFERENCES public.armado_configuraciones(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: armado_ordenes armado_ordenes_id_modelo_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_ordenes
+    ADD CONSTRAINT armado_ordenes_id_modelo_fkey FOREIGN KEY (id_modelo) REFERENCES public.armado_modelos(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: armado_ordenes armado_ordenes_id_sucursal_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_ordenes
+    ADD CONSTRAINT armado_ordenes_id_sucursal_fkey FOREIGN KEY (id_sucursal) REFERENCES public.sucursales(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: armado_ordenes armado_ordenes_id_usuario_cancelacion_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_ordenes
+    ADD CONSTRAINT armado_ordenes_id_usuario_cancelacion_fkey FOREIGN KEY (id_usuario_cancelacion) REFERENCES public.usuarios(id);
+
+
+--
+-- Name: armado_ordenes armado_ordenes_id_usuario_control_final_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_ordenes
+    ADD CONSTRAINT armado_ordenes_id_usuario_control_final_fkey FOREIGN KEY (id_usuario_control_final) REFERENCES public.usuarios(id);
+
+
+--
+-- Name: armado_ordenes armado_ordenes_id_usuario_creacion_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_ordenes
+    ADD CONSTRAINT armado_ordenes_id_usuario_creacion_fkey FOREIGN KEY (id_usuario_creacion) REFERENCES public.usuarios(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: armado_ordenes armado_ordenes_id_usuario_finalizacion_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_ordenes
+    ADD CONSTRAINT armado_ordenes_id_usuario_finalizacion_fkey FOREIGN KEY (id_usuario_finalizacion) REFERENCES public.usuarios(id);
+
+
+--
+-- Name: armado_ordenes armado_ordenes_id_usuario_inicio_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_ordenes
+    ADD CONSTRAINT armado_ordenes_id_usuario_inicio_fkey FOREIGN KEY (id_usuario_inicio) REFERENCES public.usuarios(id);
+
+
+--
+-- Name: armado_ordenes armado_ordenes_id_usuario_responsable_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_ordenes
+    ADD CONSTRAINT armado_ordenes_id_usuario_responsable_fkey FOREIGN KEY (id_usuario_responsable) REFERENCES public.usuarios(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: armado_ordenes armado_ordenes_id_version_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_ordenes
+    ADD CONSTRAINT armado_ordenes_id_version_fkey FOREIGN KEY (id_version) REFERENCES public.armado_versiones(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: armado_versiones armado_versiones_id_modelo_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_versiones
+    ADD CONSTRAINT armado_versiones_id_modelo_fkey FOREIGN KEY (id_modelo) REFERENCES public.armado_modelos(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: armado_versiones armado_versiones_id_usuario_actualizador_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_versiones
+    ADD CONSTRAINT armado_versiones_id_usuario_actualizador_fkey FOREIGN KEY (id_usuario_actualizador) REFERENCES public.usuarios(id);
+
+
+--
+-- Name: armado_versiones armado_versiones_id_usuario_creador_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_versiones
+    ADD CONSTRAINT armado_versiones_id_usuario_creador_fkey FOREIGN KEY (id_usuario_creador) REFERENCES public.usuarios(id);
+
+
+--
+-- Name: armado_versiones armado_versiones_id_variante_final_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_versiones
+    ADD CONSTRAINT armado_versiones_id_variante_final_fkey FOREIGN KEY (id_variante_final) REFERENCES public.variantes(id) ON DELETE RESTRICT;
+
+
+--
 -- Name: auditoria_eventos auditoria_eventos_id_sucursal_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -5198,6 +6126,14 @@ ALTER TABLE ONLY public.bicicletas_clientes
 
 ALTER TABLE ONLY public.bicicletas_serializadas
     ADD CONSTRAINT bicicletas_serializadas_id_sucursal_actual_fkey FOREIGN KEY (id_sucursal_actual) REFERENCES public.sucursales(id);
+
+
+--
+-- Name: bicicletas_serializadas bicicletas_serializadas_id_usuario_fabricacion_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.bicicletas_serializadas
+    ADD CONSTRAINT bicicletas_serializadas_id_usuario_fabricacion_fkey FOREIGN KEY (id_usuario_fabricacion) REFERENCES public.usuarios(id);
 
 
 --
@@ -5470,6 +6406,22 @@ ALTER TABLE ONLY public.deuda_movimientos
 
 ALTER TABLE ONLY public.deudas_cliente
     ADD CONSTRAINT deudas_cliente_id_cliente_fkey FOREIGN KEY (id_cliente) REFERENCES public.clientes(id);
+
+
+--
+-- Name: armado_ordenes fk_armado_ordenes_bicicleta_resultante; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.armado_ordenes
+    ADD CONSTRAINT fk_armado_ordenes_bicicleta_resultante FOREIGN KEY (id_bicicleta_serializada_resultante) REFERENCES public.bicicletas_serializadas(id);
+
+
+--
+-- Name: bicicletas_serializadas fk_bicicletas_serializadas_orden_armado_origen; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.bicicletas_serializadas
+    ADD CONSTRAINT fk_bicicletas_serializadas_orden_armado_origen FOREIGN KEY (id_orden_armado_origen) REFERENCES public.armado_ordenes(id);
 
 
 --
@@ -6276,4 +7228,4 @@ ALTER TABLE ONLY public.ventas
 -- PostgreSQL database dump complete
 --
 
-\unrestrict ie4jQ7Ut23nx3niOBsuVc21NV3rfYRAoX1htnXtzm1cLZfOUz64BDzbVNhMdDwR
+\unrestrict JSK8T6Gd2txBBrhDesSQxRsfZwxq6fWdP3kbCFeQlmcajZsMPa9f4ray894zaRF

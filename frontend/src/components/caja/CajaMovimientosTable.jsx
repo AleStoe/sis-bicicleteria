@@ -103,9 +103,21 @@ function formatFecha(fecha) {
 function formatOrigen(movimiento) {
   if (!movimiento.origen_tipo) return "-";
 
-  return `${movimiento.origen_tipo}${
-    movimiento.origen_id ? ` #${movimiento.origen_id}` : ""
-  }`;
+  const id = movimiento.origen_id ? ` #${movimiento.origen_id}` : "";
+  const labels = {
+    pago: "Pago",
+    venta: "Venta",
+    reserva: "Reserva",
+    orden_taller: "Orden de taller",
+    caja: "Caja",
+    caja_movimiento: "Movimiento de caja",
+    egreso_manual: "Egreso manual",
+    ajuste_manual: "Ajuste manual",
+    capital_retiros: "Capital/Retiros",
+    correccion_operativa: "Correccion operativa · Capital/Retiros",
+  };
+
+  return `${labels[movimiento.origen_tipo] || movimiento.origen_tipo}${id}`;
 }
 
 const tdStyle = {

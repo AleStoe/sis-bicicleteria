@@ -133,6 +133,7 @@ def get_stock_critico(conn, umbral: int = 2):
                 v.nombre_variante,
                 v.sku,
                 v.codigo_proveedor,
+                v.reponer_stock,
                 ss.stock_fisico,
                 (ss.stock_fisico - ss.stock_reservado - ss.stock_vendido_pendiente_entrega) AS stock_disponible
             FROM stock_sucursal ss
@@ -142,6 +143,7 @@ def get_stock_critico(conn, umbral: int = 2):
             WHERE p.stockeable = TRUE
               AND p.activo = TRUE
               AND v.activo = TRUE
+              AND v.reponer_stock = TRUE
               AND (ss.stock_fisico - ss.stock_reservado - ss.stock_vendido_pendiente_entrega) <= %s
             ORDER BY stock_disponible ASC, p.nombre ASC
             LIMIT 80

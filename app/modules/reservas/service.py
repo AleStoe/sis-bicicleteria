@@ -6,6 +6,7 @@ from app.modules.stock import service as stock_service
 from app.modules.reservas import repository as reserva_repo
 from app.modules.pagos import service as pagos_service
 from app.modules.ventas import repository as ventas_repo
+from app.modules.ventas.costos import resolver_costo_unitario_venta_serializada
 from app.modules.authz.service import exigir_permiso_cancelar_reserva
 from app.modules.serializadas.repository import (
     get_bicicleta_serializada_for_update,
@@ -523,6 +524,12 @@ def convertir_reserva_en_venta(reserva_id: int, data):
             for item in items:
                 precio_estimado = to_decimal(item["precio_estimado"])
                 costo_promedio = to_decimal(item["costo_promedio_vigente"] or 0)
+                costo_resuelto = resolver_costo_unitario_venta_serializada(
+                    conn,
+                    id_bicicleta_serializada=item.get("id_bicicleta_serializada"),
+                    id_variante=item["id_variante"],
+                    costo_promedio_variante=costo_promedio,
+                )
                 subtotal_estimado = to_decimal(item["subtotal_estimado"])
 
                 ventas_repo.insert_venta_item(
@@ -550,7 +557,9 @@ def convertir_reserva_en_venta(reserva_id: int, data):
                         "motivo_bonificacion": None,
                         "motivo_precio_manual": None,
 
-                        "costo_unitario_aplicado": costo_promedio,
+                        "costo_unitario_aplicado": costo_resuelto[
+                            "costo_unitario_aplicado"
+                        ],
                         "subtotal": subtotal_estimado,
                     },
                 )

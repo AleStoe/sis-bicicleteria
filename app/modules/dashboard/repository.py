@@ -493,6 +493,7 @@ def get_repuestos_criticos(conn, *, id_sucursal=None, umbral=2, limit=20):
               ss.stock_fisico,
               ss.stock_reservado,
               ss.stock_vendido_pendiente_entrega,
+              var.reponer_stock,
               var.costo_promedio_vigente
             FROM stock_sucursal ss
             INNER JOIN variantes var ON var.id = ss.id_variante
@@ -501,6 +502,7 @@ def get_repuestos_criticos(conn, *, id_sucursal=None, umbral=2, limit=20):
             WHERE ss.stock_fisico <= %s
               AND p.activo = TRUE
               AND var.activo = TRUE
+              AND var.reponer_stock = TRUE
               {NO_BICICLETAS_SQL}
               {sucursal_sql}
             ORDER BY ss.stock_fisico ASC, p.nombre ASC, var.nombre_variante ASC
@@ -529,6 +531,7 @@ def count_repuestos_criticos(conn, *, id_sucursal=None, umbral=2):
             WHERE ss.stock_fisico <= %s
               AND p.activo = TRUE
               AND var.activo = TRUE
+              AND var.reponer_stock = TRUE
               {NO_BICICLETAS_SQL}
               {sucursal_sql}
             """,

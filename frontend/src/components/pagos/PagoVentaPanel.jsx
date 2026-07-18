@@ -12,9 +12,11 @@ import PagoVentaFormulario from "./PagoVentaFormulario";
 import PagoVentaPreview from "./PagoVentaPreview";
 import PagoVentaTabla from "./PagoVentaTabla";
 import { puedeRevertirPago } from "../../rules/ventaDetalleActionRules";
+import { ConfirmModal } from "../ui/ConfirmModal";
 
 export default function PagoVentaPanel({
   ventaId,
+  venta = null,
   saldoPendiente = 0,
   estadoVenta = "",
   autoFocusPago = false,
@@ -33,6 +35,7 @@ export default function PagoVentaPanel({
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
   const { usuarioId, usuarioActual } = useSession();
+  const [confirmacionCobro, setConfirmacionCobro] = useState(null);
   const [form, setForm] = useState({
     medio_pago: "efectivo",
     monto: "",
@@ -304,6 +307,21 @@ export default function PagoVentaPanel({
     setTimeout(() => montoRef.current?.focus(), 50);
   }
 
+  function buildPayloadPago(simulacion) {
+    return {
+      origen_tipo: "venta",
+      origen_id: Number(ventaId),
+      medio_pago: form.medio_pago,
+      monto_base: String(simulacion.monto_base_aplicado),
+      cuotas: ["tarjeta", "mercadopago"].includes(form.medio_pago)
+        ? Number(form.cuotas || 1)
+        : null,
+      entidad: form.entidad?.trim() || null,
+      id_usuario: usuarioId,
+      nota: form.nota?.trim() || null,
+    };
+  }
+
   async function registrarPago(e) {
     e.preventDefault();
 
@@ -338,18 +356,14 @@ export default function PagoVentaPanel({
         return;
       }
 
-      await crearPago({
-        origen_tipo: "venta",
-        origen_id: Number(ventaId),
-        medio_pago: form.medio_pago,
-        monto_base: String(simulacion.monto_base_aplicado),
-        cuotas: ["tarjeta", "mercadopago"].includes(form.medio_pago)
-          ? Number(form.cuotas || 1)
-          : null,
-        entidad: form.entidad?.trim() || null,
-        id_usuario: usuarioId,
-        nota: form.nota?.trim() || null,
-      });
+      const payload = buildPayloadPago(simulacion);
+
+      if (estadoVenta === "creada") {
+        setConfirmacionCobro({ simulacion, payload });
+        return;
+      }
+
+      await crearPago(payload);
 
       setForm((actual) => ({
         ...actual,
@@ -369,6 +383,42 @@ export default function PagoVentaPanel({
       );
     } catch (err) {
       setError(err.message || "No se pudo registrar el pago. Verificá que la caja esté abierta.");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  async function confirmarCobro() {
+    if (!confirmacionCobro) return;
+
+    const { simulacion, payload } = confirmacionCobro;
+    setConfirmacionCobro(null);
+
+    try {
+      setGuardando(true);
+      setError("");
+      setMensaje("");
+
+      await crearPago(payload);
+
+      setForm((actual) => ({
+        ...actual,
+        monto: "",
+        nota: "",
+      }));
+      setPreview(null);
+
+      await refrescarTodo();
+
+      setMensaje(
+        Number(simulacion.saldo_restante_estimado || 0) === 0
+          ? "Pago registrado. La venta quedÃ³ pagada."
+          : `Pago registrado. Saldo restante estimado: ${formatMoney(
+              simulacion.saldo_restante_estimado
+            )}`
+      );
+    } catch (err) {
+      setError(err.message || "No se pudo registrar el pago. VerificÃ¡ que la caja estÃ© abierta.");
     } finally {
       setGuardando(false);
     }
@@ -410,6 +460,22 @@ export default function PagoVentaPanel({
 
   return (
     <section ref={panelRef} style={styles.card}>
+      <ConfirmModal
+        open={Boolean(confirmacionCobro)}
+        title="Confirmar cobro"
+        message={buildConfirmacionCobroMessage({
+          cliente: venta?.cliente_nombre,
+          ventaId: venta?.id ?? ventaId,
+          total: confirmacionCobro?.simulacion?.monto_total_cobrado,
+          medioPago: confirmacionCobro?.payload?.medio_pago,
+        })}
+        confirmText="Confirmar cobro"
+        cancelText="Cancelar"
+        variant="info"
+        onCancel={() => setConfirmacionCobro(null)}
+        onConfirm={confirmarCobro}
+      />
+
       <PagoVentaResumen
         saldo={saldo}
         estadoVenta={estadoVenta}
@@ -497,6 +563,37 @@ function formatMoney(value) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+}
+
+function buildConfirmacionCobroMessage({ cliente, ventaId, total, medioPago }) {
+  return [
+    "Cliente:",
+    cliente || "-",
+    "",
+    "Venta:",
+    `#${ventaId}`,
+    "",
+    "Total:",
+    formatMoney(total),
+    "",
+    "Medio de pago:",
+    formatMedioPago(medioPago),
+    "",
+    "¿Deseás registrar este cobro?",
+    "",
+    "Una vez confirmado, el pago se registrará y actualizará la caja.",
+  ].join("\n");
+}
+
+function formatMedioPago(value) {
+  const labels = {
+    efectivo: "Efectivo",
+    transferencia: "Transferencia",
+    tarjeta: "Tarjeta",
+    mercadopago: "MercadoPago QR",
+  };
+
+  return labels[value] || value || "-";
 }
 
 function normalizarMontoPago(value) {

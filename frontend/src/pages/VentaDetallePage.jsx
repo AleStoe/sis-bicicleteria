@@ -27,6 +27,10 @@ import {
   alertStyle,
   successStyle,
 } from "../styles/pages/ventaDetallePageStyles";
+import {
+  buildEntregaVentaPayload,
+  esBicicletaSerializableEnCaja,
+} from "../builders/ventasPayloadBuilder";
 import { obtenerAccionesVentaDetalle } from "../rules/ventaDetalleActionRules";
 import { puedeRevertirPago } from "../rules/ventaDetalleActionRules";
 import CorregirNumeroCuadroModal from "../components/serializadas/CorregirNumeroCuadroModal";
@@ -132,13 +136,18 @@ export default function VentaDetallePage() {
       return;
     }
 
+    const itemsVenta = data?.items || [];
+    const entregaBicicletaEnCaja = itemsVenta.some(esBicicletaSerializableEnCaja);
+
     const confirmar = await pedirConfirmacion({
-      title: "Entregar venta",
+      title: entregaBicicletaEnCaja ? "Entregar bicicleta en caja" : "Entregar venta",
       message:
-        saldo > 0
+        entregaBicicletaEnCaja
+          ? "Esta venta tiene una bicicleta serializable sin unidad armada asignada.\n\nSe va a entregar desde stock fisico como bicicleta en caja.\n\nConfirmas la entrega?"
+          : saldo > 0
           ? "Esta venta tiene saldo pendiente, pero cuenta con deuda formal asociada.\n¿Confirmás la entrega?"
           : "¿Confirmás la entrega de esta venta? Revisá que el cobro esté correcto antes de entregar la mercadería.",
-      confirmText: "Entregar venta",
+      confirmText: entregaBicicletaEnCaja ? "Entregar en caja" : "Entregar venta",
       cancelText: "Cancelar",
       variant: "warning",
     });
@@ -150,7 +159,14 @@ export default function VentaDetallePage() {
       setError("");
       setMensaje("");
 
-      await entregarVenta(ventaId, { id_usuario: usuarioId });
+      await entregarVenta(
+        ventaId,
+        buildEntregaVentaPayload({
+          usuarioId,
+          items: itemsVenta,
+          condicionEntregaBicicleta: entregaBicicletaEnCaja ? "en_caja" : "armada",
+        })
+      );
       await cargarVenta();
 
       setMensaje("Venta entregada correctamente");

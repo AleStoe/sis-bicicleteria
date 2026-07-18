@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { listarClientes, listarBicicletasCliente, crearBicicletaCliente } from "../services/clientesService";
 import { crearOrdenTaller } from "../services/tallerService";
 import { Card, EmptyState, PageHeader, useBreakpoint } from "../components/ui";
@@ -10,6 +10,11 @@ import { colors, controls, radius, shadows, spacing, typography } from "../theme
 
 export default function TallerNuevaOrdenPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const clienteInicialParam = searchParams.get("cliente_id");
+  const bicicletaInicialParam = searchParams.get("bicicleta_id");
+  const mostrarNuevaBiciInicial = searchParams.get("nueva_bici") === "1";
+  const bicicletaInicialAplicadaRef = useRef(false);
   const [clientes, setClientes] = useState([]);
   const [bicicletas, setBicicletas] = useState([]);
   const [clienteId, setClienteId] = useState("");
@@ -40,7 +45,11 @@ export default function TallerNuevaOrdenPage() {
       return;
     }
 
-    cargarBicicletas(clienteId);
+    const bicicletaPreferida = !bicicletaInicialAplicadaRef.current
+      ? bicicletaInicialParam
+      : "";
+    bicicletaInicialAplicadaRef.current = true;
+    cargarBicicletas(clienteId, bicicletaPreferida);
   }, [clienteId]);
 
   async function cargarClientes() {
@@ -48,7 +57,21 @@ export default function TallerNuevaOrdenPage() {
       setLoading(true);
       setError("");
       const data = await listarClientes({ solo_activos: true });
-      setClientes(data || []);
+      const clientesActivos = data || [];
+      setClientes(clientesActivos);
+
+      if (clienteInicialParam) {
+        const clienteInicial = clientesActivos.find(
+          (cliente) => Number(cliente.id) === Number(clienteInicialParam)
+        );
+
+        if (clienteInicial) {
+          seleccionarCliente(clienteInicial);
+          if (mostrarNuevaBiciInicial) {
+            setMostrarNuevaBici(true);
+          }
+        }
+      }
     } catch (err) {
       setError(err.message || "No se pudieron cargar los clientes");
     } finally {
@@ -56,13 +79,18 @@ export default function TallerNuevaOrdenPage() {
     }
   }
 
-  async function cargarBicicletas(id) {
+  async function cargarBicicletas(id, bicicletaPreferidaId = "") {
     try {
       setCargandoBicis(true);
       setError("");
       const data = await listarBicicletasCliente(id);
-      setBicicletas(data || []);
-      setBicicletaId("");
+      const bicisCliente = data || [];
+      setBicicletas(bicisCliente);
+      setBicicletaId(
+        bicicletaPreferidaId && bicisCliente.some((bici) => Number(bici.id) === Number(bicicletaPreferidaId))
+          ? String(bicicletaPreferidaId)
+          : ""
+      );
     } catch (err) {
       setError(err.message || "No se pudieron cargar las bicicletas del cliente");
       setBicicletas([]);

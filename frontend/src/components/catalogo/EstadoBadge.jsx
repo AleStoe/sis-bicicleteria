@@ -1,4 +1,13 @@
 export default function EstadoBadge({ item }) {
+  const pendienteArmado =
+    item.serializable &&
+    Number(item.serializadas_disponibles || 0) <= 0 &&
+    Number(item.stock_disponible || 0) > 0;
+
+  if (pendienteArmado) {
+    return <span style={styles.warning}>Pendiente armado</span>;
+  }
+
   if (item.disponible_para_venta) {
     return <span style={styles.ok}>Disponible</span>;
   }

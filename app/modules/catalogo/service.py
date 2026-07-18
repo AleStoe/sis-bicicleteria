@@ -7,6 +7,7 @@ from app.modules.reglas_comerciales.repository import (
     get_reglas_activas_por_medios,
     get_tarjeta_planes,
 )
+from app.modules.auditoria import service as auditoria_service
 from .repository import (
     get_categorias,
     get_categoria_by_nombre,
@@ -39,6 +40,8 @@ from .repository import (
     get_variante_by_id,
     update_variante_catalogo,
     update_variante_estado,
+    update_variante_reponer_stock,
+    update_variantes_reponer_stock_masivo,
     asignar_identidad_variante,
     get_catalogo_pos_por_codigo,
     listar_ficha_tecnica_producto,
@@ -779,6 +782,123 @@ def cambiar_estado_variante(variante_id: int, data):
                 raise HTTPException(status_code=404, detail="Variante no encontrada")
 
             return update_variante_estado(conn, variante_id, data.activo)
+
+    finally:
+        conn.close()
+
+
+def cambiar_reponer_stock_variante(variante_id: int, data):
+    conn = get_connection()
+
+    try:
+        with conn.transaction():
+            variante = get_variante_by_id(conn, variante_id)
+
+            if variante is None:
+                raise HTTPException(status_code=404, detail="Variante no encontrada")
+
+            anterior = bool(variante.get("reponer_stock", True))
+            actualizada = update_variante_reponer_stock(
+                conn,
+                variante_id,
+                data.reponer_stock,
+            )
+
+            auditoria_service.registrar_evento(
+                conn,
+                id_usuario=data.id_usuario,
+                id_sucursal=None,
+                entidad="variante",
+                entidad_id=variante_id,
+                accion="variante_reponer_stock_actualizada",
+                detalle=(
+                    "Reposicion de stock actualizada: "
+                    f"{anterior} -> {data.reponer_stock}"
+                ),
+                metadata={
+                    "id_variante": variante_id,
+                    "reponer_stock_anterior": anterior,
+                    "reponer_stock_nuevo": data.reponer_stock,
+                },
+                origen_tipo="catalogo",
+                origen_id=variante_id,
+            )
+
+            return actualizada
+
+    finally:
+        conn.close()
+
+
+def cambiar_reponer_stock_variantes_masivo(data):
+    ids_unicos = sorted({int(variante_id) for variante_id in data.ids_variantes})
+    conn = get_connection()
+
+    try:
+        with conn.transaction():
+            variantes = []
+            for variante_id in ids_unicos:
+                variante = get_variante_by_id(conn, variante_id)
+                if variante is None:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"Variante {variante_id} no encontrada",
+                    )
+                variantes.append(variante)
+
+            actualizadas = update_variantes_reponer_stock_masivo(
+                conn,
+                ids_unicos,
+                data.reponer_stock,
+            )
+
+            for variante in variantes:
+                auditoria_service.registrar_evento(
+                    conn,
+                    id_usuario=data.id_usuario,
+                    id_sucursal=None,
+                    entidad="variante",
+                    entidad_id=variante["id"],
+                    accion="variante_reponer_stock_actualizada",
+                    detalle=(
+                        "Reposicion de stock actualizada por accion masiva: "
+                        f"{bool(variante.get('reponer_stock', True))} -> {data.reponer_stock}"
+                    ),
+                    metadata={
+                        "id_variante": variante["id"],
+                        "reponer_stock_anterior": bool(variante.get("reponer_stock", True)),
+                        "reponer_stock_nuevo": data.reponer_stock,
+                        "modo": "masivo",
+                    },
+                    origen_tipo="catalogo",
+                    origen_id=variante["id"],
+                )
+
+            auditoria_service.registrar_evento(
+                conn,
+                id_usuario=data.id_usuario,
+                id_sucursal=None,
+                entidad="variantes",
+                entidad_id=0,
+                accion="variantes_reponer_stock_actualizacion_masiva",
+                detalle=(
+                    f"Actualizacion masiva de reposicion de stock: "
+                    f"{len(actualizadas)} variante(s) -> {data.reponer_stock}"
+                ),
+                metadata={
+                    "ids_variantes": actualizadas,
+                    "cantidad": len(actualizadas),
+                    "reponer_stock_nuevo": data.reponer_stock,
+                },
+                origen_tipo="catalogo",
+                origen_id=0,
+            )
+
+            return {
+                "ok": True,
+                "actualizadas": len(actualizadas),
+                "reponer_stock": data.reponer_stock,
+            }
 
     finally:
         conn.close()

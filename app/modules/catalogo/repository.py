@@ -128,6 +128,7 @@ def get_variantes(conn):
                 v.precio_mayorista,
                 v.permite_precio_libre,
                 v.costo_promedio_vigente,
+                v.reponer_stock,
                 (
                     SELECT COUNT(DISTINCT vi.id_venta)::int
                     FROM venta_items vi
@@ -386,7 +387,14 @@ def get_catalogo_pos(
                     OR (
                         p.stockeable = TRUE
                         AND p.serializable = TRUE
-                        AND COALESCE(serializadas.serializadas_disponibles, 0) > 0
+                        AND (
+                            COALESCE(serializadas.serializadas_disponibles, 0) > 0
+                            OR (
+                                COALESCE(ss.stock_fisico, 0)
+                                - COALESCE(ss.stock_reservado, 0)
+                                - COALESCE(ss.stock_vendido_pendiente_entrega, 0)
+                            ) > 0
+                        )
                     )
                     OR (
                         p.stockeable = TRUE
@@ -503,7 +511,12 @@ def get_catalogo_pos(
                 CASE
                     WHEN p.stockeable = TRUE
                          AND p.serializable = TRUE
-                         AND COALESCE(serializadas.serializadas_disponibles, 0) <= 0 THEN FALSE
+                         AND COALESCE(serializadas.serializadas_disponibles, 0) <= 0
+                         AND (
+                            COALESCE(ss.stock_fisico, 0)
+                            - COALESCE(ss.stock_reservado, 0)
+                            - COALESCE(ss.stock_vendido_pendiente_entrega, 0)
+                         ) <= 0 THEN FALSE
 
                     WHEN p.stockeable = TRUE
                          AND p.serializable = FALSE
@@ -522,7 +535,12 @@ def get_catalogo_pos(
                 CASE
                     WHEN p.stockeable = TRUE
                          AND p.serializable = TRUE
-                         AND COALESCE(serializadas.serializadas_disponibles, 0) <= 0 THEN 'sin_stock'
+                         AND COALESCE(serializadas.serializadas_disponibles, 0) <= 0
+                         AND (
+                            COALESCE(ss.stock_fisico, 0)
+                            - COALESCE(ss.stock_reservado, 0)
+                            - COALESCE(ss.stock_vendido_pendiente_entrega, 0)
+                         ) <= 0 THEN 'sin_stock'
 
                     WHEN p.stockeable = TRUE
                          AND p.serializable = FALSE
@@ -644,7 +662,14 @@ def get_catalogo_mayorista_pdf_items(
             (
                 p.stockeable = TRUE
                 AND p.serializable = TRUE
-                AND COALESCE(serializadas.serializadas_disponibles, 0) > 0
+                AND (
+                    COALESCE(serializadas.serializadas_disponibles, 0) > 0
+                    OR (
+                        COALESCE(ss.stock_fisico, 0)
+                        - COALESCE(ss.stock_reservado, 0)
+                        - COALESCE(ss.stock_vendido_pendiente_entrega, 0)
+                    ) > 0
+                )
             )
             OR (
                 p.stockeable = TRUE
@@ -764,7 +789,14 @@ def get_catalogo_bicicletas_pdf_items(
             (
                 p.stockeable = TRUE
                 AND p.serializable = TRUE
-                AND COALESCE(serializadas.serializadas_disponibles, 0) > 0
+                AND (
+                    COALESCE(serializadas.serializadas_disponibles, 0) > 0
+                    OR (
+                        COALESCE(ss.stock_fisico, 0)
+                        - COALESCE(ss.stock_reservado, 0)
+                        - COALESCE(ss.stock_vendido_pendiente_entrega, 0)
+                    ) > 0
+                )
             )
             OR (
                 p.stockeable = TRUE
@@ -922,7 +954,12 @@ def get_catalogo_pos_por_codigo(
                 CASE
                     WHEN p.stockeable = TRUE
                          AND p.serializable = TRUE
-                         AND COALESCE(serializadas.serializadas_disponibles, 0) <= 0 THEN FALSE
+                         AND COALESCE(serializadas.serializadas_disponibles, 0) <= 0
+                         AND (
+                            COALESCE(ss.stock_fisico, 0)
+                            - COALESCE(ss.stock_reservado, 0)
+                            - COALESCE(ss.stock_vendido_pendiente_entrega, 0)
+                         ) <= 0 THEN FALSE
 
                     WHEN p.stockeable = TRUE
                          AND p.serializable = FALSE
@@ -941,7 +978,12 @@ def get_catalogo_pos_por_codigo(
                 CASE
                     WHEN p.stockeable = TRUE
                          AND p.serializable = TRUE
-                         AND COALESCE(serializadas.serializadas_disponibles, 0) <= 0 THEN 'sin_stock'
+                         AND COALESCE(serializadas.serializadas_disponibles, 0) <= 0
+                         AND (
+                            COALESCE(ss.stock_fisico, 0)
+                            - COALESCE(ss.stock_reservado, 0)
+                            - COALESCE(ss.stock_vendido_pendiente_entrega, 0)
+                         ) <= 0 THEN 'sin_stock'
 
                     WHEN p.stockeable = TRUE
                          AND p.serializable = FALSE
@@ -1392,6 +1434,7 @@ def get_variante_by_id(conn, variante_id: int):
                 v.precio_mayorista,
                 v.permite_precio_libre,
                 v.costo_promedio_vigente,
+                v.reponer_stock,
                 (
                     SELECT COUNT(DISTINCT vi.id_venta)::int
                     FROM venta_items vi
@@ -1447,6 +1490,7 @@ def update_variante_catalogo(conn, variante_id: int, data: dict):
         "alicuota_iva",
         "gravado",
         "permite_precio_libre",
+        "reponer_stock",
     ]:
         if campo in data:
             campos.append(f"{campo} = %({campo})s")
@@ -1483,6 +1527,41 @@ def update_variante_estado(conn, variante_id: int, activo: bool):
         return None
 
     return get_variante_by_id(conn, variante_id)
+
+
+def update_variante_reponer_stock(conn, variante_id: int, reponer_stock: bool):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE variantes
+            SET reponer_stock = %s,
+                updated_at = NOW()
+            WHERE id = %s
+            RETURNING id
+            """,
+            (reponer_stock, variante_id),
+        )
+        row = cur.fetchone()
+
+    if row is None:
+        return None
+
+    return get_variante_by_id(conn, variante_id)
+
+
+def update_variantes_reponer_stock_masivo(conn, ids_variantes: list[int], reponer_stock: bool):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE variantes
+            SET reponer_stock = %s,
+                updated_at = NOW()
+            WHERE id = ANY(%s)
+            RETURNING id
+            """,
+            (reponer_stock, ids_variantes),
+        )
+        return [row["id"] for row in cur.fetchall()]
 
 def asignar_identidad_variante(conn, variante_id: int, sku: str, codigo_barras: str):
     with conn.cursor() as cur:

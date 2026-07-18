@@ -29,6 +29,7 @@ VALUES
     ('gestionar_postventa', 'Crear y consumir services de postventa'),
     ('gestionar_garantias', 'Autorizar garantías y coberturas de postventa'),
     ('gestionar_catalogo', 'Administrar catálogo y maestros comerciales'),
+    ('gestionar_correcciones', 'Gestionar correcciones operativas auditadas'),
     ('gestionar_precios', 'Consultar costos y administrar precios'),
     ('gestionar_backups', 'Generar, listar y descargar backups del sistema'),
     ('gestionar_usuarios', 'Administrar usuarios y roles'),

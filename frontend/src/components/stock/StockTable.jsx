@@ -12,6 +12,10 @@ export default function StockTable({
   ordenarPor,
   orden,
   onOrdenar,
+  seleccionMasiva,
+  toggleSeleccionMasiva,
+  cambiarReposicionItem,
+  procesando,
 }) {
   function SortHeader({ campo, align = "left", children }) {
     const activo = ordenarPor === campo;
@@ -55,7 +59,8 @@ export default function StockTable({
       <div className="stock-desktop-table">
         <table style={styles.table}>
           <colgroup>
-            <col style={{ width: 290 }} />
+            <col style={{ width: 44 }} />
+            <col style={{ width: 300 }} />
             <col style={{ width: 110 }} />
             <col style={{ width: 180 }} />
             <col style={{ width: 76 }} />
@@ -65,20 +70,23 @@ export default function StockTable({
             <col style={{ width: 120 }} />
             <col style={{ width: 118 }} />
             <col style={{ width: 110 }} />
-            <col style={{ width: 180 }} />
+            <col style={{ width: 130 }} />
+            <col style={{ width: 190 }} />
           </colgroup>
           <thead style={styles.thead}>
             <tr>
+              <th style={styles.th} aria-label="Seleccionar" />
               <th style={styles.th}><SortHeader campo="producto">Producto</SortHeader></th>
               <th style={styles.th}><SortHeader campo="categoria">Tipo</SortHeader></th>
               <th style={styles.th}><SortHeader campo="marca">Marca / proveedor</SortHeader></th>
-              <th style={styles.thNumber}><SortHeader campo="fisico" align="right">Físico</SortHeader></th>
+              <th style={styles.thNumber}><SortHeader campo="fisico" align="right">Fisico</SortHeader></th>
               <th style={styles.thNumber}>Reservado</th>
               <th style={styles.thNumber}>Pendiente</th>
               <th style={styles.thNumber}><SortHeader campo="stock" align="right">Disponible</SortHeader></th>
               <th style={styles.thNumber}><SortHeader campo="capital" align="right">Capital</SortHeader></th>
-              <th style={styles.th}><SortHeader campo="ultima_venta">Última venta</SortHeader></th>
+              <th style={styles.th}><SortHeader campo="ultima_venta">Ultima venta</SortHeader></th>
               <th style={styles.th}>Estado</th>
+              <th style={styles.th}>Reposicion</th>
               <th style={styles.th}>Acciones</th>
             </tr>
           </thead>
@@ -87,6 +95,8 @@ export default function StockTable({
             {stockFiltrado.map((item) => {
               const estado = getEstadoStock(item);
               const activo = esSeleccionado(seleccionado, item);
+              const itemKey = String(item.variante_id);
+              const seleccionadoMasivo = seleccionMasiva?.has(itemKey);
 
               return (
                 <tr
@@ -94,6 +104,19 @@ export default function StockTable({
                   onClick={() => seleccionarItem(item, "detalle")}
                   style={activo ? styles.trActive : styles.tr}
                 >
+                  <td style={styles.td}>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(seleccionadoMasivo)}
+                      onChange={(event) => {
+                        event.stopPropagation();
+                        toggleSeleccionMasiva?.(item);
+                      }}
+                      onClick={(event) => event.stopPropagation()}
+                      aria-label={`Seleccionar variante ${item.variante_id}`}
+                    />
+                  </td>
+
                   <td style={styles.tdProduct}>
                     <strong style={styles.productName}>{item.producto_nombre}</strong>
                     {!esVarianteUnica(item.nombre_variante) && (
@@ -102,11 +125,14 @@ export default function StockTable({
                     <div style={styles.mutedSmall}>
                       SKU: {item.sku || "-"} · Proveedor: {item.codigo_proveedor || "-"} · Variante #{item.variante_id}
                     </div>
+                    <div style={styles.mutedSmall}>
+                      Vendidas: {formatNumber(item.unidades_vendidas_total || 0)} · Ventas: {item.ventas_distintas_total || 0}
+                    </div>
                   </td>
 
                   <td style={styles.td}>
                     <strong>{item.tipo_operativo || "producto"}</strong>
-                    <div style={styles.mutedSmall}>{item.categoria_nombre || "Sin categoría"}</div>
+                    <div style={styles.mutedSmall}>{item.categoria_nombre || "Sin categoria"}</div>
                   </td>
 
                   <td style={styles.td}>
@@ -130,12 +156,31 @@ export default function StockTable({
                   </td>
 
                   <td style={styles.td}>
+                    <ReposicionBadge reponer={item.reponer_stock !== false} />
+                    <div style={styles.mutedSmall}>
+                      Primer stock: {formatFechaCorta(item.primer_movimiento_stock)}
+                    </div>
+                  </td>
+
+                  <td style={styles.td}>
                     <div style={styles.rowActions}>
                       <button
                         type="button"
+                        style={item.reponer_stock === false ? styles.actionButton : styles.ghostButton}
+                        disabled={procesando}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          cambiarReposicionItem?.(item, item.reponer_stock === false);
+                        }}
+                      >
+                        {item.reponer_stock === false ? "Marcar reponer" : "No reponer"}
+                      </button>
+
+                      <button
+                        type="button"
                         style={styles.actionButton}
-                        onClick={(e) => {
-                          e.stopPropagation();
+                        onClick={(event) => {
+                          event.stopPropagation();
                           seleccionarItem(item, "ingreso");
                         }}
                       >
@@ -145,8 +190,8 @@ export default function StockTable({
                       <button
                         type="button"
                         style={styles.dangerOutlineButton}
-                        onClick={(e) => {
-                          e.stopPropagation();
+                        onClick={(event) => {
+                          event.stopPropagation();
                           seleccionarItem(item, "ajuste");
                         }}
                       >
@@ -165,6 +210,7 @@ export default function StockTable({
         {stockFiltrado.map((item) => {
           const estado = getEstadoStock(item);
           const activo = esSeleccionado(seleccionado, item);
+          const itemKey = String(item.variante_id);
 
           return (
             <article
@@ -190,13 +236,22 @@ export default function StockTable({
                 <span>Variante #{item.variante_id}</span>
               </div>
 
+              <label className="stock-card-check" onClick={(event) => event.stopPropagation()}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(seleccionMasiva?.has(itemKey))}
+                  onChange={() => toggleSeleccionMasiva?.(item)}
+                />
+                Seleccionar para cambio masivo
+              </label>
+
               <div className="stock-card-main-number">
                 <span>Disponible</span>
                 <strong>{formatNumber(item.stock_disponible)}</strong>
               </div>
 
               <div className="stock-card-grid">
-                <MiniDato label="Físico" value={formatNumber(item.stock_fisico)} />
+                <MiniDato label="Fisico" value={formatNumber(item.stock_fisico)} />
                 <MiniDato label="Reservado" value={formatNumber(item.stock_reservado)} />
                 <MiniDato label="Pendiente" value={formatNumber(item.stock_vendido_pendiente_entrega)} />
                 <MiniDato label="Capital" value={formatMoney(item.capital_inmovilizado || 0)} />
@@ -206,7 +261,7 @@ export default function StockTable({
                 <div>
                   <span>Tipo</span>
                   <strong>{item.tipo_operativo || "producto"}</strong>
-                  <small>{item.categoria_nombre || "Sin categoría"}</small>
+                  <small>{item.categoria_nombre || "Sin categoria"}</small>
                 </div>
                 <div>
                   <span>Marca / proveedor</span>
@@ -214,18 +269,42 @@ export default function StockTable({
                   <small>{item.proveedor_nombre || "Sin proveedor"}</small>
                 </div>
                 <div>
-                  <span>Última venta</span>
+                  <span>Ultima venta</span>
                   <strong>{formatFechaUltimaVenta(item.ultima_venta)}</strong>
                   <small>{formatDiasSinMovimiento(item)}</small>
+                </div>
+                <div>
+                  <span>Reposicion</span>
+                  <strong>{item.reponer_stock === false ? "No reponer" : "Reponer"}</strong>
+                  <small>
+                    Vendidas: {formatNumber(item.unidades_vendidas_total || 0)} · Ventas: {item.ventas_distintas_total || 0}
+                  </small>
+                </div>
+                <div>
+                  <span>Primer stock</span>
+                  <strong>{formatFechaCorta(item.primer_movimiento_stock)}</strong>
+                  <small>Dato informativo</small>
                 </div>
               </div>
 
               <div className="stock-card-actions">
                 <button
                   type="button"
+                  style={item.reponer_stock === false ? styles.actionButton : styles.ghostButton}
+                  disabled={procesando}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    cambiarReposicionItem?.(item, item.reponer_stock === false);
+                  }}
+                >
+                  {item.reponer_stock === false ? "Marcar reponer" : "No reponer"}
+                </button>
+
+                <button
+                  type="button"
                   style={styles.actionButton}
-                  onClick={(e) => {
-                    e.stopPropagation();
+                  onClick={(event) => {
+                    event.stopPropagation();
                     seleccionarItem(item, "ingreso");
                   }}
                 >
@@ -235,8 +314,8 @@ export default function StockTable({
                 <button
                   type="button"
                   style={styles.dangerOutlineButton}
-                  onClick={(e) => {
-                    e.stopPropagation();
+                  onClick={(event) => {
+                    event.stopPropagation();
                     seleccionarItem(item, "ajuste");
                   }}
                 >
@@ -260,6 +339,27 @@ function MiniDato({ label, value }) {
   );
 }
 
+function ReposicionBadge({ reponer }) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        minHeight: 24,
+        padding: "0 9px",
+        borderRadius: 999,
+        border: reponer ? "1px solid #bbf7d0" : "1px solid #fed7aa",
+        background: reponer ? "#dcfce7" : "#fff7ed",
+        color: reponer ? "#166534" : "#9a3412",
+        fontSize: 12,
+        fontWeight: 900,
+      }}
+    >
+      {reponer ? "Reponer" : "No reponer"}
+    </span>
+  );
+}
+
 function esSeleccionado(seleccionado, item) {
   return (
     seleccionado?.variante_id === item.variante_id &&
@@ -271,9 +371,13 @@ function formatFechaUltimaVenta(fecha) {
   return fecha ? new Date(fecha).toLocaleDateString("es-AR") : "Nunca";
 }
 
+function formatFechaCorta(fecha) {
+  return fecha ? new Date(fecha).toLocaleDateString("es-AR") : "Sin dato";
+}
+
 function formatDiasSinMovimiento(item) {
   return item.dias_sin_movimiento !== null && item.dias_sin_movimiento !== undefined
-    ? `${item.dias_sin_movimiento} días`
+    ? `${item.dias_sin_movimiento} dias`
     : "Sin dato";
 }
 
@@ -330,12 +434,19 @@ const responsiveCss = `
       margin-top: 3px;
     }
 
-    .stock-card-codes {
+    .stock-card-codes,
+    .stock-card-check {
       display: flex;
       flex-wrap: wrap;
       gap: 6px;
       color: #6b7280;
       font-size: 12px;
+    }
+
+    .stock-card-check {
+      align-items: center;
+      font-weight: 900;
+      color: #374151;
     }
 
     .stock-card-codes span {
@@ -420,7 +531,7 @@ const responsiveCss = `
 
     .stock-card-actions {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr;
       gap: 8px;
     }
 
