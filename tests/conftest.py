@@ -93,6 +93,9 @@ def clean_db(db_conn):
                 reserva_eventos,
                 reserva_items,
                 reservas,
+                pedido_compra_historial,
+                pedido_compra_items,
+                pedidos_compra,
                 armado_orden_controles,
                 armado_orden_costos,
                 armado_orden_items,
@@ -139,6 +142,21 @@ def clean_db(db_conn):
             VALUES (
                 'item_quitado_borrador',
                 'Item quitado durante el armado del presupuesto',
+                TRUE
+            )
+            ON CONFLICT (codigo) DO UPDATE
+            SET
+                descripcion = EXCLUDED.descripcion,
+                activo = TRUE
+            """
+        )
+
+        cur.execute(
+            """
+            INSERT INTO tipos_evento_taller (codigo, descripcion, activo)
+            VALUES (
+                'item_cantidad_borrador_actualizada',
+                'Cantidad de item actualizada durante el armado del presupuesto',
                 TRUE
             )
             ON CONFLICT (codigo) DO UPDATE

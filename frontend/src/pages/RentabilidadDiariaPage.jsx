@@ -38,6 +38,43 @@ function sumar(items, campo) {
   return items.reduce((total, item) => total + numero(item[campo]), 0);
 }
 
+function normalizar(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function clasificarRubro(detalle) {
+  const tipoPrecio = normalizar(detalle.tipo_precio);
+  const tipoItem = normalizar(detalle.tipo_item_grupo || detalle.tipo_item);
+  const rubro = normalizar(detalle.producto_rubro);
+  const categoria = normalizar(detalle.categoria_nombre);
+  const nombre = normalizar(`${detalle.articulo_nombre || ""} ${detalle.descripcion_snapshot || ""}`);
+
+  if (tipoPrecio === "mayorista") {
+    return { clave: "mayorista", nombre: "Mayorista", detalle: "Ventas con lista mayorista" };
+  }
+
+  if (tipoItem === "servicio_taller" || detalle.id_servicio_taller) {
+    return { clave: "taller", nombre: "Taller / servicios", detalle: "Mano de obra y servicios cargados" };
+  }
+
+  if (rubro.includes("bicicleta") || categoria.includes("bicicleta") || nombre.includes("bicicleta")) {
+    return { clave: "bicicletas", nombre: "Bicicletas", detalle: "Bicicletas vendidas por mostrador, reserva o taller" };
+  }
+
+  if (rubro.includes("accesorio") || categoria.includes("accesorio")) {
+    return { clave: "accesorios", nombre: "Accesorios", detalle: "Accesorios y complementos" };
+  }
+
+  if (rubro.includes("repuesto") || categoria.includes("repuesto")) {
+    return { clave: "repuestos", nombre: "Repuestos", detalle: "Repuestos y componentes" };
+  }
+
+  return { clave: "otros", nombre: "Otros", detalle: "Ítems sin rubro comercial específico" };
+}
+
 const card = {
   background: "#fff",
   border: "1px solid #e5e7eb",
@@ -193,6 +230,55 @@ export default function RentabilidadDiariaPage() {
       .sort((a, b) => new Date(b.fecha || 0) - new Date(a.fecha || 0));
   }, [detalles]);
 
+  const resumenRubros = useMemo(() => {
+    const grupos = new Map();
+
+    detalles.forEach((detalle) => {
+      const rubro = clasificarRubro(detalle);
+      if (!grupos.has(rubro.clave)) {
+        grupos.set(rubro.clave, {
+          ...rubro,
+          items: 0,
+          unidades: 0,
+          ventas: new Set(),
+          venta_comercial: 0,
+          cmv_comercial: 0,
+          margen_esperado: 0,
+          cobrado_comercial_reconocido: 0,
+          capital_recuperado: 0,
+          capital_inmovilizado: 0,
+          utilidad_liberada: 0,
+          utilidad_pendiente: 0,
+        });
+      }
+
+      const grupo = grupos.get(rubro.clave);
+      grupo.items += 1;
+      grupo.unidades += numero(detalle.cantidad_neta);
+      grupo.ventas.add(detalle.id_venta);
+      grupo.venta_comercial += numero(detalle.ingreso_comercial);
+      grupo.cmv_comercial += numero(detalle.costo_total);
+      grupo.margen_esperado += numero(detalle.margen_bruto);
+      grupo.cobrado_comercial_reconocido += numero(detalle.cobrado_comercial_reconocido);
+      grupo.capital_recuperado += numero(detalle.capital_recuperado);
+      grupo.capital_inmovilizado += numero(detalle.capital_inmovilizado);
+      grupo.utilidad_liberada += numero(detalle.utilidad_liberada);
+      grupo.utilidad_pendiente += numero(detalle.utilidad_pendiente);
+    });
+
+    const orden = ["taller", "bicicletas", "accesorios", "repuestos", "mayorista", "otros"];
+    return Array.from(grupos.values())
+      .map((grupo) => ({
+        ...grupo,
+        ventas_cantidad: grupo.ventas.size,
+      }))
+      .sort((a, b) => {
+        const posA = orden.indexOf(a.clave);
+        const posB = orden.indexOf(b.clave);
+        return (posA === -1 ? 99 : posA) - (posB === -1 ? 99 : posB);
+      });
+  }, [detalles]);
+
   function toggleVenta(idVenta) {
     setVentasAbiertas((actual) => {
       const siguiente = new Set(actual);
@@ -281,6 +367,77 @@ export default function RentabilidadDiariaPage() {
           value={money(rentabilidadDiaria?.margen_real)}
           tone={Number(rentabilidadDiaria?.margen_real || 0) < 0 ? "danger" : "positive"}
         />
+      </section>
+
+      <section style={{ ...card, padding: isMobile ? 12 : 18, display: "grid", gap: 14, minWidth: 0 }}>
+        <div>
+          <p style={{ margin: 0, color: "#f97316", fontSize: 12, fontWeight: 950, textTransform: "uppercase" }}>
+            De dónde viene la venta
+          </p>
+          <h2 style={{ margin: "4px 0 0", color: "#101828" }}>Resumen por rubro</h2>
+          <p style={{ margin: "5px 0 0", color: "#667085", lineHeight: 1.45 }}>
+            Agrupa los mismos ítems del día para ver rápido cuánto aportó taller, bicicletas, accesorios, repuestos y mayorista.
+          </p>
+        </div>
+
+        <div style={{ overflowX: "auto", border: "1px solid #eaecf0", borderRadius: 14 }}>
+          <table style={{ width: "100%", minWidth: 980, borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ color: "#475467", textAlign: "left", borderBottom: "1px solid #eaecf0", background: "#f8fafc" }}>
+                <th style={th}>Rubro</th>
+                <th style={{ ...th, textAlign: "right" }}>Ventas</th>
+                <th style={{ ...th, textAlign: "right" }}>Vendido</th>
+                <th style={{ ...th, textAlign: "right" }}>Costo</th>
+                <th style={{ ...th, textAlign: "right" }}>Margen esperado</th>
+                <th style={{ ...th, textAlign: "right" }}>Cobrado</th>
+                <th style={{ ...th, textAlign: "right" }}>Capital</th>
+                <th style={{ ...th, textAlign: "right" }}>Utilidad</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan="8" style={{ padding: 18, color: "#667085", textAlign: "center" }}>
+                    Calculando resumen...
+                  </td>
+                </tr>
+              ) : resumenRubros.length === 0 ? (
+                <tr>
+                  <td colSpan="8" style={{ padding: 18, color: "#667085", textAlign: "center" }}>
+                    Sin ventas para agrupar en esta fecha.
+                  </td>
+                </tr>
+              ) : (
+                resumenRubros.map((grupo) => (
+                  <tr key={grupo.clave} style={{ borderBottom: "1px solid #f2f4f7" }}>
+                    <td style={{ ...td, minWidth: 220 }}>
+                      <strong style={{ color: "#101828" }}>{grupo.nombre}</strong>
+                      <div style={{ color: "#667085", marginTop: 2, lineHeight: 1.35 }}>{grupo.detalle}</div>
+                    </td>
+                    <td style={{ ...td, textAlign: "right", whiteSpace: "nowrap" }}>
+                      <strong>{grupo.ventas_cantidad}</strong>
+                      <div style={{ color: "#667085", marginTop: 2 }}>{grupo.items} ítem(s)</div>
+                    </td>
+                    <td style={{ ...td, textAlign: "right", fontWeight: 900 }}>{money(grupo.venta_comercial)}</td>
+                    <td style={{ ...td, textAlign: "right" }}>{money(grupo.cmv_comercial)}</td>
+                    <td style={{ ...td, textAlign: "right", fontWeight: 900 }}>{money(grupo.margen_esperado)}</td>
+                    <td style={{ ...td, textAlign: "right", color: "#2563eb", fontWeight: 900 }}>
+                      {money(grupo.cobrado_comercial_reconocido)}
+                    </td>
+                    <td style={{ ...td, textAlign: "right" }}>
+                      <MoneyLine label="Recuperado" value={grupo.capital_recuperado} />
+                      <MoneyLine label="Inmov." value={grupo.capital_inmovilizado} color="#b42318" />
+                    </td>
+                    <td style={{ ...td, textAlign: "right" }}>
+                      <MoneyLine label="Liberada" value={grupo.utilidad_liberada} strong color="#067647" />
+                      <MoneyLine label="Pendiente" value={grupo.utilidad_pendiente} color="#b54708" />
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section style={{ ...card, padding: isMobile ? 12 : 18, display: "grid", gap: 14, minWidth: 0 }}>

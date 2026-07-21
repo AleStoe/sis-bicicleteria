@@ -8,12 +8,14 @@ from app.modules.authz.service import requerir_permiso
 from app.shared.constants import PERMISO_REINTEGRAR_CREDITO
 
 from .schema import (
+    CreditoClienteResumenResponse,
     CreditoDetalleResponse,
     CreditoReintegroInput,
     CreditoReintegroResponse,
     CreditoResponse,
 )
 from .service import (
+    listar_clientes_con_credito_disponible,
     listar_creditos_cliente,
     obtener_credito_detalle,
     reintegrar_credito,
@@ -21,6 +23,15 @@ from .service import (
 
 router = APIRouter()
 puede_reintegrar_credito = requerir_permiso(PERMISO_REINTEGRAR_CREDITO)
+
+@router.get("/clientes-con-saldo", response_model=List[CreditoClienteResumenResponse])
+def clientes_con_saldo_a_favor(q: str | None = None, limit: int = 100):
+    conn = get_connection()
+    try:
+        return listar_clientes_con_credito_disponible(conn, q=q, limit=limit)
+    finally:
+        conn.close()
+
 
 @router.get("/cliente/{id_cliente}/disponibles", response_model=List[CreditoResponse])
 def creditos_disponibles_cliente(id_cliente: int):

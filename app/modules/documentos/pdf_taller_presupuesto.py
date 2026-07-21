@@ -20,6 +20,7 @@ from .pdf import (
     _resolver_imagen_local,
     _text,
 )
+from .pdf_metadata import set_pdf_metadata
 from .pdf_layout import (
     collapse_repeated_words,
     draw_wrapped_text,
@@ -363,6 +364,7 @@ def generar_presupuesto_taller_pdf(data: dict, incluir_marca_agua: bool = True) 
 
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
+    set_pdf_metadata(c, f"Presupuesto taller - OT #{orden.get('id')}")
     width, height = A4
     margin_x = 16 * mm
 

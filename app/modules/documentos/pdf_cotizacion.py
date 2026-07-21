@@ -13,6 +13,7 @@ from .pdf import (
     _money,
     _text,
 )
+from .pdf_metadata import set_pdf_metadata
 from .pdf_layout import (
     collapse_repeated_words,
     draw_wrapped_text,
@@ -206,6 +207,7 @@ def generar_cotizacion_pdf(data: dict) -> bytes:
 
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
+    set_pdf_metadata(c, f"Cotizacion {cotizacion.get('numero') or cotizacion.get('id')}")
     width, height = A4
     margin_x = 16 * mm
 

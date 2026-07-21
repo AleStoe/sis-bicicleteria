@@ -23,6 +23,35 @@ function withAccessToken(url) {
   return `${url}${separator}access_token=${encodeURIComponent(token)}`;
 }
 
+async function descargarPdfCatalogo(path, params = {}, filename) {
+  const token = getStoredAuthToken();
+  const response = await fetch(`${API_BASE_URL}${path}${buildQuery(params)}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+
+  if (!response.ok) {
+    let message = "No se pudo descargar el cat\u00e1logo";
+    try {
+      const data = await response.json();
+      message = data?.detail || data?.message || message;
+    } catch {
+      const text = await response.text();
+      if (text) message = text;
+    }
+    throw new Error(message);
+  }
+
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(url);
+}
+
 export function listarCategorias(params = {}) {
   return apiRequest(`/catalogo/categorias${buildQuery(params)}`);
 }
@@ -153,8 +182,24 @@ export function getCatalogoMayoristaPdfUrl(params = {}) {
   return withAccessToken(`${API_BASE_URL}/catalogo/pdf/mayorista${buildQuery(params)}`);
 }
 
+export function getCatalogoMinoristaPdfUrl(params = {}) {
+  return withAccessToken(`${API_BASE_URL}/catalogo/pdf/minorista${buildQuery(params)}`);
+}
+
 export function getCatalogoBicicletasPdfUrl(params = {}) {
   return withAccessToken(`${API_BASE_URL}/catalogo/pdf/bicicletas${buildQuery(params)}`);
+}
+
+export function descargarCatalogoMayoristaPdf(params = {}, filename) {
+  return descargarPdfCatalogo("/catalogo/pdf/mayorista", params, filename);
+}
+
+export function descargarCatalogoMinoristaPdf(params = {}, filename) {
+  return descargarPdfCatalogo("/catalogo/pdf/minorista", params, filename);
+}
+
+export function descargarCatalogoBicicletasPdf(params = {}, filename) {
+  return descargarPdfCatalogo("/catalogo/pdf/bicicletas", params, filename);
 }
 
 export function crearImagenCatalogo(data) {

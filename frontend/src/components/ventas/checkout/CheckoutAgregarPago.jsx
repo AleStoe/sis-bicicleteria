@@ -206,7 +206,7 @@ export default function CheckoutAgregarPago({
 
           {creditoAplicadoPreview > 0 && (
             <div style={styles.previewRow}>
-              <span>Crédito aplicado</span>
+              <span>Saldo a favor aplicado</span>
               <strong style={styles.successText}>- {formatMoney(creditoAplicadoPreview)}</strong>
             </div>
           )}
@@ -240,7 +240,7 @@ export default function CheckoutAgregarPago({
           {simulando
             ? "Calculando..."
             : creditoCubreSaldo
-              ? "Aplicar crédito y completar saldo"
+              ? "Aplicar saldo a favor y completar saldo"
               : "Completar saldo"}
         </button>
       </div>

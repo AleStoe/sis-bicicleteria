@@ -42,6 +42,7 @@ from .service import (
     obtener_ficha_tecnica_producto,
     reemplazar_ficha_tecnica_producto_service,
     generar_catalogo_mayorista_pdf_service,
+    generar_catalogo_minorista_pdf_service,
     generar_catalogo_bicicletas_pdf_service,
    
 )
@@ -204,14 +205,49 @@ def catalogo_mayorista_pdf(
     )
 
 
+@router.get("/pdf/minorista")
+def catalogo_minorista_pdf(
+    id_sucursal: int,
+    categoria_id: int | None = None,
+    marca_id: int | None = None,
+    query: str | None = None,
+):
+    pdf_bytes = generar_catalogo_minorista_pdf_service(
+        id_sucursal=id_sucursal,
+        categoria_id=categoria_id,
+        marca_id=marca_id,
+        query=query,
+    )
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="{catalog_name("Minorista-Repuestos")}"'
+            )
+        },
+    )
+
+
 @router.get("/pdf/bicicletas")
 def catalogo_bicicletas_pdf(
     id_sucursal: int,
     marca_id: int | None = None,
+    query: str | None = None,
+    rodado: str | None = None,
+    talle: str | None = None,
+    color: str | None = None,
+    solo_disponibles: bool = True,
 ):
     pdf_bytes = generar_catalogo_bicicletas_pdf_service(
         id_sucursal=id_sucursal,
         marca_id=marca_id,
+        query=query,
+        rodado=rodado,
+        talle=talle,
+        color=color,
+        solo_disponibles=solo_disponibles,
     )
 
     return Response(

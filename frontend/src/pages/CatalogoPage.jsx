@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  getCatalogoBicicletasPdfUrl,
-  getCatalogoMayoristaPdfUrl,
+  descargarCatalogoBicicletasPdf as descargarCatalogoBicicletasPdfService,
+  descargarCatalogoMayoristaPdf as descargarCatalogoMayoristaPdfService,
+  descargarCatalogoMinoristaPdf as descargarCatalogoMinoristaPdfService,
   listarCatalogoPOS,
   listarCategorias,
   listarMarcas,
@@ -116,6 +117,9 @@ export default function CatalogoPage() {
   const [query, setQuery] = useState("");
   const [categoriaId, setCategoriaId] = useState("");
   const [marcaId, setMarcaId] = useState("");
+  const [pdfRodado, setPdfRodado] = useState("");
+  const [pdfTalle, setPdfTalle] = useState("");
+  const [pdfColor, setPdfColor] = useState("");
   const [offset, setOffset] = useState(0);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -247,33 +251,63 @@ export default function CatalogoPage() {
     setOffset(offset + LIMIT);
   }
 
-  function descargarCatalogoMayoristaPdf() {
-    const url = getCatalogoMayoristaPdfUrl({
-      id_sucursal: ID_SUCURSAL_DEFAULT,
-      categoria_id: categoriaId || undefined,
-      marca_id: marcaId || undefined,
-    });
-
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `Catalogo-Mayorista-${fechaDescargaActual()}.pdf`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  async function descargarCatalogoMayoristaPdf() {
+    try {
+      setError("");
+      await descargarCatalogoMayoristaPdfService(
+        {
+          id_sucursal: ID_SUCURSAL_DEFAULT,
+          categoria_id: categoriaId || undefined,
+          marca_id: marcaId || undefined,
+        },
+        `Catalogo-Mayorista-${fechaDescargaActual()}.pdf`
+      );
+    } catch (err) {
+      setError(err.message || "No se pudo descargar el cat\u00e1logo mayorista");
+    }
   }
 
-  function descargarCatalogoBicicletasPdf() {
-    const url = getCatalogoBicicletasPdfUrl({
-      id_sucursal: ID_SUCURSAL_DEFAULT,
-      marca_id: marcaId || undefined,
-    });
+  async function descargarCatalogoMinoristaPdf() {
+    try {
+      setError("");
+      await descargarCatalogoMinoristaPdfService(
+        {
+          id_sucursal: ID_SUCURSAL_DEFAULT,
+          categoria_id: categoriaId || undefined,
+          marca_id: marcaId || undefined,
+          query: query.trim() || undefined,
+        },
+        `Catalogo-Minorista-Repuestos-${fechaDescargaActual()}.pdf`
+      );
+    } catch (err) {
+      setError(err.message || "No se pudo descargar el cat\u00e1logo minorista");
+    }
+  }
 
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `Catalogo-Bicicletas-${fechaDescargaActual()}.pdf`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  async function descargarCatalogoBicicletasPdf() {
+    const filtroNombre = [
+      pdfRodado.trim() ? `Rodado-${pdfRodado.trim()}` : "",
+      pdfTalle.trim() ? `Talle-${pdfTalle.trim()}` : "",
+      pdfColor.trim() ? `Color-${pdfColor.trim()}` : "",
+    ].filter(Boolean).join("-");
+
+    try {
+      setError("");
+      await descargarCatalogoBicicletasPdfService(
+        {
+          id_sucursal: ID_SUCURSAL_DEFAULT,
+          marca_id: marcaId || undefined,
+          query: query.trim() || undefined,
+          rodado: pdfRodado.trim() || undefined,
+          talle: pdfTalle.trim() || undefined,
+          color: pdfColor.trim() || undefined,
+          solo_disponibles: true,
+        },
+        `Catalogo-Bicicletas${filtroNombre ? `-${filtroNombre}` : ""}-${fechaDescargaActual()}.pdf`
+      );
+    } catch (err) {
+      setError(err.message || "No se pudo descargar el cat\u00e1logo de bicicletas");
+    }
   }
 
   return (
@@ -358,8 +392,38 @@ export default function CatalogoPage() {
           ))}
         </select>
 
+        <Button type="button" variant="outline" onClick={descargarCatalogoMinoristaPdf}><FileDown size={16} /> Catálogo minorista</Button>
         <Button type="button" variant="outline" onClick={descargarCatalogoMayoristaPdf}><FileDown size={16} /> Catálogo mayorista</Button>
         <Button type="button" variant="outline" onClick={descargarCatalogoBicicletasPdf}><FileDown size={16} /> Catálogo bicicletas</Button>
+      </section>
+
+      <section style={{ ...styles.pdfFiltersCard, ...(isMobile ? styles.pdfFiltersCardMobile : {}) }}>
+        <div style={styles.pdfFiltersIntro}>
+          <p style={styles.pdfFiltersEyebrow}>PDF de bicicletas</p>
+          <strong>Descargar catálogo filtrado</strong>
+          <span>Usa la búsqueda, marca y estos datos para mandar justo lo que te pidieron.</span>
+        </div>
+        <input
+          value={pdfRodado}
+          onChange={(e) => setPdfRodado(e.target.value)}
+          placeholder="Rodado. Ej: 20 o 29"
+          style={styles.select}
+        />
+        <input
+          value={pdfTalle}
+          onChange={(e) => setPdfTalle(e.target.value)}
+          placeholder="Talle. Ej: S o M"
+          style={styles.select}
+        />
+        <input
+          value={pdfColor}
+          onChange={(e) => setPdfColor(e.target.value)}
+          placeholder="Color. Ej: rojo"
+          style={styles.select}
+        />
+        <Button type="button" onClick={descargarCatalogoBicicletasPdf}>
+          <FileDown size={16} /> Descargar PDF filtrado
+        </Button>
       </section>
 
       <main style={{ ...styles.layout, ...(isMobile ? styles.layoutMobile : {}) }}>
@@ -749,6 +813,31 @@ const styles = {
     borderRadius: radius.lg,
     padding: spacing.md,
     boxShadow: shadows.sm,
+  },
+  pdfFiltersCard: {
+    display: "grid",
+    gridTemplateColumns: "minmax(220px, 1fr) 150px 150px 180px auto",
+    gap: 12,
+    alignItems: "center",
+    background: "#fff7ed",
+    border: "1px solid #fed7aa",
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    boxShadow: shadows.sm,
+  },
+  pdfFiltersIntro: {
+    minWidth: 0,
+    display: "grid",
+    gap: 3,
+    color: colors.text,
+  },
+  pdfFiltersEyebrow: {
+    margin: 0,
+    color: "#c2410c",
+    fontSize: 11,
+    fontWeight: 950,
+    textTransform: "uppercase",
+    letterSpacing: 0,
   },
   searchBox: {
     minHeight: controls.minHeight,
@@ -1347,6 +1436,11 @@ const styles = {
     gap: 8,
   },
   filtersCardMobile: {
+    gridTemplateColumns: "1fr",
+    padding: 10,
+    borderRadius: 16,
+  },
+  pdfFiltersCardMobile: {
     gridTemplateColumns: "1fr",
     padding: 10,
     borderRadius: 16,

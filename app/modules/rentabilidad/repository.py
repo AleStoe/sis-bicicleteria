@@ -470,9 +470,11 @@ def get_bonificaciones_garantias(conn, fecha_desde, fecha_hasta, id_sucursal=Non
 def get_detalle_rentabilidad_diaria(
     conn,
     fecha,
+    fecha_hasta=None,
     id_sucursal=None,
 ):
-    params = [fecha, list(RENTABILIDAD_ESTADOS_COMERCIALES)]
+    fecha_hasta = fecha_hasta or fecha
+    params = [fecha, fecha_hasta, list(RENTABILIDAD_ESTADOS_COMERCIALES)]
     sucursal_sql = ""
     if id_sucursal is not None:
         sucursal_sql = "AND v.id_sucursal = %s"
@@ -535,11 +537,14 @@ def get_detalle_rentabilidad_diaria(
                     WHEN v.id_reserva_origen IS NOT NULL THEN 'reserva'
                     ELSE 'venta'
                 END AS origen,
+                v.tipo_precio,
                 vi.tipo_item,
                 vi.id_variante,
                 vi.id_servicio_taller,
                 COALESCE(prod.nombre, st.nombre, vi.descripcion_snapshot) AS producto,
                 var.nombre_variante AS variante,
+                prod.rubro AS producto_rubro,
+                cat.nombre AS categoria_nombre,
                 vi.descripcion_snapshot,
                 vi.cantidad,
                 COALESCE(d.cantidad_devuelta, 0) AS cantidad_devuelta,
@@ -982,9 +987,11 @@ def get_detalle_rentabilidad_diaria(
             LEFT JOIN devoluciones d ON d.id_venta_item = vi.id
             LEFT JOIN variantes var ON var.id = vi.id_variante
             LEFT JOIN productos prod ON prod.id = var.id_producto
+            LEFT JOIN categorias cat ON cat.id = prod.id_categoria
             LEFT JOIN servicios_taller st ON st.id = vi.id_servicio_taller
             LEFT JOIN pagos_venta pv ON pv.id_venta = v.id
-            WHERE v.fecha::date = %s
+            WHERE v.fecha::date >= %s
+              AND v.fecha::date <= %s
               AND v.estado = ANY(%s)
               {sucursal_sql}
             ORDER BY vi.tipo_item, producto, variante, v.fecha, v.id

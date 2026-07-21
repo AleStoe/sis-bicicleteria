@@ -224,7 +224,9 @@ export default function VentasListPage() {
               <>
                 <td style={tdStyle}>#{venta.id}</td>
                 <td style={tdStyle}>{formatDateTime(venta.fecha)}</td>
-                <td style={tdStyle}>{venta.cliente_nombre || "-"}</td>
+                <td style={tdStyle}>
+                  <ClienteVentaLink venta={venta} />
+                </td>
                 {mostrarSucursal && <td style={tdStyle}>{venta.sucursal_nombre || "-"}</td>}
                 <td style={styles.itemsCell}>
                   <strong>{formatCantidadItems(venta.cantidad_items)}</strong>
@@ -287,9 +289,7 @@ function VentasMobileList({ ventas, mostrarSucursal }) {
             <div style={styles.ventaHeader}>
               <div>
                 <span style={styles.eyebrow}>Venta #{venta.id}</span>
-                <strong style={styles.cliente}>
-                  {venta.cliente_nombre || "Sin cliente"}
-                </strong>
+                <ClienteVentaLink venta={venta} mobile />
                 <div style={styles.mutedSmall}>
                   {formatDateTime(venta.fecha)}
                   {venta.tiene_serializadas ? <span title="Venta con bicicleta serializada"> · 🚲</span> : null}
@@ -336,6 +336,24 @@ function formatCantidadItems(value) {
   const numero = Number(value || 0);
   if (!Number.isFinite(numero)) return 0;
   return Math.trunc(numero);
+}
+
+function ClienteVentaLink({ venta, mobile = false }) {
+  const label = venta.cliente_nombre || (venta.id_cliente ? `Cliente #${venta.id_cliente}` : "Sin cliente");
+
+  if (!venta.id_cliente) {
+    return <strong style={mobile ? styles.cliente : undefined}>{label}</strong>;
+  }
+
+  return (
+    <Link
+      to={`/clientes/${venta.id_cliente}`}
+      style={mobile ? styles.clienteLinkMobile : styles.clienteLink}
+      title="Abrir perfil del cliente"
+    >
+      {label}
+    </Link>
+  );
 }
 
 function OrigenVentaBadge({ origen }) {
@@ -426,6 +444,20 @@ const styles = {
     fontWeight: 700,
     textDecoration: "none",
     color: "#2563eb",
+  },
+  clienteLink: {
+    color: "#1d4ed8",
+    fontWeight: 900,
+    textDecoration: "none",
+  },
+  clienteLinkMobile: {
+    display: "block",
+    marginTop: 3,
+    color: "#1d4ed8",
+    fontSize: 17,
+    fontWeight: 950,
+    lineHeight: 1.2,
+    textDecoration: "none",
   },
   iconAction: {
     width: 34,

@@ -84,6 +84,7 @@ const groups = [
     title: "Stock",
     links: [
       { to: "/stock", label: "Stock", icon: Boxes, roles: OPERACION_TALLER },
+      { to: "/stock/pedido-compra", label: "Pedido sugerido", icon: ShoppingCart, roles: ADMIN_ENCARGADO },
       { to: "/catalogo", label: "Catalogo", icon: Tags, roles: OPERACION_TALLER },
       { to: "/catalogo/categorias", label: "Categorias", icon: Tags, roles: ADMIN_ENCARGADO },
       { to: "/mercaderia/alta", label: "Ingresar Mercaderia", icon: PackagePlus, roles: ADMIN_ENCARGADO },

@@ -1,4 +1,5 @@
 from decimal import Decimal
+from datetime import datetime
 
 from pydantic import BaseModel, Field
 
@@ -27,6 +28,19 @@ class CreditoResponse(BaseModel):
     saldo_actual: Decimal
     estado: str
     observacion: str | None = None
+
+
+class CreditoClienteResumenResponse(BaseModel):
+    id_cliente: int
+    cliente_nombre: str
+    cliente_telefono: str | None = None
+    cliente_dni: str | None = None
+    cliente_cuit: str | None = None
+    creditos_disponibles: int
+    saldo_total: Decimal
+    ultima_fecha: datetime | None = None
+    ultimo_origen_tipo: str | None = None
+    ultimo_origen_id: int | None = None
 
 
 class CreditoDetalleResponse(BaseModel):

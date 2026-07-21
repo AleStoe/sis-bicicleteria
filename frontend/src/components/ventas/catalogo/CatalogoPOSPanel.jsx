@@ -12,6 +12,9 @@ export default function CatalogoPOSPanel({
   onRecargarCatalogo,
   onCategoriaChange,
   onAgregarItem,
+  onSeleccionarItem,
+  productoSeleccionadoId,
+  variantesEnCarrito,
   isMobile = false,
 }) {
   const categoriasVisibles = categorias.filter((categoria) => {
@@ -71,6 +74,9 @@ export default function CatalogoPOSPanel({
               producto={producto}
               tipoPrecio={tipoPrecio}
               onAgregarItem={onAgregarItem}
+              onSeleccionarItem={onSeleccionarItem}
+              seleccionado={String(productoSeleccionadoId || "") === String(producto.id_variante)}
+              agregado={variantesEnCarrito?.has(String(producto.id_variante))}
             />
           ))
         )}

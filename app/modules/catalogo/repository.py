@@ -766,10 +766,144 @@ def get_catalogo_mayorista_pdf_items(
         return cur.fetchall()
 
 
+def get_catalogo_minorista_pdf_items(
+    conn,
+    id_sucursal: int,
+    categoria_id: int | None = None,
+    marca_id: int | None = None,
+    query: str | None = None,
+):
+    filtros = [
+        "v.activo = TRUE",
+        "p.activo = TRUE",
+        "c.activo = TRUE",
+        "p.tipo_item = 'producto'",
+        "COALESCE(v.precio_minorista, 0) > 0",
+        """
+        NOT (
+            c.nombre ILIKE '%%bicicleta%%'
+            OR p.tipo_bicicleta IS NOT NULL
+            OR p.rodado IS NOT NULL
+        )
+        """,
+        """
+        (
+            (
+                p.stockeable = TRUE
+                AND (
+                    COALESCE(ss.stock_fisico, 0)
+                    - COALESCE(ss.stock_reservado, 0)
+                    - COALESCE(ss.stock_vendido_pendiente_entrega, 0)
+                ) > 0
+            )
+            OR p.stockeable = FALSE
+        )
+        """,
+    ]
+    params = {"id_sucursal": id_sucursal}
+
+    if categoria_id is not None:
+        filtros.append("c.id = %(categoria_id)s")
+        params["categoria_id"] = categoria_id
+
+    if marca_id is not None:
+        filtros.append("m.id = %(marca_id)s")
+        params["marca_id"] = marca_id
+
+    if query:
+        filtros.append(
+            """
+            (
+                p.nombre ILIKE %(query)s
+                OR v.nombre_variante ILIKE %(query)s
+                OR v.sku ILIKE %(query)s
+                OR v.codigo_barras ILIKE %(query)s
+                OR v.codigo_proveedor ILIKE %(query)s
+                OR m.nombre ILIKE %(query)s
+                OR c.nombre ILIKE %(query)s
+                OR pr.nombre ILIKE %(query)s
+            )
+            """
+        )
+        params["query"] = f"%{query.strip()}%"
+
+    where_sql = " AND ".join(filtros)
+
+    with conn.cursor() as cur:
+        cur.execute(f"""
+            SELECT
+                v.id AS id_variante,
+                v.id_producto,
+                p.nombre AS producto_nombre,
+                p.rubro,
+                v.nombre_variante,
+                c.id AS categoria_id,
+                c.nombre AS categoria_nombre,
+                m.id AS id_marca,
+                m.nombre AS marca_nombre,
+                v.precio_minorista,
+                v.sku,
+                v.codigo_barras,
+                v.codigo_proveedor,
+                CASE
+                    WHEN UPPER(TRIM(COALESCE(v.nombre_variante, ''))) IN ('UNICA', 'ÃšNICA')
+                        THEN COALESCE(img_prod.url, img_var.url)
+                    ELSE COALESCE(img_var.url, img_prod.url)
+                END AS imagen_principal,
+                GREATEST(
+                    COALESCE(ss.stock_fisico, 0)
+                    - COALESCE(ss.stock_reservado, 0)
+                    - COALESCE(ss.stock_vendido_pendiente_entrega, 0),
+                    0
+                ) AS stock_disponible
+            FROM variantes v
+            INNER JOIN productos p
+                ON p.id = v.id_producto
+            INNER JOIN categorias c
+                ON c.id = p.id_categoria
+            LEFT JOIN marcas m
+                ON m.id = p.id_marca
+            LEFT JOIN proveedores pr
+                ON pr.id = v.proveedor_preferido_id
+            LEFT JOIN stock_sucursal ss
+                ON ss.id_variante = v.id
+               AND ss.id_sucursal = %(id_sucursal)s
+            LEFT JOIN LATERAL (
+                SELECT ci.url
+                FROM catalogo_imagenes ci
+                WHERE ci.id_variante = v.id
+                  AND ci.activo = TRUE
+                ORDER BY ci.es_principal DESC, ci.orden ASC, ci.id ASC
+                LIMIT 1
+            ) img_var ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT ci.url
+                FROM catalogo_imagenes ci
+                WHERE ci.id_producto = p.id
+                  AND ci.activo = TRUE
+                ORDER BY ci.es_principal DESC, ci.orden ASC, ci.id ASC
+                LIMIT 1
+            ) img_prod ON TRUE
+            WHERE {where_sql}
+            ORDER BY
+                c.nombre,
+                m.nombre NULLS LAST,
+                p.nombre,
+                v.nombre_variante
+        """, params)
+
+        return cur.fetchall()
+
+
 def get_catalogo_bicicletas_pdf_items(
     conn,
     id_sucursal: int,
     marca_id: int | None = None,
+    query: str | None = None,
+    rodado: str | None = None,
+    talle: str | None = None,
+    color: str | None = None,
+    solo_disponibles: bool = True,
 ):
     filtros = [
         "v.activo = TRUE",
@@ -784,38 +918,73 @@ def get_catalogo_bicicletas_pdf_items(
             OR p.rodado IS NOT NULL
         )
         """,
-        """
-        (
+    ]
+    params = {"id_sucursal": id_sucursal}
+
+    if solo_disponibles:
+        filtros.append(
+            """
             (
-                p.stockeable = TRUE
-                AND p.serializable = TRUE
-                AND (
-                    COALESCE(serializadas.serializadas_disponibles, 0) > 0
-                    OR (
+                (
+                    p.stockeable = TRUE
+                    AND p.serializable = TRUE
+                    AND (
+                        COALESCE(serializadas.serializadas_disponibles, 0) > 0
+                        OR (
+                            COALESCE(ss.stock_fisico, 0)
+                            - COALESCE(ss.stock_reservado, 0)
+                            - COALESCE(ss.stock_vendido_pendiente_entrega, 0)
+                        ) > 0
+                    )
+                )
+                OR (
+                    p.stockeable = TRUE
+                    AND p.serializable = FALSE
+                    AND (
                         COALESCE(ss.stock_fisico, 0)
                         - COALESCE(ss.stock_reservado, 0)
                         - COALESCE(ss.stock_vendido_pendiente_entrega, 0)
                     ) > 0
                 )
+                OR p.stockeable = FALSE
             )
-            OR (
-                p.stockeable = TRUE
-                AND p.serializable = FALSE
-                AND (
-                    COALESCE(ss.stock_fisico, 0)
-                    - COALESCE(ss.stock_reservado, 0)
-                    - COALESCE(ss.stock_vendido_pendiente_entrega, 0)
-                ) > 0
-            )
-            OR p.stockeable = FALSE
+            """
         )
-        """,
-    ]
-    params = {"id_sucursal": id_sucursal}
 
     if marca_id is not None:
         filtros.append("m.id = %(marca_id)s")
         params["marca_id"] = marca_id
+
+    if query:
+        filtros.append(
+            """
+            (
+                p.nombre ILIKE %(query)s
+                OR v.nombre_variante ILIKE %(query)s
+                OR v.sku ILIKE %(query)s
+                OR v.codigo_proveedor ILIKE %(query)s
+                OR m.nombre ILIKE %(query)s
+                OR c.nombre ILIKE %(query)s
+                OR p.rodado ILIKE %(query)s
+                OR v.talle ILIKE %(query)s
+                OR v.color ILIKE %(query)s
+                OR p.tipo_bicicleta ILIKE %(query)s
+            )
+            """
+        )
+        params["query"] = f"%{query.strip()}%"
+
+    if rodado:
+        filtros.append("p.rodado ILIKE %(rodado)s")
+        params["rodado"] = f"%{rodado.strip()}%"
+
+    if talle:
+        filtros.append("v.talle ILIKE %(talle)s")
+        params["talle"] = f"%{talle.strip()}%"
+
+    if color:
+        filtros.append("v.color ILIKE %(color)s")
+        params["color"] = f"%{color.strip()}%"
 
     where_sql = " AND ".join(filtros)
 

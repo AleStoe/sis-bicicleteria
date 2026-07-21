@@ -92,7 +92,7 @@ export default function VentaAsidePanel({
           checked={usarCredito}
           onChange={(e) => onUsarCreditoChange(e.target.checked)}
         />
-        Aplicar crédito disponible si existe
+        Usar saldo a favor si existe
       </label>
 
       <CheckoutVentaPanel

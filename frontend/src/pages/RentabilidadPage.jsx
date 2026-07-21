@@ -270,6 +270,73 @@ export default function RentabilidadPage() {
         <Metric title="Gastos" value={money(rentabilidad?.gastos_operativos)} help={metricHelp.gastos} />
       </section>
 
+      <section style={{ ...card, padding: isMobile ? 12 : 18, display: "grid", gap: 14, minWidth: 0 }}>
+        <div>
+          <p style={{ margin: 0, color: "#f97316", fontSize: 12, fontWeight: 950, textTransform: "uppercase" }}>
+            Origen de ingresos
+          </p>
+          <h2 style={{ margin: "4px 0 0", color: "#101828" }}>Resumen mensual por rubro</h2>
+          <p style={{ margin: "5px 0 0", color: "#667085", lineHeight: 1.45 }}>
+            Lectura rápida para ver si el mes vino de taller, bicicletas, accesorios, repuestos o mayorista.
+          </p>
+        </div>
+
+        <div style={{ overflowX: "auto", border: "1px solid #eaecf0", borderRadius: 14 }}>
+          <table style={{ width: "100%", minWidth: 980, borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ color: "#475467", textAlign: "left", borderBottom: "1px solid #eaecf0", background: "#f8fafc" }}>
+                <th style={tableTh}>Rubro</th>
+                <th style={{ ...tableTh, textAlign: "right" }}>Ventas</th>
+                <th style={{ ...tableTh, textAlign: "right" }}>Vendido</th>
+                <th style={{ ...tableTh, textAlign: "right" }}>Costo</th>
+                <th style={{ ...tableTh, textAlign: "right" }}>Margen esperado</th>
+                <th style={{ ...tableTh, textAlign: "right" }}>Cobrado</th>
+                <th style={{ ...tableTh, textAlign: "right" }}>Capital</th>
+                <th style={{ ...tableTh, textAlign: "right" }}>Utilidad</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan="8" style={emptyTd}>Calculando rubros...</td>
+                </tr>
+              ) : (rentabilidad?.resumen_por_rubro || []).length === 0 ? (
+                <tr>
+                  <td colSpan="8" style={emptyTd}>Sin ventas para agrupar en este mes.</td>
+                </tr>
+              ) : (
+                (rentabilidad?.resumen_por_rubro || []).map((grupo) => (
+                  <tr key={grupo.clave} style={{ borderBottom: "1px solid #f2f4f7" }}>
+                    <td style={{ ...tableTd, minWidth: 220 }}>
+                      <strong style={{ color: "#101828" }}>{grupo.nombre}</strong>
+                      <div style={{ color: "#667085", marginTop: 2, lineHeight: 1.35 }}>{grupo.detalle}</div>
+                    </td>
+                    <td style={{ ...tableTd, textAlign: "right", whiteSpace: "nowrap" }}>
+                      <strong>{grupo.cantidad_ventas}</strong>
+                      <div style={{ color: "#667085", marginTop: 2 }}>{grupo.cantidad_items} ítem(s)</div>
+                    </td>
+                    <td style={{ ...tableTd, textAlign: "right", fontWeight: 900 }}>{money(grupo.venta_comercial)}</td>
+                    <td style={{ ...tableTd, textAlign: "right" }}>{money(grupo.cmv_comercial)}</td>
+                    <td style={{ ...tableTd, textAlign: "right", fontWeight: 900 }}>{money(grupo.margen_esperado)}</td>
+                    <td style={{ ...tableTd, textAlign: "right", color: "#2563eb", fontWeight: 900 }}>
+                      {money(grupo.cobrado_comercial_reconocido)}
+                    </td>
+                    <td style={{ ...tableTd, textAlign: "right" }}>
+                      <MiniMoneyLine label="Recuperado" value={grupo.capital_recuperado} />
+                      <MiniMoneyLine label="Inmov." value={grupo.capital_inmovilizado} color="#b42318" />
+                    </td>
+                    <td style={{ ...tableTd, textAlign: "right" }}>
+                      <MiniMoneyLine label="Liberada" value={grupo.utilidad_liberada} strong color="#067647" />
+                      <MiniMoneyLine label="Pendiente" value={grupo.utilidad_pendiente} color="#b54708" />
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <section style={{ ...card, padding: isMobile ? 12 : 16, display: "grid", gap: 12, minWidth: 0 }}>
         <div>
           <p style={{ margin: 0, color: "#667085", fontSize: 12, fontWeight: 950, textTransform: "uppercase" }}>
@@ -631,6 +698,47 @@ function Metric({ title, value, strong = false, help = "" }) {
         )}
       </div>
       <div style={{ color: strong ? "#f97316" : "#101828", fontSize: 22, fontWeight: 950, marginTop: 6 }}>{value}</div>
+    </div>
+  );
+}
+
+const tableTh = {
+  padding: "10px 8px",
+  fontSize: 11,
+  fontWeight: 900,
+  textTransform: "uppercase",
+  letterSpacing: 0,
+  whiteSpace: "nowrap",
+  verticalAlign: "bottom",
+};
+
+const tableTd = {
+  padding: "10px 8px",
+  verticalAlign: "top",
+};
+
+const emptyTd = {
+  padding: 18,
+  color: "#667085",
+  textAlign: "center",
+};
+
+function MiniMoneyLine({ label, value, strong = false, color = "#101828" }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        gap: 8,
+        alignItems: "baseline",
+        whiteSpace: "nowrap",
+        lineHeight: 1.45,
+        fontWeight: strong ? 900 : 650,
+        color,
+      }}
+    >
+      <span style={{ color: "#667085", fontSize: 11, fontWeight: 800 }}>{label}</span>
+      <span>{money(value)}</span>
     </div>
   );
 }

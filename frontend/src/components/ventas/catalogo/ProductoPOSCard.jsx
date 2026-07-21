@@ -10,21 +10,42 @@ import {
   puedeAgregarItemCatalogo,
 } from "../../../helpers/ventasItemsHelper";
 
-export default function ProductoPOSCard({ producto, tipoPrecio, onAgregarItem }) {
+export default function ProductoPOSCard({
+  producto,
+  tipoPrecio,
+  onAgregarItem,
+  onSeleccionarItem,
+  seleccionado = false,
+  agregado = false,
+}) {
   const isMobile = useMediaQuery("(max-width: 680px)");
   const bloqueado = !puedeAgregarItemCatalogo(producto, tipoPrecio);
   const oferta = getOfertaItemCatalogo(producto, tipoPrecio);
 
+  function agregar() {
+    if (!bloqueado) onAgregarItem(producto);
+  }
+
+  function seleccionar() {
+    if (!bloqueado) onSeleccionarItem?.(producto);
+  }
+
   return (
     <div
-      onDoubleClick={() => {
-        if (!bloqueado) onAgregarItem(producto);
-      }}
+      onClick={seleccionar}
+      onMouseDown={(event) => event.preventDefault()}
       style={{
         ...(bloqueado ? productRowBlockedStyle : productRowStyle),
+        ...(!bloqueado && seleccionado ? productRowSelectedStyle : {}),
         ...(isMobile ? productRowMobileStyle : {}),
       }}
-      title={bloqueado ? getMotivoBloqueoItemCatalogo(producto, tipoPrecio) : "Doble click para agregar"}
+      title={
+        bloqueado
+          ? getMotivoBloqueoItemCatalogo(producto, tipoPrecio)
+          : seleccionado
+            ? "Click otra vez para agregar"
+            : "Click para seleccionar"
+      }
     >
       <div style={{ ...imageBoxStyle, ...(isMobile ? imageBoxMobileStyle : {}) }}>
         {producto.imagen_principal ? (
@@ -34,7 +55,7 @@ export default function ProductoPOSCard({ producto, tipoPrecio, onAgregarItem })
             style={imageStyle}
           />
         ) : (
-          <span style={{ fontSize: "30px" }}>🚲</span>
+          <span style={placeholderStyle}>Bici</span>
         )}
       </div>
 
@@ -42,7 +63,9 @@ export default function ProductoPOSCard({ producto, tipoPrecio, onAgregarItem })
         <strong>{getDescripcionItemCatalogo(producto)}</strong>
         <div style={mutedStyle}>{getCodigoItemCatalogo(producto)}</div>
         <div style={tagRowStyle}>
-          {oferta && <span style={offerTagStyle}>OFERTA 🔥</span>}
+          {seleccionado && <span style={selectedTagStyle}>Seleccionado</span>}
+          {agregado && <span style={addedTagStyle}>En carrito</span>}
+          {oferta && <span style={offerTagStyle}>Oferta</span>}
           <span style={tagStyle}>{producto.categoria_nombre}</span>
           {producto.serializable ? (
             <span style={serializableTagStyle}>Bicicleta</span>
@@ -72,9 +95,13 @@ export default function ProductoPOSCard({ producto, tipoPrecio, onAgregarItem })
         </div>
         <button
           type="button"
-          onClick={() => onAgregarItem(producto)}
+          onClick={(event) => {
+            event.stopPropagation();
+            agregar();
+          }}
           disabled={bloqueado}
           style={bloqueado ? addBtnDisabledStyle : addBtnStyle}
+          title="Agregar al carrito"
         >
           +
         </button>
@@ -88,11 +115,21 @@ const productRowStyle = {
   gridTemplateColumns: "96px 1fr 130px",
   gap: "12px",
   alignItems: "center",
-  border: "1px solid #eaecf0",
+  border: "0",
+  outline: "0",
   borderRadius: "12px",
   padding: "10px",
   background: "white",
   minWidth: 0,
+  cursor: "pointer",
+  boxShadow: "inset 0 0 0 1px #e5e7eb",
+  transition: "background .18s ease, box-shadow .18s ease",
+};
+
+const productRowSelectedStyle = {
+  background: "#fff7ed",
+  outline: "0",
+  boxShadow: "inset 0 0 0 1px #fb923c, 0 0 0 2px rgba(249, 115, 22, .12)",
 };
 
 const productRowMobileStyle = {
@@ -106,6 +143,7 @@ const productRowBlockedStyle = {
   ...productRowStyle,
   opacity: 0.62,
   background: "#f9fafb",
+  cursor: "not-allowed",
 };
 
 const imageBoxStyle = {
@@ -136,6 +174,12 @@ const imageStyle = {
   display: "block",
 };
 
+const placeholderStyle = {
+  fontSize: 13,
+  fontWeight: 900,
+  color: "#667085",
+};
+
 const productInfoStyle = { minWidth: 0, display: "grid", gap: "4px" };
 const mutedStyle = { color: "#667085", fontSize: "13px" };
 const tagRowStyle = { display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "2px" };
@@ -143,6 +187,8 @@ const tagStyle = { background: "#eef4ff", color: "#175cd3", borderRadius: "999px
 const stockTagStyle = { background: "#ecfdf3", color: "#067647", borderRadius: "999px", padding: "3px 8px", fontSize: "12px" };
 const serializableTagStyle = { background: "#fff8e1", color: "#8a6d00", borderRadius: "999px", padding: "3px 8px", fontSize: "12px" };
 const dangerTagStyle = { background: "#fee4e2", color: "#b42318", borderRadius: "999px", padding: "3px 8px", fontSize: "12px" };
+const selectedTagStyle = { background: "#ffedd5", color: "#c2410c", borderRadius: "999px", padding: "3px 8px", fontSize: "12px", fontWeight: 900 };
+const addedTagStyle = { background: "#dbeafe", color: "#1d4ed8", borderRadius: "999px", padding: "3px 8px", fontSize: "12px", fontWeight: 900 };
 const offerTagStyle = { background: "#ffedd5", color: "#c2410c", borderRadius: "999px", padding: "3px 8px", fontSize: "12px", fontWeight: 900 };
 const priceValuesStyle = { display: "grid", gap: 2, justifyItems: "end" };
 const oldPriceStyle = { color: "#667085", fontSize: 12, textDecoration: "line-through" };

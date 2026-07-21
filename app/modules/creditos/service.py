@@ -188,6 +188,15 @@ def listar_creditos_cliente(conn, id_cliente: int):
     return repository.get_creditos_cliente(conn, id_cliente)
 
 
+def listar_clientes_con_credito_disponible(conn, q: str | None = None, limit: int = 100):
+    if limit < 1:
+        raise HTTPException(status_code=400, detail="El limite debe ser mayor a 0")
+    if limit > 200:
+        raise HTTPException(status_code=400, detail="El limite maximo permitido es 200")
+
+    return repository.get_clientes_con_credito_disponible(conn, q=q, limit=limit)
+
+
 def restaurar_credito_aplicado_a_venta(
     conn,
     *,

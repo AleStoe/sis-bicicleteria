@@ -50,6 +50,13 @@ export function aprobarItemOrdenTaller(ordenId, itemId, data) {
   });
 }
 
+export function actualizarCantidadItemBorradorOrdenTaller(ordenId, itemId, data) {
+  return apiRequest(`/ordenes_taller/${ordenId}/items/${itemId}/cantidad`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
 export function ejecutarItemOrdenTaller(ordenId, itemId, idUsuario) {
   return apiRequest(
     `/ordenes_taller/${ordenId}/items/${itemId}/ejecutar?id_usuario=${idUsuario}`,

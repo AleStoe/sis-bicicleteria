@@ -61,6 +61,23 @@ class RentabilidadDistribucionOutput(BaseModel):
     monto: Decimal
 
 
+class RentabilidadRubroOutput(BaseModel):
+    clave: str
+    nombre: str
+    detalle: str
+    cantidad_ventas: int = 0
+    cantidad_items: int = 0
+    cantidad_unidades: Decimal = Decimal("0")
+    venta_comercial: Decimal = Decimal("0")
+    cmv_comercial: Decimal = Decimal("0")
+    margen_esperado: Decimal = Decimal("0")
+    cobrado_comercial_reconocido: Decimal = Decimal("0")
+    capital_recuperado: Decimal = Decimal("0")
+    capital_inmovilizado: Decimal = Decimal("0")
+    utilidad_liberada: Decimal = Decimal("0")
+    utilidad_pendiente: Decimal = Decimal("0")
+
+
 class RentabilidadMensualOutput(BaseModel):
     periodo_mes: date
     fecha_desde: date
@@ -101,6 +118,7 @@ class RentabilidadMensualOutput(BaseModel):
 
     regla_distribucion: Optional[ReglaDistribucionOutput] = None
     distribuciones_sugeridas: List[RentabilidadDistribucionOutput] = []
+    resumen_por_rubro: List[RentabilidadRubroOutput] = []
 
 
 class BonificacionGarantiaItemOutput(BaseModel):
@@ -148,11 +166,14 @@ class RentabilidadDetalleDiarioOutput(BaseModel):
     cliente_nombre: str
     estado_venta: str
     origen: str
+    tipo_precio: str = "minorista"
     tipo_item: str
     id_variante: Optional[int] = None
     id_servicio_taller: Optional[int] = None
     producto: str
     variante: Optional[str] = None
+    producto_rubro: Optional[str] = None
+    categoria_nombre: Optional[str] = None
     descripcion_snapshot: str
     cantidad: Decimal
     cantidad_devuelta: Decimal

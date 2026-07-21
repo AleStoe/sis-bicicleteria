@@ -1,6 +1,7 @@
 from calendar import monthrange
 from datetime import date
 from decimal import Decimal
+import unicodedata
 
 from fastapi import HTTPException
 from psycopg import errors
@@ -38,6 +39,110 @@ def _periodo_bounds(periodo_mes: date):
     ultimo_dia = monthrange(periodo_mes.year, periodo_mes.month)[1]
     fin = date(periodo_mes.year, periodo_mes.month, ultimo_dia)
     return inicio, fin
+
+
+def _normalizar_clasificacion(valor) -> str:
+    texto = str(valor or "")
+    texto = unicodedata.normalize("NFD", texto)
+    texto = "".join(ch for ch in texto if unicodedata.category(ch) != "Mn")
+    return texto.lower()
+
+
+def _clasificar_rubro_detalle(detalle):
+    tipo_precio = _normalizar_clasificacion(detalle.get("tipo_precio"))
+    tipo_item = _normalizar_clasificacion(detalle.get("tipo_item"))
+    rubro = _normalizar_clasificacion(detalle.get("producto_rubro"))
+    categoria = _normalizar_clasificacion(detalle.get("categoria_nombre"))
+    nombre = _normalizar_clasificacion(
+        f"{detalle.get('producto') or ''} {detalle.get('descripcion_snapshot') or ''}"
+    )
+
+    if tipo_precio == "mayorista":
+        return {
+            "clave": "mayorista",
+            "nombre": "Mayorista",
+            "detalle": "Ventas con lista mayorista",
+        }
+    if tipo_item == "servicio_taller" or detalle.get("id_servicio_taller"):
+        return {
+            "clave": "taller",
+            "nombre": "Taller / servicios",
+            "detalle": "Mano de obra y servicios cargados",
+        }
+    if "bicicleta" in rubro or "bicicleta" in categoria or "bicicleta" in nombre:
+        return {
+            "clave": "bicicletas",
+            "nombre": "Bicicletas",
+            "detalle": "Bicicletas vendidas por mostrador, reserva o taller",
+        }
+    if "accesorio" in rubro or "accesorio" in categoria:
+        return {
+            "clave": "accesorios",
+            "nombre": "Accesorios",
+            "detalle": "Accesorios y complementos",
+        }
+    if "repuesto" in rubro or "repuesto" in categoria:
+        return {
+            "clave": "repuestos",
+            "nombre": "Repuestos",
+            "detalle": "Repuestos y componentes",
+        }
+    return {
+        "clave": "otros",
+        "nombre": "Otros",
+        "detalle": "Ítems sin rubro comercial específico",
+    }
+
+
+def _resumen_por_rubro(detalles):
+    grupos = {}
+    for detalle in detalles:
+        rubro = _clasificar_rubro_detalle(detalle)
+        clave = rubro["clave"]
+        if clave not in grupos:
+            grupos[clave] = {
+                **rubro,
+                "cantidad_ventas": 0,
+                "cantidad_items": 0,
+                "cantidad_unidades": Decimal("0"),
+                "venta_comercial": Decimal("0"),
+                "cmv_comercial": Decimal("0"),
+                "margen_esperado": Decimal("0"),
+                "cobrado_comercial_reconocido": Decimal("0"),
+                "capital_recuperado": Decimal("0"),
+                "capital_inmovilizado": Decimal("0"),
+                "utilidad_liberada": Decimal("0"),
+                "utilidad_pendiente": Decimal("0"),
+                "_ventas": set(),
+            }
+
+        grupo = grupos[clave]
+        grupo["cantidad_items"] += 1
+        grupo["_ventas"].add(detalle["id_venta"])
+        grupo["cantidad_unidades"] += Decimal(str(detalle["cantidad_neta"] or 0))
+        grupo["venta_comercial"] += Decimal(str(detalle["ingreso_comercial"] or 0))
+        grupo["cmv_comercial"] += Decimal(str(detalle["costo_total"] or 0))
+        grupo["margen_esperado"] += Decimal(str(detalle["margen_bruto"] or 0))
+        grupo["cobrado_comercial_reconocido"] += Decimal(
+            str(detalle["cobrado_comercial_reconocido"] or 0)
+        )
+        grupo["capital_recuperado"] += Decimal(str(detalle["capital_recuperado"] or 0))
+        grupo["capital_inmovilizado"] += Decimal(str(detalle["capital_inmovilizado"] or 0))
+        grupo["utilidad_liberada"] += Decimal(str(detalle["utilidad_liberada"] or 0))
+        grupo["utilidad_pendiente"] += Decimal(str(detalle["utilidad_pendiente"] or 0))
+
+    orden = ["taller", "bicicletas", "accesorios", "repuestos", "mayorista", "otros"]
+    salida = []
+    for grupo in grupos.values():
+        grupo["cantidad_ventas"] = len(grupo.pop("_ventas"))
+        salida.append(grupo)
+    salida.sort(
+        key=lambda item: (
+            orden.index(item["clave"]) if item["clave"] in orden else 99,
+            item["nombre"],
+        )
+    )
+    return salida
 
 
 def _armar_regla(regla, items):
@@ -127,6 +232,12 @@ def calcular_rentabilidad_mensual(periodo_mes: date, id_sucursal: int | None = N
     try:
         ventas = get_ventas_rentabilidad(conn, fecha_desde, fecha_hasta, id_sucursal=id_sucursal)
         gastos = get_gastos_periodo(conn, fecha_desde, fecha_hasta, id_sucursal=id_sucursal)
+        detalles_periodo = get_detalle_rentabilidad_diaria(
+            conn,
+            fecha_desde,
+            fecha_hasta=fecha_hasta,
+            id_sucursal=id_sucursal,
+        )
 
         cantidad_ventas = int(ventas["cantidad_ventas"] or 0)
         ventas_brutas = Decimal(str(ventas["ventas_brutas"] or 0))
@@ -208,6 +319,7 @@ def calcular_rentabilidad_mensual(periodo_mes: date, id_sucursal: int | None = N
             "resultado_distribuible": resultado_distribuible,
             "regla_distribucion": _armar_regla(regla, items) if regla else None,
             "distribuciones_sugeridas": distribuciones,
+            "resumen_por_rubro": _resumen_por_rubro(detalles_periodo),
         }
     finally:
         conn.close()

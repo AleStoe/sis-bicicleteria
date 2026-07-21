@@ -51,6 +51,48 @@ class StockResumenOut(BaseModel):
     capital_inmovilizado_total: Decimal | None = None
 
 
+class PedidoCompraSugeridoItemOut(BaseModel):
+    sucursal_id: int
+    sucursal_nombre: str
+    variante_id: int
+    producto_id: int | None = None
+    producto_nombre: str
+    nombre_variante: str
+    sku: str | None = None
+    codigo_barras: str | None = None
+    codigo_proveedor: str | None = None
+    id_proveedor: int | None = None
+    proveedor_nombre: str
+    serializable: bool | None = None
+    tipo_operativo: str | None = None
+    marca_nombre: str | None = None
+    categoria_nombre: str | None = None
+    stock_fisico: Decimal
+    stock_disponible: Decimal
+    stock_bajo_umbral: int
+    cantidad_sugerida: Decimal
+    unidades_vendidas_total: Decimal = Decimal("0")
+    ventas_distintas_total: int = 0
+    ultima_venta: datetime | None = None
+    primer_movimiento_stock: datetime | None = None
+    motivo: str
+
+
+class PedidoCompraSugeridoProveedorOut(BaseModel):
+    id_proveedor: int | None = None
+    proveedor_nombre: str
+    total_items: int
+    cantidad_total_sugerida: Decimal
+    items: list[PedidoCompraSugeridoItemOut]
+
+
+class PedidoCompraSugeridoOut(BaseModel):
+    stock_bajo_umbral: int
+    total_proveedores: int
+    total_items: int
+    proveedores: list[PedidoCompraSugeridoProveedorOut]
+
+
 class IngresoStockCreate(BaseModel):
     id_sucursal: int
     id_variante: int

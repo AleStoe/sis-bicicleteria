@@ -5,10 +5,17 @@ from app.shared.constants import (
     PERMISO_GESTIONAR_PRECIOS,
     PERMISO_VER_RENTABILIDAD,
 )
-from .service import listar_stock, obtener_resumen_stock, crear_ingreso_stock, crear_ajuste_stock
+from .service import (
+    listar_stock,
+    obtener_resumen_stock,
+    obtener_pedido_compra_sugerido,
+    crear_ingreso_stock,
+    crear_ajuste_stock,
+)
 from .schema import (
     StockSucursalOut,
     StockResumenOut,
+    PedidoCompraSugeridoOut,
     IngresoStockCreate,
     IngresoStockResponse,
     AjusteStockCreate,
@@ -142,6 +149,32 @@ def stock_resumen(
         return resumen
 
     return {**dict(resumen), "capital_inmovilizado_total": None}
+
+
+@router.get("/pedido-sugerido", response_model=PedidoCompraSugeridoOut)
+def pedido_compra_sugerido(
+    q: str | None = Query(default=None),
+    id_sucursal: int | None = Query(default=None, gt=0),
+    id_categoria: int | None = Query(default=None, gt=0),
+    id_marca: int | None = Query(default=None, gt=0),
+    id_proveedor: int | None = Query(default=None, gt=0),
+    tipo_operativo: str | None = Query(default=None, pattern="^(todos|bicicleta|repuesto|accesorio|producto|no_bicicletas)$"),
+    stock_bajo_umbral: int = Query(default=2, ge=0, le=999999),
+    limit: int = Query(default=2000, ge=1, le=5000),
+    _usuario: CurrentUser = Depends(obtener_usuario_actual),
+):
+    return obtener_pedido_compra_sugerido(
+        {
+            "q": q,
+            "id_sucursal": id_sucursal,
+            "id_categoria": id_categoria,
+            "id_marca": id_marca,
+            "id_proveedor": id_proveedor,
+            "tipo_operativo": tipo_operativo,
+            "stock_bajo_umbral": stock_bajo_umbral,
+            "limit": limit,
+        }
+    )
 
 
 @router.post("/ingresos", response_model=IngresoStockResponse)

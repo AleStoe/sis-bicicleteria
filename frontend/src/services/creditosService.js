@@ -1,5 +1,22 @@
 import { apiRequest } from "./api";
 
+function buildQuery(params = {}) {
+  const searchParams = new URLSearchParams();
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && String(value).trim() !== "") {
+      searchParams.set(key, String(value).trim());
+    }
+  });
+
+  const qs = searchParams.toString();
+  return qs ? `?${qs}` : "";
+}
+
+export function listarClientesConSaldoAFavor(params = {}) {
+  return apiRequest(`/creditos/clientes-con-saldo${buildQuery(params)}`);
+}
+
 export function listarCreditosCliente(clienteId) {
   return apiRequest(`/creditos/cliente/${clienteId}`);
 }

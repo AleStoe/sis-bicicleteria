@@ -2,12 +2,15 @@ from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
 from io import BytesIO
 
+from PIL import Image
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
-from .pdf import _draw_image_fit, _money, _resolver_imagen_local, _text
+from .pdf import _money, _resolver_imagen_local, _text
 from .pdf_layout import wrap_text
+from .pdf_metadata import set_pdf_metadata
 from .brand import (
     BORDER,
     BROWN,
@@ -81,6 +84,55 @@ def _monto_con_recargo(precio, porcentaje_recargo):
     return _round_money(_dec(precio) * (Decimal("1") + (_dec(porcentaje_recargo) / Decimal("100"))))
 
 
+def _imagen_pdf_liviana(path, cache, max_px=760, quality=72):
+    if not path:
+        return None
+
+    cache_key = str(path)
+    if cache_key in cache:
+        return cache[cache_key]
+
+    try:
+        buffer = BytesIO()
+        img = Image.open(path)
+        img = img.convert("RGB")
+        img.thumbnail((max_px, max_px))
+        img.save(buffer, format="JPEG", quality=quality, optimize=True)
+        buffer.seek(0)
+
+        reader = ImageReader(buffer)
+        cache[cache_key] = reader
+        return reader
+    except Exception:
+        return path
+
+
+def _draw_image_fit_catalogo(c, image, x, y, max_w, max_h):
+    try:
+        if isinstance(image, ImageReader):
+            img = image
+        else:
+            img = ImageReader(str(image))
+
+        iw, ih = img.getSize()
+        ratio = min(max_w / iw, max_h / ih)
+        w = iw * ratio
+        h = ih * ratio
+
+        c.drawImage(
+            img,
+            x + (max_w - w) / 2,
+            y + (max_h - h) / 2,
+            width=w,
+            height=h,
+            preserveAspectRatio=True,
+            mask="auto",
+        )
+        return True
+    except Exception:
+        return False
+
+
 def _draw_opciones_pago(c, item, opciones_pago, x, y, w):
     precio = _dec(item.get("precio_minorista"))
     contado = (opciones_pago or {}).get("contado") or []
@@ -149,9 +201,10 @@ def _draw_opciones_pago(c, item, opciones_pago, x, y, w):
         text_y -= 3.4 * mm
 
 
-def _draw_cover(c, fecha_actualizacion: datetime):
+def _draw_cover(c, fecha_actualizacion: datetime, filtros=None):
     width, height = A4
     margin = 22 * mm
+    filtros = filtros or []
 
     c.setFillColorRGB(*PAPER)
     c.rect(0, 0, width, height, fill=1, stroke=0)
@@ -171,15 +224,24 @@ def _draw_cover(c, fecha_actualizacion: datetime):
         f"Actualizado al {fecha_actualizacion.strftime('%d/%m/%Y')}",
     )
 
+    if filtros:
+        c.setFillColorRGB(*BROWN)
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(margin, height - 112 * mm, "Filtro aplicado")
+        c.setFillColorRGB(*MUTED)
+        c.setFont("Helvetica", 10)
+        c.drawString(margin, height - 119 * mm, " | ".join(_text(filtro) for filtro in filtros))
+
     c.setStrokeColorRGB(*ORANGE)
     c.setLineWidth(1.5)
-    c.line(margin, height - 116 * mm, width - margin, height - 116 * mm)
+    line_y = height - (127 * mm if filtros else 116 * mm)
+    c.line(margin, line_y, width - margin, line_y)
 
     c.setFillColorRGB(*MUTED)
     c.setFont("Helvetica", 10)
     c.drawString(
         margin,
-        height - 130 * mm,
+        height - (141 * mm if filtros else 130 * mm),
         "Precios sujetos a disponibilidad y modificación sin previo aviso.",
     )
 
@@ -214,15 +276,16 @@ def _draw_footer(c):
     )
 
 
-def _draw_card(c, item, opciones_pago, x, y, w, h):
+def _draw_card(c, item, opciones_pago, x, y, w, h, image_cache):
     c.setFillColorRGB(1, 1, 1)
     c.setStrokeColorRGB(*BORDER)
     c.roundRect(x, y, w, h, 4 * mm, fill=1, stroke=1)
 
     image_box_h = 42 * mm
     image_path = _resolver_imagen_local(item.get("imagen_principal"))
+    image_path = _imagen_pdf_liviana(image_path, image_cache)
     if image_path:
-        _draw_image_fit(c, image_path, x + 4 * mm, y + h - image_box_h - 4 * mm, w - 8 * mm, image_box_h)
+        _draw_image_fit_catalogo(c, image_path, x + 4 * mm, y + h - image_box_h - 4 * mm, w - 8 * mm, image_box_h)
     else:
         c.setFillColorRGB(*ORANGE_SOFT)
         c.roundRect(x + 4 * mm, y + h - image_box_h - 4 * mm, w - 8 * mm, image_box_h, 3 * mm, fill=1, stroke=0)
@@ -279,12 +342,15 @@ def generar_catalogo_bicicletas_pdf(data: dict) -> bytes:
     items = data.get("items") or []
     opciones_pago = data.get("opciones_pago") or {}
     fecha_actualizacion = data.get("fecha_actualizacion") or datetime.now()
+    filtros = data.get("filtros") or []
 
     buffer = BytesIO()
-    c = canvas.Canvas(buffer, pagesize=A4)
+    c = canvas.Canvas(buffer, pagesize=A4, pageCompression=1)
+    set_pdf_metadata(c, "Catalogo de Bicicletas - Emprendimiento Agus")
     width, height = A4
+    image_cache = {}
 
-    _draw_cover(c, fecha_actualizacion)
+    _draw_cover(c, fecha_actualizacion, filtros=filtros)
     c.showPage()
 
     margin_x = 14 * mm
@@ -316,7 +382,7 @@ def generar_catalogo_bicicletas_pdf(data: dict) -> bytes:
             col = position % 2
             x = margin_x + col * (card_w + gap_x)
             y = start_y - row * (card_h + gap_y)
-            _draw_card(c, item, opciones_pago, x, y, card_w, card_h)
+            _draw_card(c, item, opciones_pago, x, y, card_w, card_h, image_cache)
 
         _draw_footer(c)
 

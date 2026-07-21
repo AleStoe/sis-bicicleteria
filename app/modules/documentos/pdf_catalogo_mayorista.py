@@ -9,6 +9,7 @@ from reportlab.pdfgen import canvas
 from .pdf_layout import wrap_text
 from .pdf import _money, _resolver_imagen_local, _text
 from .pdf_etiquetas import _build_opciones_pago
+from .pdf_metadata import set_pdf_metadata
 from .brand import (
     BORDER,
     BROWN,
@@ -85,7 +86,12 @@ def _draw_image_fit_catalogo(c, image, x, y, max_w, max_h):
         return False
 
 
-def _draw_cover(c, fecha_actualizacion: datetime):
+def _draw_cover(
+    c,
+    fecha_actualizacion: datetime,
+    titulo: str = "Catalogo Mayorista",
+    pie: str = "Catalogo para envio mayorista por WhatsApp.",
+):
     width, height = A4
     margin = 22 * mm
 
@@ -94,7 +100,7 @@ def _draw_cover(c, fecha_actualizacion: datetime):
 
     c.setFillColorRGB(*BROWN)
     c.setFont("Helvetica-Bold", 30)
-    c.drawString(margin, height - 72 * mm, "Catálogo Mayorista")
+    c.drawString(margin, height - 72 * mm, titulo)
 
     c.setFont("Helvetica-Bold", 18)
     c.drawString(margin, height - 86 * mm, "Emprendimiento Agus")
@@ -120,10 +126,10 @@ def _draw_cover(c, fecha_actualizacion: datetime):
     )
 
     c.setFont("Helvetica", 8.5)
-    c.drawString(margin, 24 * mm, "Catálogo para envío mayorista por WhatsApp.")
+    c.drawString(margin, 24 * mm, pie)
 
 
-def _draw_header(c, page_number):
+def _draw_header(c, page_number, titulo: str = "Catalogo Mayorista"):
     width, height = A4
     margin = 14 * mm
 
@@ -132,7 +138,7 @@ def _draw_header(c, page_number):
 
     c.setFillColorRGB(1, 1, 1)
     c.setFont("Helvetica-Bold", 10)
-    c.drawString(margin, height - 11.5 * mm, "Catálogo Mayorista - Emprendimiento Agus")
+    c.drawString(margin, height - 11.5 * mm, f"{titulo} - Emprendimiento Agus")
     c.setFont("Helvetica", 8)
     c.drawRightString(width - margin, height - 11.5 * mm, f"Pag. {page_number}")
     c.setFillColorRGB(*ORANGE)
@@ -147,11 +153,22 @@ def _draw_footer(c):
     c.drawCentredString(
         width / 2,
         9 * mm,
-        "No incluye stock numerico. Consultar disponibilidad al momento de la compra.",
+        "Disponibilidad sujeta a confirmacion al momento de la compra.",
     )
 
 
-def _draw_product_card(c, item, opciones_pago, x, y, w, h, image_cache):
+def _draw_product_card(
+    c,
+    item,
+    opciones_pago,
+    x,
+    y,
+    w,
+    h,
+    image_cache,
+    precio_key="precio_mayorista",
+    precio_label="PRECIO MAYORISTA",
+):
     c.setFillColorRGB(1, 1, 1)
     c.setStrokeColorRGB(*BORDER)
     c.roundRect(x, y, w, h, 4 * mm, fill=1, stroke=1)
@@ -232,20 +249,21 @@ def _draw_product_card(c, item, opciones_pago, x, y, w, h, image_cache):
         stroke=0,
     )
 
-    lineas = _build_opciones_pago(item.get("precio_mayorista"), opciones_pago)
+    precio_base = item.get(precio_key)
+    lineas = _build_opciones_pago(precio_base, opciones_pago)
     lista = next((linea for linea in lineas if linea["tipo"] == "lista"), None)
     efectivo = next((linea for linea in lineas if linea["tipo"] == "efectivo"), None)
     tarjetas = [linea for linea in lineas if linea["tipo"] == "tarjeta"]
 
     c.setFillColorRGB(*MUTED)
     c.setFont("Helvetica-Bold", 5.8)
-    c.drawString(x + 5 * mm, block_y + 17.2 * mm, "PRECIO MAYORISTA")
+    c.drawString(x + 5 * mm, block_y + 17.2 * mm, precio_label)
     c.setFillColorRGB(*ORANGE_DARK)
     c.setFont("Helvetica-Bold", 12)
     c.drawString(
         x + 5 * mm,
         block_y + 11.8 * mm,
-        lista["monto"] if lista else _money(item.get("precio_mayorista")),
+        lista["monto"] if lista else _money(precio_base),
     )
 
     c.setStrokeColorRGB(*BORDER)
@@ -291,13 +309,19 @@ def generar_catalogo_mayorista_pdf(data: dict) -> bytes:
     items = data.get("items") or []
     opciones_pago = data.get("opciones_pago") or {}
     fecha_actualizacion = data.get("fecha_actualizacion") or datetime.now()
+    titulo = data.get("titulo") or "Catalogo Mayorista"
+    pie_portada = data.get("pie_portada") or "Catalogo para envio mayorista por WhatsApp."
+    precio_key = data.get("precio_key") or "precio_mayorista"
+    precio_label = data.get("precio_label") or "PRECIO MAYORISTA"
+    empty_text = data.get("empty_text") or "No hay productos mayoristas disponibles."
 
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
+    set_pdf_metadata(c, f"{titulo} - Emprendimiento Agus")
     width, height = A4
     image_cache = {}
 
-    _draw_cover(c, fecha_actualizacion)
+    _draw_cover(c, fecha_actualizacion, titulo=titulo, pie=pie_portada)
     c.showPage()
 
     margin_x = 14 * mm
@@ -308,7 +332,7 @@ def generar_catalogo_mayorista_pdf(data: dict) -> bytes:
     start_y = height - 24 * mm - card_h
 
     page_number = 1
-    _draw_header(c, page_number)
+    _draw_header(c, page_number, titulo=titulo)
 
     if not items:
         c.setFillColorRGB(*INK)
@@ -316,7 +340,7 @@ def generar_catalogo_mayorista_pdf(data: dict) -> bytes:
         c.drawCentredString(
             width / 2,
             height / 2,
-            "No hay productos mayoristas disponibles.",
+            empty_text,
         )
         _draw_footer(c)
     else:
@@ -327,7 +351,7 @@ def generar_catalogo_mayorista_pdf(data: dict) -> bytes:
                 _draw_footer(c)
                 c.showPage()
                 page_number += 1
-                _draw_header(c, page_number)
+                _draw_header(c, page_number, titulo=titulo)
 
             row = position // 2
             col = position % 2
@@ -342,6 +366,8 @@ def generar_catalogo_mayorista_pdf(data: dict) -> bytes:
                 card_w,
                 card_h,
                 image_cache,
+                precio_key=precio_key,
+                precio_label=precio_label,
             )
 
         _draw_footer(c)

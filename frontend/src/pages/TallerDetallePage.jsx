@@ -6,6 +6,7 @@ import { listarServiciosTaller } from "../services/serviciosTallerService";
 import {
   agregarItemOrdenTaller,
   aprobarItemOrdenTaller,
+  actualizarCantidadItemBorradorOrdenTaller,
   cambiarEstadoOrdenTaller,
   ejecutarItemOrdenTaller,
   obtenerOrdenTaller,
@@ -250,6 +251,7 @@ export default function TallerDetallePage() {
   const [busquedaServicio, setBusquedaServicio] = useState("");
   const [agregarItemsOpen, setAgregarItemsOpen] = useState(false);
   const [itemsPendientesSeleccionados, setItemsPendientesSeleccionados] = useState([]);
+  const [actualizandoCantidadItemId, setActualizandoCantidadItemId] = useState(null);
   const [itemForm, setItemForm] = useState({
     tipo_item: "repuesto",
     id_variante: "",
@@ -270,6 +272,7 @@ export default function TallerDetallePage() {
     contenido: "",
   });
   const quitandoItemBorradorRef = useRef(false);
+  const actualizandoCantidadRef = useRef(false);
   const busquedaVarianteRef = useRef(null);
   const busquedaServicioRef = useRef(null);
 
@@ -1057,6 +1060,36 @@ export default function TallerDetallePage() {
     }
   }
 
+  async function handleActualizarCantidadItemBorrador(item, cantidad) {
+    if (guardando || actualizandoCantidadRef.current) return;
+
+    const cantidadNumerica = Number(cantidad);
+    if (!Number.isFinite(cantidadNumerica) || cantidadNumerica <= 0) {
+      setError("La cantidad debe ser mayor a cero");
+      return;
+    }
+
+    actualizandoCantidadRef.current = true;
+    try {
+      setActualizandoCantidadItemId(item.id);
+      setGuardando(true);
+      setError("");
+      setMensaje("");
+      await actualizarCantidadItemBorradorOrdenTaller(ordenId, item.id, {
+        cantidad: cantidadNumerica,
+        id_usuario: usuarioId,
+      });
+      await refrescarOrden();
+      setMensaje("Cantidad actualizada en el borrador.");
+    } catch (err) {
+      setError(err?.detail || err?.message || "No se pudo actualizar la cantidad del ítem");
+    } finally {
+      actualizandoCantidadRef.current = false;
+      setActualizandoCantidadItemId(null);
+      setGuardando(false);
+    }
+  }
+
   async function generarVenta() {
     try {
       setGuardando(true);
@@ -1277,6 +1310,8 @@ export default function TallerDetallePage() {
             onRevertirItem={revertirItem}
             onCancelarItem={handleCancelarItem}
             onQuitarBorrador={handleQuitarItemBorrador}
+            onActualizarCantidadBorrador={handleActualizarCantidadItemBorrador}
+            actualizandoCantidadItemId={actualizandoCantidadItemId}
             onAbrirAgregar={() => setAgregarItemsOpen(true)}
           />
         </section>
@@ -1984,6 +2019,8 @@ function TrabajosOrdenPanel({
   onRevertirItem,
   onCancelarItem,
   onQuitarBorrador,
+  onActualizarCantidadBorrador,
+  actualizandoCantidadItemId,
   onAbrirAgregar,
 }) {
   const cantidadSeleccionada = seleccionadosPendientes.length;
@@ -2051,6 +2088,15 @@ function TrabajosOrdenPanel({
                 )}
               </>
             )}
+            renderCantidad={(item) =>
+              puedeQuitarItemBorrador(orden, item) ? (
+                <CantidadBorradorControl
+                  item={item}
+                  disabled={guardando || actualizandoCantidadItemId === item.id}
+                  onSave={(cantidad) => onActualizarCantidadBorrador(item, cantidad)}
+                />
+              ) : null
+            }
           />
 
           <TrabajoGrupo
@@ -2105,6 +2151,7 @@ function TrabajoGrupo({
   onToggleAll,
   onToggleItem,
   renderActions,
+  renderCantidad,
   footer,
   muted = false,
 }) {
@@ -2148,6 +2195,7 @@ function TrabajoGrupo({
             selectable={selectable}
             selected={selectedIds.includes(String(item.id))}
             onToggle={() => onToggleItem?.(item.id)}
+            cantidadControl={renderCantidad?.(item)}
             actions={renderActions(item)}
           />
         ))}
@@ -2158,7 +2206,7 @@ function TrabajoGrupo({
   );
 }
 
-function TrabajoFila({ item, selectable, selected, onToggle, actions }) {
+function TrabajoFila({ item, selectable, selected, onToggle, cantidadControl, actions }) {
   return (
     <div style={selectable ? styles.workRowSelectable : styles.workRow}>
       {selectable ? (
@@ -2176,7 +2224,7 @@ function TrabajoFila({ item, selectable, selected, onToggle, actions }) {
       <span style={item.tipo_item === "servicio" ? styles.typeBadgeService : styles.typeBadgePart}>
         {item.tipo_item === "servicio" ? "Servicio" : "Repuesto"}
       </span>
-      <span style={styles.workRowText}>{formatNumber(item.cantidad)}</span>
+      {cantidadControl || <span style={styles.workRowText}>{formatNumber(item.cantidad)}</span>}
       <span style={styles.workRowPrice}>
         <strong>{formatMoney(item.subtotal)}</strong>
         <small>{formatMoney(item.precio_unitario)} c/u</small>
@@ -2184,6 +2232,75 @@ function TrabajoFila({ item, selectable, selected, onToggle, actions }) {
       <span style={stageStyle(item.etapa)}>{labelEtapa(item.etapa)}</span>
       <div style={styles.workRowActions}>{actions}</div>
     </div>
+  );
+}
+
+function CantidadBorradorControl({ item, disabled, onSave }) {
+  const [valor, setValor] = useState(String(Number(item.cantidad || 1)));
+  const cantidadOriginal = Number(item.cantidad || 0);
+  const cantidadActual = Number(valor);
+  const cambioPendiente =
+    Number.isFinite(cantidadActual) &&
+    cantidadActual > 0 &&
+    cantidadActual !== cantidadOriginal;
+
+  useEffect(() => {
+    setValor(String(Number(item.cantidad || 1)));
+  }, [item.id, item.cantidad]);
+
+  function ajustar(delta) {
+    setValor((prev) => {
+      const actual = Number(prev || item.cantidad || 1);
+      const siguiente = Math.max(1, actual + delta);
+      return String(siguiente);
+    });
+  }
+
+  return (
+    <span style={styles.draftQuantityControl}>
+      <span style={styles.draftQuantityStepper}>
+        <button
+          type="button"
+          disabled={disabled || cantidadActual <= 1}
+          onClick={() => ajustar(-1)}
+          style={styles.draftQuantityButton}
+          aria-label="Restar cantidad"
+        >
+          -
+        </button>
+        <input
+          type="text"
+          inputMode="decimal"
+          value={valor}
+          disabled={disabled}
+          onChange={(event) => {
+            const nextValue = event.target.value.replace(",", ".");
+            if (/^\d*\.?\d*$/.test(nextValue)) setValor(nextValue);
+          }}
+          style={styles.draftQuantityInput}
+          aria-label="Cantidad del ítem"
+        />
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => ajustar(1)}
+          style={styles.draftQuantityButton}
+          aria-label="Sumar cantidad"
+        >
+          +
+        </button>
+      </span>
+      {cambioPendiente ? (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => onSave(cantidadActual)}
+          style={styles.draftQuantitySave}
+        >
+          Guardar
+        </button>
+      ) : null}
+    </span>
   );
 }
 

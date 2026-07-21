@@ -226,6 +226,10 @@ class OrdenTallerItemAprobacionUpdate(BaseModel):
     aprobado: bool
     id_usuario: int = Field(gt=0)
 
+class OrdenTallerItemCantidadUpdate(BaseModel):
+    cantidad: Decimal = Field(gt=0)
+    id_usuario: int = Field(gt=0)
+
 class OrdenTallerItemReversionEjecucionInput(BaseModel):
     id_usuario: int = Field(gt=0)
     motivo: str = Field(min_length=1)

@@ -7,6 +7,14 @@ export default function VentaHeader({
   procesando,
   onRefrescar,
 }) {
+  const clienteContenido = venta.id_cliente ? (
+    <Link to={`/clientes/${venta.id_cliente}`} style={styles.clienteLink}>
+      {venta.cliente_nombre || `Cliente #${venta.id_cliente}`}
+    </Link>
+  ) : (
+    <span>{venta.cliente_nombre || "-"}</span>
+  );
+
   return (
     <PageHeader
       title={
@@ -15,7 +23,13 @@ export default function VentaHeader({
           <EstadoVentaBadge estado={venta.estado} />
         </span>
       }
-      subtitle={`${venta.cliente_nombre || "-"} · ${venta.sucursal_nombre || "-"}`}
+      subtitle={
+        <span style={styles.subtitle}>
+          {clienteContenido}
+          <span>-</span>
+          <span>{venta.sucursal_nombre || "-"}</span>
+        </span>
+      }
       actions={
         <>
           <Button variant="outline" onClick={onRefrescar} disabled={procesando}>
@@ -30,3 +44,17 @@ export default function VentaHeader({
     />
   );
 }
+
+const styles = {
+  subtitle: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    flexWrap: "wrap",
+  },
+  clienteLink: {
+    color: "#1d4ed8",
+    fontWeight: 800,
+    textDecoration: "none",
+  },
+};

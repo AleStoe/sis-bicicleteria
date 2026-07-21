@@ -9,6 +9,7 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
 from .pdf import _draw_image_fit, _money, _resolver_imagen_local, _text
+from .pdf_metadata import set_pdf_metadata
 from .brand import BORDER, BROWN, INK, MUTED, ORANGE, ORANGE_DARK, ORANGE_SOFT
 
 
@@ -246,6 +247,7 @@ def generar_etiqueta_deposito_pdf(data: dict, copias: int = 1) -> bytes:
 
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=LABEL_80X40)
+    set_pdf_metadata(c, f"Etiqueta {item.get('sku') or item.get('codigo_proveedor') or item.get('id')}")
 
     for index in range(copias):
         if index:
@@ -531,6 +533,7 @@ def generar_cartel_precio_a4_pdf(data: dict) -> bytes:
 
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
+    set_pdf_metadata(c, f"Precio para mostrador {item.get('sku') or item.get('codigo_proveedor') or item.get('id')}")
     width, height = A4
     margin = 17 * mm
     usable_width = width - margin * 2

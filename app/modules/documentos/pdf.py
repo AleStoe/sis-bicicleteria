@@ -1,5 +1,5 @@
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import unquote
@@ -10,6 +10,7 @@ from reportlab.pdfgen import canvas
 
 from .brand import INK, ORANGE_DARK, ORANGE_SOFT
 from .pdf_layout import collapse_repeated_words, draw_wrapped_text, wrap_text
+from .pdf_metadata import set_pdf_metadata
 
 BASE_DIR = Path(__file__).resolve().parents[3]
 UPLOADS_DIR = BASE_DIR / "uploads"
@@ -19,8 +20,8 @@ LOGO_ICONO = UPLOADS_DIR / "logos" / "logo-icono.png"
 
 
 def _money(value) -> str:
-    value = Decimal(str(value or 0))
-    return f"$ {value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    value = Decimal(str(value or 0)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    return f"$ {value:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
 def _text(value) -> str:
@@ -418,6 +419,7 @@ def generar_comprobante_x_pdf(data: dict, incluir_marca_agua: bool = True) -> by
     buffer = BytesIO()
 
     c = canvas.Canvas(buffer, pagesize=A4)
+    set_pdf_metadata(c, f"Comprobante X - Venta #{venta.get('id')}")
     width, height = A4
     if incluir_marca_agua and LOGO_ICONO.exists():
         c.saveState()
@@ -443,7 +445,7 @@ def generar_comprobante_x_pdf(data: dict, incluir_marca_agua: bool = True) -> by
 
     img_size = 15 * mm
     description_x = margin_x + 24 * mm
-    description_right = width - margin_x - 66 * mm
+    description_right = width - margin_x - 74 * mm
     description_width = description_right - description_x
     description_leading = 4.2 * mm
 

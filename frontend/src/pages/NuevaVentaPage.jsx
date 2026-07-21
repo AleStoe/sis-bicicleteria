@@ -167,6 +167,7 @@ export default function NuevaVentaPage() {
   const [confirmConfig, setConfirmConfig] = useState(null);
   const [deudaCliente, setDeudaCliente] = useState({ tieneDeuda: false, saldo: 0 });
   const [mostrarAvisoConsumidorFinal, setMostrarAvisoConsumidorFinal] = useState(false);
+  const [productoSeleccionadoId, setProductoSeleccionadoId] = useState(null);
   const isMobile = useIsMobile();
 
   const total = useMemo(() => {
@@ -182,6 +183,10 @@ export default function NuevaVentaPage() {
 
       return acc + precioUnitario * Number(item.cantidad || 0);
     }, 0);
+  }, [items]);
+
+  const variantesEnCarrito = useMemo(() => {
+    return new Set(items.map((item) => String(item.id_variante)).filter(Boolean));
   }, [items]);
 
   useEffect(() => {
@@ -232,6 +237,10 @@ export default function NuevaVentaPage() {
 
     return () => clearTimeout(handle);
   }, [query, categoriaId]);
+
+  useEffect(() => {
+    setProductoSeleccionadoId(null);
+  }, [query, categoriaId, tipoPrecio]);
 
   useEffect(() => {
     const handle = setTimeout(() => {
@@ -659,9 +668,24 @@ async function handleBuscarEnter(e) {
   async function handleAgregarItemCatalogo(producto) {
     const agregado = await agregarItem(producto);
 
+    if (agregado) {
+      setProductoSeleccionadoId(null);
+    }
+
     if (agregado && isMobile) {
       mostrarMensajePOS(`${producto.producto_nombre || "Producto"} agregado`);
     }
+  }
+
+  async function handleSeleccionarItemCatalogo(producto) {
+    const idVariante = String(producto.id_variante);
+
+    if (productoSeleccionadoId === idVariante) {
+      await handleAgregarItemCatalogo(producto);
+      return;
+    }
+
+    setProductoSeleccionadoId(idVariante);
   }
 
   function seleccionarSerializada(index, bicicletaIdRaw) {
@@ -1104,6 +1128,9 @@ async function handleBuscarEnter(e) {
           onRecargarCatalogo={cargarCatalogo}
           onCategoriaChange={setCategoriaId}
           onAgregarItem={handleAgregarItemCatalogo}
+          onSeleccionarItem={handleSeleccionarItemCatalogo}
+          productoSeleccionadoId={productoSeleccionadoId}
+          variantesEnCarrito={variantesEnCarrito}
           isMobile={isMobile}
         />
 

@@ -20,6 +20,11 @@ export function obtenerResumenStock(params = {}) {
   return apiRequest(`/stock/resumen${query ? `?${query}` : ""}`);
 }
 
+export function obtenerPedidoCompraSugerido(params = {}) {
+  const query = cleanParams(params);
+  return apiRequest(`/stock/pedido-sugerido${query ? `?${query}` : ""}`);
+}
+
 export function crearIngresoStock(data) {
   return apiRequest("/stock/ingresos", {
     method: "POST",

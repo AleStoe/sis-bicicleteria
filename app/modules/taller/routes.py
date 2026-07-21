@@ -17,6 +17,7 @@ from .schemas import (
     OrdenTallerDetalleResponse,
     OrdenTallerItemResponse,
     OrdenTallerItemAprobacionUpdate,
+    OrdenTallerItemCantidadUpdate,
     OrdenTallerItemReversionEjecucionInput,
     OrdenTallerItemCancelarInput,
     OrdenTallerGenerarVentaInput,
@@ -36,6 +37,7 @@ from .service import (
     cambiar_estado_orden_taller,
     agregar_item_orden_taller,
     aprobar_item_orden_taller,
+    actualizar_cantidad_item_borrador_orden_taller,
     ejecutar_item_orden_taller,
     revertir_ejecucion_item_orden_taller,
     cancelar_item_orden_taller,
@@ -192,6 +194,19 @@ def aprobar_item(
 ):
     aplicar_actor_actual(payload, usuario)
     return aprobar_item_orden_taller(orden_id, item_id, payload)
+
+@router.patch(
+    "/{orden_id}/items/{item_id}/cantidad",
+    response_model=OrdenTallerItemResponse,
+)
+def actualizar_cantidad_item_borrador(
+    orden_id: int,
+    item_id: int,
+    payload: OrdenTallerItemCantidadUpdate,
+    usuario: CurrentUser = Depends(puede_gestionar_taller),
+):
+    aplicar_actor_actual(payload, usuario)
+    return actualizar_cantidad_item_borrador_orden_taller(orden_id, item_id, payload)
 
 @router.post(
     "/{orden_id}/items/{item_id}/ejecutar",

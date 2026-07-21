@@ -123,6 +123,7 @@ ORDEN_TALLER_EVENTO_CREADA = "creada"
 ORDEN_TALLER_EVENTO_CAMBIO_ESTADO = "cambio_estado"
 ORDEN_TALLER_EVENTO_AGREGADO_ITEM = "agregado_item"
 ORDEN_TALLER_EVENTO_ITEM_QUITADO_BORRADOR = "item_quitado_borrador"
+ORDEN_TALLER_EVENTO_ITEM_CANTIDAD_BORRADOR_ACTUALIZADA = "item_cantidad_borrador_actualizada"
 
 # =========================
 # AUDITORIA - ENTIDADES

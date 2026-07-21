@@ -36,6 +36,112 @@ def obtener_resumen_stock(filtros: dict | None = None):
         conn.close()
 
 
+def obtener_pedido_compra_sugerido(filtros: dict | None = None):
+    filtros = filtros or {}
+    stock_bajo_umbral = int(filtros.get("stock_bajo_umbral") or 2)
+    params = {
+        "q": filtros.get("q"),
+        "id_sucursal": filtros.get("id_sucursal"),
+        "id_categoria": filtros.get("id_categoria"),
+        "id_marca": filtros.get("id_marca"),
+        "id_proveedor": filtros.get("id_proveedor"),
+        "tipo_operativo": filtros.get("tipo_operativo"),
+        "estado_stock": "stock_bajo",
+        "reponer_stock": True,
+        "stock_bajo_umbral": stock_bajo_umbral,
+        "ordenar_por": "proveedor",
+        "orden": "asc",
+        "limit": int(filtros.get("limit") or 2000),
+        "offset": 0,
+    }
+
+    conn = get_connection()
+    try:
+        items = repository.get_stock_sucursal(conn, **params)
+    finally:
+        conn.close()
+
+    proveedores = {}
+    objetivo_stock = max(stock_bajo_umbral * 2, stock_bajo_umbral + 1, 1)
+
+    for item in items:
+        disponible = to_decimal(item.get("stock_disponible") or 0)
+        sugerida = max(to_decimal(objetivo_stock) - disponible, to_decimal(1))
+        proveedor_id = item.get("id_proveedor")
+        proveedor_nombre = item.get("proveedor_nombre") or "Sin proveedor asignado"
+        clave = proveedor_id if proveedor_id is not None else "sin_proveedor"
+        vendidas = to_decimal(item.get("unidades_vendidas_total") or 0)
+        ventas = int(item.get("ventas_distintas_total") or 0)
+
+        if vendidas > 0:
+            motivo = (
+                f"Disponible {disponible:g} <= umbral {stock_bajo_umbral}. "
+                f"Vendidas {vendidas:g} en {ventas} venta(s)."
+            )
+        else:
+            motivo = (
+                f"Disponible {disponible:g} <= umbral {stock_bajo_umbral}. "
+                "Sin ventas registradas en el sistema."
+            )
+
+        grupo = proveedores.setdefault(
+            clave,
+            {
+                "id_proveedor": proveedor_id,
+                "proveedor_nombre": proveedor_nombre,
+                "total_items": 0,
+                "cantidad_total_sugerida": to_decimal(0),
+                "items": [],
+            },
+        )
+
+        grupo["items"].append(
+            {
+                "sucursal_id": item["sucursal_id"],
+                "sucursal_nombre": item["sucursal_nombre"],
+                "variante_id": item["variante_id"],
+                "producto_id": item.get("producto_id"),
+                "producto_nombre": item["producto_nombre"],
+                "nombre_variante": item["nombre_variante"],
+                "sku": item.get("sku"),
+                "codigo_barras": item.get("codigo_barras"),
+                "codigo_proveedor": item.get("codigo_proveedor"),
+                "id_proveedor": proveedor_id,
+                "proveedor_nombre": proveedor_nombre,
+                "serializable": item.get("serializable"),
+                "tipo_operativo": item.get("tipo_operativo"),
+                "marca_nombre": item.get("marca_nombre"),
+                "categoria_nombre": item.get("categoria_nombre"),
+                "stock_fisico": item["stock_fisico"],
+                "stock_disponible": item["stock_disponible"],
+                "stock_bajo_umbral": stock_bajo_umbral,
+                "cantidad_sugerida": sugerida,
+                "unidades_vendidas_total": item.get("unidades_vendidas_total") or to_decimal(0),
+                "ventas_distintas_total": ventas,
+                "ultima_venta": item.get("ultima_venta"),
+                "primer_movimiento_stock": item.get("primer_movimiento_stock"),
+                "motivo": motivo,
+            }
+        )
+        grupo["total_items"] += 1
+        grupo["cantidad_total_sugerida"] += sugerida
+
+    proveedores_ordenados = sorted(
+        proveedores.values(),
+        key=lambda grupo: (
+            grupo["id_proveedor"] is None,
+            str(grupo["proveedor_nombre"]).upper(),
+        ),
+    )
+
+    return {
+        "stock_bajo_umbral": stock_bajo_umbral,
+        "total_proveedores": len(proveedores_ordenados),
+        "total_items": sum(grupo["total_items"] for grupo in proveedores_ordenados),
+        "proveedores": proveedores_ordenados,
+    }
+
+
 def obtener_stock_disponible(id_sucursal: int, id_variante: int):
     conn = get_connection()
     try:

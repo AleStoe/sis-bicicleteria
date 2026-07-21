@@ -634,3 +634,50 @@ def test_listar_creditos_disponibles_cliente(client, db_conn, seed_venta_basica)
     assert len(data) == 1
     assert Decimal(str(data[0]["saldo_actual"])) == Decimal("5000")
     assert data[0]["estado"] == "aplicado_parcial"
+
+
+def test_listar_clientes_con_saldo_a_favor(client, db_conn, seed_venta_basica):
+    crear = _crear_venta_basica(client, seed_venta_basica)
+    assert crear.status_code == 200
+    venta_id = crear.json()["venta_id"]
+
+    _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+    pago = _pagar_venta(client, venta_id, seed_venta_basica, 10000)
+    assert pago.status_code == 200
+
+    anular = client.post(
+        f"/ventas/{venta_id}/anular",
+        json={
+            "motivo": "genera credito para resumen por cliente",
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert anular.status_code == 200
+
+    response = client.get("/creditos/clientes-con-saldo")
+    assert response.status_code == 200, response.text
+
+    data = response.json()
+    cliente = next(
+        item
+        for item in data
+        if item["id_cliente"] == seed_venta_basica["cliente_id"]
+    )
+    assert Decimal(str(cliente["saldo_total"])) == Decimal("10000.00")
+    assert cliente["creditos_disponibles"] == 1
+    assert cliente["ultimo_origen_tipo"] == "venta"
+    assert cliente["ultimo_origen_id"] == venta_id
+
+    response_filtrado = client.get(
+        "/creditos/clientes-con-saldo",
+        params={"q": str(venta_id)},
+    )
+    assert response_filtrado.status_code == 200
+    assert any(
+        item["id_cliente"] == seed_venta_basica["cliente_id"]
+        for item in response_filtrado.json()
+    )

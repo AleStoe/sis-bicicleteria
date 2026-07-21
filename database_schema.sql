@@ -1567,7 +1567,7 @@ CREATE TABLE public.ingresos_stock (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT chk_ingresos_stock_cantidad_positiva CHECK ((cantidad_ingresada > (0)::numeric)),
     CONSTRAINT chk_ingresos_stock_costos_no_negativos CHECK (((costo_productos >= (0)::numeric) AND (gastos_adicionales >= (0)::numeric) AND (costo_total_lote >= (0)::numeric) AND (costo_unitario_calculado >= (0)::numeric))),
-    CONSTRAINT chk_ingresos_stock_origen CHECK (((origen_ingreso)::text = ANY (ARRAY[('inicial'::character varying)::text, ('manual'::character varying)::text, ('compra'::character varying)::text]))),
+    CONSTRAINT chk_ingresos_stock_origen CHECK (((origen_ingreso)::text = ANY (ARRAY[('inicial'::character varying)::text, ('manual'::character varying)::text, ('compra'::character varying)::text, ('pedido_compra'::character varying)::text]))),
     CONSTRAINT chk_ingresos_stock_total_consistente CHECK ((costo_total_lote = (costo_productos + gastos_adicionales)))
 );
 

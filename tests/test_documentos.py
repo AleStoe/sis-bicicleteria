@@ -4,6 +4,7 @@ import re
 
 from PIL import Image
 from app.modules.documentos.pdf import _detalle_pago_financiero
+from app.modules.documentos.pdf import _money
 from app.modules.documentos.pdf import generar_comprobante_x_pdf
 from app.modules.documentos.pdf_etiquetas import (
     _build_opciones_pago,
@@ -35,6 +36,12 @@ from app.modules.documentos.repository_taller_presupuesto import (
 
 def _pdf_page_count(pdf_bytes):
     return len(re.findall(rb"/Type\s*/Page(?!s)", pdf_bytes))
+
+
+def test_comprobante_x_redondea_importes_a_pesos_enteros():
+    assert _money("99999.93") == "$ 100.000"
+    assert _money("111111.03") == "$ 111.111"
+    assert _money("11111.10") == "$ 11.111"
 
 
 def test_nombres_descarga_son_identificables_y_consistentes():
@@ -90,6 +97,55 @@ def test_catalogo_mayorista_reutiliza_opciones_del_motor_financiero(monkeypatch)
     assert result == b"%PDF-test"
     assert captured["opciones_pago"] == opciones
     assert captured["items"] == [{"id_variante": 1}]
+
+
+def test_catalogo_minorista_reutiliza_opciones_y_precio_minorista(monkeypatch):
+    from app.modules.catalogo import service as catalogo_service
+
+    class FakeConnection:
+        def close(self):
+            return None
+
+    opciones = {
+        "contado": [{"medio_pago": "efectivo", "porcentaje_descuento": 10}],
+        "tarjeta": [{"label": "Tarjeta 3 cuotas", "cuotas": 3}],
+    }
+    captured = {}
+
+    monkeypatch.setattr(catalogo_service, "get_connection", FakeConnection)
+    monkeypatch.setattr(
+        catalogo_service,
+        "get_catalogo_minorista_pdf_items",
+        lambda *_args, **_kwargs: [{"id_variante": 2, "precio_minorista": 1000}],
+    )
+    monkeypatch.setattr(
+        catalogo_service,
+        "_opciones_pago_catalogo_bicicletas",
+        lambda _conn: opciones,
+    )
+
+    def fake_pdf(data):
+        captured.update(data)
+        return b"%PDF-minorista-test"
+
+    monkeypatch.setattr(
+        catalogo_service,
+        "generar_catalogo_mayorista_pdf",
+        fake_pdf,
+    )
+
+    result = catalogo_service.generar_catalogo_minorista_pdf_service(
+        1,
+        categoria_id=10,
+        marca_id=20,
+        query="camara",
+    )
+
+    assert result == b"%PDF-minorista-test"
+    assert captured["opciones_pago"] == opciones
+    assert captured["items"] == [{"id_variante": 2, "precio_minorista": 1000}]
+    assert captured["precio_key"] == "precio_minorista"
+    assert captured["precio_label"] == "PRECIO DE LISTA"
 
 
 def test_pdf_layout_limpia_prefijos_repetidos():

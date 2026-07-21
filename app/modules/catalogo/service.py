@@ -48,6 +48,7 @@ from .repository import (
     reemplazar_ficha_tecnica_producto,
     get_variante_activa_by_codigo_proveedor,
     get_catalogo_mayorista_pdf_items,
+    get_catalogo_minorista_pdf_items,
     get_catalogo_bicicletas_pdf_items,
 )
 from app.modules.documentos.pdf_catalogo_mayorista import generar_catalogo_mayorista_pdf
@@ -347,9 +348,46 @@ def generar_catalogo_mayorista_pdf_service(
         conn.close()
 
 
+def generar_catalogo_minorista_pdf_service(
+    id_sucursal: int,
+    categoria_id: int | None = None,
+    marca_id: int | None = None,
+    query: str | None = None,
+) -> bytes:
+    conn = get_connection()
+    try:
+        items = get_catalogo_minorista_pdf_items(
+            conn,
+            id_sucursal=id_sucursal,
+            categoria_id=categoria_id,
+            marca_id=marca_id,
+            query=query,
+        )
+        opciones_pago = _opciones_pago_catalogo_bicicletas(conn)
+
+        return generar_catalogo_mayorista_pdf(
+            {
+                "items": items,
+                "opciones_pago": opciones_pago,
+                "titulo": "Catalogo Minorista",
+                "pie_portada": "Catalogo minorista de repuestos y accesorios para envio por WhatsApp.",
+                "precio_key": "precio_minorista",
+                "precio_label": "PRECIO DE LISTA",
+                "empty_text": "No hay repuestos o accesorios disponibles para este filtro.",
+            }
+        )
+    finally:
+        conn.close()
+
+
 def generar_catalogo_bicicletas_pdf_service(
     id_sucursal: int,
     marca_id: int | None = None,
+    query: str | None = None,
+    rodado: str | None = None,
+    talle: str | None = None,
+    color: str | None = None,
+    solo_disponibles: bool = True,
 ) -> bytes:
     conn = get_connection()
     try:
@@ -357,13 +395,30 @@ def generar_catalogo_bicicletas_pdf_service(
             conn,
             id_sucursal=id_sucursal,
             marca_id=marca_id,
+            query=query,
+            rodado=rodado,
+            talle=talle,
+            color=color,
+            solo_disponibles=solo_disponibles,
         )
         opciones_pago = _opciones_pago_catalogo_bicicletas(conn)
+        filtros = []
+        if query:
+            filtros.append(f"Búsqueda: {query.strip()}")
+        if rodado:
+            filtros.append(f"Rodado {rodado.strip()}")
+        if talle:
+            filtros.append(f"Talle {talle.strip()}")
+        if color:
+            filtros.append(f"Color {color.strip()}")
+        if solo_disponibles:
+            filtros.append("Sólo disponibles")
 
         return generar_catalogo_bicicletas_pdf(
             {
                 "items": items,
                 "opciones_pago": opciones_pago,
+                "filtros": filtros,
             }
         )
     finally:

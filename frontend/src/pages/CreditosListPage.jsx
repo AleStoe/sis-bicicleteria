@@ -1,9 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { listarClientes } from "../services/clientesService";
-import { formatMoneyPrecise } from "../utils/formatters";
-import { getCreditoContexto, getOrigenFinancieroLabel, getPoliticaCreditoGeneral } from "../utils/financials";
+import { Search } from "lucide-react";
+import { formatDate, formatMoneyPrecise } from "../utils/formatters";
 import {
+  getCreditoContexto,
+  getOrigenFinancieroLabel,
+  getPoliticaCreditoGeneral,
+} from "../utils/financials";
+import {
+  listarClientesConSaldoAFavor,
   listarCreditosCliente,
   listarCreditosDisponiblesCliente,
 } from "../services/creditosService";
@@ -11,8 +16,9 @@ import useMediaQuery from "../hooks/useMediaQuery";
 
 export default function CreditosListPage() {
   const isMobile = useMediaQuery("(max-width: 760px)");
-  const [clientes, setClientes] = useState([]);
-  const [clienteId, setClienteId] = useState("");
+  const [clientesConSaldo, setClientesConSaldo] = useState([]);
+  const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
+  const [query, setQuery] = useState("");
   const [soloDisponibles, setSoloDisponibles] = useState(true);
   const [creditos, setCreditos] = useState([]);
   const [loadingClientes, setLoadingClientes] = useState(true);
@@ -20,196 +26,264 @@ export default function CreditosListPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    cargarClientes();
-  }, []);
+    const timer = setTimeout(() => {
+      cargarClientesConSaldo(query);
+    }, 250);
 
-  async function cargarClientes() {
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  useEffect(() => {
+    if (!clienteSeleccionado?.id_cliente) {
+      setCreditos([]);
+      return;
+    }
+
+    cargarCreditos(clienteSeleccionado.id_cliente, soloDisponibles);
+  }, [clienteSeleccionado?.id_cliente, soloDisponibles]);
+
+  async function cargarClientesConSaldo(search = "") {
     try {
       setLoadingClientes(true);
       setError("");
+      const data = await listarClientesConSaldoAFavor({
+        q: search.trim() || undefined,
+        limit: 100,
+      });
+      const listado = data || [];
+      setClientesConSaldo(listado);
 
-      const data = await listarClientes({ solo_activos: true });
-      setClientes(data || []);
-
-      const primerClienteNoGenerico = (data || []).find((cliente) => Number(cliente.id) !== 1);
-      if (primerClienteNoGenerico) {
-        setClienteId(String(primerClienteNoGenerico.id));
-        await cargarCreditos(String(primerClienteNoGenerico.id), soloDisponibles);
+      if (
+        clienteSeleccionado &&
+        !listado.some((cliente) => Number(cliente.id_cliente) === Number(clienteSeleccionado.id_cliente))
+      ) {
+        setClienteSeleccionado(null);
       }
     } catch (err) {
-      setError(err.message || "No se pudieron cargar los clientes");
+      setError(err.message || "No se pudieron cargar los saldos a favor");
+      setClientesConSaldo([]);
     } finally {
       setLoadingClientes(false);
     }
   }
 
-  async function cargarCreditos(id = clienteId, disponibles = soloDisponibles) {
-    if (!id) {
-      setCreditos([]);
-      return;
-    }
+  async function cargarCreditos(clienteId, disponibles = soloDisponibles) {
+    if (!clienteId) return;
 
     try {
       setLoadingCreditos(true);
       setError("");
-
       const data = disponibles
-        ? await listarCreditosDisponiblesCliente(id)
-        : await listarCreditosCliente(id);
-
+        ? await listarCreditosDisponiblesCliente(clienteId)
+        : await listarCreditosCliente(clienteId);
       setCreditos(data || []);
     } catch (err) {
-      setError(err.message || "No se pudieron cargar los créditos");
+      setError(err.message || "No se pudieron cargar los créditos del cliente");
       setCreditos([]);
     } finally {
       setLoadingCreditos(false);
     }
   }
 
-  async function handleSubmit(e) {
-    e.preventDefault();
-    await cargarCreditos(clienteId, soloDisponibles);
+  function seleccionarCliente(cliente) {
+    setClienteSeleccionado(cliente);
   }
 
-  function handleSoloDisponiblesChange(value) {
-    setSoloDisponibles(value);
-    cargarCreditos(clienteId, value);
-  }
+  const resumen = useMemo(() => {
+    return clientesConSaldo.reduce(
+      (acc, cliente) => {
+        acc.clientes += 1;
+        acc.creditos += Number(cliente.creditos_disponibles || 0);
+        acc.saldo += Number(cliente.saldo_total || 0);
+        return acc;
+      },
+      { clientes: 0, creditos: 0, saldo: 0 }
+    );
+  }, [clientesConSaldo]);
 
-  const totalSaldo = creditos.reduce((acc, credito) => acc + Number(credito.saldo_actual || 0), 0);
+  const totalSaldoDetalle = creditos.reduce(
+    (acc, credito) => acc + Number(credito.saldo_actual || 0),
+    0
+  );
   const politicaCredito = getPoliticaCreditoGeneral();
 
   return (
     <div style={{ ...pageStyle, ...(isMobile ? pageMobileStyle : {}) }}>
       <div style={headerStyle}>
         <div>
-          <h1 style={{ margin: 0, fontSize: isMobile ? 24 : undefined }}>Créditos</h1>
+          <h1 style={{ margin: 0, fontSize: isMobile ? 24 : 32 }}>Créditos</h1>
           <p style={mutedStyle}>
-            Saldos comerciales a favor del cliente. No reemplazan la reversión/cancelación de pagos electrónicos.
+            Saldos a favor por cliente, reintegros y créditos comerciales pendientes.
           </p>
         </div>
+        <button type="button" onClick={() => cargarClientesConSaldo(query)} style={outlineButtonStyle}>
+          Refrescar
+        </button>
       </div>
 
       {error && <div style={alertStyle}>Error: {error}</div>}
 
       <section style={operationGuideStyle}>
         <div style={operationRuleStyle}>
-          <strong style={{ color: "#047857" }}>Efectivo y transferencia</strong>
+          <strong>Efectivo y transferencia</strong>
           <span>
-            La anulación genera un saldo a favor por el dinero realmente cobrado. Desde Créditos podés aplicarlo a otra venta o reintegrarlo.
+            Cuando el dinero queda a favor del cliente dentro del negocio, se gestiona desde Créditos.
           </span>
         </div>
         <div style={electronicRuleStyle}>
-          <strong style={{ color: "#1d4ed8" }}>Tarjeta y Mercado Pago</strong>
+          <strong>Tarjeta y Mercado Pago</strong>
           <span>
-            Se cancelan desde la terminal o plataforma correspondiente. No deben convertirse en crédito comercial automático.
+            Se cancelan desde su terminal o plataforma. Evitá convertirlos en crédito comercial si el reintegro ocurre afuera.
           </span>
         </div>
       </section>
 
-      <section style={cardStyle}>
-        <form onSubmit={handleSubmit} style={isMobile ? filtersMobileStyle : filtersStyle}>
-          <label style={fieldStyle}>
-            <span style={labelStyle}>Cliente</span>
-            <select
-              value={clienteId}
-              onChange={(e) => setClienteId(e.target.value)}
-              style={inputStyle}
-              disabled={loadingClientes}
-            >
-              <option value="">Seleccionar cliente</option>
-              {clientes.map((cliente) => (
-                <option key={cliente.id} value={cliente.id}>
-                  {cliente.nombre} #{cliente.id}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label style={checkStyle}>
-            <input
-              type="checkbox"
-              checked={soloDisponibles}
-              onChange={(e) => handleSoloDisponiblesChange(e.target.checked)}
-            />
-            Solo créditos disponibles
-          </label>
-
-          <button type="submit" disabled={!clienteId || loadingCreditos} style={isMobile ? fullWidthStyle : undefined}>
-            {loadingCreditos ? "Buscando..." : "Buscar"}
-          </button>
-        </form>
-      </section>
-
       <section style={isMobile ? summaryGridMobileStyle : summaryGridStyle}>
-        <div style={metricStyle}>
-          <span style={mutedStyle}>Créditos encontrados</span>
-          <strong style={metricValueStyle}>{creditos.length}</strong>
-        </div>
-
-        <div style={metricStyle}>
-          <span style={mutedStyle}>Saldo total mostrado</span>
-          <strong style={metricValueStyle}>{formatMoneyPrecise(totalSaldo)}</strong>
-        </div>
-
+        <Metric label="Clientes con saldo" value={resumen.clientes} />
+        <Metric label="Créditos disponibles" value={resumen.creditos} />
+        <Metric label="Saldo total a favor" value={formatMoneyPrecise(resumen.saldo)} tone="success" />
         <div style={policyStyle}>
           <strong>{politicaCredito.titulo}</strong>
           <span>{politicaCredito.descripcion}</span>
         </div>
       </section>
 
-      <section style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
-        <div style={tableHeaderStyle}>
-          <h2 style={{ margin: 0 }}>Listado</h2>
+      <section style={{ ...cardStyle, ...(isMobile ? cardMobileStyle : {}) }}>
+        <div style={searchBoxStyle}>
+          <Search size={18} color="#64748b" />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Buscar cliente, teléfono, DNI/CUIT, venta u origen..."
+            style={searchInputStyle}
+          />
         </div>
-
-        {loadingCreditos ? (
-          <div style={{ padding: "18px" }}>Cargando créditos...</div>
-        ) : creditos.length === 0 ? (
-          <div style={{ padding: "18px" }}>
-            No hay créditos para el cliente seleccionado.
-          </div>
-        ) : (
-          <div style={tableWrapperStyle}>
-            <table style={tableStyle}>
-              <thead style={{ background: "#f9fafb" }}>
-                <tr>
-                  <th style={thStyle}>ID</th>
-                  <th style={thStyle}>Cliente</th>
-                  <th style={thStyle}>Origen</th>
-                  <th style={thStyle}>Saldo</th>
-                  <th style={thStyle}>Estado</th>
-                  <th style={thStyle}>Observación</th>
-                  <th style={thStyle}>Acción</th>
-                </tr>
-              </thead>
-              <tbody>
-                {creditos.map((credito) => (
-                  <tr key={credito.id} style={{ borderTop: "1px solid #eee" }}>
-                    <td style={tdStyle}>#{credito.id}</td>
-                    <td style={tdStyle}>#{credito.id_cliente}</td>
-                    <td style={tdStyle}>
-                      {getOrigenFinancieroLabel(credito.origen_tipo, credito.origen_id)}
-                    </td>
-                    <td style={tdStyle}>{formatMoneyPrecise(credito.saldo_actual)}</td>
-                    <td style={tdStyle}>
-                      <EstadoCreditoBadge estado={credito.estado} />
-                    </td>
-                    <td style={tdStyle}>
-                      <CreditoContextoInline credito={credito} />
-                    </td>
-                    <td style={tdStyle}>
-                      <Link to={`/creditos/${credito.id}`} style={linkBtnStyle}>
-                        Revisar / reintegrar
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </section>
+
+      <main style={{ ...layoutStyle, ...(isMobile ? layoutMobileStyle : {}) }}>
+        <section style={cardListStyle}>
+          <div style={sectionHeaderStyle}>
+            <div>
+              <h2 style={sectionTitleStyle}>Clientes con saldo a favor</h2>
+              <p style={mutedStyle}>
+                {loadingClientes ? "Actualizando..." : `${clientesConSaldo.length} resultado(s)`}
+              </p>
+            </div>
+          </div>
+
+          {loadingClientes ? (
+            <div style={emptyStyle}>Cargando saldos...</div>
+          ) : clientesConSaldo.length === 0 ? (
+            <div style={emptyStyle}>No hay clientes con saldo a favor para esta búsqueda.</div>
+          ) : (
+            <div style={clientListStyle}>
+              {clientesConSaldo.map((cliente) => {
+                const activo =
+                  Number(clienteSeleccionado?.id_cliente) === Number(cliente.id_cliente);
+
+                return (
+                  <button
+                    type="button"
+                    key={cliente.id_cliente}
+                    onClick={() => seleccionarCliente(cliente)}
+                    style={activo ? clientCardActiveStyle : clientCardStyle}
+                  >
+                    <div style={clientMainStyle}>
+                      <strong>{cliente.cliente_nombre}</strong>
+                      <span style={mutedSmallStyle}>
+                        #{cliente.id_cliente}
+                        {cliente.cliente_dni ? ` · DNI ${cliente.cliente_dni}` : ""}
+                        {cliente.cliente_cuit ? ` · CUIT ${cliente.cliente_cuit}` : ""}
+                        {cliente.cliente_telefono ? ` · Tel. ${cliente.cliente_telefono}` : ""}
+                      </span>
+                      <span style={mutedSmallStyle}>
+                        Último origen: {getOrigenFinancieroLabel(cliente.ultimo_origen_tipo, cliente.ultimo_origen_id)}
+                        {" · "}
+                        {formatDate(cliente.ultima_fecha)}
+                      </span>
+                    </div>
+                    <div style={clientAmountStyle}>
+                      <span>{cliente.creditos_disponibles} crédito(s)</span>
+                      <strong>{formatMoneyPrecise(cliente.saldo_total)}</strong>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        <section style={{ ...cardListStyle, ...(isMobile ? detailMobileStyle : {}) }}>
+          <div style={sectionHeaderStyle}>
+            <div>
+              <h2 style={sectionTitleStyle}>
+                {clienteSeleccionado ? clienteSeleccionado.cliente_nombre : "Detalle"}
+              </h2>
+              <p style={mutedStyle}>
+                {clienteSeleccionado
+                  ? `${creditos.length} crédito(s) · ${formatMoneyPrecise(totalSaldoDetalle)}`
+                  : "Elegí un cliente para revisar sus créditos."}
+              </p>
+            </div>
+
+            <label style={checkStyle}>
+              <input
+                type="checkbox"
+                checked={soloDisponibles}
+                onChange={(event) => setSoloDisponibles(event.target.checked)}
+              />
+              Disponibles
+            </label>
+          </div>
+
+          {!clienteSeleccionado ? (
+            <div style={emptyStyle}>Seleccioná un cliente del listado.</div>
+          ) : loadingCreditos ? (
+            <div style={emptyStyle}>Cargando créditos...</div>
+          ) : creditos.length === 0 ? (
+            <div style={emptyStyle}>No hay créditos para mostrar con este filtro.</div>
+          ) : (
+            <div style={tableWrapperStyle}>
+              <table style={tableStyle}>
+                <thead>
+                  <tr>
+                    <th style={thStyle}>Crédito</th>
+                    <th style={thStyle}>Origen</th>
+                    <th style={thStyle}>Saldo</th>
+                    <th style={thStyle}>Estado</th>
+                    <th style={thStyle}>Contexto</th>
+                    <th style={thStyle}>Acción</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {creditos.map((credito) => (
+                    <tr key={credito.id} style={trStyle}>
+                      <td style={tdStyle}>#{credito.id}</td>
+                      <td style={tdStyle}>
+                        {getOrigenFinancieroLabel(credito.origen_tipo, credito.origen_id)}
+                      </td>
+                      <td style={tdStyle}>
+                        <strong>{formatMoneyPrecise(credito.saldo_actual)}</strong>
+                      </td>
+                      <td style={tdStyle}>
+                        <EstadoCreditoBadge estado={credito.estado} />
+                      </td>
+                      <td style={tdStyle}>
+                        <CreditoContextoInline credito={credito} />
+                      </td>
+                      <td style={tdStyle}>
+                        <Link to={`/creditos/${credito.id}`} style={linkBtnStyle}>
+                          Revisar
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      </main>
     </div>
   );
 }
@@ -220,20 +294,33 @@ function CreditoContextoInline({ credito }) {
   return (
     <div style={{ display: "grid", gap: 4, maxWidth: 360 }}>
       <strong>{contexto.titulo}</strong>
-      <span style={{ color: "#667085", fontSize: 13 }}>
+      <span style={mutedSmallStyle}>
         {credito.observacion || contexto.descripcion}
       </span>
     </div>
   );
 }
 
+function Metric({ label, value, tone }) {
+  return (
+    <div style={{ ...metricStyle, ...(tone === "success" ? metricSuccessStyle : {}) }}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
 export function EstadoCreditoBadge({ estado }) {
+  const labels = {
+    abierto: "Abierto",
+    aplicado_parcial: "Aplicado parcial",
+    aplicado_total: "Aplicado total",
+  };
   const colors = {
     abierto: { bg: "#ecfdf3", color: "#067647" },
     aplicado_parcial: { bg: "#fffaeb", color: "#b54708" },
     aplicado_total: { bg: "#f2f4f7", color: "#475467" },
   };
-
   const style = colors[estado] || { bg: "#eef4ff", color: "#175cd3" };
 
   return (
@@ -241,52 +328,212 @@ export function EstadoCreditoBadge({ estado }) {
       style={{
         background: style.bg,
         color: style.color,
-        borderRadius: "999px",
+        borderRadius: 999,
         padding: "4px 8px",
-        fontSize: "13px",
-        fontWeight: "bold",
+        fontSize: 12,
+        fontWeight: 900,
         whiteSpace: "nowrap",
       }}
     >
-      {estado}
+      {labels[estado] || estado}
     </span>
   );
 }
 
-
-const pageStyle = { padding: "24px", background: "#f6f7fb", minHeight: "100vh" };
-const pageMobileStyle = { padding: "12px", overflowX: "hidden" };
-const headerStyle = { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", gap: "12px", flexWrap: "wrap" };
+const pageStyle = { padding: 24, background: "#f6f7fb", minHeight: "100vh" };
+const pageMobileStyle = { padding: 12, overflowX: "hidden" };
+const headerStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  marginBottom: 16,
+  gap: 12,
+  flexWrap: "wrap",
+};
 const mutedStyle = { color: "#667085", margin: "6px 0 0" };
-const cardStyle = { background: "white", borderRadius: "14px", boxShadow: "0 2px 10px rgba(0,0,0,.08)", padding: "16px", marginBottom: "16px" };
-const filtersStyle = { display: "grid", gridTemplateColumns: "minmax(260px, 1fr) auto auto", gap: "14px", alignItems: "end" };
-const filtersMobileStyle = { display: "grid", gridTemplateColumns: "1fr", gap: "12px", alignItems: "stretch" };
-const fieldStyle = { display: "flex", flexDirection: "column", gap: "7px" };
-const labelStyle = { fontWeight: "bold", fontSize: "14px" };
-const inputStyle = { width: "100%", padding: "10px 12px", borderRadius: "10px", border: "1px solid #d0d5dd", fontSize: "15px" };
-const checkStyle = { display: "flex", alignItems: "center", gap: "8px", paddingBottom: "9px" };
-const alertStyle = { background: "#fff1f0", color: "#b42318", padding: "12px", borderRadius: "10px", border: "1px solid #f4c7c3", marginBottom: "16px" };
-const operationGuideStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "12px", marginBottom: "16px" };
-const operationRuleStyle = { background: "#ecfdf5", border: "1px solid #bbf7d0", borderRadius: "10px", padding: "14px", display: "grid", gap: "5px", color: "#344054" };
-const electronicRuleStyle = { background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "10px", padding: "14px", display: "grid", gap: "5px", color: "#344054" };
-const summaryGridStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px", marginBottom: "16px" };
-const summaryGridMobileStyle = { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "10px", marginBottom: "16px" };
-const metricStyle = { background: "white", borderRadius: "14px", boxShadow: "0 2px 10px rgba(0,0,0,.08)", padding: "16px", display: "grid", gap: "6px" };
-const metricValueStyle = { fontSize: "24px" };
+const mutedSmallStyle = { color: "#667085", fontSize: 13, lineHeight: 1.35 };
+const alertStyle = {
+  background: "#fff1f0",
+  color: "#b42318",
+  padding: 12,
+  borderRadius: 10,
+  border: "1px solid #f4c7c3",
+  marginBottom: 16,
+};
+const outlineButtonStyle = {
+  border: "1px solid #cbd5e1",
+  background: "white",
+  color: "#0f172a",
+  borderRadius: 12,
+  padding: "10px 14px",
+  fontWeight: 900,
+  cursor: "pointer",
+};
+const operationGuideStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+  gap: 12,
+  marginBottom: 16,
+};
+const operationRuleStyle = {
+  background: "#ecfdf5",
+  border: "1px solid #bbf7d0",
+  borderRadius: 12,
+  padding: 14,
+  display: "grid",
+  gap: 5,
+  color: "#047857",
+};
+const electronicRuleStyle = {
+  background: "#eff6ff",
+  border: "1px solid #bfdbfe",
+  borderRadius: 12,
+  padding: 14,
+  display: "grid",
+  gap: 5,
+  color: "#1d4ed8",
+};
+const summaryGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: 14,
+  marginBottom: 16,
+};
+const summaryGridMobileStyle = {
+  display: "grid",
+  gridTemplateColumns: "1fr",
+  gap: 10,
+  marginBottom: 16,
+};
+const metricStyle = {
+  background: "white",
+  borderRadius: 14,
+  boxShadow: "0 2px 10px rgba(0,0,0,.08)",
+  padding: 16,
+  display: "grid",
+  gap: 6,
+  fontWeight: 800,
+};
+const metricSuccessStyle = {
+  background: "#ecfdf5",
+  border: "1px solid #bbf7d0",
+  color: "#047857",
+};
 const policyStyle = {
   background: "#fff7ed",
   border: "1px solid #fdba74",
   color: "#9a3412",
-  borderRadius: "14px",
-  padding: "16px",
+  borderRadius: 14,
+  padding: 16,
   display: "grid",
-  gap: "6px",
-  fontSize: "14px",
+  gap: 6,
+  fontSize: 14,
 };
-const tableHeaderStyle = { padding: "16px 18px", borderBottom: "1px solid #eee" };
+const cardStyle = {
+  background: "white",
+  borderRadius: 14,
+  boxShadow: "0 2px 10px rgba(0,0,0,.08)",
+  padding: 16,
+  marginBottom: 16,
+};
+const cardMobileStyle = { padding: 12 };
+const searchBoxStyle = {
+  minHeight: 46,
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  border: "1px solid #cbd5e1",
+  borderRadius: 12,
+  padding: "0 12px",
+  background: "#f8fafc",
+};
+const searchInputStyle = {
+  flex: 1,
+  minWidth: 0,
+  border: "none",
+  outline: "none",
+  background: "transparent",
+  padding: "12px 0",
+  fontSize: 15,
+  fontWeight: 800,
+};
+const layoutStyle = {
+  display: "grid",
+  gridTemplateColumns: "minmax(360px, 0.85fr) minmax(540px, 1.15fr)",
+  gap: 16,
+  alignItems: "start",
+};
+const layoutMobileStyle = { gridTemplateColumns: "1fr" };
+const cardListStyle = {
+  background: "white",
+  borderRadius: 14,
+  boxShadow: "0 2px 10px rgba(0,0,0,.08)",
+  overflow: "hidden",
+};
+const detailMobileStyle = { minWidth: 0 };
+const sectionHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 12,
+  padding: 16,
+  borderBottom: "1px solid #e5e7eb",
+};
+const sectionTitleStyle = { margin: 0, fontSize: 20 };
+const clientListStyle = { display: "grid" };
+const clientCardStyle = {
+  width: "100%",
+  textAlign: "left",
+  border: "none",
+  borderBottom: "1px solid #eef2f7",
+  background: "white",
+  padding: 14,
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) auto",
+  gap: 12,
+  cursor: "pointer",
+};
+const clientCardActiveStyle = {
+  ...clientCardStyle,
+  background: "#fff7ed",
+  boxShadow: "inset 4px 0 0 #f97316",
+};
+const clientMainStyle = { minWidth: 0, display: "grid", gap: 4 };
+const clientAmountStyle = {
+  textAlign: "right",
+  display: "grid",
+  gap: 4,
+  color: "#047857",
+  whiteSpace: "nowrap",
+};
+const emptyStyle = { padding: 18, color: "#667085", fontWeight: 800 };
+const checkStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 8,
+  fontWeight: 800,
+  color: "#344054",
+};
 const tableWrapperStyle = { overflowX: "auto", maxWidth: "100%", WebkitOverflowScrolling: "touch" };
-const tableStyle = { width: "100%", borderCollapse: "collapse", minWidth: "850px" };
-const thStyle = { textAlign: "left", padding: "12px 10px", borderBottom: "1px solid #e5e7eb" };
-const tdStyle = { padding: "10px", verticalAlign: "top" };
-const linkBtnStyle = { textDecoration: "none", padding: "8px 10px", borderRadius: "10px", border: "1px solid #d0d5dd", color: "#111827", background: "white", display: "inline-block" };
-const fullWidthStyle = { width: "100%" };
+const tableStyle = { width: "100%", borderCollapse: "collapse", minWidth: 850 };
+const thStyle = {
+  textAlign: "left",
+  padding: "12px 10px",
+  borderBottom: "1px solid #e5e7eb",
+  background: "#f8fafc",
+  fontSize: 12,
+  color: "#475467",
+  textTransform: "uppercase",
+};
+const tdStyle = { padding: 10, verticalAlign: "top" };
+const trStyle = { borderTop: "1px solid #eef2f7" };
+const linkBtnStyle = {
+  textDecoration: "none",
+  padding: "8px 10px",
+  borderRadius: 10,
+  border: "1px solid #d0d5dd",
+  color: "#111827",
+  background: "white",
+  display: "inline-block",
+  fontWeight: 900,
+};

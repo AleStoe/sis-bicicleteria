@@ -108,6 +108,63 @@ def get_creditos_cliente(conn, id_cliente: int):
         return cur.fetchall()
 
 
+def get_clientes_con_credito_disponible(conn, q: str | None = None, limit: int = 100):
+    params: dict[str, object] = {"limit": limit}
+    filtro_busqueda = ""
+
+    if q and q.strip():
+        params["query"] = f"%{q.strip()}%"
+        filtro_busqueda = """
+            AND (
+                c.nombre ILIKE %(query)s
+                OR COALESCE(c.telefono, '') ILIKE %(query)s
+                OR COALESCE(c.dni, '') ILIKE %(query)s
+                OR COALESCE(c.cuit, '') ILIKE %(query)s
+                OR COALESCE(cr.origen_tipo, '') ILIKE %(query)s
+                OR CAST(cr.origen_id AS TEXT) ILIKE %(query)s
+            )
+        """
+
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            f"""
+            WITH creditos_filtrados AS (
+                SELECT
+                    cr.*,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY cr.id_cliente
+                        ORDER BY cr.created_at DESC, cr.id DESC
+                    ) AS rn
+                FROM creditos_cliente cr
+                INNER JOIN clientes c
+                    ON c.id = cr.id_cliente
+                WHERE cr.estado IN ('abierto', 'aplicado_parcial')
+                  AND cr.saldo_actual > 0
+                  {filtro_busqueda}
+            )
+            SELECT
+                c.id AS id_cliente,
+                c.nombre AS cliente_nombre,
+                c.telefono AS cliente_telefono,
+                c.dni AS cliente_dni,
+                c.cuit AS cliente_cuit,
+                COUNT(cf.id)::int AS creditos_disponibles,
+                COALESCE(SUM(cf.saldo_actual), 0) AS saldo_total,
+                MAX(cf.created_at) AS ultima_fecha,
+                MAX(CASE WHEN cf.rn = 1 THEN cf.origen_tipo END) AS ultimo_origen_tipo,
+                MAX(CASE WHEN cf.rn = 1 THEN cf.origen_id END) AS ultimo_origen_id
+            FROM creditos_filtrados cf
+            INNER JOIN clientes c
+                ON c.id = cf.id_cliente
+            GROUP BY c.id, c.nombre, c.telefono, c.dni, c.cuit
+            ORDER BY saldo_total DESC, c.nombre ASC
+            LIMIT %(limit)s
+            """,
+            params,
+        )
+        return cur.fetchall()
+
+
 def get_credito_movimientos(conn, credito_id: int):
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(

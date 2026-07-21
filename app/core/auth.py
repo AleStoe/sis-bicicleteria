@@ -140,7 +140,11 @@ def _obtener_usuario_request(request: Request) -> dict[str, Any]:
 
     if (
         request.url.path.startswith("/documentos/")
-        or request.url.path in {"/catalogo/pdf/mayorista", "/catalogo/pdf/bicicletas"}
+        or request.url.path in {
+            "/catalogo/pdf/mayorista",
+            "/catalogo/pdf/bicicletas",
+            "/catalogo/pdf/minorista",
+        }
     ):
         token = request.query_params.get("access_token")
         if token:

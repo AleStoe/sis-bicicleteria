@@ -892,6 +892,38 @@ def update_orden_taller_item_aprobacion(conn, item_id: int, aprobado: bool):
         )
         return cur.fetchone()
 
+def update_orden_taller_item_cantidad_borrador(conn, item_id: int, cantidad):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            UPDATE ordenes_taller_items
+            SET cantidad = %s,
+                subtotal = ROUND((precio_unitario - COALESCE(valor_cobertura_unitario, 0)) * %s, 2),
+                updated_at = NOW()
+            WHERE id = %s
+            RETURNING
+                id,
+                id_orden_taller,
+                tipo_item,
+                id_variante,
+                id_servicio_taller,
+                etapa,
+                descripcion_snapshot,
+                cantidad,
+                precio_unitario,
+                valor_cobertura_unitario,
+                motivo_cobertura,
+                observacion_cobertura,
+                costo_unitario_aplicado,
+                aprobado,
+                subtotal,
+                created_at,
+                updated_at
+            """,
+            (cantidad, cantidad, item_id),
+        )
+        return cur.fetchone()
+
 def update_orden_taller_item_ejecutado(conn, item_id: int):
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(

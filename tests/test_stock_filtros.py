@@ -291,3 +291,103 @@ def test_reponer_stock_filtra_stock_bajo_sin_alterar_stock(
     assert visible.status_code == 200, visible.text
     assert visible.json()[0]["reponer_stock"] is True
     assert visible.json()[0]["stock_fisico"] == "1.000"
+
+
+def test_pedido_sugerido_agrupa_por_proveedor_y_excluye_no_reponer(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO proveedores (nombre, activo)
+            VALUES ('Proveedor pedido sugerido', TRUE)
+            RETURNING id
+            """
+        )
+        proveedor_id = cur.fetchone()["id"]
+
+        cur.execute(
+            """
+            INSERT INTO productos (
+                id_categoria,
+                nombre,
+                tipo_item,
+                stockeable,
+                serializable,
+                activo
+            )
+            VALUES
+                (%s, 'Pedido sugerido incluir', 'producto', TRUE, FALSE, TRUE),
+                (%s, 'Pedido sugerido no reponer', 'producto', TRUE, FALSE, TRUE)
+            RETURNING id
+            """,
+            (seed_venta_basica["categoria_id"], seed_venta_basica["categoria_id"]),
+        )
+        producto_incluir_id = cur.fetchone()["id"]
+        producto_no_reponer_id = cur.fetchone()["id"]
+
+        cur.execute(
+            """
+            INSERT INTO variantes (
+                id_producto,
+                nombre_variante,
+                sku,
+                codigo_proveedor,
+                proveedor_preferido_id,
+                precio_minorista,
+                precio_mayorista,
+                reponer_stock,
+                activo
+            )
+            VALUES
+                (%s, 'UNICA', 'PEDIDO-INCLUIR', 'PEDIDO-INCLUIR', %s, 1000, 800, TRUE, TRUE),
+                (%s, 'UNICA', 'PEDIDO-NO-REPONER', 'PEDIDO-NO-REPONER', %s, 1000, 800, FALSE, TRUE)
+            RETURNING id
+            """,
+            (producto_incluir_id, proveedor_id, producto_no_reponer_id, proveedor_id),
+        )
+        variante_incluir_id = cur.fetchone()["id"]
+        variante_no_reponer_id = cur.fetchone()["id"]
+
+        cur.execute(
+            """
+            INSERT INTO stock_sucursal (
+                id_sucursal,
+                id_variante,
+                stock_fisico,
+                stock_reservado,
+                stock_vendido_pendiente_entrega
+            )
+            VALUES
+                (%s, %s, 1, 0, 0),
+                (%s, %s, 1, 0, 0)
+            """,
+            (
+                seed_venta_basica["sucursal_id"],
+                variante_incluir_id,
+                seed_venta_basica["sucursal_id"],
+                variante_no_reponer_id,
+            ),
+        )
+    db_conn.commit()
+
+    response = client.get(
+        "/stock/pedido-sugerido",
+        params={
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "stock_bajo_umbral": 2,
+            "q": "Pedido sugerido",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["total_proveedores"] == 1
+    assert data["total_items"] == 1
+    assert data["proveedores"][0]["proveedor_nombre"] == "Proveedor pedido sugerido"
+    items_ids = [item["variante_id"] for item in data["proveedores"][0]["items"]]
+    assert items_ids == [variante_incluir_id]
+    assert variante_no_reponer_id not in items_ids
+    assert data["proveedores"][0]["items"][0]["cantidad_sugerida"] == "3.000"

@@ -56,7 +56,7 @@ export default function CheckoutResumenPago({
       {creditoDisponible > 0 && (
         <div style={styles.creditBox}>
           <div style={styles.creditHeader}>
-            <span>Crédito disponible</span>
+            <span>Saldo a favor disponible</span>
 
             <label style={styles.creditToggle}>
               <input
@@ -76,17 +76,17 @@ export default function CheckoutResumenPago({
             <>
               {creditoCubreSaldo && (
                 <div style={styles.creditCoverageNotice}>
-                  <strong>El crédito cubre completamente la venta.</strong>
+                  <strong>El saldo a favor cubre completamente la venta.</strong>
                   <span>
                     {estaSaldada
                       ? "No necesitás cargar otro medio de pago. Podés finalizar la venta."
-                      : `Alcanza para cubrir los ${formatMoney(saldoAntesCredito)} pendientes. Tocá “Aplicar crédito y completar saldo” para continuar.`}
+                      : `Alcanza para cubrir los ${formatMoney(saldoAntesCredito)} pendientes. Tocá “Aplicar saldo a favor y completar saldo” para continuar.`}
                   </span>
                 </div>
               )}
 
               <div style={styles.creditApplied}>
-                <span>Aplicado</span>
+                <span>Saldo a favor aplicado</span>
                 <strong>- {formatMoney(creditoAplicado)}</strong>
               </div>
 

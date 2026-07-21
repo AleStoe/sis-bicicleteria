@@ -11,6 +11,7 @@ from app.shared.constants import (
     ORDEN_TALLER_EVENTO_CAMBIO_ESTADO,
     ORDEN_TALLER_EVENTO_AGREGADO_ITEM,
     ORDEN_TALLER_EVENTO_ITEM_QUITADO_BORRADOR,
+    ORDEN_TALLER_EVENTO_ITEM_CANTIDAD_BORRADOR_ACTUALIZADA,
     TIPO_MOVIMIENTO_USO_TALLER,
     TIPO_MOVIMIENTO_REVERSION_USO_TALLER,
     ORDEN_TALLER_EVENTO_ITEM_EJECUCION_REVERTIDA,
@@ -77,6 +78,7 @@ from .repository import (
     get_notas_cliente_orden_taller,
     get_item_orden_taller_by_id_for_update,
     update_orden_taller_item_aprobacion,
+    update_orden_taller_item_cantidad_borrador,
     update_orden_taller_item_ejecutado, 
     update_orden_taller_item_agregado,
     update_orden_taller_item_cancelado,
@@ -668,6 +670,86 @@ def aprobar_item_orden_taller(orden_id: int, item_id: int, data):
                 id_orden_taller=orden_id,
                 tipo_evento="aprobacion_cliente",
                 detalle=detalle_evento,
+                id_usuario=data.id_usuario,
+            )
+
+            return item_actualizado
+    finally:
+        conn.close()
+
+def actualizar_cantidad_item_borrador_orden_taller(orden_id: int, item_id: int, data):
+    conn = get_connection()
+    try:
+        with conn.transaction():
+            try:
+                validar_usuario_activo(conn, data.id_usuario)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+
+            orden = get_orden_taller_by_id_for_update(conn, orden_id)
+            if orden is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No existe la orden de taller {orden_id}",
+                )
+
+            if orden["estado"] != "ingresada":
+                raise HTTPException(
+                    status_code=400,
+                    detail="Solo se puede modificar la cantidad mientras la orden está en borrador.",
+                )
+
+            if orden.get("id_venta_generada"):
+                raise HTTPException(
+                    status_code=400,
+                    detail="No se puede modificar un item de una orden con venta generada.",
+                )
+
+            item = get_item_orden_taller_by_id_for_update(conn, item_id)
+            if item is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No existe el item de taller {item_id}",
+                )
+
+            if item["id_orden_taller"] != orden_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="El item no pertenece a la orden informada",
+                )
+
+            if item["etapa"] != "presupuestado" or item["aprobado"] is True:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Solo se puede modificar la cantidad de items no aprobados del borrador.",
+                )
+
+            if existe_venta_item_por_orden_taller_item(conn, item_id):
+                raise HTTPException(
+                    status_code=400,
+                    detail="No se puede modificar un item vinculado a una venta.",
+                )
+
+            cantidad_anterior = Decimal(item["cantidad"])
+            cantidad_nueva = Decimal(data.cantidad)
+            if cantidad_anterior == cantidad_nueva:
+                return item
+
+            item_actualizado = update_orden_taller_item_cantidad_borrador(
+                conn,
+                item_id=item_id,
+                cantidad=cantidad_nueva,
+            )
+            recalcular_total_orden_taller(conn, orden_id)
+
+            insert_orden_taller_evento(
+                conn,
+                id_orden_taller=orden_id,
+                tipo_evento=ORDEN_TALLER_EVENTO_ITEM_CANTIDAD_BORRADOR_ACTUALIZADA,
+                detalle=(
+                    f"Cantidad actualizada en borrador: {item['descripcion_snapshot']}. "
+                    f"{cantidad_anterior} -> {cantidad_nueva}."
+                ),
                 id_usuario=data.id_usuario,
             )
 

@@ -15,6 +15,7 @@ from .pdf import (
     _text,
     _resolver_imagen_local,
 )
+from .pdf_metadata import set_pdf_metadata
 
 
 def _total(rows, key):
@@ -300,6 +301,7 @@ def generar_resumen_cobros_pdf(data: dict) -> bytes:
 
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
+    set_pdf_metadata(c, f"Resumen de cobros - Venta #{venta.get('id')}")
 
     width, height = A4
     margin_x = 15 * mm
