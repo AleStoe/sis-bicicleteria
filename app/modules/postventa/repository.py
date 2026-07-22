@@ -257,6 +257,94 @@ def get_eventos_caso(conn, caso_id: int):
         return cur.fetchall()
 
 
+def get_orden_taller(conn, orden_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT id, id_cliente, id_bicicleta_cliente, estado, problema_reportado
+            FROM ordenes_taller
+            WHERE id = %s
+            """,
+            (orden_id,),
+        )
+        return cur.fetchone()
+
+
+def get_vinculo_orden_taller(conn, orden_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT id, id_caso_postventa, id_orden_taller
+            FROM postventa_caso_ordenes
+            WHERE id_orden_taller = %s
+            """,
+            (orden_id,),
+        )
+        return cur.fetchone()
+
+
+def insert_vinculo_orden_taller(conn, data: dict) -> int:
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            INSERT INTO postventa_caso_ordenes (
+                id_caso_postventa,
+                id_orden_taller,
+                id_usuario,
+                observaciones
+            )
+            VALUES (%s, %s, %s, %s)
+            RETURNING id
+            """,
+            (
+                data["id_caso_postventa"],
+                data["id_orden_taller"],
+                data["id_usuario"],
+                data.get("observaciones"),
+            ),
+        )
+        return cur.fetchone()["id"]
+
+
+def listar_ordenes_taller_caso(conn, caso_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT
+                pco.id,
+                pco.id_caso_postventa,
+                pco.id_orden_taller,
+                pco.fecha_vinculacion,
+                pco.id_usuario,
+                pco.observaciones,
+                ot.estado,
+                ot.problema_reportado,
+                ot.total_final,
+                ot.saldo_pendiente,
+                ot.fecha_ingreso,
+                ot.id_cliente,
+                c.nombre AS cliente_nombre,
+                ot.id_bicicleta_cliente,
+                NULLIF(TRIM(CONCAT_WS(
+                    ' ',
+                    bc.marca,
+                    bc.modelo,
+                    CASE WHEN bc.rodado IS NOT NULL THEN 'Rod. ' || bc.rodado ELSE NULL END,
+                    bc.color,
+                    CASE WHEN bc.numero_cuadro IS NOT NULL THEN 'Cuadro ' || bc.numero_cuadro ELSE NULL END
+                )), '') AS bicicleta_cliente_descripcion
+            FROM postventa_caso_ordenes pco
+            INNER JOIN ordenes_taller ot ON ot.id = pco.id_orden_taller
+            INNER JOIN clientes c ON c.id = ot.id_cliente
+            INNER JOIN bicicletas_clientes bc ON bc.id = ot.id_bicicleta_cliente
+            WHERE pco.id_caso_postventa = %s
+            ORDER BY pco.fecha_vinculacion ASC, pco.id ASC
+            """,
+            (caso_id,),
+        )
+        return cur.fetchall()
+
+
 def exists_by_id(conn, tabla: str, entidad_id: int) -> bool:
     with conn.cursor() as cur:
         cur.execute(f"SELECT 1 FROM {tabla} WHERE id = %s", (entidad_id,))

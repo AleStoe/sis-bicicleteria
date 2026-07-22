@@ -8,9 +8,11 @@ from .schema import (
     PostventaCasoCreateInput,
     PostventaCasoOutput,
     PostventaCasoUpdateInput,
+    PostventaOrdenTallerVinculadaOutput,
     PostventaCerrarInput,
     PostventaEstadoInput,
     PostventaReabrirInput,
+    PostventaVincularOrdenInput,
 )
 from .service import (
     actualizar_caso,
@@ -18,8 +20,10 @@ from .service import (
     cerrar_caso,
     crear_caso,
     listar_casos,
+    listar_ordenes_taller_vinculadas,
     obtener_caso,
     reabrir_caso,
+    vincular_orden_taller,
 )
 
 
@@ -66,6 +70,28 @@ def obtener_caso_route(
     _usuario: CurrentUser = Depends(puede_gestionar_postventa),
 ):
     return obtener_caso(caso_id)
+
+
+@router.get("/casos/{caso_id}/ordenes_taller", response_model=list[PostventaOrdenTallerVinculadaOutput])
+def listar_ordenes_taller_caso_route(
+    caso_id: int,
+    _usuario: CurrentUser = Depends(puede_gestionar_postventa),
+):
+    return listar_ordenes_taller_vinculadas(caso_id)
+
+
+@router.post(
+    "/casos/{caso_id}/ordenes_taller",
+    response_model=list[PostventaOrdenTallerVinculadaOutput],
+    status_code=201,
+)
+def vincular_orden_taller_route(
+    caso_id: int,
+    data: PostventaVincularOrdenInput,
+    usuario: CurrentUser = Depends(puede_gestionar_postventa),
+):
+    aplicar_actor_actual(data, usuario)
+    return vincular_orden_taller(caso_id, data)
 
 
 @router.patch("/casos/{caso_id}", response_model=PostventaCasoOutput)

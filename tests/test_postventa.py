@@ -200,12 +200,43 @@ def _seed_postventa(db_conn, clean_db):
         "usuario_id": usuario_id,
         "cliente_id": cliente_id,
         "proveedor_id": proveedor_id,
+        "sucursal_id": sucursal_id,
         "variante_id": variante_id,
         "bicicleta_cliente_id": bicicleta_cliente_id,
         "serializada_id": serializada_id,
         "venta_id": venta_id,
         "venta_item_id": venta_item_id,
     }
+
+
+def _crear_orden_taller(db_conn, seed, *, problema="Ruido en transmision"):
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO ordenes_taller (
+                id_sucursal,
+                id_cliente,
+                id_bicicleta_cliente,
+                estado,
+                problema_reportado,
+                total_final,
+                saldo_pendiente,
+                id_usuario
+            )
+            VALUES (%s, %s, %s, 'ingresada', %s, 0, 0, %s)
+            RETURNING id
+            """,
+            (
+                seed["sucursal_id"],
+                seed["cliente_id"],
+                seed["bicicleta_cliente_id"],
+                problema,
+                seed["usuario_id"],
+            ),
+        )
+        orden_id = cur.fetchone()["id"]
+    db_conn.commit()
+    return orden_id
 
 
 def _payload(seed):
@@ -397,3 +428,173 @@ def test_postventa_exige_permiso_y_audita_actor_autenticado(
     assert auditoria[0]["id_usuario"] == actor_id
     assert auditoria[0]["accion"] == "postventa_caso_creado"
     assert eventos[0]["id_usuario"] == actor_id
+
+
+def test_vincula_y_lista_orden_taller_existente(client, db_conn, clean_db):
+    seed = _seed_postventa(db_conn, clean_db)
+    caso_id = client.post("/postventa/casos", json=_payload(seed)).json()["id"]
+    orden_id = _crear_orden_taller(db_conn, seed)
+
+    vincular = client.post(
+        f"/postventa/casos/{caso_id}/ordenes_taller",
+        json={
+            "id_orden_taller": orden_id,
+            "observaciones": "OT para diagnostico inicial",
+            "id_usuario": seed["usuario_id"],
+        },
+    )
+    assert vincular.status_code == 201, vincular.text
+    ordenes = vincular.json()
+    assert len(ordenes) == 1
+    assert ordenes[0]["id_caso_postventa"] == caso_id
+    assert ordenes[0]["id_orden_taller"] == orden_id
+    assert ordenes[0]["estado"] == "ingresada"
+    assert ordenes[0]["cliente_nombre"] == "Cliente Postventa"
+
+    listado = client.get(f"/postventa/casos/{caso_id}/ordenes_taller")
+    assert listado.status_code == 200
+    assert listado.json()[0]["id_orden_taller"] == orden_id
+
+    detalle = client.get(f"/postventa/casos/{caso_id}")
+    assert any(e["tipo_evento"] == "orden_taller_vinculada" for e in detalle.json()["eventos"])
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id_usuario, accion, metadata
+            FROM auditoria_eventos
+            WHERE entidad = 'postventa_caso'
+              AND entidad_id = %s
+              AND accion = 'postventa_orden_taller_vinculada'
+            """,
+            (caso_id,),
+        )
+        auditoria = cur.fetchone()
+
+    assert auditoria["id_usuario"] == seed["usuario_id"]
+    assert auditoria["metadata"]["id_orden_taller"] == orden_id
+
+
+def test_no_permite_repetir_ni_mover_orden_taller(client, db_conn, clean_db):
+    seed = _seed_postventa(db_conn, clean_db)
+    caso_1 = client.post("/postventa/casos", json=_payload(seed)).json()["id"]
+    caso_2 = client.post("/postventa/casos", json=_payload(seed)).json()["id"]
+    orden_id = _crear_orden_taller(db_conn, seed)
+
+    primera = client.post(
+        f"/postventa/casos/{caso_1}/ordenes_taller",
+        json={"id_orden_taller": orden_id, "id_usuario": seed["usuario_id"]},
+    )
+    assert primera.status_code == 201, primera.text
+
+    repetida = client.post(
+        f"/postventa/casos/{caso_1}/ordenes_taller",
+        json={"id_orden_taller": orden_id, "id_usuario": seed["usuario_id"]},
+    )
+    assert repetida.status_code == 400
+    assert "ya está vinculada a este caso" in repetida.json()["detail"]
+
+    mover = client.post(
+        f"/postventa/casos/{caso_2}/ordenes_taller",
+        json={"id_orden_taller": orden_id, "id_usuario": seed["usuario_id"]},
+    )
+    assert mover.status_code == 400
+    assert "otro caso" in mover.json()["detail"]
+
+
+def test_no_vincula_orden_inexistente_ni_caso_cerrado(client, db_conn, clean_db):
+    seed = _seed_postventa(db_conn, clean_db)
+    caso_id = client.post("/postventa/casos", json=_payload(seed)).json()["id"]
+
+    inexistente = client.post(
+        f"/postventa/casos/{caso_id}/ordenes_taller",
+        json={"id_orden_taller": 999999, "id_usuario": seed["usuario_id"]},
+    )
+    assert inexistente.status_code == 404
+
+    cancelar = client.post(
+        f"/postventa/casos/{caso_id}/estado",
+        json={
+            "nuevo_estado": "cancelado",
+            "motivo": "Caso cargado por error",
+            "id_usuario": seed["usuario_id"],
+        },
+    )
+    assert cancelar.status_code == 200, cancelar.text
+
+    orden_id = _crear_orden_taller(db_conn, seed)
+    bloqueado = client.post(
+        f"/postventa/casos/{caso_id}/ordenes_taller",
+        json={"id_orden_taller": orden_id, "id_usuario": seed["usuario_id"]},
+    )
+    assert bloqueado.status_code == 400
+    assert "cerrado o cancelado" in bloqueado.json()["detail"]
+
+
+def test_vincular_orden_taller_exige_permiso_y_audita_actor_autenticado(
+    client,
+    db_conn,
+    clean_db,
+    monkeypatch,
+):
+    monkeypatch.setattr(settings, "auth_disabled", False)
+    seed = _seed_postventa(db_conn, clean_db)
+    orden_id = _crear_orden_taller(db_conn, seed)
+    actor_id, token_postventa = _crear_actor(
+        db_conn,
+        username="gestor_vinculos_postventa",
+        rol="gestor_vinculos_postventa",
+        permisos=("gestionar_postventa",),
+    )
+    _, token_sin_permiso = _crear_actor(
+        db_conn,
+        username="lector_sin_postventa",
+        rol="lector_sin_postventa",
+    )
+
+    caso = client.post(
+        "/postventa/casos",
+        headers=_headers(token_postventa),
+        json=_payload(seed),
+    )
+    assert caso.status_code == 201, caso.text
+    caso_id = caso.json()["id"]
+
+    bloqueado = client.post(
+        f"/postventa/casos/{caso_id}/ordenes_taller",
+        headers=_headers(token_sin_permiso),
+        json={"id_orden_taller": orden_id, "id_usuario": seed["usuario_id"]},
+    )
+    assert bloqueado.status_code == 403
+
+    autorizado = client.post(
+        f"/postventa/casos/{caso_id}/ordenes_taller",
+        headers=_headers(token_postventa),
+        json={"id_orden_taller": orden_id, "id_usuario": seed["usuario_id"]},
+    )
+    assert autorizado.status_code == 201, autorizado.text
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id_usuario
+            FROM postventa_caso_ordenes
+            WHERE id_caso_postventa = %s
+              AND id_orden_taller = %s
+            """,
+            (caso_id, orden_id),
+        )
+        vinculo = cur.fetchone()
+        cur.execute(
+            """
+            SELECT id_usuario
+            FROM postventa_eventos
+            WHERE id_caso_postventa = %s
+              AND tipo_evento = 'orden_taller_vinculada'
+            """,
+            (caso_id,),
+        )
+        evento = cur.fetchone()
+
+    assert vinculo["id_usuario"] == actor_id
+    assert evento["id_usuario"] == actor_id

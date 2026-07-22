@@ -10,6 +10,7 @@ from .schema import (
     PostventaCerrarInput,
     PostventaEstadoInput,
     PostventaReabrirInput,
+    PostventaVincularOrdenInput,
 )
 
 
@@ -165,6 +166,17 @@ def obtener_caso(caso_id: int):
         conn.close()
 
 
+def listar_ordenes_taller_vinculadas(caso_id: int):
+    conn = get_connection()
+    try:
+        caso = repository.get_caso_by_id(conn, caso_id)
+        if caso is None:
+            raise HTTPException(status_code=404, detail="No existe el caso de postventa")
+        return repository.listar_ordenes_taller_caso(conn, caso_id)
+    finally:
+        conn.close()
+
+
 def crear_caso(data: PostventaCasoCreateInput):
     payload = data.model_dump()
     id_usuario = _actor_id(data)
@@ -190,6 +202,79 @@ def crear_caso(data: PostventaCasoCreateInput):
                 metadata={"tipo_caso": data.tipo_caso},
             )
         return _detalle_caso(conn, caso_id)
+    finally:
+        conn.close()
+
+
+def vincular_orden_taller(caso_id: int, data: PostventaVincularOrdenInput):
+    id_usuario = _actor_id(data)
+    conn = get_connection()
+    try:
+        with conn.transaction():
+            caso = repository.get_caso_by_id(conn, caso_id, for_update=True)
+            if caso is None:
+                raise HTTPException(status_code=404, detail="No existe el caso de postventa")
+            _validar_mutable(caso)
+
+            orden = repository.get_orden_taller(conn, data.id_orden_taller)
+            if orden is None:
+                raise HTTPException(status_code=404, detail="No existe la orden de taller")
+
+            if orden["id_cliente"] != caso["id_cliente"]:
+                raise HTTPException(
+                    status_code=400,
+                    detail="La orden de taller no pertenece al cliente del caso",
+                )
+
+            if caso.get("id_bicicleta_cliente") is not None and (
+                orden["id_bicicleta_cliente"] != caso["id_bicicleta_cliente"]
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail="La orden de taller no corresponde a la bicicleta del caso",
+                )
+
+            vinculo_existente = repository.get_vinculo_orden_taller(conn, data.id_orden_taller)
+            if vinculo_existente is not None:
+                if vinculo_existente["id_caso_postventa"] == caso_id:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="La orden de taller ya está vinculada a este caso",
+                    )
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "La orden de taller ya está vinculada a otro caso de postventa. "
+                        "No se mueve automáticamente."
+                    ),
+                )
+
+            repository.insert_vinculo_orden_taller(
+                conn,
+                {
+                    "id_caso_postventa": caso_id,
+                    "id_orden_taller": data.id_orden_taller,
+                    "id_usuario": id_usuario,
+                    "observaciones": data.observaciones,
+                },
+            )
+            _registrar_evento(
+                conn,
+                caso_id=caso_id,
+                tipo_evento="orden_taller_vinculada",
+                detalle=f"Orden de taller #{data.id_orden_taller} vinculada al caso",
+                id_usuario=id_usuario,
+                metadata={"id_orden_taller": data.id_orden_taller},
+            )
+            _auditar(
+                conn,
+                id_usuario=id_usuario,
+                caso_id=caso_id,
+                accion="postventa_orden_taller_vinculada",
+                detalle=f"Orden de taller #{data.id_orden_taller} vinculada al caso",
+                metadata={"id_orden_taller": data.id_orden_taller},
+            )
+        return repository.listar_ordenes_taller_caso(conn, caso_id)
     finally:
         conn.close()
 

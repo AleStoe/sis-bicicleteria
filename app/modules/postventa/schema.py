@@ -88,6 +88,12 @@ class PostventaReabrirInput(BaseModel):
     id_usuario: Optional[int] = Field(default=None, gt=0)
 
 
+class PostventaVincularOrdenInput(BaseModel):
+    id_orden_taller: int = Field(gt=0)
+    observaciones: Optional[str] = Field(default=None, max_length=1000)
+    id_usuario: Optional[int] = Field(default=None, gt=0)
+
+
 class PostventaEventoOutput(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -98,6 +104,26 @@ class PostventaEventoOutput(BaseModel):
     detalle: Optional[str] = None
     metadata: Optional[dict] = None
     id_usuario: int
+
+
+class PostventaOrdenTallerVinculadaOutput(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    id_caso_postventa: int
+    id_orden_taller: int
+    fecha_vinculacion: datetime
+    id_usuario: int
+    observaciones: Optional[str] = None
+    estado: str
+    problema_reportado: str
+    total_final: Decimal
+    saldo_pendiente: Decimal
+    fecha_ingreso: datetime
+    id_cliente: int
+    cliente_nombre: Optional[str] = None
+    id_bicicleta_cliente: int
+    bicicleta_cliente_descripcion: Optional[str] = None
 
 
 class PostventaCasoOutput(BaseModel):
