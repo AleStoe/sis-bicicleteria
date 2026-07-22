@@ -80,6 +80,8 @@ def clean_db(db_conn):
                 cajas,
                 deuda_movimientos,
                 deudas_cliente,
+                postventa_eventos,
+                postventa_casos,
                 auditoria_eventos,
                 pagos_tarjeta_detalle,
                 pagos_reversiones,
