@@ -164,53 +164,57 @@ def _build_descripcion_snapshot(variante: dict) -> str:
 
     return f"Variante #{variante['id']}"
 
+def _crear_orden_taller_en_conn(conn, data):
+    try:
+        validar_sucursal_activa(conn, data.id_sucursal)
+        validar_usuario_activo(conn, data.id_usuario)
+        validar_cliente_existente(conn, data.id_cliente)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    bicicleta = get_bicicleta_cliente(conn, data.id_bicicleta_cliente)
+    if bicicleta is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No existe la bicicleta del cliente {data.id_bicicleta_cliente}",
+        )
+
+    if bicicleta["id_cliente"] != data.id_cliente:
+        raise HTTPException(
+            status_code=400,
+            detail="La bicicleta indicada no pertenece al cliente informado",
+        )
+
+    orden = insert_orden_taller(
+        conn,
+        {
+            "id_sucursal": data.id_sucursal,
+            "id_cliente": data.id_cliente,
+            "id_bicicleta_cliente": data.id_bicicleta_cliente,
+            "estado": ORDEN_TALLER_ESTADO_INGRESADA,
+            "problema_reportado": normalize_text_upper(data.problema_reportado),
+            "fecha_prometida": data.fecha_prometida,
+            "prioridad": data.prioridad,
+            "id_usuario": data.id_usuario,
+        },
+    )
+
+    insert_orden_taller_evento(
+        conn,
+        id_orden_taller=orden["id"],
+        tipo_evento=ORDEN_TALLER_EVENTO_CREADA,
+        detalle="Orden de taller creada",
+        id_usuario=data.id_usuario,
+    )
+
+    return get_orden_taller_by_id(conn, orden["id"])
+
+
 def crear_orden_taller(data):
     conn = get_connection()
     try:
         with conn.transaction():
-            try:
-                validar_sucursal_activa(conn, data.id_sucursal)
-                validar_usuario_activo(conn, data.id_usuario)
-                validar_cliente_existente(conn, data.id_cliente)
-            except ValueError as e:
-                raise HTTPException(status_code=400, detail=str(e))
-
-            bicicleta = get_bicicleta_cliente(conn, data.id_bicicleta_cliente)
-            if bicicleta is None:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"No existe la bicicleta del cliente {data.id_bicicleta_cliente}",
-                )
-
-            if bicicleta["id_cliente"] != data.id_cliente:
-                raise HTTPException(
-                    status_code=400,
-                    detail="La bicicleta indicada no pertenece al cliente informado",
-                )
-
-            orden = insert_orden_taller(
-                conn,
-                {
-                    "id_sucursal": data.id_sucursal,
-                    "id_cliente": data.id_cliente,
-                    "id_bicicleta_cliente": data.id_bicicleta_cliente,
-                    "estado": ORDEN_TALLER_ESTADO_INGRESADA,
-                    "problema_reportado": normalize_text_upper(data.problema_reportado),
-                    "fecha_prometida": data.fecha_prometida,
-                    "prioridad": data.prioridad,
-                    "id_usuario": data.id_usuario,
-                },
-            )
-
-            insert_orden_taller_evento(
-                conn,
-                id_orden_taller=orden["id"],
-                tipo_evento=ORDEN_TALLER_EVENTO_CREADA,
-                detalle="Orden de taller creada",
-                id_usuario=data.id_usuario,
-            )
-
-            return get_orden_taller_by_id(conn, orden["id"])
+            return _crear_orden_taller_en_conn(conn, data)
     finally:
         conn.close()
 

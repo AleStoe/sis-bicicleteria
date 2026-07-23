@@ -598,3 +598,307 @@ def test_vincular_orden_taller_exige_permiso_y_audita_actor_autenticado(
 
     assert vinculo["id_usuario"] == actor_id
     assert evento["id_usuario"] == actor_id
+
+
+def test_crea_orden_taller_desde_caso_y_la_vincula(client, db_conn, clean_db):
+    seed = _seed_postventa(db_conn, clean_db)
+    caso_id = client.post("/postventa/casos", json=_payload(seed)).json()["id"]
+
+    creado = client.post(
+        f"/postventa/casos/{caso_id}/ordenes_taller/crear",
+        json={
+            "id_sucursal": seed["sucursal_id"],
+            "problema_reportado": "ruido persistente al pedalear",
+            "prioridad": "urgente",
+            "observaciones_vinculo": "Creada desde postventa",
+            "id_usuario": seed["usuario_id"],
+        },
+    )
+
+    assert creado.status_code == 201, creado.text
+    ordenes = creado.json()
+    assert len(ordenes) == 1
+    assert ordenes[0]["id_caso_postventa"] == caso_id
+    assert ordenes[0]["estado"] == "ingresada"
+    assert ordenes[0]["id_cliente"] == seed["cliente_id"]
+    assert ordenes[0]["id_bicicleta_cliente"] == seed["bicicleta_cliente_id"]
+    assert ordenes[0]["problema_reportado"] == "RUIDO PERSISTENTE AL PEDALEAR"
+
+    orden_id = ordenes[0]["id_orden_taller"]
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT estado, prioridad, problema_reportado
+            FROM ordenes_taller
+            WHERE id = %s
+            """,
+            (orden_id,),
+        )
+        orden = cur.fetchone()
+        cur.execute(
+            """
+            SELECT tipo_evento, metadata
+            FROM postventa_eventos
+            WHERE id_caso_postventa = %s
+              AND tipo_evento = 'orden_taller_creada_vinculada'
+            """,
+            (caso_id,),
+        )
+        evento = cur.fetchone()
+        cur.execute(
+            """
+            SELECT accion, metadata
+            FROM auditoria_eventos
+            WHERE entidad = 'postventa_caso'
+              AND entidad_id = %s
+              AND accion = 'postventa_orden_taller_creada_vinculada'
+            """,
+            (caso_id,),
+        )
+        auditoria = cur.fetchone()
+
+    assert orden["estado"] == "ingresada"
+    assert orden["prioridad"] == "urgente"
+    assert evento["metadata"]["id_orden_taller"] == orden_id
+    assert auditoria["metadata"]["id_orden_taller"] == orden_id
+
+
+def test_crear_orden_taller_desde_caso_usa_motivo_como_problema_base(client, db_conn, clean_db):
+    seed = _seed_postventa(db_conn, clean_db)
+    caso_id = client.post("/postventa/casos", json=_payload(seed)).json()["id"]
+
+    creado = client.post(
+        f"/postventa/casos/{caso_id}/ordenes_taller/crear",
+        json={
+            "id_sucursal": seed["sucursal_id"],
+            "prioridad": "normal",
+            "id_usuario": seed["usuario_id"],
+        },
+    )
+
+    assert creado.status_code == 201, creado.text
+    assert creado.json()[0]["problema_reportado"] == "CLIENTE INFORMA RUIDO EN TRANSMISION"
+
+
+def test_no_crea_orden_taller_desde_caso_cerrado_cancelado_o_sin_bicicleta(client, db_conn, clean_db):
+    seed = _seed_postventa(db_conn, clean_db)
+    caso_cerrado = client.post("/postventa/casos", json=_payload(seed)).json()["id"]
+    for estado in ("en_evaluacion", "resuelto"):
+        avance = client.post(
+            f"/postventa/casos/{caso_cerrado}/estado",
+            json={"nuevo_estado": estado, "id_usuario": seed["usuario_id"]},
+        )
+        assert avance.status_code == 200, avance.text
+    cerrar = client.post(
+        f"/postventa/casos/{caso_cerrado}/cerrar",
+        json={
+            "resultado_final": "Caso resuelto",
+            "resolucion_aplicada": "Sin trabajo adicional",
+            "id_usuario": seed["usuario_id"],
+        },
+    )
+    assert cerrar.status_code == 200, cerrar.text
+    cerrado = client.post(
+        f"/postventa/casos/{caso_cerrado}/ordenes_taller/crear",
+        json={"id_sucursal": seed["sucursal_id"], "id_usuario": seed["usuario_id"]},
+    )
+    assert cerrado.status_code == 400
+    assert "cerrado o cancelado" in cerrado.json()["detail"]
+
+    caso_cancelado = client.post("/postventa/casos", json=_payload(seed)).json()["id"]
+    cancelar = client.post(
+        f"/postventa/casos/{caso_cancelado}/estado",
+        json={
+            "nuevo_estado": "cancelado",
+            "motivo": "Caso duplicado",
+            "id_usuario": seed["usuario_id"],
+        },
+    )
+    assert cancelar.status_code == 200, cancelar.text
+
+    bloqueado = client.post(
+        f"/postventa/casos/{caso_cancelado}/ordenes_taller/crear",
+        json={"id_sucursal": seed["sucursal_id"], "id_usuario": seed["usuario_id"]},
+    )
+    assert bloqueado.status_code == 400
+    assert "cerrado o cancelado" in bloqueado.json()["detail"]
+
+    payload_sin_bici = _payload(seed)
+    payload_sin_bici["id_bicicleta_cliente"] = None
+    payload_sin_bici["id_bicicleta_serializada"] = None
+    caso_sin_bici = client.post("/postventa/casos", json=payload_sin_bici).json()["id"]
+    sin_bici = client.post(
+        f"/postventa/casos/{caso_sin_bici}/ordenes_taller/crear",
+        json={"id_sucursal": seed["sucursal_id"], "id_usuario": seed["usuario_id"]},
+    )
+    assert sin_bici.status_code == 400
+    assert "no tiene bicicleta" in sin_bici.json()["detail"]
+
+
+def test_crear_orden_taller_desde_caso_rollback_si_falla_creacion(client, db_conn, clean_db):
+    seed = _seed_postventa(db_conn, clean_db)
+    caso_id = client.post("/postventa/casos", json=_payload(seed)).json()["id"]
+
+    fallido = client.post(
+        f"/postventa/casos/{caso_id}/ordenes_taller/crear",
+        json={
+            "id_sucursal": 999999,
+            "id_usuario": seed["usuario_id"],
+        },
+    )
+
+    assert fallido.status_code == 400
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT COUNT(*) AS total
+            FROM postventa_caso_ordenes
+            WHERE id_caso_postventa = %s
+            """,
+            (caso_id,),
+        )
+        vinculos = cur.fetchone()["total"]
+        cur.execute(
+            """
+            SELECT COUNT(*) AS total
+            FROM ordenes_taller
+            WHERE id_cliente = %s
+              AND id_bicicleta_cliente = %s
+              AND problema_reportado = %s
+            """,
+            (
+                seed["cliente_id"],
+                seed["bicicleta_cliente_id"],
+                "CLIENTE INFORMA RUIDO EN TRANSMISION",
+            ),
+        )
+        ordenes = cur.fetchone()["total"]
+
+    assert vinculos == 0
+    assert ordenes == 0
+
+
+def test_crear_orden_taller_desde_caso_rechaza_caso_inexistente(client, db_conn, clean_db):
+    seed = _seed_postventa(db_conn, clean_db)
+
+    response = client.post(
+        "/postventa/casos/999999/ordenes_taller/crear",
+        json={"id_sucursal": seed["sucursal_id"], "id_usuario": seed["usuario_id"]},
+    )
+
+    assert response.status_code == 404
+    assert "No existe el caso" in response.json()["detail"]
+
+
+def test_crear_orden_taller_desde_caso_rechaza_bicicleta_incompatible(client, db_conn, clean_db):
+    seed = _seed_postventa(db_conn, clean_db)
+    caso_id = client.post("/postventa/casos", json=_payload(seed)).json()["id"]
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO clientes (nombre, tipo_cliente, activo)
+            VALUES ('Cliente Incompatible', 'minorista', TRUE)
+            RETURNING id
+            """
+        )
+        otro_cliente_id = cur.fetchone()["id"]
+        cur.execute(
+            """
+            UPDATE bicicletas_clientes
+            SET id_cliente = %s
+            WHERE id = %s
+            """,
+            (otro_cliente_id, seed["bicicleta_cliente_id"]),
+        )
+    db_conn.commit()
+
+    response = client.post(
+        f"/postventa/casos/{caso_id}/ordenes_taller/crear",
+        json={"id_sucursal": seed["sucursal_id"], "id_usuario": seed["usuario_id"]},
+    )
+
+    assert response.status_code == 400
+    assert "no pertenece" in response.json()["detail"]
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "SELECT COUNT(*) AS total FROM postventa_caso_ordenes WHERE id_caso_postventa = %s",
+            (caso_id,),
+        )
+        assert cur.fetchone()["total"] == 0
+
+
+def test_crear_orden_taller_desde_caso_exige_postventa_y_taller(
+    client,
+    db_conn,
+    clean_db,
+    monkeypatch,
+):
+    monkeypatch.setattr(settings, "auth_disabled", False)
+    seed = _seed_postventa(db_conn, clean_db)
+    _, token_solo_postventa = _crear_actor(
+        db_conn,
+        username="solo_postventa_crea_ot",
+        rol="solo_postventa_crea_ot",
+        permisos=("gestionar_postventa",),
+    )
+    actor_id, token_postventa_taller = _crear_actor(
+        db_conn,
+        username="postventa_taller_crea_ot",
+        rol="postventa_taller_crea_ot",
+        permisos=("gestionar_postventa", "gestionar_taller"),
+    )
+
+    caso = client.post(
+        "/postventa/casos",
+        headers=_headers(token_postventa_taller),
+        json=_payload(seed),
+    )
+    assert caso.status_code == 201, caso.text
+    caso_id = caso.json()["id"]
+
+    bloqueado = client.post(
+        f"/postventa/casos/{caso_id}/ordenes_taller/crear",
+        headers=_headers(token_solo_postventa),
+        json={"id_sucursal": seed["sucursal_id"], "id_usuario": seed["usuario_id"]},
+    )
+    assert bloqueado.status_code == 403
+
+    autorizado = client.post(
+        f"/postventa/casos/{caso_id}/ordenes_taller/crear",
+        headers=_headers(token_postventa_taller),
+        json={"id_sucursal": seed["sucursal_id"], "id_usuario": seed["usuario_id"]},
+    )
+    assert autorizado.status_code == 201, autorizado.text
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id_usuario
+            FROM postventa_caso_ordenes
+            WHERE id_caso_postventa = %s
+            """,
+            (caso_id,),
+        )
+        vinculo = cur.fetchone()
+
+    assert vinculo["id_usuario"] == actor_id
+
+
+def test_endpoint_existente_taller_sigue_creando_orden(client, db_conn, clean_db):
+    seed = _seed_postventa(db_conn, clean_db)
+
+    creado = client.post(
+        "/ordenes_taller/",
+        json={
+            "id_sucursal": seed["sucursal_id"],
+            "id_cliente": seed["cliente_id"],
+            "id_bicicleta_cliente": seed["bicicleta_cliente_id"],
+            "problema_reportado": "control general",
+            "prioridad": "normal",
+            "id_usuario": seed["usuario_id"],
+        },
+    )
+
+    assert creado.status_code == 201, creado.text
+    assert creado.json()["estado"] == "ingresada"
+    assert creado.json()["problema_reportado"] == "CONTROL GENERAL"

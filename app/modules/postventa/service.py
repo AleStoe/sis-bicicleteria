@@ -2,12 +2,15 @@ from fastapi import HTTPException
 
 from app.db.connection import get_connection
 from app.modules.auditoria.service import registrar_evento
+from app.modules.taller.schemas import OrdenTallerCreate
+from app.modules.taller.service import _crear_orden_taller_en_conn
 
 from . import repository
 from .schema import (
     PostventaCasoCreateInput,
     PostventaCasoUpdateInput,
     PostventaCerrarInput,
+    PostventaCrearOrdenTallerInput,
     PostventaEstadoInput,
     PostventaReabrirInput,
     PostventaVincularOrdenInput,
@@ -273,6 +276,73 @@ def vincular_orden_taller(caso_id: int, data: PostventaVincularOrdenInput):
                 accion="postventa_orden_taller_vinculada",
                 detalle=f"Orden de taller #{data.id_orden_taller} vinculada al caso",
                 metadata={"id_orden_taller": data.id_orden_taller},
+            )
+        return repository.listar_ordenes_taller_caso(conn, caso_id)
+    finally:
+        conn.close()
+
+
+def crear_orden_taller_desde_caso(caso_id: int, data: PostventaCrearOrdenTallerInput):
+    id_usuario = _actor_id(data)
+    conn = get_connection()
+    try:
+        with conn.transaction():
+            caso = repository.get_caso_by_id(conn, caso_id, for_update=True)
+            if caso is None:
+                raise HTTPException(status_code=404, detail="No existe el caso de postventa")
+            _validar_mutable(caso)
+
+            if not caso.get("id_bicicleta_cliente"):
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "No se puede crear una OT desde este caso porque no tiene "
+                        "bicicleta del cliente asociada. Vinculá una bicicleta o creá "
+                        "la OT desde Taller según el flujo normal."
+                    ),
+                )
+
+            problema = (data.problema_reportado or caso.get("motivo_cliente") or "").strip()
+            if not problema:
+                raise HTTPException(status_code=400, detail="Informá el problema inicial de la OT")
+
+            orden = _crear_orden_taller_en_conn(
+                conn,
+                OrdenTallerCreate(
+                    id_sucursal=data.id_sucursal,
+                    id_cliente=caso["id_cliente"],
+                    id_bicicleta_cliente=caso["id_bicicleta_cliente"],
+                    problema_reportado=problema,
+                    fecha_prometida=data.fecha_prometida,
+                    prioridad=data.prioridad,
+                    id_usuario=id_usuario,
+                ),
+            )
+
+            repository.insert_vinculo_orden_taller(
+                conn,
+                {
+                    "id_caso_postventa": caso_id,
+                    "id_orden_taller": orden["id"],
+                    "id_usuario": id_usuario,
+                    "observaciones": data.observaciones_vinculo,
+                },
+            )
+            _registrar_evento(
+                conn,
+                caso_id=caso_id,
+                tipo_evento="orden_taller_creada_vinculada",
+                detalle=f"Orden de taller #{orden['id']} creada y vinculada al caso",
+                id_usuario=id_usuario,
+                metadata={"id_orden_taller": orden["id"]},
+            )
+            _auditar(
+                conn,
+                id_usuario=id_usuario,
+                caso_id=caso_id,
+                accion="postventa_orden_taller_creada_vinculada",
+                detalle=f"Orden de taller #{orden['id']} creada y vinculada al caso",
+                metadata={"id_orden_taller": orden["id"]},
             )
         return repository.listar_ordenes_taller_caso(conn, caso_id)
     finally:

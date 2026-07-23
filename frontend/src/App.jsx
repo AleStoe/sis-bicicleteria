@@ -61,6 +61,8 @@ import ArmadoSimuladorPage from "./pages/ArmadoSimuladorPage";
 import ArmadoOrdenesPage from "./pages/ArmadoOrdenesPage";
 import ArmadoOrdenDetallePage from "./pages/ArmadoOrdenDetallePage";
 import CorreccionesPage from "./pages/CorreccionesPage";
+import PostventaPage from "./pages/PostventaPage";
+import PostventaDetallePage from "./pages/PostventaDetallePage";
 
 const ADMIN = ["administrador"];
 const OPERACION = ["administrador", "encargado", "operador"];
@@ -83,6 +85,8 @@ const TITULOS_RUTA = [
   [/^\/taller\/nueva$/, "Nueva orden de taller"],
   [/^\/taller\/\d+$/, "Orden de taller"],
   [/^\/taller$/, "Ordenes de taller"],
+  [/^\/postventa\/\d+$/, "Caso de postventa"],
+  [/^\/postventa$/, "Postventa"],
   [/^\/agenda-taller$/, "Agenda taller"],
   [/^\/servicios-taller$/, "Servicios taller"],
   [/^\/deudas\/\d+$/, "Detalle de deuda"],
@@ -404,6 +408,22 @@ export default function App() {
             element={
               <ProtectedRoute rolesPermitidos={TALLER}>
                 <TallerDetallePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/postventa"
+            element={
+              <ProtectedRoute rolesPermitidos={ADMIN_ENCARGADO}>
+                <PostventaPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/postventa/:casoId"
+            element={
+              <ProtectedRoute rolesPermitidos={ADMIN_ENCARGADO}>
+                <PostventaDetallePage />
               </ProtectedRoute>
             }
           />

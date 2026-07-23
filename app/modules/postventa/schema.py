@@ -94,6 +94,15 @@ class PostventaVincularOrdenInput(BaseModel):
     id_usuario: Optional[int] = Field(default=None, gt=0)
 
 
+class PostventaCrearOrdenTallerInput(BaseModel):
+    id_sucursal: int = Field(gt=0)
+    problema_reportado: Optional[str] = Field(default=None, min_length=1, max_length=4000)
+    fecha_prometida: Optional[datetime] = None
+    prioridad: Literal["normal", "urgente"] = "normal"
+    observaciones_vinculo: Optional[str] = Field(default=None, max_length=1000)
+    id_usuario: Optional[int] = Field(default=None, gt=0)
+
+
 class PostventaEventoOutput(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

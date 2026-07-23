@@ -1,13 +1,14 @@
 from fastapi import APIRouter, Depends
 
 from app.core.security import CurrentUser, aplicar_actor_actual
-from app.modules.authz.service import requerir_permiso
-from app.shared.constants import PERMISO_GESTIONAR_POSTVENTA
+from app.modules.authz.service import exigir_permiso_actual, requerir_permiso
+from app.shared.constants import PERMISO_GESTIONAR_POSTVENTA, PERMISO_GESTIONAR_TALLER
 
 from .schema import (
     PostventaCasoCreateInput,
     PostventaCasoOutput,
     PostventaCasoUpdateInput,
+    PostventaCrearOrdenTallerInput,
     PostventaOrdenTallerVinculadaOutput,
     PostventaCerrarInput,
     PostventaEstadoInput,
@@ -19,6 +20,7 @@ from .service import (
     cambiar_estado,
     cerrar_caso,
     crear_caso,
+    crear_orden_taller_desde_caso,
     listar_casos,
     listar_ordenes_taller_vinculadas,
     obtener_caso,
@@ -92,6 +94,21 @@ def vincular_orden_taller_route(
 ):
     aplicar_actor_actual(data, usuario)
     return vincular_orden_taller(caso_id, data)
+
+
+@router.post(
+    "/casos/{caso_id}/ordenes_taller/crear",
+    response_model=list[PostventaOrdenTallerVinculadaOutput],
+    status_code=201,
+)
+def crear_orden_taller_desde_caso_route(
+    caso_id: int,
+    data: PostventaCrearOrdenTallerInput,
+    usuario: CurrentUser = Depends(puede_gestionar_postventa),
+):
+    exigir_permiso_actual(usuario, PERMISO_GESTIONAR_TALLER)
+    aplicar_actor_actual(data, usuario)
+    return crear_orden_taller_desde_caso(caso_id, data)
 
 
 @router.patch("/casos/{caso_id}", response_model=PostventaCasoOutput)

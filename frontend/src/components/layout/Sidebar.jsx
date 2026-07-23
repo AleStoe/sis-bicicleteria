@@ -20,6 +20,7 @@ import {
   PiggyBank,
   Receipt,
   Search,
+  ShieldCheck,
   Settings2,
   ShoppingCart,
   Tags,
@@ -102,6 +103,7 @@ const groups = [
     links: [
       { to: "/salud-operativa", label: "Salud Operativa", icon: Gauge, roles: OPERACION_TALLER, badge: "alertas" },
       { to: "/correcciones", label: "Correcciones", icon: Wrench, roles: ADMIN },
+      { to: "/postventa", label: "Postventa", icon: ShieldCheck, roles: ADMIN_ENCARGADO },
       { to: "/admin/dashboard", label: "Dashboard Admin", icon: LayoutDashboard, roles: ADMIN },
       { to: "/gastos", label: "Gastos", icon: Receipt, roles: ADMIN_ENCARGADO },
       { to: "/deudas", label: "Deudas", icon: FileSearch, roles: OPERACION },
