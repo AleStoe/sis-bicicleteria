@@ -517,7 +517,7 @@ async function handleBuscarEnter(e) {
 
       return data || [];
     } catch (err) {
-      setError(err.message || "No se pudieron cargar las bicicletas serializadas disponibles");
+      setError(err.message || "No se pudieron cargar los numeros de cuadro disponibles");
       return [];
     } finally {
       setCargandoSerializadas((p) => ({ ...p, [key]: false }));
@@ -726,7 +726,7 @@ async function handleBuscarEnter(e) {
           item.serializable &&
           item.id_bicicleta_serializada
         ) {
-          setError("Las bicicletas serializadas siempre tienen cantidad 1");
+          setError("Las bicicletas con numero de cuadro siempre tienen cantidad 1");
           return { ...item, cantidad: 1 };
         }
 

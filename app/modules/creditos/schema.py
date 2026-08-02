@@ -62,3 +62,16 @@ class CreditoReintegroResponse(BaseModel):
     credito_id: int
     saldo_actual: Decimal
     estado: str
+
+
+class CreditoAnulacionAdministrativaInput(BaseModel):
+    motivo: str = Field(..., min_length=3)
+    id_usuario: int
+
+
+class CreditoAnulacionAdministrativaResponse(BaseModel):
+    ok: bool
+    credito_id: int
+    saldo_anulado: Decimal
+    saldo_actual: Decimal
+    estado: str

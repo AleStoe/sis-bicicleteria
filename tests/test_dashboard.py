@@ -28,6 +28,84 @@ def _crear_venta_dashboard(client, seed_venta_basica):
     return response.json()["venta_id"]
 
 
+def _crear_variante_dashboard(db_conn, seed_venta_basica, *, nombre, variante, precio, costo, stock):
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO productos (
+                id_categoria,
+                nombre,
+                tipo_item,
+                stockeable,
+                serializable,
+                activo
+            )
+            VALUES (%s, %s, 'producto', TRUE, FALSE, TRUE)
+            RETURNING id
+            """,
+            (seed_venta_basica["categoria_id"], nombre),
+        )
+        producto_id = cur.fetchone()["id"]
+        cur.execute(
+            """
+            INSERT INTO variantes (
+                id_producto,
+                nombre_variante,
+                sku,
+                precio_minorista,
+                precio_mayorista,
+                costo_promedio_vigente,
+                activo
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, TRUE)
+            RETURNING id
+            """,
+            (
+                producto_id,
+                variante,
+                f"DASH-{producto_id}",
+                precio,
+                precio,
+                costo,
+            ),
+        )
+        variante_id = cur.fetchone()["id"]
+        cur.execute(
+            """
+            INSERT INTO stock_sucursal (
+                id_sucursal,
+                id_variante,
+                stock_fisico,
+                stock_reservado,
+                stock_vendido_pendiente_entrega
+            )
+            VALUES (%s, %s, %s, 0, 0)
+            """,
+            (seed_venta_basica["sucursal_id"], variante_id, stock),
+        )
+    db_conn.commit()
+    return variante_id
+
+
+def _crear_venta_dashboard_variante(client, seed_venta_basica, variante_id, *, cantidad):
+    response = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "id_variante": variante_id,
+                    "cantidad": cantidad,
+                }
+            ],
+        },
+    )
+    assert response.status_code == 200, response.text
+    return response.json()["venta_id"]
+
+
 def test_dashboard_resumen_devuelve_estructura(client, seed_venta_basica):
     response = client.get(
         "/dashboard/resumen",
@@ -165,6 +243,62 @@ def test_dashboard_excluye_creada_y_usa_total_final_para_resultados(
     assert _dec(data["ventas_ultimos_meses"][-1]["ventas_total"]) == Decimal("22000.00")
     assert _dec(data["top_clientes"][0]["total_comprado"]) == Decimal("22000.00")
     assert _dec(data["top_productos_cantidad"][0]["venta_total"]) == Decimal("22000.00")
+
+
+def test_dashboard_top_productos_prioriza_venta_neta_no_cantidad(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    variante_barata_id = _crear_variante_dashboard(
+        db_conn,
+        seed_venta_basica,
+        nombre="Grasa maritima por ml",
+        variante="Unica",
+        precio=100,
+        costo=20,
+        stock=500,
+    )
+    venta_barata_id = _crear_venta_dashboard_variante(
+        client,
+        seed_venta_basica,
+        variante_barata_id,
+        cantidad=160,
+    )
+    venta_cara_id = _crear_venta_dashboard_variante(
+        client,
+        seed_venta_basica,
+        seed_venta_basica["variante_id"],
+        cantidad=1,
+    )
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE ventas
+            SET estado = 'pagada_total',
+                saldo_pendiente = 0,
+                fecha = '2026-06-15 10:00:00'
+            WHERE id = ANY(%s)
+            """,
+            ([venta_barata_id, venta_cara_id],),
+        )
+    db_conn.commit()
+
+    response = client.get(
+        "/dashboard/resumen",
+        params={
+            "periodo_mes": "2026-06-01",
+            "top_productos_limit": 10,
+        },
+    )
+    assert response.status_code == 200, response.text
+    top = response.json()["top_productos_cantidad"]
+
+    assert top[0]["id_variante"] == seed_venta_basica["variante_id"]
+    assert _dec(top[0]["cantidad_vendida"]) == Decimal("1.000")
+    assert top[1]["id_variante"] == variante_barata_id
+    assert _dec(top[1]["cantidad_vendida"]) == Decimal("160.000")
 
 
 def test_dashboard_reutiliza_alerta_caja_anterior(

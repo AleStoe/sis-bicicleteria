@@ -29,6 +29,12 @@ def get_capital_sin_caja(conn, limit: int = 50):
               )
               AND COALESCE(m.impacta_caja, FALSE) = FALSE
               AND m.id_caja_movimiento IS NULL
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM capital_movimientos_historial h
+                  WHERE h.id_movimiento = m.id
+                    AND h.tipo_evento = 'validacion_sin_caja'
+              )
             ORDER BY m.fecha DESC, m.id DESC
             LIMIT %s
             """,
@@ -120,6 +126,92 @@ def get_cajas_abiertas_anteriores(conn, limit: int = 50):
             WHERE c.estado = 'abierta'
               AND c.fecha < CURRENT_DATE
             ORDER BY c.fecha ASC, c.id ASC
+            LIMIT %s
+            """,
+            (limit,),
+        )
+        return cur.fetchall()
+
+
+def get_ventas_items_costos_sospechosos(conn, limit: int = 50):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            WITH items AS (
+                SELECT
+                    vi.id,
+                    vi.id_venta,
+                    v.fecha,
+                    v.estado AS venta_estado,
+                    v.id_cliente,
+                    c.nombre AS cliente_nombre,
+                    vi.id_variante,
+                    var.id_producto,
+                    p.nombre AS producto_nombre,
+                    var.nombre_variante,
+                    var.sku,
+                    vi.descripcion_snapshot,
+                    vi.cantidad,
+                    vi.precio_final,
+                    vi.subtotal,
+                    vi.costo_unitario_aplicado,
+                    COALESCE(var.costo_promedio_vigente, 0) AS costo_vigente,
+                    COALESCE(vi.bonificado, FALSE) AS bonificado,
+                    ROUND((vi.costo_unitario_aplicado * vi.cantidad), 2) AS cmv_item,
+                    ROUND((vi.subtotal - (vi.costo_unitario_aplicado * vi.cantidad)), 2) AS margen_item,
+                    CASE
+                        WHEN vi.subtotal > 0 THEN
+                            ROUND(((vi.subtotal - (vi.costo_unitario_aplicado * vi.cantidad)) / vi.subtotal) * 100, 2)
+                        ELSE NULL
+                    END AS margen_porcentaje_sobre_venta,
+                    CASE
+                        WHEN COALESCE(var.costo_promedio_vigente, 0) > 0 THEN
+                            ROUND(
+                                ABS(vi.costo_unitario_aplicado - var.costo_promedio_vigente)
+                                / var.costo_promedio_vigente
+                                * 100,
+                                2
+                            )
+                        ELSE NULL
+                    END AS diferencia_costo_vigente_porcentaje,
+                    CASE
+                        WHEN vi.subtotal > 0
+                             AND (vi.costo_unitario_aplicado * vi.cantidad) > vi.subtotal
+                            THEN 'margen_negativo'
+                        WHEN p.stockeable = TRUE
+                             AND vi.costo_unitario_aplicado <= 0
+                             AND COALESCE(vi.bonificado, FALSE) = FALSE
+                            THEN 'producto_sin_costo'
+                        WHEN vi.subtotal > 0
+                             AND COALESCE(vi.bonificado, FALSE) = FALSE
+                             AND ((vi.subtotal - (vi.costo_unitario_aplicado * vi.cantidad)) / vi.subtotal) < 0.15
+                            THEN 'margen_muy_bajo'
+                        WHEN COALESCE(var.costo_promedio_vigente, 0) > 0
+                             AND ABS(vi.costo_unitario_aplicado - var.costo_promedio_vigente)
+                                 / var.costo_promedio_vigente > 0.30
+                            THEN 'costo_distinto_al_vigente'
+                        ELSE NULL
+                    END AS motivo_alerta
+                FROM venta_items vi
+                INNER JOIN ventas v ON v.id = vi.id_venta
+                INNER JOIN clientes c ON c.id = v.id_cliente
+                LEFT JOIN variantes var ON var.id = vi.id_variante
+                LEFT JOIN productos p ON p.id = var.id_producto
+                WHERE vi.tipo_item = 'producto'
+                  AND v.estado IN ('creada', 'pagada_parcial', 'pagada_total', 'entregada')
+            )
+            SELECT *
+            FROM items
+            WHERE motivo_alerta IS NOT NULL
+            ORDER BY
+                CASE motivo_alerta
+                    WHEN 'margen_negativo' THEN 1
+                    WHEN 'producto_sin_costo' THEN 2
+                    WHEN 'margen_muy_bajo' THEN 3
+                    ELSE 4
+                END,
+                fecha DESC,
+                id DESC
             LIMIT %s
             """,
             (limit,),

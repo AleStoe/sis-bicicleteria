@@ -829,7 +829,171 @@ def test_venta_sin_serie_sigue_bloqueando_entrega_armada(
         },
     )
     assert entregar.status_code == 400
-    assert "unidad asignada" in entregar.json()["detail"].lower()
+    assert "numero de cuadro" in entregar.json()["detail"].lower()
+
+
+def test_asignar_numero_cuadro_a_venta_en_caja_entregada_sin_mover_stock(
+    client,
+    db_conn,
+    seed_serializacion,
+):
+    response = _crear_venta_sin_serie(client, seed_serializacion)
+    assert response.status_code == 200, response.text
+    venta_id = response.json()["venta_id"]
+
+    abrir = _abrir_caja(
+        client,
+        seed_serializacion["sucursal_id"],
+        seed_serializacion["usuario_id"],
+    )
+    assert abrir.status_code == 200, abrir.text
+
+    pago = _pagar_venta_total(client, venta_id, seed_serializacion)
+    assert pago.status_code == 200, pago.text
+
+    entregar = client.post(
+        f"/ventas/{venta_id}/entregar",
+        json={
+            "id_usuario": seed_serializacion["usuario_id"],
+            "condicion_entrega_bicicleta": "en_caja",
+        },
+    )
+    assert entregar.status_code == 200, entregar.text
+
+    detalle = client.get(f"/ventas/{venta_id}")
+    assert detalle.status_code == 200, detalle.text
+    item_id = detalle.json()["items"][0]["id"]
+
+    asignar = client.post(
+        f"/ventas/{venta_id}/asignar-bicicleta-serializada",
+        json={
+            "id_venta_item": item_id,
+            "numero_cuadro": "cuadro-post-venta-001",
+            "motivo": "Correccion de venta cargada en caja",
+            "id_usuario": seed_serializacion["usuario_id"],
+        },
+    )
+    assert asignar.status_code == 200, asignar.text
+    data = asignar.json()
+    bicicleta_id = data["id_bicicleta_serializada"]
+    assert data["estado_bicicleta"] == "entregada"
+    assert data["bicicleta_cliente_creada"] is True
+
+    bicicleta = _get_bicicleta_serializada(db_conn, bicicleta_id)
+    assert bicicleta["estado"] == "entregada"
+    assert bicicleta["numero_cuadro"] == "CUADRO-POST-VENTA-001"
+
+    detalle_actualizado = client.get(f"/ventas/{venta_id}")
+    assert detalle_actualizado.status_code == 200, detalle_actualizado.text
+    item = detalle_actualizado.json()["items"][0]
+    assert item["id_bicicleta_serializada"] == bicicleta_id
+    assert item["bicicleta_numero_cuadro"] == "CUADRO-POST-VENTA-001"
+
+    stock = get_stock_row(
+        db_conn,
+        seed_serializacion["sucursal_id"],
+        seed_serializacion["variante_id"],
+    )
+    assert float(stock["stock_fisico"]) == 0.0
+    assert float(stock["stock_vendido_pendiente_entrega"]) == 0.0
+
+    movimientos = get_movimientos_by_venta(db_conn, venta_id)
+    tipos = [mov["tipo_movimiento"] for mov in movimientos]
+    assert tipos == ["venta", "entrega", "entrega_serializada"]
+    assert movimientos[-1]["id_bicicleta_serializada"] == bicicleta_id
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id_cliente, id_bicicleta_serializada, id_venta_origen, numero_cuadro
+            FROM bicicletas_clientes
+            WHERE id_venta_origen = %s
+            """,
+            (venta_id,),
+        )
+        ficha = cur.fetchone()
+
+    assert ficha["id_cliente"] == seed_serializacion["cliente_id"]
+    assert ficha["id_bicicleta_serializada"] == bicicleta_id
+    assert ficha["numero_cuadro"] == "CUADRO-POST-VENTA-001"
+
+    eventos = get_auditoria_by_entidad(db_conn, "venta", venta_id)
+    assert any(
+        evento["accion"] == "venta_bicicleta_serializada_asignada"
+        for evento in eventos
+    )
+
+
+def test_asignar_numero_cuadro_antes_de_entregar_cierra_pendiente_al_entregar(
+    client,
+    db_conn,
+    seed_serializacion,
+):
+    response = _crear_venta_sin_serie(client, seed_serializacion)
+    assert response.status_code == 200, response.text
+    venta_id = response.json()["venta_id"]
+
+    detalle = client.get(f"/ventas/{venta_id}")
+    assert detalle.status_code == 200, detalle.text
+    item_id = detalle.json()["items"][0]["id"]
+
+    asignar = client.post(
+        f"/ventas/{venta_id}/asignar-bicicleta-serializada",
+        json={
+            "id_venta_item": item_id,
+            "numero_cuadro": "cuadro-pendiente-001",
+            "motivo": "Cliente pago por partes y se aparta la unidad",
+            "id_usuario": seed_serializacion["usuario_id"],
+        },
+    )
+    assert asignar.status_code == 200, asignar.text
+    bicicleta_id = asignar.json()["id_bicicleta_serializada"]
+
+    bicicleta = _get_bicicleta_serializada(db_conn, bicicleta_id)
+    assert bicicleta["estado"] == "vendida_pendiente_entrega"
+
+    stock = get_stock_row(
+        db_conn,
+        seed_serializacion["sucursal_id"],
+        seed_serializacion["variante_id"],
+    )
+    assert float(stock["stock_fisico"]) == 1.0
+    assert float(stock["stock_vendido_pendiente_entrega"]) == 1.0
+
+    abrir = _abrir_caja(
+        client,
+        seed_serializacion["sucursal_id"],
+        seed_serializacion["usuario_id"],
+    )
+    assert abrir.status_code == 200, abrir.text
+
+    pago = _pagar_venta_total(client, venta_id, seed_serializacion)
+    assert pago.status_code == 200, pago.text
+
+    entregar = client.post(
+        f"/ventas/{venta_id}/entregar",
+        json={
+            "id_usuario": seed_serializacion["usuario_id"],
+            "condicion_entrega_bicicleta": "armada",
+        },
+    )
+    assert entregar.status_code == 200, entregar.text
+
+    bicicleta = _get_bicicleta_serializada(db_conn, bicicleta_id)
+    assert bicicleta["estado"] == "entregada"
+
+    stock = get_stock_row(
+        db_conn,
+        seed_serializacion["sucursal_id"],
+        seed_serializacion["variante_id"],
+    )
+    assert float(stock["stock_fisico"]) == 0.0
+    assert float(stock["stock_vendido_pendiente_entrega"]) == 0.0
+
+    movimientos = get_movimientos_by_venta(db_conn, venta_id)
+    tipos = [mov["tipo_movimiento"] for mov in movimientos]
+    assert tipos == ["venta", "entrega"]
+    assert movimientos[-1]["id_bicicleta_serializada"] == bicicleta_id
 
 
 def test_venta_con_bici_serializada_ok_si_esta_disponible(client, db_conn, seed_serializacion):

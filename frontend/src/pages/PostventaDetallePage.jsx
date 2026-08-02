@@ -92,6 +92,7 @@ export default function PostventaDetallePage() {
   }, [caso?.estado]);
   const transicionesEstado = transiciones.filter((estado) => estado !== "cerrado");
   const puedeCerrar = transiciones.includes("cerrado");
+  const proximaAccion = useMemo(() => getProximaAccion(caso, ordenes, puedeCerrar), [caso, ordenes, puedeCerrar]);
 
   async function guardarCambios(event) {
     event.preventDefault();
@@ -200,18 +201,11 @@ export default function PostventaDetallePage() {
       {error ? <Alert tone="danger">{error}</Alert> : null}
       {success ? <Alert tone="success">{success}</Alert> : null}
 
-      <section style={styles.summaryGrid}>
-        <Summary label="Estado" value={<Badge variant={variantPostventaEstado(caso.estado)}>{labelPostventaEstado(caso.estado)}</Badge>} />
-        <Summary label="Prioridad" value={labelPostventaPrioridad(caso.prioridad)} />
-        <Summary label="Cliente" value={caso.cliente_nombre || `#${caso.id_cliente}`} />
-        <Summary label="Venta origen" value={caso.id_venta_origen ? `#${caso.id_venta_origen}` : "-"} />
-        <Summary label="Bicicleta" value={caso.bicicleta_cliente_descripcion || caso.bicicleta_numero_cuadro || "-"} />
-        <Summary label="Fecha apertura" value={formatDateTime(caso.fecha_apertura)} />
-      </section>
+      <CasoLecturaRapida caso={caso} ordenes={ordenes} proximaAccion={proximaAccion} />
 
       <section style={styles.layout}>
         <main style={styles.mainColumn}>
-          <Card title="Datos del caso" subtitle={bloqueado ? "Caso cerrado o cancelado. Reabrilo para modificar." : "Evaluacion, decisiones y cobertura."}>
+          <Card title="Evaluacion y resolucion" subtitle={bloqueado ? "Caso cerrado o cancelado. Reabrilo para modificar." : "Diagnostico, decisiones y cobertura."}>
             <form onSubmit={guardarCambios} style={styles.form}>
               <Textarea
                 label="Motivo informado por el cliente"
@@ -347,7 +341,13 @@ export default function PostventaDetallePage() {
         </main>
 
         <aside style={styles.sideColumn}>
-          <Card title="Acciones">
+          <Card title="Panel operativo" subtitle="Acciones disponibles segun el estado actual.">
+            <div style={styles.nextActionBox}>
+              <span>Proxima accion sugerida</span>
+              <strong>{proximaAccion.titulo}</strong>
+              <p>{proximaAccion.detalle}</p>
+            </div>
+
             {bloqueado && caso.estado === "cerrado" ? (
               <form onSubmit={reabrirCaso} style={styles.form}>
                 <Textarea
@@ -362,25 +362,6 @@ export default function PostventaDetallePage() {
               <div style={styles.emptyBox}>El caso esta cancelado. No tiene acciones disponibles.</div>
             ) : (
               <div style={styles.form}>
-                <form onSubmit={cambiarEstado} style={styles.form}>
-                  <Select
-                    label="Cambiar estado"
-                    value={estadoForm.nuevo_estado}
-                    onChange={(event) => setEstadoForm((prev) => ({ ...prev, nuevo_estado: event.target.value }))}
-                  >
-                    <option value="">Elegir estado...</option>
-                    {transicionesEstado.map((estado) => (
-                      <option key={estado} value={estado}>{labelPostventaEstado(estado)}</option>
-                    ))}
-                  </Select>
-                  <Textarea
-                    label="Motivo / nota"
-                    value={estadoForm.motivo}
-                    onChange={(event) => setEstadoForm((prev) => ({ ...prev, motivo: event.target.value }))}
-                  />
-                  <Button type="submit" disabled={saving || !estadoForm.nuevo_estado}>Aplicar estado</Button>
-                </form>
-
                 <div style={styles.actionBlock}>
                   <strong>Crear OT desde el caso</strong>
                   {!caso.id_bicicleta_cliente ? (
@@ -448,8 +429,29 @@ export default function PostventaDetallePage() {
                   <Button type="submit" variant="outline" disabled={saving || !otForm.id_orden_taller}>Vincular OT</Button>
                 </form>
 
+                <form onSubmit={cambiarEstado} style={styles.actionBlock}>
+                  <strong>Cambiar estado</strong>
+                  <Select
+                    label="Nuevo estado"
+                    value={estadoForm.nuevo_estado}
+                    onChange={(event) => setEstadoForm((prev) => ({ ...prev, nuevo_estado: event.target.value }))}
+                  >
+                    <option value="">Elegir estado...</option>
+                    {transicionesEstado.map((estado) => (
+                      <option key={estado} value={estado}>{labelPostventaEstado(estado)}</option>
+                    ))}
+                  </Select>
+                  <Textarea
+                    label="Motivo / nota"
+                    value={estadoForm.motivo}
+                    onChange={(event) => setEstadoForm((prev) => ({ ...prev, motivo: event.target.value }))}
+                  />
+                  <Button type="submit" disabled={saving || !estadoForm.nuevo_estado}>Aplicar estado</Button>
+                </form>
+
                 {puedeCerrar ? (
-                  <form onSubmit={cerrarCaso} style={styles.form}>
+                  <form onSubmit={cerrarCaso} style={styles.actionBlock}>
+                    <strong>Cerrar caso</strong>
                     <Textarea
                       label="Resultado final"
                       required
@@ -489,6 +491,80 @@ function Summary({ label, value }) {
       <span>{label}</span>
       <strong>{value}</strong>
     </div>
+  );
+}
+
+function CasoLecturaRapida({ caso, ordenes, proximaAccion }) {
+  const bicicleta = caso.bicicleta_cliente_descripcion || caso.bicicleta_numero_cuadro || "Sin bicicleta asociada";
+  const tieneBicicleta = Boolean(caso.id_cliente && caso.id_bicicleta_cliente);
+
+  return (
+    <section style={styles.caseHero}>
+      <div style={styles.caseHeroTop}>
+        <div style={{ minWidth: 0 }}>
+          <span style={styles.eyebrow}>{labelPostventaTipo(caso.tipo_caso)}</span>
+          <h2 style={styles.caseTitle}>{caso.motivo_cliente}</h2>
+        </div>
+        <div style={styles.caseStatus}>
+          <Badge variant={variantPostventaEstado(caso.estado)}>{labelPostventaEstado(caso.estado)}</Badge>
+          <span>{labelPostventaPrioridad(caso.prioridad)}</span>
+        </div>
+      </div>
+
+      <div style={styles.quickGrid}>
+        <QuickInfo
+          label="Cliente"
+          value={caso.cliente_nombre || `Cliente #${caso.id_cliente}`}
+          action={caso.id_cliente ? <QuickLink to={`/clientes/${caso.id_cliente}`}>Abrir cliente</QuickLink> : null}
+        />
+        <QuickInfo
+          label="Bicicleta"
+          value={bicicleta}
+          action={tieneBicicleta ? <QuickLink to={`/clientes/${caso.id_cliente}/bicicletas/${caso.id_bicicleta_cliente}`}>Ver bici</QuickLink> : null}
+        />
+        <QuickInfo
+          label="Venta origen"
+          value={caso.id_venta_origen ? `Venta #${caso.id_venta_origen}` : "Sin venta vinculada"}
+          action={caso.id_venta_origen ? <QuickLink to={`/ventas/${caso.id_venta_origen}`}>Abrir venta</QuickLink> : null}
+        />
+        <QuickInfo
+          label="Ordenes de taller"
+          value={ordenes.length ? `${ordenes.length} OT vinculada(s)` : "Sin OT vinculadas"}
+          action={ordenes[0] ? <QuickLink to={`/taller/${ordenes[0].id_orden_taller}`}>Abrir ultima OT</QuickLink> : null}
+        />
+      </div>
+
+      <div style={styles.caseBottom}>
+        <div style={styles.nextSummary}>
+          <span>Proxima accion</span>
+          <strong>{proximaAccion.titulo}</strong>
+          <p>{proximaAccion.detalle}</p>
+        </div>
+        <div style={styles.caseMeta}>
+          <Summary label="Apertura" value={formatDateTime(caso.fecha_apertura)} />
+          <Summary label="Proveedor" value={caso.proveedor_nombre || "-"} />
+          <Summary label="A cargo cliente" value={formatMoney(caso.monto_a_cargo_cliente)} />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function QuickInfo({ label, value, action }) {
+  return (
+    <div style={styles.quickInfo}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+      {action}
+    </div>
+  );
+}
+
+function QuickLink({ to, children }) {
+  return (
+    <Link to={to} style={styles.quickLink}>
+      {children}
+    </Link>
   );
 }
 
@@ -570,7 +646,140 @@ function normalizeCrearOtPayload(data) {
   };
 }
 
+function getProximaAccion(caso, ordenes, puedeCerrar) {
+  if (!caso) {
+    return { titulo: "Revisar caso", detalle: "Cargando informacion del caso." };
+  }
+
+  if (caso.estado === "cancelado") {
+    return { titulo: "Caso cancelado", detalle: "No hay acciones operativas pendientes." };
+  }
+
+  if (caso.estado === "cerrado") {
+    return { titulo: "Caso cerrado", detalle: "Reabrilo solo si aparece nueva informacion o una correccion real." };
+  }
+
+  if (!caso.id_bicicleta_cliente) {
+    return {
+      titulo: "Definir si requiere taller",
+      detalle: "El caso no tiene bicicleta asociada. Podés resolverlo sin OT o cargar un contexto mas completo.",
+    };
+  }
+
+  if (!ordenes.length) {
+    return {
+      titulo: "Crear OT desde el caso",
+      detalle: "Conviene abrir una OT para diagnosticar o ejecutar el trabajo relacionado.",
+    };
+  }
+
+  if (!caso.evaluacion_tecnica) {
+    return {
+      titulo: "Completar evaluacion tecnica",
+      detalle: "Ya hay OT vinculada. Registrá el diagnostico para separar reclamo, causa y decision.",
+    };
+  }
+
+  if (!caso.decision_local && !caso.decision_proveedor) {
+    return {
+      titulo: "Definir decision",
+      detalle: "Falta registrar que cubre proveedor, local o cliente antes de cerrar el caso.",
+    };
+  }
+
+  if (puedeCerrar) {
+    return {
+      titulo: "Cerrar con resolucion",
+      detalle: "Completá resultado final y resolucion aplicada para dejar el caso cerrado.",
+    };
+  }
+
+  return {
+    titulo: "Avanzar estado",
+    detalle: "Usá el panel operativo para mover el caso al siguiente estado valido.",
+  };
+}
+
 const styles = {
+  caseHero: {
+    background: colors.surface,
+    border: `1px solid ${colors.borderSoft}`,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    boxShadow: "0 8px 22px rgba(15, 23, 42, 0.06)",
+    display: "grid",
+    gap: spacing.lg,
+    marginBottom: spacing.lg,
+  },
+  caseHeroTop: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: spacing.lg,
+    alignItems: "flex-start",
+  },
+  eyebrow: {
+    display: "block",
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: 900,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+    marginBottom: 4,
+  },
+  caseTitle: {
+    margin: 0,
+    color: colors.textStrong,
+    fontSize: 24,
+    lineHeight: 1.15,
+    overflowWrap: "anywhere",
+  },
+  caseStatus: {
+    display: "flex",
+    alignItems: "center",
+    gap: spacing.sm,
+    color: colors.textMuted,
+    fontWeight: 900,
+    whiteSpace: "nowrap",
+  },
+  quickGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+    gap: spacing.md,
+  },
+  quickInfo: {
+    border: `1px solid ${colors.borderSoft}`,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    background: colors.surfaceMuted,
+    display: "grid",
+    gap: 6,
+    minWidth: 0,
+  },
+  quickLink: {
+    color: colors.secondary,
+    fontWeight: 900,
+    textDecoration: "none",
+    width: "fit-content",
+  },
+  caseBottom: {
+    display: "grid",
+    gridTemplateColumns: "minmax(240px, 1.2fr) minmax(260px, 2fr)",
+    gap: spacing.md,
+    alignItems: "stretch",
+  },
+  nextSummary: {
+    border: `1px solid ${colors.primarySoft}`,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    background: "#fff7ed",
+    display: "grid",
+    gap: 6,
+  },
+  caseMeta: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+    gap: spacing.md,
+  },
   summaryGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
@@ -586,6 +795,15 @@ const styles = {
     display: "grid",
     gap: 6,
     minWidth: 0,
+  },
+  nextActionBox: {
+    border: `1px solid ${colors.primarySoft}`,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    background: "#fff7ed",
+    display: "grid",
+    gap: 6,
+    marginBottom: spacing.md,
   },
   layout: {
     display: "grid",

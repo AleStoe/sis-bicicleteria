@@ -9,6 +9,7 @@ export default function VentaItemVendidoCard({
   onDevolverItem,
   onDevolverSerializada,
   onCorregirNumeroCuadro,
+  onAsignarNumeroCuadro,
 }) {
   const { isMobile } = useBreakpoint();
   const cantidadDevuelta = Number(item.cantidad_devuelta || 0);
@@ -53,8 +54,12 @@ export default function VentaItemVendidoCard({
             Item #{item.id} · Variante #{item.id_variante} · Cantidad{" "}
             {cantidadVendida.toLocaleString("es-AR")} ·{" "}
             {item.id_bicicleta_serializada
-              ? `Serializada #${item.id_bicicleta_serializada}`
-              : "No serializada"}
+              ? item.bicicleta_numero_cuadro || item.numero_cuadro
+                ? `Nro. cuadro ${item.bicicleta_numero_cuadro || item.numero_cuadro}`
+                : "Con numero de cuadro"
+              : item.serializable
+                ? "En caja"
+                : "Sin numero de cuadro"}
             {item.id_bicicleta_serializada && (
               <>
                 {" "}
@@ -65,6 +70,19 @@ export default function VentaItemVendidoCard({
                   onClick={() => onCorregirNumeroCuadro?.(item)}
                 >
                   Corregir cuadro
+                </button>
+              </>
+            )}
+            {!item.id_bicicleta_serializada && item.serializable && onAsignarNumeroCuadro && (
+              <>
+                {" "}
+                Â·{" "}
+                <button
+                  type="button"
+                  style={linkButtonStyle}
+                  onClick={() => onAsignarNumeroCuadro?.(item)}
+                >
+                  Asignar cuadro
                 </button>
               </>
             )}

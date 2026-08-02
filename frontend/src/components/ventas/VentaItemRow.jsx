@@ -150,8 +150,8 @@ export default function VentaItemRow({
               {item.serializable && (
                 <span style={styles.badgeSerial}>
                   {item.modo_venta_serializada === "serializada"
-                    ? "ARMADA"
-                    : "SIN UNIDAD"}
+                    ? "CON CUADRO"
+                    : "EN CAJA"}
                 </span>
               )}
 
@@ -251,7 +251,7 @@ export default function VentaItemRow({
               onClick={() => togglePanel("modo")}
               style={panelActivo === "modo" ? styles.actionBtnActive : styles.actionBtn}
             >
-              Modo
+              Entrega
             </button>
           )}
 
@@ -284,7 +284,7 @@ export default function VentaItemRow({
 
         {panelActivo === "modo" && item.serializable && (
           <div style={styles.panel}>
-            <div style={styles.panelTitle}>Modo de venta</div>
+            <div style={styles.panelTitle}>Entrega de bicicleta</div>
 
             <div style={styles.modeRow}>
               <button
@@ -296,7 +296,7 @@ export default function VentaItemRow({
                     : styles.modeBtn
                 }
               >
-                Sin unidad asignada
+                En caja
               </button>
 
               <button
@@ -308,7 +308,7 @@ export default function VentaItemRow({
                     : styles.modeBtn
                 }
               >
-                Unidad serializada
+                Con numero de cuadro
               </button>
             </div>
 

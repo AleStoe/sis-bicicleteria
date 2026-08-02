@@ -10,19 +10,15 @@ export default function VentaItemSerializadaPanel({
     <div style={styles.panel}>
       <div style={styles.header}>
         <div>
-          <div style={styles.title}>
-            Bicicleta serializada
-          </div>
+          <div style={styles.title}>Numero de cuadro</div>
 
           <div style={styles.subtitle}>
-            Seleccioná un número de cuadro disponible
+            Elegi el cuadro de la bici que sale armada
           </div>
         </div>
 
         {serialSeleccionada && (
-          <span style={styles.badgeOk}>
-            Serializada seleccionada
-          </span>
+          <span style={styles.badgeOk}>Cuadro seleccionado</span>
         )}
       </div>
 
@@ -41,16 +37,11 @@ export default function VentaItemSerializadaPanel({
           }}
           style={styles.select}
         >
-          <option value="">
-            Seleccionar número de cuadro
-          </option>
+          <option value="">Elegir numero de cuadro</option>
 
           {bicicletasDisponibles.map((bici) => (
-            <option
-              key={bici.id}
-              value={bici.id}
-            >
-              #{bici.id} · {bici.numero_cuadro}
+            <option key={bici.id} value={bici.id}>
+              Nro. {bici.numero_cuadro}
             </option>
           ))}
         </select>
@@ -68,8 +59,7 @@ export default function VentaItemSerializadaPanel({
 
       {bicicletasDisponibles.length === 0 && (
         <div style={styles.warningBox}>
-          No hay bicicletas serializadas disponibles
-          para esta variante.
+          No hay numeros de cuadro disponibles para esta variante.
         </div>
       )}
     </div>

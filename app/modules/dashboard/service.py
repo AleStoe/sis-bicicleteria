@@ -107,6 +107,7 @@ def obtener_dashboard_resumen(
     dias_sin_movimiento: int = 90,
     umbral_repuestos_criticos: int = 2,
     limit: int = 10,
+    top_productos_limit: int | None = None,
     id_usuario: int | None = None,
 ):
     periodo_mes, fecha_desde, fecha_hasta = _periodo_bounds(periodo_mes)
@@ -175,8 +176,17 @@ def obtener_dashboard_resumen(
             fecha_desde,
             fecha_hasta,
             id_sucursal=id_sucursal,
+            order_by="facturacion",
+            limit=top_productos_limit or limit,
+        )
+        top_bicicletas = get_top_productos(
+            conn,
+            fecha_desde,
+            fecha_hasta,
+            id_sucursal=id_sucursal,
             order_by="cantidad",
-            limit=limit,
+            limit=min(top_productos_limit or limit, 50),
+            tipo_operativo="bicicletas",
         )
         repuestos_criticos = get_repuestos_criticos(
             conn,
@@ -236,6 +246,7 @@ def obtener_dashboard_resumen(
             "ventas_ultimos_meses": ventas_ultimos_meses,
             "top_clientes": top_clientes,
             "top_productos_cantidad": top_cantidad,
+            "top_bicicletas_cantidad": top_bicicletas,
             "productos_sin_movimiento": sin_movimiento,
             "repuestos_criticos": repuestos_criticos,
             "capital_inmovilizado": get_capital_inmovilizado(conn, id_sucursal=id_sucursal, limit=limit),

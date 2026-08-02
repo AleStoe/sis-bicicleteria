@@ -12,3 +12,10 @@ export function corregirCapitalSinCaja(movimientoId, payload) {
     body: JSON.stringify(payload),
   });
 }
+
+export function validarCapitalFueraCaja(movimientoId, payload) {
+  return apiRequest(`${BASE}/capital-sin-caja/${movimientoId}/validar-fuera-caja`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}

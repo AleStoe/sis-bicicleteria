@@ -8,6 +8,7 @@ import NuevaVentaCheckoutPage from "./pages/NuevaVentaCheckoutPage";
 import VentasListPage from "./pages/VentasListPage";
 import VentaDetallePage from "./pages/VentaDetallePage";
 import StockPage from "./pages/StockPage";
+import AnalisisDemandaPage from "./pages/AnalisisDemandaPage";
 import PedidoCompraSugeridoPage from "./pages/PedidoCompraSugeridoPage";
 import CajaPage from "./pages/CajaPage";
 import ClientesListPage from "./pages/ClientesListPage";
@@ -98,6 +99,7 @@ const TITULOS_RUTA = [
   [/^\/reservas\/\d+$/, "Detalle de reserva"],
   [/^\/reservas$/, "Reservas"],
   [/^\/stock\/pedido-compra$/, "Pedido de compra"],
+  [/^\/stock\/demanda$/, "Analisis de demanda"],
   [/^\/stock$/, "Stock"],
   [/^\/armado\/configuraciones\/\d+\/simular$/, "Simulador de armado"],
   [/^\/armado\/configuraciones\/\d+$/, "Configuracion de armado"],
@@ -225,6 +227,14 @@ export default function App() {
             }
           />
 
+          <Route
+            path="/stock/demanda"
+            element={
+              <ProtectedRoute rolesPermitidos={ADMIN_ENCARGADO}>
+                <AnalisisDemandaPage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/stock/pedido-compra"
             element={

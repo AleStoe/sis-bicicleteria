@@ -24,6 +24,14 @@ const ESTADOS_VENTA = [
   "anulada",
 ];
 
+const PERIODOS_VENTA = [
+  { value: "todos", label: "Todo el historial" },
+  { value: "hoy", label: "Hoy" },
+  { value: "ultimos_7", label: "Ultimos 7 dias" },
+  { value: "ultimos_30", label: "Ultimos 30 dias" },
+  { value: "este_mes", label: "Este mes" },
+];
+
 const VENTAS_COLUMNS = [
   { key: "id", label: "ID" },
   { key: "fecha", label: "Fecha" },
@@ -32,6 +40,7 @@ const VENTAS_COLUMNS = [
   { key: "origen", label: "Origen" },
   { key: "estado", label: "Estado" },
   { key: "total", label: "Total" },
+  { key: "cobrado", label: "Cobrado" },
   { key: "saldo", label: "Saldo" },
   { key: "accion", label: "Acción" },
 ];
@@ -67,6 +76,7 @@ export default function VentasListPage() {
   const [error, setError] = useState("");
   const [busqueda, setBusqueda] = useState("");
   const [estadoFiltro, setEstadoFiltro] = useState("todos");
+  const [periodoFiltro, setPeriodoFiltro] = useState("todos");
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -89,10 +99,12 @@ export default function VentasListPage() {
 
   const ventasFiltradas = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
+    const periodo = getPeriodoRange(periodoFiltro);
 
     return ventas.filter((venta) => {
       const coincideEstado =
         estadoFiltro === "todos" || venta.estado === estadoFiltro;
+      const coincidePeriodo = ventaEstaEnPeriodo(venta.fecha, periodo);
 
       const texto = [
         venta.id,
@@ -106,20 +118,43 @@ export default function VentasListPage() {
 
       const coincideBusqueda = !q || texto.includes(q);
 
-      return coincideEstado && coincideBusqueda;
+      return coincideEstado && coincidePeriodo && coincideBusqueda;
     });
-  }, [ventas, busqueda, estadoFiltro]);
+  }, [ventas, busqueda, estadoFiltro, periodoFiltro]);
 
   const resumen = useMemo(() => {
     return ventasFiltradas.reduce(
       (acc, venta) => {
+        const montos = getVentaMontos(venta);
+        const anulada = venta.estado === "anulada";
+
         acc.cantidad += 1;
-        acc.total += Number(venta.total_final || 0);
-        acc.saldo += Number(venta.saldo_pendiente || 0);
+        if (anulada) {
+          acc.anuladas += 1;
+          acc.totalAnulado += montos.total;
+          return acc;
+        }
+
+        acc.validas += 1;
+        acc.total += montos.total;
+        acc.cobrado += montos.cobrado;
+        acc.saldo += montos.saldo;
+        if (venta.estado !== "entregada") {
+          acc.pendientesEntrega += 1;
+        }
 
         return acc;
       },
-      { cantidad: 0, total: 0, saldo: 0 }
+      {
+        cantidad: 0,
+        validas: 0,
+        total: 0,
+        cobrado: 0,
+        saldo: 0,
+        pendientesEntrega: 0,
+        anuladas: 0,
+        totalAnulado: 0,
+      }
     );
   }, [ventasFiltradas]);
 
@@ -168,16 +203,33 @@ export default function VentasListPage() {
       {error ? <Alert type="error" message={error} /> : null}
 
       <section style={isMobile ? styles.metricsMobile : styles.metrics}>
-        <MetricCard label="Ventas" value={resumen.cantidad} />
+        <MetricCard label="Ventas encontradas" value={resumen.cantidad} />
         <MetricCard
-          label="Total filtrado"
+          label="Total vendido"
           value={formatMoney(resumen.total)}
           tone="primary"
+          footer={`${resumen.validas} venta(s) validas`}
+        />
+        <MetricCard
+          label="Cobrado"
+          value={formatMoney(resumen.cobrado)}
+          tone="success"
         />
         <MetricCard
           label="Saldo pendiente"
           value={formatMoney(resumen.saldo)}
           tone={Number(resumen.saldo) > 0 ? "warning" : "success"}
+        />
+        <MetricCard
+          label="Sin entregar"
+          value={resumen.pendientesEntrega}
+          tone={resumen.pendientesEntrega > 0 ? "warning" : "success"}
+        />
+        <MetricCard
+          label="Anuladas"
+          value={resumen.anuladas}
+          tone={resumen.anuladas > 0 ? "danger" : "default"}
+          footer={resumen.anuladas > 0 ? formatMoney(resumen.totalAnulado) : undefined}
         />
       </section>
 
@@ -206,6 +258,18 @@ export default function VentasListPage() {
               </option>
             ))}
           </Select>
+
+          <Select
+            label="Periodo"
+            value={periodoFiltro}
+            onChange={(e) => setPeriodoFiltro(e.target.value)}
+          >
+            {PERIODOS_VENTA.map((periodo) => (
+              <option key={periodo.value} value={periodo.value}>
+                {periodo.label}
+              </option>
+            ))}
+          </Select>
         </div>
       </Card>
 
@@ -231,7 +295,7 @@ export default function VentasListPage() {
                 <td style={styles.itemsCell}>
                   <strong>{formatCantidadItems(venta.cantidad_items)}</strong>
                   {venta.tiene_serializadas ? (
-                    <span title="Venta con bicicleta serializada" aria-label="Venta con bicicleta serializada">
+                    <span title="Venta con numero de cuadro" aria-label="Venta con numero de cuadro">
                       🚲
                     </span>
                   ) : null}
@@ -243,6 +307,9 @@ export default function VentasListPage() {
                   <EstadoVentaBadge estado={venta.estado} />
                 </td>
                 <td style={tdStyle}>{formatMoney(venta.total_final)}</td>
+                <td style={{ ...tdStyle, fontWeight: 800, color: "#067647" }}>
+                  {formatMoney(getVentaMontos(venta).cobrado)}
+                </td>
                 <td
                   style={{
                     ...tdStyle,
@@ -282,7 +349,7 @@ function VentasMobileList({ ventas, mostrarSucursal }) {
   return (
     <div style={styles.mobileList}>
       {ventas.map((venta) => {
-        const saldo = Number(venta.saldo_pendiente || 0);
+        const montos = getVentaMontos(venta);
 
         return (
           <article key={venta.id} style={styles.ventaCard}>
@@ -292,7 +359,7 @@ function VentasMobileList({ ventas, mostrarSucursal }) {
                 <ClienteVentaLink venta={venta} mobile />
                 <div style={styles.mutedSmall}>
                   {formatDateTime(venta.fecha)}
-                  {venta.tiene_serializadas ? <span title="Venta con bicicleta serializada"> · 🚲</span> : null}
+                  {venta.tiene_serializadas ? <span title="Venta con numero de cuadro"> · 🚲</span> : null}
                 </div>
               </div>
 
@@ -307,13 +374,20 @@ function VentasMobileList({ ventas, mostrarSucursal }) {
             <div style={styles.amountGrid}>
               <div style={styles.amountBox}>
                 <span>Total</span>
-                <strong>{formatMoney(venta.total_final)}</strong>
+                <strong>{formatMoney(montos.total)}</strong>
+              </div>
+
+              <div style={styles.amountBox}>
+                <span>Cobrado</span>
+                <strong style={{ color: "#067647" }}>
+                  {formatMoney(montos.cobrado)}
+                </strong>
               </div>
 
               <div style={styles.amountBox}>
                 <span>Saldo</span>
-                <strong style={{ color: saldo > 0 ? "#b45309" : "#067647" }}>
-                  {formatMoney(venta.saldo_pendiente)}
+                <strong style={{ color: montos.saldo > 0 ? "#b45309" : "#067647" }}>
+                  {formatMoney(montos.saldo)}
                 </strong>
               </div>
             </div>
@@ -330,6 +404,65 @@ function VentasMobileList({ ventas, mostrarSucursal }) {
       })}
     </div>
   );
+}
+
+function getVentaMontos(venta) {
+  const total = Number(venta.total_final || 0);
+  const saldo = Math.max(0, Number(venta.saldo_pendiente || 0));
+  const cobrado = Math.max(0, total - saldo);
+
+  return { total, saldo, cobrado };
+}
+
+function getPeriodoRange(periodo) {
+  if (periodo === "todos") {
+    return null;
+  }
+
+  const now = new Date();
+  const end = endOfDay(now);
+
+  if (periodo === "hoy") {
+    return { start: startOfDay(now), end };
+  }
+
+  if (periodo === "ultimos_7") {
+    const start = startOfDay(now);
+    start.setDate(start.getDate() - 6);
+    return { start, end };
+  }
+
+  if (periodo === "ultimos_30") {
+    const start = startOfDay(now);
+    start.setDate(start.getDate() - 29);
+    return { start, end };
+  }
+
+  if (periodo === "este_mes") {
+    return {
+      start: new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0),
+      end,
+    };
+  }
+
+  return null;
+}
+
+function ventaEstaEnPeriodo(fecha, periodo) {
+  if (!periodo) return true;
+
+  const ventaFecha = new Date(fecha);
+  if (Number.isNaN(ventaFecha.getTime())) return false;
+
+  return ventaFecha >= periodo.start && ventaFecha <= periodo.end;
+}
+
+function startOfDay(date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+}
+
+function endOfDay(date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
 }
 
 function formatCantidadItems(value) {
@@ -432,7 +565,7 @@ const styles = {
   },
   filters: {
     display: "grid",
-    gridTemplateColumns: "minmax(260px, 1fr) 240px",
+    gridTemplateColumns: "minmax(260px, 1fr) 220px 220px",
     gap: "12px",
   },
   filtersMobile: {
@@ -537,7 +670,7 @@ const styles = {
   },
   amountGrid: {
     display: "grid",
-    gridTemplateColumns: "1fr 1fr",
+    gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
     gap: 8,
   },
   mobileMetaRow: {

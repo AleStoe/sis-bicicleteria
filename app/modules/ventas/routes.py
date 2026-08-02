@@ -8,6 +8,7 @@ from app.shared.constants import (
     PERMISO_APLICAR_CREDITO_VENTA,
     PERMISO_CREAR_VENTA,
     PERMISO_GESTIONAR_DEVOLUCIONES,
+    PERMISO_GESTIONAR_CORRECCIONES,
     PERMISO_MODIFICAR_PRECIO_VENTA,
     PERMISO_REGISTRAR_PAGO,
     PERMISO_VER_RENTABILIDAD,
@@ -21,6 +22,10 @@ from .schema import (
     VentaEstadoOutput,
     VentaAnulacionInput,
     VentaAnulacionOutput,
+    VentaCorreccionClienteInput,
+    VentaCorreccionClienteOutput,
+    VentaAsignarBicicletaSerializadaInput,
+    VentaAsignarBicicletaSerializadaOutput,
     VentaDevolucionSerializadaInput,
     VentaDevolucionSerializadaOutput,
     VentaDevolucionInput,
@@ -36,6 +41,8 @@ from .service import (
     obtener_venta,
     entregar_venta,
     anular_venta,
+    corregir_cliente_venta,
+    asignar_bicicleta_serializada_a_venta,
     devolver_item_serializado_entregado,
     devolver_venta,
     devolver_items,
@@ -46,6 +53,7 @@ router = APIRouter()
 puede_crear_venta = requerir_permiso(PERMISO_CREAR_VENTA)
 puede_anular_venta = requerir_permiso(PERMISO_ANULAR_VENTA)
 puede_gestionar_devoluciones = requerir_permiso(PERMISO_GESTIONAR_DEVOLUCIONES)
+puede_gestionar_correcciones = requerir_permiso(PERMISO_GESTIONAR_CORRECCIONES)
 
 
 def _tiene_precio_manual_o_bonificacion(data: VentaCreateInput) -> bool:
@@ -120,6 +128,30 @@ def anular_venta_route(
 ):
     aplicar_actor_actual(data, usuario)
     return anular_venta(venta_id, data)
+
+
+@router.post("/{venta_id}/corregir-cliente", response_model=VentaCorreccionClienteOutput)
+def corregir_cliente_venta_route(
+    venta_id: int,
+    data: VentaCorreccionClienteInput,
+    usuario: CurrentUser = Depends(puede_gestionar_correcciones),
+):
+    aplicar_actor_actual(data, usuario)
+    return corregir_cliente_venta(venta_id, data)
+
+
+@router.post(
+    "/{venta_id}/asignar-bicicleta-serializada",
+    response_model=VentaAsignarBicicletaSerializadaOutput,
+)
+def asignar_bicicleta_serializada_route(
+    venta_id: int,
+    data: VentaAsignarBicicletaSerializadaInput,
+    usuario: CurrentUser = Depends(puede_gestionar_correcciones),
+):
+    aplicar_actor_actual(data, usuario)
+    return asignar_bicicleta_serializada_a_venta(venta_id, data)
+
 
 @router.post(
     "/{venta_id}/devolver-serializada",

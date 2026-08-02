@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { Button, PageHeader } from "../../ui";
 import { EstadoDeudaBadge } from "../../../pages/DeudasListPage";
 
-export default function DeudaHeader({ deuda, onRefresh }) {
+export default function DeudaHeader({ deuda, onRefresh, onCopy }) {
   return (
     <PageHeader
       title={
@@ -23,6 +23,12 @@ export default function DeudaHeader({ deuda, onRefresh }) {
       }
       actions={
         <>
+          {onCopy && (
+            <Button variant="outline" onClick={onCopy}>
+              Copiar deuda
+            </Button>
+          )}
+
           <Button variant="outline" onClick={onRefresh}>
             Refrescar
           </Button>

@@ -187,6 +187,96 @@ def update_venta_estado(conn, venta_id: int, nuevo_estado: str):
         )
 
 
+def update_venta_cliente(conn, venta_id: int, cliente_id: int) -> int:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE ventas
+            SET id_cliente = %s,
+                updated_at = NOW()
+            WHERE id = %s
+            """,
+            (cliente_id, venta_id),
+        )
+        return cur.rowcount
+
+
+def update_pagos_cliente_por_venta(conn, venta_id: int, cliente_id: int) -> int:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE pagos
+            SET id_cliente = %s,
+                updated_at = NOW()
+            WHERE origen_tipo = 'venta'
+              AND origen_id = %s
+            """,
+            (cliente_id, venta_id),
+        )
+        return cur.rowcount
+
+
+def update_deudas_cliente_por_venta(conn, venta_id: int, cliente_id: int) -> int:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE deudas_cliente
+            SET id_cliente = %s,
+                updated_at = NOW()
+            WHERE origen_tipo = 'venta'
+              AND origen_id = %s
+            """,
+            (cliente_id, venta_id),
+        )
+        return cur.rowcount
+
+
+def update_creditos_cliente_por_venta(conn, venta_id: int, cliente_id: int) -> int:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE creditos_cliente
+            SET id_cliente = %s
+            WHERE origen_tipo = 'venta'
+              AND origen_id = %s
+            """,
+            (cliente_id, venta_id),
+        )
+        return cur.rowcount
+
+
+def update_bicicletas_cliente_por_venta(conn, venta_id: int, cliente_id: int) -> int:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE bicicletas_clientes
+            SET id_cliente = %s,
+                updated_at = NOW()
+            WHERE id_venta_origen = %s
+            """,
+            (cliente_id, venta_id),
+        )
+        return cur.rowcount
+
+
+def update_venta_item_bicicleta_serializada(
+    conn,
+    venta_item_id: int,
+    bicicleta_id: int,
+) -> int:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE venta_items
+            SET id_bicicleta_serializada = %s,
+                updated_at = NOW()
+            WHERE id = %s
+            """,
+            (bicicleta_id, venta_item_id),
+        )
+        return cur.rowcount
+
+
 def update_venta_saldo_y_estado(conn, venta_id: int, saldo_pendiente, estado: str):
     with conn.cursor() as cur:
         cur.execute(
@@ -341,6 +431,7 @@ def get_venta_items_by_venta_id(conn, venta_id: int):
                 vi.tipo_item,
                 vi.id_servicio_taller,
                 vi.id_bicicleta_serializada,
+                bs.numero_cuadro AS bicicleta_numero_cuadro,
                 p.serializable,
                 vi.id_orden_taller_item,
                 vi.descripcion_snapshot,
@@ -407,6 +498,7 @@ def get_venta_items_detallados_by_venta_id(conn, venta_id: int):
                 vi.id_variante,
                 vi.id_servicio_taller,
                 vi.id_bicicleta_serializada,
+                bs.numero_cuadro AS bicicleta_numero_cuadro,
                 vi.id_orden_taller_item,
                 vi.descripcion_snapshot,
                 vi.cantidad,
@@ -478,6 +570,68 @@ def get_venta_for_update(conn, venta_id: int):
             (venta_id,),
         )
         return cur.fetchone()
+
+def get_venta_item_detallado_for_update(conn, venta_id: int, venta_item_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT
+                vi.id,
+                vi.id_venta,
+                vi.tipo_item,
+                vi.id_variante,
+                vi.id_servicio_taller,
+                vi.id_bicicleta_serializada,
+                vi.descripcion_snapshot,
+                vi.cantidad,
+                vi.precio_lista,
+                vi.precio_final,
+                vi.costo_unitario_aplicado,
+                vi.subtotal,
+                p.stockeable,
+                p.serializable,
+                p.activo AS producto_activo,
+                v.activo AS variante_activa,
+                COALESCE(dev.cantidad_devuelta, 0) AS cantidad_devuelta
+            FROM venta_items vi
+            LEFT JOIN variantes v
+                ON v.id = vi.id_variante
+            LEFT JOIN productos p
+                ON p.id = v.id_producto
+            LEFT JOIN (
+                SELECT
+                    id_venta_item,
+                    SUM(cantidad_devuelta) AS cantidad_devuelta
+                FROM venta_item_devoluciones
+                GROUP BY id_venta_item
+            ) dev
+                ON dev.id_venta_item = vi.id
+            WHERE vi.id_venta = %s
+              AND vi.id = %s
+            FOR UPDATE OF vi
+            """,
+            (venta_id, venta_item_id),
+        )
+        return cur.fetchone()
+
+
+def existe_movimiento_venta_generico(conn, venta_id: int, id_variante: int) -> bool:
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT 1
+            FROM movimientos_stock
+            WHERE origen_tipo = 'venta'
+              AND origen_id = %s
+              AND id_variante = %s
+              AND tipo_movimiento = 'venta'
+              AND id_bicicleta_serializada IS NULL
+            LIMIT 1
+            """,
+            (venta_id, id_variante),
+        )
+        return cur.fetchone() is not None
+
 
 def insert_venta_devolucion(conn, data: dict):
     with conn.cursor(row_factory=dict_row) as cur:

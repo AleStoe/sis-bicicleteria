@@ -283,6 +283,228 @@ def test_operador_no_puede_anular_y_encargado_si(
     assert autorizado.json()["estado"] == "anulada"
 
 
+def test_correccion_cliente_venta_exige_permiso_y_usa_actor_real(
+    client,
+    db_conn,
+    seed_venta_basica,
+    auth_habilitada,
+):
+    actor_creador_id, token_creador = _crear_actor(
+        db_conn,
+        username="creador_venta_cliente_mal",
+        rol="operador",
+        permisos=("crear_venta",),
+    )
+    crear = client.post(
+        "/ventas/",
+        headers=_headers(token_creador),
+        json=_payload_venta(seed_venta_basica),
+    )
+    assert crear.status_code == 200, crear.text
+    venta_id = crear.json()["venta_id"]
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO clientes (nombre, telefono, tipo_cliente, activo)
+            VALUES ('Cliente Correcto', '2915551234', 'minorista', TRUE)
+            RETURNING id
+            """
+        )
+        cliente_correcto_id = cur.fetchone()["id"]
+        db_conn.commit()
+
+    bloqueado = client.post(
+        f"/ventas/{venta_id}/corregir-cliente",
+        headers=_headers(token_creador),
+        json={
+            "id_cliente_nuevo": cliente_correcto_id,
+            "motivo": "Venta cargada al cliente equivocado",
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert bloqueado.status_code == 403
+    assert "gestionar_correcciones" in bloqueado.json()["detail"]
+
+    actor_corrector_id, token_corrector = _crear_actor(
+        db_conn,
+        username="encargado_corrige_cliente",
+        rol="encargado",
+        permisos=("gestionar_correcciones",),
+    )
+    corregir = client.post(
+        f"/ventas/{venta_id}/corregir-cliente",
+        headers=_headers(token_corrector),
+        json={
+            "id_cliente_nuevo": cliente_correcto_id,
+            "motivo": "Venta cargada al cliente equivocado",
+            "id_usuario": actor_creador_id,
+        },
+    )
+
+    assert corregir.status_code == 200, corregir.text
+    assert corregir.json()["id_cliente_anterior"] == seed_venta_basica["cliente_id"]
+    assert corregir.json()["id_cliente_nuevo"] == cliente_correcto_id
+
+    with db_conn.cursor() as cur:
+        cur.execute("SELECT id_cliente FROM ventas WHERE id = %s", (venta_id,))
+        venta = cur.fetchone()
+        cur.execute(
+            """
+            SELECT id_usuario, metadata
+            FROM auditoria_eventos
+            WHERE entidad = 'venta'
+              AND entidad_id = %s
+              AND accion = 'venta_cliente_corregido'
+            """,
+            (venta_id,),
+        )
+        evento = cur.fetchone()
+
+    assert venta["id_cliente"] == cliente_correcto_id
+    assert evento["id_usuario"] == actor_corrector_id
+    assert evento["metadata"]["id_cliente_nuevo"] == cliente_correcto_id
+
+
+def test_correccion_cliente_venta_sincroniza_trazabilidad_asociada(
+    client,
+    db_conn,
+    seed_venta_basica,
+    auth_habilitada,
+):
+    _, token_creador = _crear_actor(
+        db_conn,
+        username="creador_venta_trazabilidad",
+        rol="operador",
+        permisos=("crear_venta",),
+    )
+    crear = client.post(
+        "/ventas/",
+        headers=_headers(token_creador),
+        json=_payload_venta(seed_venta_basica),
+    )
+    assert crear.status_code == 200, crear.text
+    venta_id = crear.json()["venta_id"]
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO clientes (nombre, telefono, tipo_cliente, activo)
+            VALUES ('Cliente Trazabilidad', '2915557777', 'minorista', TRUE)
+            RETURNING id
+            """
+        )
+        cliente_correcto_id = cur.fetchone()["id"]
+
+        cur.execute(
+            """
+            INSERT INTO pagos (
+                id_cliente,
+                origen_tipo,
+                origen_id,
+                medio_pago,
+                monto_base_aplicado,
+                monto_total_cobrado,
+                monto_neto_liquidado,
+                id_usuario
+            )
+            VALUES (%s, 'venta', %s, 'efectivo', 1000, 1000, 1000, %s)
+            RETURNING id
+            """,
+            (seed_venta_basica["cliente_id"], venta_id, seed_venta_basica["usuario_id"]),
+        )
+        pago_id = cur.fetchone()["id"]
+
+        cur.execute(
+            """
+            INSERT INTO deudas_cliente (
+                id_cliente,
+                origen_tipo,
+                origen_id,
+                saldo_actual,
+                observacion
+            )
+            VALUES (%s, 'venta', %s, 500, 'Deuda test')
+            RETURNING id
+            """,
+            (seed_venta_basica["cliente_id"], venta_id),
+        )
+        deuda_id = cur.fetchone()["id"]
+
+        cur.execute(
+            """
+            INSERT INTO creditos_cliente (
+                id_cliente,
+                origen_tipo,
+                origen_id,
+                saldo_actual,
+                observacion
+            )
+            VALUES (%s, 'venta', %s, 300, 'Credito test')
+            RETURNING id
+            """,
+            (seed_venta_basica["cliente_id"], venta_id),
+        )
+        credito_id = cur.fetchone()["id"]
+
+        cur.execute(
+            """
+            INSERT INTO bicicletas_clientes (
+                id_cliente,
+                id_venta_origen,
+                marca,
+                modelo,
+                numero_cuadro,
+                notas
+            )
+            VALUES (%s, %s, 'Bicicleta', 'Modelo test', 'CUADRO-TEST', 'Venta test')
+            RETURNING id
+            """,
+            (seed_venta_basica["cliente_id"], venta_id),
+        )
+        bicicleta_cliente_id = cur.fetchone()["id"]
+        db_conn.commit()
+
+    _, token_corrector = _crear_actor(
+        db_conn,
+        username="admin_corrige_trazabilidad",
+        rol="administrador",
+        permisos=("gestionar_correcciones",),
+    )
+    corregir = client.post(
+        f"/ventas/{venta_id}/corregir-cliente",
+        headers=_headers(token_corrector),
+        json={
+            "id_cliente_nuevo": cliente_correcto_id,
+            "motivo": "Correccion de cliente para trazabilidad",
+        },
+    )
+
+    assert corregir.status_code == 200, corregir.text
+    assert corregir.json()["pagos_actualizados"] == 1
+    assert corregir.json()["deudas_actualizadas"] == 1
+    assert corregir.json()["creditos_actualizados"] == 1
+    assert corregir.json()["bicicletas_cliente_actualizadas"] == 1
+
+    with db_conn.cursor() as cur:
+        cur.execute("SELECT id_cliente FROM pagos WHERE id = %s", (pago_id,))
+        pago = cur.fetchone()
+        cur.execute("SELECT id_cliente FROM deudas_cliente WHERE id = %s", (deuda_id,))
+        deuda = cur.fetchone()
+        cur.execute("SELECT id_cliente FROM creditos_cliente WHERE id = %s", (credito_id,))
+        credito = cur.fetchone()
+        cur.execute(
+            "SELECT id_cliente FROM bicicletas_clientes WHERE id = %s",
+            (bicicleta_cliente_id,),
+        )
+        bicicleta_cliente = cur.fetchone()
+
+    assert pago["id_cliente"] == cliente_correcto_id
+    assert deuda["id_cliente"] == cliente_correcto_id
+    assert credito["id_cliente"] == cliente_correcto_id
+    assert bicicleta_cliente["id_cliente"] == cliente_correcto_id
+
+
 def test_precio_manual_y_bonificacion_requieren_permiso(
     client,
     db_conn,

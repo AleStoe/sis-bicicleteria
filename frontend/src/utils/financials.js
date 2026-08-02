@@ -28,6 +28,7 @@ export function getMovimientoCreditoLabel(tipo, origenTipo = "") {
     aplicacion_a_venta: "Aplicado a venta",
     aplicacion_venta: "Aplicado a venta",
     reintegro: "Reintegrado",
+    anulacion_credito: "Anulación administrativa",
     ajuste: "Ajuste",
     reversion: "Reversión",
   };

@@ -9,6 +9,7 @@ from .service import (
     listar_stock,
     obtener_resumen_stock,
     obtener_pedido_compra_sugerido,
+    obtener_analisis_demanda,
     crear_ingreso_stock,
     crear_ajuste_stock,
 )
@@ -16,6 +17,7 @@ from .schema import (
     StockSucursalOut,
     StockResumenOut,
     PedidoCompraSugeridoOut,
+    DemandaResumenOut,
     IngresoStockCreate,
     IngresoStockResponse,
     AjusteStockCreate,
@@ -174,6 +176,27 @@ def pedido_compra_sugerido(
             "stock_bajo_umbral": stock_bajo_umbral,
             "limit": limit,
         }
+    )
+
+
+@router.get("/demanda", response_model=DemandaResumenOut)
+def analisis_demanda(
+    q: str | None = Query(default=None),
+    id_sucursal: int | None = Query(default=None, gt=0),
+    tipo_operativo: str | None = Query(default=None, pattern="^(todos|bicicleta|repuesto|accesorio|producto|no_bicicletas)$"),
+    meses: int = Query(default=12, ge=1, le=36),
+    limit: int = Query(default=80, ge=1, le=500),
+    usuario: CurrentUser = Depends(obtener_usuario_actual),
+):
+    return obtener_analisis_demanda(
+        {
+            "q": q,
+            "id_sucursal": id_sucursal,
+            "tipo_operativo": tipo_operativo,
+            "meses": meses,
+            "limit": limit,
+        },
+        puede_ver_costos=_puede_ver_costos(usuario),
     )
 
 

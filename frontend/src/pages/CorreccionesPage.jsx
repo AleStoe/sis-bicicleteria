@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, CheckCircle2, ExternalLink, Wrench } from "lucide-react";
-import { corregirCapitalSinCaja, obtenerCorreccionesPendientes } from "../services/correccionesService";
+import {
+  corregirCapitalSinCaja,
+  obtenerCorreccionesPendientes,
+  validarCapitalFueraCaja,
+} from "../services/correccionesService";
 import { useSession } from "../context/SessionContext";
 import { formatMoney } from "../utils/formatters";
 
@@ -91,6 +95,35 @@ export default function CorreccionesPage() {
     }
   }
 
+  async function validarFueraDeCaja(item) {
+    const motivo = window.prompt(
+      `Este movimiento de ${formatMoney(item.monto)} quedara validado como salida fuera de caja.\n\nMotivo:`,
+      "Retiro pagado desde fondos guardados fuera de caja",
+    );
+    if (!motivo) return;
+
+    const confirmar = window.confirm(
+      `No se movera dinero de caja.\n\nEl movimiento Capital/Retiros #${item.id} dejara de aparecer como pendiente en Correcciones y quedara auditado.\n\nConfirmas la validacion?`,
+    );
+    if (!confirmar) return;
+
+    setCorrigiendoId(item.id);
+    setError("");
+    setOk("");
+    try {
+      await validarCapitalFueraCaja(item.id, {
+        motivo,
+        id_usuario: usuarioId,
+      });
+      setOk("Movimiento validado como salida fuera de caja.");
+      await cargar();
+    } catch (err) {
+      setError(err.message || "No se pudo validar el movimiento");
+    } finally {
+      setCorrigiendoId(null);
+    }
+  }
+
   return (
     <main style={{ display: "grid", gap: 18, padding: 18 }}>
       <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 14, flexWrap: "wrap" }}>
@@ -122,12 +155,45 @@ export default function CorreccionesPage() {
       </section>
 
       <CorreccionSection
+        title="Costos y margenes sospechosos"
+        description="Ventas con costo aplicado raro, margen demasiado bajo o diferencia fuerte contra el costo vigente."
+        guide={[
+          "Abrir la venta y confirmar si el costo aplicado corresponde al producto vendido.",
+          "Abrir el producto si el costo vigente tambien esta mal cargado.",
+          "Si el error es historico, corregir con auditoria. No tocar caja ni stock.",
+          "Esta lista no corrige sola: solo marca operaciones que pueden ensuciar rentabilidad.",
+        ]}
+        items={data?.costos_sospechosos || []}
+        renderItem={(item) => (
+          <CorreccionItem
+            key={item.id}
+            title={`Venta #${item.id_venta} - Item #${item.id}`}
+            subtitle={`${item.cliente_nombre} - ${motivoCostoLabel(item.motivo_alerta)}`}
+            amount={formatMoney(item.margen_item)}
+            detail={`${item.descripcion_snapshot} - Vendido ${formatMoney(item.subtotal)} - CMV ${formatMoney(item.cmv_item)} - Margen ${formatPercent(item.margen_porcentaje_sobre_venta)}`}
+            action={
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                {item.id_producto && (
+                  <Link to={`/catalogo/productos/${item.id_producto}`} style={secondaryButton}>
+                    Ver producto <ExternalLink size={14} />
+                  </Link>
+                )}
+                <Link to={`/ventas/${item.id_venta}`} style={secondaryButton}>
+                  Ver venta <ExternalLink size={14} />
+                </Link>
+              </div>
+            }
+          />
+        )}
+      />
+
+      <CorreccionSection
         title="Capital/Retiros sin caja"
         description="Salidas de dinero registradas en Capital y Retiros que no generaron movimiento de caja."
         guide={[
-          "Verificar que el movimiento realmente salio de caja.",
-          "Tener una caja abierta de la misma sucursal.",
-          "Registrar el egreso vinculado desde este centro para conservar auditoria.",
+          "Si realmente salio de caja, registrar el egreso vinculado con una caja abierta.",
+          "Si se pago con fondos guardados fuera de caja, validarlo sin mover caja.",
+          "Ambos caminos conservan auditoria; no mezcles fondos en un solo movimiento.",
         ]}
         items={data?.capital_sin_caja || []}
         renderItem={(item) => (
@@ -138,14 +204,24 @@ export default function CorreccionesPage() {
             amount={formatMoney(item.monto)}
             detail={item.descripcion}
             action={
-              <button
-                type="button"
-                style={primaryButton}
-                disabled={corrigiendoId === item.id}
-                onClick={() => registrarEgresoCapital(item)}
-              >
-                {corrigiendoId === item.id ? "Corrigiendo..." : "Registrar egreso vinculado"}
-              </button>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  style={secondaryButton}
+                  disabled={corrigiendoId === item.id}
+                  onClick={() => validarFueraDeCaja(item)}
+                >
+                  Validar fuera de caja
+                </button>
+                <button
+                  type="button"
+                  style={primaryButton}
+                  disabled={corrigiendoId === item.id}
+                  onClick={() => registrarEgresoCapital(item)}
+                >
+                  {corrigiendoId === item.id ? "Procesando..." : "Registrar egreso vinculado"}
+                </button>
+              </div>
             }
           />
         )}
@@ -272,6 +348,30 @@ function tipoCapitalLabel(tipo) {
     distribucion_ganancia: "Distribucion de ganancia",
   };
   return labels[tipo] || tipo;
+}
+
+function motivoCostoLabel(motivo) {
+  const labels = {
+    margen_negativo: "margen negativo",
+    producto_sin_costo: "producto sin costo",
+    margen_muy_bajo: "margen muy bajo",
+    costo_distinto_al_vigente: "costo distinto al vigente",
+  };
+  return labels[motivo] || motivo;
+}
+
+function formatPercent(value) {
+  if (value === null || value === undefined || value === "") {
+    return "-";
+  }
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return "-";
+  }
+  return `${number.toLocaleString("es-AR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })}%`;
 }
 
 const guideBoxStyle = {

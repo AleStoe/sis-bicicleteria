@@ -29,6 +29,20 @@ export function anularVenta(ventaId, data) {
   });
 }
 
+export function corregirClienteVenta(ventaId, data) {
+  return apiRequest(`/ventas/${ventaId}/corregir-cliente`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function asignarBicicletaSerializadaVenta(ventaId, data) {
+  return apiRequest(`/ventas/${ventaId}/asignar-bicicleta-serializada`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
 export function devolverVentaSerializada(ventaId, data) {
   return apiRequest(`/ventas/${ventaId}/devolver-serializada`, {
     method: "POST",

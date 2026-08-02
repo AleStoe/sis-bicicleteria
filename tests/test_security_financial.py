@@ -422,3 +422,100 @@ def test_movimiento_capital_autorizado_audita_actor_real(
 
     assert evento is not None
     assert evento["id_usuario"] == actor_id
+
+
+def test_correccion_capital_sin_caja_permite_validar_fondos_fuera_de_caja(
+    client,
+    db_conn,
+    clean_db,
+    auth_habilitada,
+):
+    actor_id, token = _crear_actor(
+        db_conn,
+        username="admin_validacion_fuera_caja",
+        rol="administrador",
+        permisos=("gestionar_capital_retiros", "gestionar_correcciones"),
+    )
+    participante = client.post(
+        "/capital-retiros/participantes",
+        headers=_headers(token),
+        json={"nombre": "SOCIO FUERA CAJA", "tipo": "persona"},
+    )
+    assert participante.status_code == 200, participante.text
+
+    movimiento = client.post(
+        "/capital-retiros/movimientos",
+        headers=_headers(token),
+        json={
+            "id_participante": participante.json()["id"],
+            "tipo_movimiento": "distribucion_ganancia",
+            "descripcion": "Retiro pagado desde fondos guardados",
+            "monto": 2160000,
+            "medio_pago": "efectivo",
+            "impacta_caja": False,
+            "id_usuario": 999999,
+        },
+    )
+    assert movimiento.status_code == 200, movimiento.text
+    movimiento_id = movimiento.json()["movimiento_id"]
+
+    pendientes = client.get("/correcciones/pendientes", headers=_headers(token))
+    assert pendientes.status_code == 200, pendientes.text
+    assert any(item["id"] == movimiento_id for item in pendientes.json()["capital_sin_caja"])
+
+    validar = client.post(
+        f"/correcciones/capital-sin-caja/{movimiento_id}/validar-fuera-caja",
+        headers=_headers(token),
+        json={
+            "motivo": "Pago realizado desde fondos guardados fuera de caja",
+            "id_usuario": 999999,
+        },
+    )
+    assert validar.status_code == 200, validar.text
+    assert validar.json()["ok"] is True
+
+    pendientes_despues = client.get("/correcciones/pendientes", headers=_headers(token))
+    assert pendientes_despues.status_code == 200, pendientes_despues.text
+    assert not any(item["id"] == movimiento_id for item in pendientes_despues.json()["capital_sin_caja"])
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT impacta_caja, id_caja_movimiento
+            FROM capital_movimientos
+            WHERE id = %s
+            """,
+            (movimiento_id,),
+        )
+        movimiento_db = cur.fetchone()
+        cur.execute(
+            """
+            SELECT tipo_evento, id_usuario
+            FROM capital_movimientos_historial
+            WHERE id_movimiento = %s
+              AND tipo_evento = 'validacion_sin_caja'
+            """,
+            (movimiento_id,),
+        )
+        historial = cur.fetchone()
+        cur.execute(
+            """
+            SELECT id_usuario, metadata
+            FROM auditoria_eventos
+            WHERE entidad = 'correccion_operativa'
+              AND entidad_id = %s
+              AND accion = 'correccion_aplicada'
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (movimiento_id,),
+        )
+        auditoria = cur.fetchone()
+
+    assert movimiento_db["impacta_caja"] is False
+    assert movimiento_db["id_caja_movimiento"] is None
+    assert historial is not None
+    assert historial["id_usuario"] == actor_id
+    assert auditoria is not None
+    assert auditoria["id_usuario"] == actor_id
+    assert auditoria["metadata"]["tipo"] == "capital_sin_caja_validado"

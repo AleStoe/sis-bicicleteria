@@ -35,3 +35,10 @@ export function reintegrarCredito(creditoId, data) {
     body: JSON.stringify(data),
   });
 }
+
+export function anularCreditoAdministrativo(creditoId, data) {
+  return apiRequest(`/creditos/${creditoId}/anular-administrativo`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}

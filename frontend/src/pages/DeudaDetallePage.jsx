@@ -13,6 +13,8 @@ import DeudaMovimientosTable from "../components/deudas/detalle/DeudaMovimientos
 import DeudaOrigenPanel from "../components/deudas/detalle/DeudaOrigenPanel";
 import { useSession } from "../context/SessionContext";
 import { listarTarjetaPlanes } from "../services/reglasComercialesService";
+import { copyTextToClipboard } from "../utils/clipboard";
+import { formatDateTime, formatMoney } from "../utils/formatters";
 const MOBILE_BREAKPOINT = 760;
 
 const PAGO_FORM_INICIAL = {
@@ -92,6 +94,57 @@ function buildPagoRegistroPayload(pagoForm, usuarioId, previewPago) {
     nota: pagoForm.nota.trim() || null,
     id_usuario: usuarioId,
   };
+}
+
+function formatCopiableMoney(value) {
+  return formatMoney(value).replace(/\$\s+/g, "$");
+}
+
+function formatOrigenDeuda(deuda, origen) {
+  if (origen?.tipo === "venta" && origen.venta?.id) {
+    return `Venta #${origen.venta.id}`;
+  }
+
+  if (deuda.origen_tipo && deuda.origen_id) {
+    return `${deuda.origen_tipo} #${deuda.origen_id}`;
+  }
+
+  return "-";
+}
+
+function buildDeudaClipboardText(deuda, origen, movimientos) {
+  const lineas = [
+    deuda.cliente_nombre || `Cliente #${deuda.id_cliente}`,
+    "",
+    "Resumen de deuda - Emprendimiento Agus",
+    `Deuda #${deuda.id}`,
+    `Origen: ${formatOrigenDeuda(deuda, origen)}`,
+    `Estado: ${deuda.estado || "-"}`,
+    `Saldo pendiente: ${formatCopiableMoney(deuda.saldo_actual)}`,
+  ];
+
+  if (deuda.proximo_vencimiento) {
+    lineas.push(`Proximo vencimiento: ${formatDateTime(deuda.proximo_vencimiento)}`);
+  }
+
+  if (deuda.observacion) {
+    lineas.push(`Observacion: ${deuda.observacion}`);
+  }
+
+  const ultimosMovimientos = (movimientos || []).slice(0, 5);
+
+  if (ultimosMovimientos.length > 0) {
+    lineas.push("", "Ultimos movimientos:");
+    ultimosMovimientos.forEach((mov) => {
+      const tipo = mov.tipo_movimiento || "Movimiento";
+      const nota = mov.nota ? ` - ${mov.nota}` : "";
+      lineas.push(`- ${tipo}: ${formatCopiableMoney(mov.monto)}${nota}`);
+    });
+  }
+
+  lineas.push("", "Ante cualquier duda escribinos y lo revisamos.");
+
+  return lineas.join("\n");
 }
 
 export default function DeudaDetallePage() {
@@ -305,6 +358,28 @@ export default function DeudaDetallePage() {
     }
   }
 
+  async function copiarDeuda() {
+    if (!detalle?.deuda) {
+      return;
+    }
+
+    try {
+      setError("");
+      setMensaje("");
+
+      const texto = buildDeudaClipboardText(
+        detalle.deuda,
+        detalle.origen,
+        detalle.movimientos || []
+      );
+
+      await copyTextToClipboard(texto);
+      setMensaje("Resumen de deuda copiado al portapapeles");
+    } catch (err) {
+      setError(err.message || "No se pudo copiar la deuda");
+    }
+  }
+
   if (loading) {
     return <p style={{ padding: "24px" }}>Cargando deuda...</p>;
   }
@@ -318,7 +393,7 @@ export default function DeudaDetallePage() {
 
   return (
     <div style={{ ...pageStyle, ...(isMobile ? pageMobileStyle : {}) }}>
-      <DeudaHeader deuda={deuda} onRefresh={cargarDetalle} />
+      <DeudaHeader deuda={deuda} onRefresh={cargarDetalle} onCopy={copiarDeuda} />
 
       {mensaje && <div style={successStyle}>{mensaje}</div>}
       {error && <div style={alertStyle}>Error: {error}</div>}

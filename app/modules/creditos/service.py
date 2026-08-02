@@ -13,8 +13,11 @@ from app.shared.constants import (
     AUDITORIA_ACCION_CREDITO_GENERADO,
     AUDITORIA_ACCION_CREDITO_APLICADO,
     CREDITO_ESTADO_ABIERTO,
+    CREDITO_ESTADO_ANULADO,
+    CREDITO_MOVIMIENTO_ANULACION_ADMINISTRATIVA,
     CREDITO_MOVIMIENTO_REINTEGRO,
     CREDITO_MOVIMIENTO_RESTAURACION_VENTA,
+    AUDITORIA_ACCION_CREDITO_ANULADO_ADMINISTRATIVO,
     AUDITORIA_ACCION_CREDITO_REINTEGRADO,
     CAJA_MOVIMIENTO_EGRESO,
     CAJA_ORIGEN_EGRESO_MANUAL,
@@ -647,6 +650,82 @@ def reintegrar_credito(conn, credito_id: int, data):
     return {
         "ok": True,
         "credito_id": credito_id,
+        "saldo_actual": credito_actualizado["saldo_actual"],
+        "estado": credito_actualizado["estado"],
+    }
+
+
+def anular_credito_administrativo(conn, credito_id: int, data):
+    exigir_permiso_reintegrar_credito(conn, data.id_usuario)
+
+    motivo = data.motivo.strip()
+    if len(motivo) < 3:
+        raise HTTPException(status_code=400, detail="El motivo es obligatorio")
+
+    credito = repository.get_credito_by_id_for_update(conn, credito_id)
+    if not credito:
+        raise HTTPException(status_code=404, detail="Crédito no encontrado")
+
+    if credito["estado"] not in (CREDITO_ESTADO_ABIERTO, CREDITO_ESTADO_APLICADO_PARCIAL):
+        raise HTTPException(
+            status_code=400,
+            detail=f"El crédito {credito_id} no tiene saldo disponible para anular",
+        )
+
+    saldo_actual = redondear_monto(Decimal(str(credito["saldo_actual"] or 0)))
+    if saldo_actual <= Decimal("0"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"El crédito {credito_id} no tiene saldo disponible para anular",
+        )
+
+    credito_actualizado = repository.update_credito_saldo_y_estado(
+        conn,
+        credito_id=credito_id,
+        saldo_actual=Decimal("0"),
+        estado=CREDITO_ESTADO_ANULADO,
+    )
+
+    repository.insert_credito_movimiento(
+        conn,
+        id_credito=credito_id,
+        tipo_movimiento=CREDITO_MOVIMIENTO_ANULACION_ADMINISTRATIVA,
+        monto=saldo_actual,
+        origen_tipo="credito",
+        origen_id=credito_id,
+        nota=motivo,
+        id_usuario=data.id_usuario,
+    )
+
+    auditoria_service.registrar_evento(
+        conn,
+        id_usuario=data.id_usuario,
+        id_sucursal=None,
+        entidad=AUDITORIA_ENTIDAD_CREDITO,
+        entidad_id=credito_id,
+        accion=AUDITORIA_ACCION_CREDITO_ANULADO_ADMINISTRATIVO,
+        detalle=(
+            f"Crédito anulado administrativamente. monto={saldo_actual}, "
+            f"saldo_nuevo=0.00, motivo={motivo}"
+        ),
+        metadata={
+            "tipo": "credito_anulado_administrativo",
+            "credito_id": credito_id,
+            "monto_anulado": str(saldo_actual),
+            "saldo_anterior": str(saldo_actual),
+            "saldo_nuevo": "0.00",
+            "estado_nuevo": CREDITO_ESTADO_ANULADO,
+            "motivo": motivo,
+            "genera_movimiento_caja": False,
+        },
+        origen_tipo="credito",
+        origen_id=credito_id,
+    )
+
+    return {
+        "ok": True,
+        "credito_id": credito_id,
+        "saldo_anulado": saldo_actual,
         "saldo_actual": credito_actualizado["saldo_actual"],
         "estado": credito_actualizado["estado"],
     }

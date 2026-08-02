@@ -29,7 +29,7 @@ export default function VentaItemVendidoAcciones({
           disabled={procesando}
           style={{ ...warnBtnStyle, ...(isMobile ? buttonMobileStyle : {}) }}
         >
-          Devolver serializada
+          Devolver bici con cuadro
         </button>
       )}
     </div>

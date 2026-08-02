@@ -1,5 +1,5 @@
 from decimal import Decimal
-from datetime import datetime
+from datetime import date, datetime
 from pydantic import BaseModel, Field
 
 
@@ -49,6 +49,51 @@ class StockResumenOut(BaseModel):
     stock_fisico_total: Decimal
     stock_disponible_total: Decimal
     capital_inmovilizado_total: Decimal | None = None
+
+
+class DemandaMensualOut(BaseModel):
+    periodo: date
+    etiqueta: str
+    unidades_vendidas: Decimal = Decimal("0")
+    ventas_distintas: int = 0
+    venta_neta: Decimal = Decimal("0")
+    margen_bruto: Decimal | None = Decimal("0")
+
+
+class DemandaItemOut(BaseModel):
+    variante_id: int
+    producto_id: int
+    producto_nombre: str
+    nombre_variante: str | None = None
+    sku: str | None = None
+    codigo_barras: str | None = None
+    codigo_proveedor: str | None = None
+    categoria_nombre: str | None = None
+    marca_nombre: str | None = None
+    proveedor_nombre: str | None = None
+    tipo_operativo: str | None = None
+    serializable: bool = False
+    reponer_stock: bool = True
+    stock_fisico: Decimal = Decimal("0")
+    stock_disponible: Decimal = Decimal("0")
+    unidades_vendidas: Decimal = Decimal("0")
+    ventas_distintas: int = 0
+    venta_neta: Decimal = Decimal("0")
+    costo_total: Decimal | None = Decimal("0")
+    margen_bruto: Decimal | None = Decimal("0")
+    ultima_venta: datetime | None = None
+    meses: list[DemandaMensualOut]
+
+
+class DemandaResumenOut(BaseModel):
+    fecha_desde: date
+    fecha_hasta: date
+    meses: int
+    total_items: int
+    unidades_vendidas: Decimal = Decimal("0")
+    venta_neta: Decimal = Decimal("0")
+    margen_bruto: Decimal | None = Decimal("0")
+    items: list[DemandaItemOut]
 
 
 class PedidoCompraSugeridoItemOut(BaseModel):

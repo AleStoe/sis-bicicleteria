@@ -12,6 +12,7 @@ from app.shared.constants import (
 )
 from tests.conftest import asignar_rol_usuario, get_auditoria_by_entidad, get_caja_movimientos
 from tests.test_capital_retiros import _crear_movimiento, _crear_participante
+from tests.test_ventas import _crear_venta_basica
 
 
 def _headers(token: str):
@@ -107,8 +108,37 @@ def test_lista_movimientos_de_capital_sin_caja(client, seed_venta_basica):
     response = client.get("/correcciones/pendientes")
 
     assert response.status_code == 200, response.text
+    assert "costos_sospechosos" in response.json()
     ids = [item["id"] for item in response.json()["capital_sin_caja"]]
     assert movimiento["movimiento_id"] in ids
+
+
+def test_lista_items_con_costo_sospechoso(client, db_conn, seed_venta_basica):
+    venta = _crear_venta_basica(client, seed_venta_basica)
+    assert venta.status_code == 200, venta.text
+    venta_id = venta.json()["venta_id"]
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE venta_items
+            SET costo_unitario_aplicado = subtotal + 1000
+            WHERE id_venta = %s
+            RETURNING id
+            """,
+            (venta_id,),
+        )
+        item_id = cur.fetchone()["id"]
+    db_conn.commit()
+
+    response = client.get("/correcciones/pendientes")
+
+    assert response.status_code == 200, response.text
+    costos = response.json()["costos_sospechosos"]
+    item = next(item for item in costos if item["id"] == item_id)
+    assert item["id_venta"] == venta_id
+    assert item["motivo_alerta"] == "margen_negativo"
+    assert Decimal(str(item["margen_item"])) < 0
 
 
 def test_corrige_capital_sin_caja_creando_egreso_vinculado(

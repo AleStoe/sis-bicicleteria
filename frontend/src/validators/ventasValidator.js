@@ -1,6 +1,6 @@
 export function validarClienteVenta(clienteId) {
   if (!clienteId) {
-    return "Seleccioná un cliente";
+    return "Selecciona un cliente";
   }
 
   return null;
@@ -8,7 +8,7 @@ export function validarClienteVenta(clienteId) {
 
 export function validarItemsVenta(items = []) {
   if (!items.length) {
-    return "Agregá al menos un item";
+    return "Agrega al menos un item";
   }
 
   return null;
@@ -33,7 +33,7 @@ export function validarSerializadasSeleccionadas(items = []) {
   );
 
   if (serializadaSinCuadro) {
-    return `Seleccioná número de cuadro para: ${serializadaSinCuadro.descripcion}`;
+    return `Selecciona numero de cuadro para: ${serializadaSinCuadro.descripcion}`;
   }
 
   return null;
@@ -45,7 +45,7 @@ export function validarSerializadasDuplicadas(items = []) {
     .map((item) => Number(item.id_bicicleta_serializada));
 
   if (new Set(serializadasElegidas).size !== serializadasElegidas.length) {
-    return "No podés vender dos veces la misma bicicleta serializada";
+    return "No podes vender dos veces el mismo numero de cuadro";
   }
 
   return null;
@@ -72,14 +72,14 @@ export function validarPlanTarjeta({ medioPago, planTarjetaId, planesTarjeta = [
 
   if (!planTarjetaId) {
     return medioPago === "mercadopago"
-      ? "Seleccioná un plan para MercadoPago QR"
-      : "Seleccioná un plan de tarjeta";
+      ? "Selecciona un plan para MercadoPago QR"
+      : "Selecciona un plan de tarjeta";
   }
 
   if (!planesTarjeta.some((plan) => String(plan.id) === String(planTarjetaId))) {
     return medioPago === "mercadopago"
-      ? "El plan de MercadoPago QR seleccionado no está activo"
-      : "El plan de tarjeta seleccionado no está activo";
+      ? "El plan de MercadoPago QR seleccionado no esta activo"
+      : "El plan de tarjeta seleccionado no esta activo";
   }
 
   return null;
@@ -87,11 +87,11 @@ export function validarPlanTarjeta({ medioPago, planTarjetaId, planesTarjeta = [
 
 export function validarCheckoutAntesDeFinalizar({ items = [], simulando }) {
   if (!items.length) {
-    return "Agregá al menos un item";
+    return "Agrega al menos un item";
   }
 
   if (simulando) {
-    return "Esperá a que termine la simulación antes de finalizar";
+    return "Espera a que termine la simulacion antes de finalizar";
   }
 
   return null;

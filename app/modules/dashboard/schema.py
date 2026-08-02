@@ -74,6 +74,10 @@ class DashboardTopProductoOutput(BaseModel):
     venta_total: Decimal
     costo_total: Decimal
     margen_bruto: Decimal
+    stock_fisico: Decimal = Decimal("0")
+    stock_reservado: Decimal = Decimal("0")
+    stock_vendido_pendiente_entrega: Decimal = Decimal("0")
+    stock_disponible: Decimal = Decimal("0")
 
 
 class DashboardProductoSinMovimientoOutput(BaseModel):
@@ -148,6 +152,7 @@ class DashboardResumenOutput(BaseModel):
     ventas_ultimos_meses: List[DashboardVentaMensualOutput]
     top_clientes: List[DashboardTopClienteOutput]
     top_productos_cantidad: List[DashboardTopProductoOutput]
+    top_bicicletas_cantidad: List[DashboardTopProductoOutput]
     productos_sin_movimiento: List[DashboardProductoSinMovimientoOutput]
     repuestos_criticos: List[DashboardRepuestoCriticoOutput]
     capital_inmovilizado: List[DashboardCapitalInmovilizadoOutput]

@@ -487,6 +487,103 @@ def test_reintegro_credito_genera_egreso_caja_movimiento_y_auditoria(client, db_
     assert "credito_reintegrado" in acciones
 
 
+def test_anular_credito_administrativo_cierra_saldo_sin_tocar_caja(client, db_conn, seed_venta_basica):
+    crear = _crear_venta_basica(client, seed_venta_basica)
+    assert crear.status_code == 200
+    venta_id = crear.json()["venta_id"]
+
+    abrir = _abrir_caja(client, seed_venta_basica["sucursal_id"], seed_venta_basica["usuario_id"])
+    assert abrir.status_code == 200
+    caja_id = abrir.json()["caja_id"]
+
+    pago = _pagar_venta(client, venta_id, seed_venta_basica, 10000)
+    assert pago.status_code == 200
+
+    anular = client.post(
+        f"/ventas/{venta_id}/anular",
+        json={"motivo": "venta duplicada", "id_usuario": seed_venta_basica["usuario_id"]},
+    )
+    assert anular.status_code == 200
+
+    credito = get_creditos_by_cliente(db_conn, seed_venta_basica["cliente_id"])[0]
+    movimientos_caja_antes = get_caja_movimientos(db_conn, caja_id)
+
+    response = client.post(
+        f"/creditos/{credito['id']}/anular-administrativo",
+        json={
+            "motivo": "Venta duplicada reemplazada por otra venta. No hubo reintegro de dinero.",
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert response.status_code == 200, response.text
+
+    body = response.json()
+    assert body["ok"] is True
+    assert _to_decimal(body["saldo_anulado"]) == Decimal("10000")
+    assert _to_decimal(body["saldo_actual"]) == Decimal("0")
+    assert body["estado"] == "anulado"
+
+    credito_actualizado = get_creditos_by_cliente(db_conn, seed_venta_basica["cliente_id"])[0]
+    assert _to_decimal(credito_actualizado["saldo_actual"]) == Decimal("0.00")
+    assert credito_actualizado["estado"] == "anulado"
+
+    movimientos_credito = get_credito_movimientos(db_conn, credito["id"])
+    assert [m["tipo_movimiento"] for m in movimientos_credito] == [
+        "credito_generado",
+        "anulacion_credito",
+    ]
+    assert _to_decimal(movimientos_credito[1]["monto"]) == Decimal("10000")
+
+    movimientos_caja_despues = get_caja_movimientos(db_conn, caja_id)
+    assert [m["id"] for m in movimientos_caja_despues] == [
+        m["id"] for m in movimientos_caja_antes
+    ]
+
+    auditoria = get_auditoria_by_entidad(db_conn, "credito", credito["id"])
+    acciones = [a["accion"] for a in auditoria]
+    assert "credito_anulado_administrativo" in acciones
+
+
+def test_rechaza_anular_credito_administrativo_sin_saldo(client, db_conn, seed_venta_basica):
+    crear = _crear_venta_basica(client, seed_venta_basica)
+    assert crear.status_code == 200
+    venta_id = crear.json()["venta_id"]
+
+    _abrir_caja(client, seed_venta_basica["sucursal_id"], seed_venta_basica["usuario_id"])
+    pago = _pagar_venta(client, venta_id, seed_venta_basica, 10000)
+    assert pago.status_code == 200
+
+    anular = client.post(
+        f"/ventas/{venta_id}/anular",
+        json={"motivo": "credito para consumir", "id_usuario": seed_venta_basica["usuario_id"]},
+    )
+    assert anular.status_code == 200
+
+    credito = get_creditos_by_cliente(db_conn, seed_venta_basica["cliente_id"])[0]
+    reintegro = client.post(
+        f"/creditos/{credito['id']}/reintegrar",
+        json={
+            "monto": 10000,
+            "medio_pago": "efectivo",
+            "motivo": "reintegro total previo",
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert reintegro.status_code == 200
+
+    response = client.post(
+        f"/creditos/{credito['id']}/anular-administrativo",
+        json={
+            "motivo": "no corresponde",
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+
+    assert response.status_code == 400
+    assert "no tiene saldo disponible" in response.json()["detail"]
+
+
 def test_rechaza_reintegro_credito_sin_caja_abierta(client, db_conn, seed_venta_basica):
     crear = _crear_venta_basica(client, seed_venta_basica)
     assert crear.status_code == 200

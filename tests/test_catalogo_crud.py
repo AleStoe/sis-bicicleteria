@@ -598,6 +598,8 @@ def test_catalogo_pos_busca_por_nombre_sku_codigo_barras_y_codigo_proveedor(
 
     for query in [
         "Cubierta Test Busqueda POS",
+        "Cubierta Negra",
+        "Busqueda 29",
         "29x2.10 Negra POS",
         variante["sku"],
         variante["codigo_barras"],
@@ -612,6 +614,57 @@ def test_catalogo_pos_busca_por_nombre_sku_codigo_barras_y_codigo_proveedor(
 
         ids = [item["id_variante"] for item in data["items"]]
         assert variante["id"] in ids
+
+
+def test_catalogo_pos_busqueda_por_rodado_no_matchea_codigos(
+    client,
+    seed_venta_basica,
+):
+    categoria = _get_first_categoria(client)
+    marca = _crear_marca(client, nombre=f"VENZO BUSQUEDA {uuid.uuid4().hex[:6].upper()}")
+
+    producto_r20 = _crear_producto(
+        client,
+        categoria_id=categoria["id"],
+        marca_id=marca["id"],
+        nombre="BICICLETA BMX VENZO CUBE R20 ACERO",
+        serializable=True,
+    )
+    variante_r20 = _crear_variante(
+        client,
+        producto_id=producto_r20["id"],
+        nombre_variante="TALLE UNICO - VERDE/LILA",
+        sku=f"VAR-TEST-{uuid.uuid4().hex[:8].upper()}",
+        codigo_barras="290000004184",
+        precio_minorista=355556,
+        precio_mayorista=284071,
+    )
+
+    producto_r29 = _crear_producto(
+        client,
+        categoria_id=categoria["id"],
+        marca_id=marca["id"],
+        nombre="BICICLETA MTB VENZO PRUEBA R29 ALUMINIO",
+        serializable=True,
+    )
+    variante_r29 = _crear_variante(
+        client,
+        producto_id=producto_r29["id"],
+        nombre_variante="TALLE M - NEGRO",
+        sku=f"VAR-TEST-{uuid.uuid4().hex[:8].upper()}",
+        codigo_barras="290000004299",
+        precio_minorista=455556,
+        precio_mayorista=364071,
+    )
+
+    response = client.get(
+        f"/catalogo/pos?id_sucursal={seed_venta_basica['sucursal_id']}&query=venzo r29&limit=50&offset=0"
+    )
+
+    assert response.status_code == 200, response.text
+    ids = [item["id_variante"] for item in response.json()["items"]]
+    assert variante_r29["id"] in ids
+    assert variante_r20["id"] not in ids
 
 
 def test_catalogo_pos_excluye_servicios_de_variantes(client, seed_venta_mixta):

@@ -8,6 +8,7 @@ export default function VentaItemsVendidos({
   onDevolverItem,
   onDevolverSerializada,
   onCorregirNumeroCuadro,
+  onAsignarNumeroCuadro,
 }) {
   const { isMobile } = useBreakpoint();
   const totalItems = items.length;
@@ -44,6 +45,7 @@ export default function VentaItemsVendidos({
               onDevolverItem={onDevolverItem}
               onDevolverSerializada={onDevolverSerializada}
               onCorregirNumeroCuadro={onCorregirNumeroCuadro}
+              onAsignarNumeroCuadro={onAsignarNumeroCuadro}
             />
           ))}
         </div>

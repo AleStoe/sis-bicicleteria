@@ -3,6 +3,8 @@ from app.modules.stock import repository
 from app.modules.auditoria import service as auditoria_service
 from app.modules.authz.service import exigir_permiso_ajustar_stock
 from app.shared.money import to_decimal
+from calendar import monthrange
+from datetime import date
 # =========================================================
 # HELPERS
 # =========================================================
@@ -139,6 +141,69 @@ def obtener_pedido_compra_sugerido(filtros: dict | None = None):
         "total_proveedores": len(proveedores_ordenados),
         "total_items": sum(grupo["total_items"] for grupo in proveedores_ordenados),
         "proveedores": proveedores_ordenados,
+    }
+
+
+def _primer_dia_mes(value: date) -> date:
+    return date(value.year, value.month, 1)
+
+
+def _sumar_meses(value: date, delta: int) -> date:
+    month = value.month - 1 + delta
+    year = value.year + month // 12
+    month = month % 12 + 1
+    day = min(value.day, monthrange(year, month)[1])
+    return date(year, month, day)
+
+
+def obtener_analisis_demanda(filtros: dict | None = None, *, puede_ver_costos: bool = False):
+    filtros = filtros or {}
+    meses = int(filtros.get("meses") or 12)
+    fecha_hasta_base = filtros.get("fecha_hasta") or date.today()
+    fecha_hasta_mes = _primer_dia_mes(fecha_hasta_base)
+    fecha_desde = _sumar_meses(fecha_hasta_mes, -(meses - 1))
+    ultimo_dia = monthrange(fecha_hasta_mes.year, fecha_hasta_mes.month)[1]
+    fecha_hasta = date(fecha_hasta_mes.year, fecha_hasta_mes.month, ultimo_dia)
+
+    conn = get_connection()
+    try:
+        items = repository.get_analisis_demanda(
+            conn,
+            fecha_desde=fecha_desde,
+            fecha_hasta=fecha_hasta,
+            q=filtros.get("q"),
+            id_sucursal=filtros.get("id_sucursal"),
+            tipo_operativo=filtros.get("tipo_operativo"),
+            limit=int(filtros.get("limit") or 80),
+        )
+    finally:
+        conn.close()
+
+    total_unidades = sum((to_decimal(item.get("unidades_vendidas") or 0) for item in items), to_decimal(0))
+    venta_neta = sum((to_decimal(item.get("venta_neta") or 0) for item in items), to_decimal(0))
+    margen_bruto = sum((to_decimal(item.get("margen_bruto") or 0) for item in items), to_decimal(0))
+
+    salida_items = []
+    for item in items:
+        item_dict = dict(item)
+        if not puede_ver_costos:
+            item_dict["costo_total"] = None
+            item_dict["margen_bruto"] = None
+            item_dict["meses"] = [
+                {**mes, "margen_bruto": None}
+                for mes in (item_dict.get("meses") or [])
+            ]
+        salida_items.append(item_dict)
+
+    return {
+        "fecha_desde": fecha_desde,
+        "fecha_hasta": fecha_hasta,
+        "meses": meses,
+        "total_items": len(salida_items),
+        "unidades_vendidas": total_unidades,
+        "venta_neta": venta_neta,
+        "margen_bruto": margen_bruto if puede_ver_costos else None,
+        "items": salida_items,
     }
 
 

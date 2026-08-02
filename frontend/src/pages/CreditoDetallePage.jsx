@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
+  AlertTriangle,
   ArrowLeft,
   Banknote,
   CreditCard,
@@ -9,7 +10,7 @@ import {
   RefreshCw,
   WalletCards,
 } from "lucide-react";
-import { obtenerCredito, reintegrarCredito } from "../services/creditosService";
+import { anularCreditoAdministrativo, obtenerCredito, reintegrarCredito } from "../services/creditosService";
 import { EstadoCreditoBadge } from "./CreditosListPage";
 import { formatMoneyPrecise } from "../utils/formatters";
 import { getCreditoContexto, getMovimientoCreditoLabel, getOrigenFinancieroLabel } from "../utils/financials";
@@ -101,6 +102,45 @@ export default function CreditoDetallePage() {
       setMensaje("Crédito reintegrado correctamente");
     } catch (err) {
       setError(err.message || "No se pudo reintegrar el crédito");
+    } finally {
+      setProcesando(false);
+    }
+  }
+
+  async function handleAnularAdministrativo() {
+    const credito = data?.credito;
+    if (!credito) return;
+
+    const saldo = Number(credito.saldo_actual || 0);
+    if (saldo <= 0) {
+      setError("El crédito no tiene saldo disponible para anular");
+      return;
+    }
+
+    const motivo = window.prompt(
+      "Motivo de anulación administrativa del crédito:\nEj: Venta duplicada #74 reemplazada por Venta #75. No hubo reintegro de dinero."
+    );
+    if (!motivo || !motivo.trim()) return;
+
+    const confirmado = window.confirm(
+      "Esta acción cerrará el crédito sin generar egreso de caja.\n\nUsala sólo para correcciones administrativas.\n\n¿Confirmás anular este crédito?"
+    );
+    if (!confirmado) return;
+
+    try {
+      setProcesando(true);
+      setError("");
+      setMensaje("");
+
+      await anularCreditoAdministrativo(creditoId, {
+        motivo: motivo.trim(),
+        id_usuario: usuarioId,
+      });
+
+      await cargarCredito();
+      setMensaje("Crédito anulado administrativamente. No se generó movimiento de caja.");
+    } catch (err) {
+      setError(err.message || "No se pudo anular el crédito");
     } finally {
       setProcesando(false);
     }
@@ -325,6 +365,34 @@ export default function CreditoDetallePage() {
         </aside>
       </div>
 
+      {puedeReintegrar && (
+        <section style={{ ...cardStyle, border: "1px solid #fed7aa", background: "#fff7ed" }}>
+          <div style={sectionHeadingStyle}>
+            <AlertTriangle size={20} color="#c2410c" />
+            <div>
+              <h2 style={{ ...cardTitleStyle, marginBottom: 2 }}>Corrección administrativa</h2>
+              <span style={sectionSubtitleStyle}>
+                Cierra un crédito mal generado sin devolver dinero ni mover caja.
+              </span>
+            </div>
+          </div>
+          <div style={{ display: "grid", gap: 10 }}>
+            <div style={{ color: "#9a3412", lineHeight: 1.4 }}>
+              Usar sólo cuando el saldo a favor nació por una carga duplicada o un error operativo ya corregido por otra venta. Si realmente devolvés plata al cliente, usá Reintegrar saldo.
+            </div>
+            <button
+              type="button"
+              disabled={procesando}
+              onClick={handleAnularAdministrativo}
+              style={dangerOutlineButtonStyle}
+            >
+              <AlertTriangle size={17} />
+              Anular crédito administrativo
+            </button>
+          </div>
+        </section>
+      )}
+
       <section style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
         <div style={tableHeaderStyle}>
           <h2 style={{ margin: 0 }}>Movimientos</h2>
@@ -419,6 +487,7 @@ const labelStyle = { fontWeight: "bold", fontSize: "14px" };
 const inputStyle = { width: "100%", minHeight: 42, padding: "10px 12px", borderRadius: 8, border: "1px solid #d0d5dd", fontSize: "15px", boxSizing: "border-box", background: "#fff" };
 const textareaStyle = { ...inputStyle, minHeight: "70px", resize: "vertical" };
 const primaryActionStyle = { minHeight: 44, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, border: 0, borderRadius: 8, background: "#f97316", color: "#fff", fontWeight: 900, fontSize: 15, cursor: "pointer" };
+const dangerOutlineButtonStyle = { minHeight: 42, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, border: "1px solid #fb923c", borderRadius: 8, background: "#fff", color: "#c2410c", fontWeight: 900, fontSize: 15, cursor: "pointer", width: "fit-content", padding: "0 14px" };
 const tableHeaderStyle = { padding: "16px 18px", borderBottom: "1px solid #eee" };
 const tableStyle = { width: "100%", borderCollapse: "collapse", minWidth: "850px" };
 const thStyle = { textAlign: "left", padding: "12px 10px", borderBottom: "1px solid #e5e7eb" };

@@ -34,13 +34,13 @@ def resolver_costo_unitario_venta_serializada(
     if bicicleta is None:
         raise HTTPException(
             status_code=400,
-            detail=f"No existe la bicicleta serializada {id_bicicleta_serializada}",
+            detail=f"No existe la bici con numero de cuadro #{id_bicicleta_serializada}",
         )
 
     if bicicleta["id_variante"] != id_variante:
         raise HTTPException(
             status_code=400,
-            detail="La bicicleta serializada no corresponde a la variante informada",
+            detail="El numero de cuadro elegido no corresponde a esta bici",
         )
 
     if bicicleta["id_orden_armado_origen"] is None:
@@ -81,7 +81,7 @@ def resolver_costo_unitario_venta_serializada(
             status_code=400,
             detail=(
                 "La orden de armado vinculada no coincide con la bicicleta "
-                "serializada a vender."
+                "con numero de cuadro a vender."
             ),
         )
 
@@ -90,7 +90,7 @@ def resolver_costo_unitario_venta_serializada(
             status_code=400,
             detail=(
                 "La variante final de la orden de armado no coincide con la "
-                "bicicleta serializada."
+                "bici con numero de cuadro."
             ),
         )
 

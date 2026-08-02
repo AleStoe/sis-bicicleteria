@@ -8,6 +8,8 @@ from app.modules.authz.service import requerir_permiso
 from app.shared.constants import PERMISO_REINTEGRAR_CREDITO
 
 from .schema import (
+    CreditoAnulacionAdministrativaInput,
+    CreditoAnulacionAdministrativaResponse,
     CreditoClienteResumenResponse,
     CreditoDetalleResponse,
     CreditoReintegroInput,
@@ -15,6 +17,7 @@ from .schema import (
     CreditoResponse,
 )
 from .service import (
+    anular_credito_administrativo,
     listar_clientes_con_credito_disponible,
     listar_creditos_cliente,
     obtener_credito_detalle,
@@ -71,5 +74,20 @@ def reintegrar_credito_route(
     try:
         with conn.transaction():
             return reintegrar_credito(conn, credito_id, data)
+    finally:
+        conn.close()
+
+
+@router.post("/{credito_id}/anular-administrativo", response_model=CreditoAnulacionAdministrativaResponse)
+def anular_credito_administrativo_route(
+    credito_id: int,
+    data: CreditoAnulacionAdministrativaInput,
+    usuario: CurrentUser = Depends(puede_reintegrar_credito),
+):
+    aplicar_actor_actual(data, usuario)
+    conn = get_connection()
+    try:
+        with conn.transaction():
+            return anular_credito_administrativo(conn, credito_id, data)
     finally:
         conn.close()

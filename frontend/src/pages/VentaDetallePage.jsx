@@ -11,11 +11,14 @@ import { PromptModal } from "../components/ui/PromptModal";
 import {
   obtenerVenta,
   anularVenta,
+  corregirClienteVenta,
+  asignarBicicletaSerializadaVenta,
   entregarVenta,
   devolverVentaSerializada,
   devolverVenta,
   devolverItemsVenta,
 } from "../services/ventasService";
+import { listarClientes } from "../services/clientesService";
 import VentaItemsVendidos from "../components/ventas/detalle/VentaItemsVendidos";
 import { listarPagosDeVenta, revertirPago } from "../services/pagosService";
 import { useSession } from "../context/SessionContext";
@@ -50,6 +53,8 @@ export default function VentaDetallePage() {
   const [confirmConfig, setConfirmConfig] = useState(null);
   const [promptConfig, setPromptConfig] = useState(null);
   const [correccionCuadro, setCorreccionCuadro] = useState(null);
+  const [correccionClienteOpen, setCorreccionClienteOpen] = useState(false);
+  const [asignacionCuadroItem, setAsignacionCuadroItem] = useState(null);
 
   function pedirConfirmacion(config) {
     return new Promise((resolve) => {
@@ -122,6 +127,90 @@ export default function VentaDetallePage() {
     }
   }
 
+  async function handleCorregirClienteVenta({ cliente, motivo }) {
+    if (!cliente?.id) {
+      setError("Selecciona el cliente correcto antes de confirmar la correccion");
+      return;
+    }
+
+    const confirmado = await pedirConfirmacion({
+      title: "Confirmar correccion de cliente",
+      message:
+        `Se corregira la venta #${ventaId}.\n\n` +
+        `Cliente actual: ${data?.venta?.cliente_nombre || "-"}\n` +
+        `Cliente nuevo: ${cliente.nombre || `Cliente #${cliente.id}`}\n\n` +
+        "No se modifican pagos, caja, stock ni totales. Esta accion queda auditada.",
+      confirmText: "Corregir cliente",
+      cancelText: "Cancelar",
+      variant: "warning",
+    });
+
+    if (!confirmado) return;
+
+    try {
+      setProcesando(true);
+      setError("");
+      const resultado = await corregirClienteVenta(ventaId, {
+        id_cliente_nuevo: Number(cliente.id),
+        motivo,
+        id_usuario: usuarioId,
+      });
+      setMensaje(
+        `Cliente corregido: ${resultado.cliente_anterior_nombre} -> ${resultado.cliente_nuevo_nombre}`
+      );
+      setCorreccionClienteOpen(false);
+      await cargarVenta({ mostrarCarga: false, limpiarMensaje: false });
+    } catch (err) {
+      setError(err.message || "No se pudo corregir el cliente de la venta");
+    } finally {
+      setProcesando(false);
+    }
+  }
+
+  async function handleAsignarNumeroCuadroVenta({ item, numeroCuadro, motivo }) {
+    if (!item?.id) {
+      setError("No se pudo identificar el item de la venta");
+      return;
+    }
+
+    const confirmado = await pedirConfirmacion({
+      title: "Asignar numero de cuadro",
+      message:
+        `Se asignara un numero de cuadro a la venta #${ventaId}.\n\n` +
+        `Item: ${item.descripcion_snapshot || `Item #${item.id}`}\n` +
+        `Numero de cuadro: ${numeroCuadro}\n\n` +
+        "No se modifican pagos, caja, stock ni totales. Esta accion queda auditada.",
+      confirmText: "Asignar cuadro",
+      cancelText: "Cancelar",
+      variant: "warning",
+    });
+
+    if (!confirmado) return;
+
+    try {
+      setProcesando(true);
+      setError("");
+      setMensaje("");
+
+      const resultado = await asignarBicicletaSerializadaVenta(ventaId, {
+        id_venta_item: Number(item.id),
+        numero_cuadro: numeroCuadro,
+        motivo,
+        id_usuario: usuarioId,
+      });
+
+      setAsignacionCuadroItem(null);
+      await cargarVenta({ mostrarCarga: false, limpiarMensaje: false });
+      setMensaje(
+        `Numero de cuadro asignado: ${resultado.numero_cuadro}`
+      );
+    } catch (err) {
+      setError(err.message || "No se pudo asignar el numero de cuadro");
+    } finally {
+      setProcesando(false);
+    }
+  }
+
   async function handleEntregarVenta() {
     const venta = data?.venta;
     const saldo = Number(venta?.saldo_pendiente || 0);
@@ -143,7 +232,7 @@ export default function VentaDetallePage() {
       title: entregaBicicletaEnCaja ? "Entregar bicicleta en caja" : "Entregar venta",
       message:
         entregaBicicletaEnCaja
-          ? "Esta venta tiene una bicicleta serializable sin unidad armada asignada.\n\nSe va a entregar desde stock fisico como bicicleta en caja.\n\nConfirmas la entrega?"
+          ? "Esta venta tiene una bici sin numero de cuadro asignado.\n\nSe va a entregar desde stock fisico como bicicleta en caja.\n\nConfirmas la entrega?"
           : saldo > 0
           ? "Esta venta tiene saldo pendiente, pero cuenta con deuda formal asociada.\n¿Confirmás la entrega?"
           : "¿Confirmás la entrega de esta venta? Revisá que el cobro esté correcto antes de entregar la mercadería.",
@@ -512,7 +601,7 @@ async function handleDevolverSerializada(item) {
         : `Crédito estimado: ${formatMoney(creditoEstimado)}`;
 
     const motivo = await pedirPrompt({
-      title: "Devolución serializada",
+      title: "Devolucion de bici con cuadro",
       label: "Motivo",
       message: mensajeMotivo,
       required: true,
@@ -542,7 +631,7 @@ async function handleDevolverSerializada(item) {
           : `Devolución registrada. ID devolución: ${result.devolucion_id}. El crédito se calcula según el total real de la venta.`
       );
     } catch (err) {
-      setError(err.message || "No se pudo registrar la devolución serializada");
+      setError(err.message || "No se pudo registrar la devolucion de la bici con cuadro");
     } finally {
       setProcesando(false);
     }
@@ -631,6 +720,7 @@ const {
   puedeDevolver,
   estaCerradaOperativamente,
 } = obtenerAccionesVentaDetalle(venta, situacion_financiera);
+  const puedeCorregirCliente = usuarioActual?.rol === "administrador";
 
   return (
     <div style={pageStyle}>
@@ -696,6 +786,26 @@ const {
         onDevolverCompleta={handleDevolverVentaCompleta}
       />
 
+      {puedeCorregirCliente && (
+        <section style={correccionClienteCardStyle}>
+          <div>
+            <h2 style={correccionClienteTitleStyle}>Correccion administrativa</h2>
+            <p style={correccionClienteTextStyle}>
+              Usar si la venta fue cargada al cliente equivocado. No modifica pagos,
+              caja, stock ni totales.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setCorreccionClienteOpen(true)}
+            disabled={procesando}
+            style={correccionClienteButtonStyle}
+          >
+            Corregir cliente
+          </button>
+        </section>
+      )}
+
       <VentaDocumentosPanel ventaId={venta.id} />
 
       <VentaSituacionFinanciera
@@ -728,6 +838,9 @@ const {
             id: item.id_bicicleta_serializada,
             numero_cuadro: item.bicicleta_numero_cuadro || item.numero_cuadro || "",
           })
+        }
+        onAsignarNumeroCuadro={
+          puedeCorregirCliente ? (item) => setAsignacionCuadroItem(item) : undefined
         }
       />
 
@@ -773,6 +886,271 @@ const {
           }}
         />
       )}
+
+      {correccionClienteOpen && (
+        <CorregirClienteVentaModal
+          venta={venta}
+          procesando={procesando}
+          onClose={() => setCorreccionClienteOpen(false)}
+          onConfirm={handleCorregirClienteVenta}
+        />
+      )}
+
+      {asignacionCuadroItem && (
+        <AsignarNumeroCuadroVentaModal
+          venta={venta}
+          item={asignacionCuadroItem}
+          procesando={procesando}
+          onClose={() => setAsignacionCuadroItem(null)}
+          onConfirm={handleAsignarNumeroCuadroVenta}
+        />
+      )}
+    </div>
+  );
+}
+
+function AsignarNumeroCuadroVentaModal({
+  venta,
+  item,
+  procesando,
+  onClose,
+  onConfirm,
+}) {
+  const [numeroCuadro, setNumeroCuadro] = useState("");
+  const [motivo, setMotivo] = useState(
+    "Venta cargada como bicicleta en caja; se asigna numero de cuadro real"
+  );
+
+  const numeroValido = numeroCuadro.trim().length >= 3;
+  const motivoValido = motivo.trim().length >= 3;
+  const puedeConfirmar = numeroValido && motivoValido && !procesando;
+
+  return (
+    <div style={modalBackdropStyle} role="dialog" aria-modal="true">
+      <section style={modalCardStyle}>
+        <header style={modalHeaderStyle}>
+          <div>
+            <p style={modalKickerStyle}>Correccion administrativa</p>
+            <h2 style={modalTitleStyle}>Asignar cuadro a venta #{venta.id}</h2>
+            <p style={modalTextStyle}>
+              Item: <strong>{item.descripcion_snapshot}</strong>
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={procesando}
+            style={modalCloseStyle}
+          >
+            x
+          </button>
+        </header>
+
+        <label style={modalFieldStyle}>
+          Numero de cuadro
+          <input
+            value={numeroCuadro}
+            onChange={(event) => setNumeroCuadro(event.target.value.toUpperCase())}
+            placeholder="Ej: LP240515314"
+            style={{ ...modalInputStyle, textTransform: "uppercase" }}
+            autoFocus
+          />
+        </label>
+
+        <label style={modalFieldStyle}>
+          Motivo
+          <textarea
+            value={motivo}
+            onChange={(event) => setMotivo(event.target.value)}
+            style={modalTextareaStyle}
+            rows={3}
+          />
+        </label>
+
+        <div style={modalWarningStyle}>
+          Esta accion vincula la unidad con la venta y el cliente. No modifica caja,
+          pagos, importes ni vuelve a descontar stock.
+        </div>
+
+        <footer style={modalFooterStyle}>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={procesando}
+            style={modalSecondaryButtonStyle}
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            disabled={!puedeConfirmar}
+            onClick={() =>
+              onConfirm({
+                item,
+                numeroCuadro: numeroCuadro.trim(),
+                motivo: motivo.trim(),
+              })
+            }
+            style={{
+              ...modalPrimaryButtonStyle,
+              opacity: puedeConfirmar ? 1 : 0.55,
+              cursor: puedeConfirmar ? "pointer" : "not-allowed",
+            }}
+          >
+            Asignar cuadro
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function CorregirClienteVentaModal({ venta, procesando, onClose, onConfirm }) {
+  const [query, setQuery] = useState("");
+  const [clientes, setClientes] = useState([]);
+  const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
+  const [motivo, setMotivo] = useState("Venta cargada por error a Consumidor Final");
+  const [buscando, setBuscando] = useState(false);
+  const [errorBusqueda, setErrorBusqueda] = useState("");
+
+  useEffect(() => {
+    const termino = query.trim();
+    if (termino.length < 2) {
+      setClientes([]);
+      setErrorBusqueda("");
+      return;
+    }
+
+    let cancelado = false;
+    const timer = window.setTimeout(async () => {
+      try {
+        setBuscando(true);
+        setErrorBusqueda("");
+        const data = await listarClientes({ q: termino, solo_activos: true });
+        if (cancelado) return;
+        setClientes(
+          (data || []).filter((cliente) => Number(cliente.id) !== Number(venta.id_cliente))
+        );
+      } catch (err) {
+        if (!cancelado) {
+          setErrorBusqueda(err.message || "No se pudieron buscar clientes");
+        }
+      } finally {
+        if (!cancelado) setBuscando(false);
+      }
+    }, 250);
+
+    return () => {
+      cancelado = true;
+      window.clearTimeout(timer);
+    };
+  }, [query, venta.id_cliente]);
+
+  const puedeConfirmar =
+    Boolean(clienteSeleccionado?.id) && motivo.trim().length >= 3 && !procesando;
+
+  return (
+    <div style={modalBackdropStyle} onMouseDown={(event) => {
+      if (event.target === event.currentTarget && !procesando) onClose();
+    }}>
+      <section style={modalCardStyle}>
+        <header style={modalHeaderStyle}>
+          <div>
+            <p style={modalKickerStyle}>Correccion administrativa</p>
+            <h2 style={modalTitleStyle}>Corregir cliente de venta #{venta.id}</h2>
+            <p style={modalTextStyle}>
+              Cliente actual: <strong>{venta.cliente_nombre || "-"}</strong>
+            </p>
+          </div>
+          <button type="button" onClick={onClose} disabled={procesando} style={modalCloseStyle}>
+            x
+          </button>
+        </header>
+
+        <label style={modalFieldStyle}>
+          <span>Buscar cliente correcto</span>
+          <input
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setClienteSeleccionado(null);
+            }}
+            placeholder="Nombre, telefono, DNI/CUIT o numero de cliente..."
+            style={modalInputStyle}
+          />
+        </label>
+
+        <div style={clienteResultadosStyle}>
+          {buscando ? (
+            <div style={clienteEmptyStyle}>Buscando clientes...</div>
+          ) : errorBusqueda ? (
+            <div style={clienteErrorStyle}>{errorBusqueda}</div>
+          ) : clientes.length === 0 && query.trim().length >= 2 ? (
+            <div style={clienteEmptyStyle}>No se encontraron clientes activos.</div>
+          ) : (
+            clientes.slice(0, 8).map((cliente) => (
+              <button
+                key={cliente.id}
+                type="button"
+                onClick={() => setClienteSeleccionado(cliente)}
+                style={{
+                  ...clienteResultadoStyle,
+                  ...(Number(clienteSeleccionado?.id) === Number(cliente.id)
+                    ? clienteResultadoSeleccionadoStyle
+                    : {}),
+                }}
+              >
+                <strong>#{cliente.id} - {cliente.nombre}</strong>
+                <span>
+                  {[cliente.telefono, cliente.dni || cliente.cuit]
+                    .filter(Boolean)
+                    .join(" - ") || "Sin telefono/documento"}
+                </span>
+              </button>
+            ))
+          )}
+        </div>
+
+        {clienteSeleccionado && (
+          <div style={clienteSeleccionadoStyle}>
+            <span>Cliente nuevo</span>
+            <strong>#{clienteSeleccionado.id} - {clienteSeleccionado.nombre}</strong>
+          </div>
+        )}
+
+        <label style={modalFieldStyle}>
+          <span>Motivo</span>
+          <textarea
+            value={motivo}
+            onChange={(event) => setMotivo(event.target.value)}
+            rows={3}
+            style={modalTextareaStyle}
+          />
+        </label>
+
+        <div style={modalWarningStyle}>
+          No se modifican pagos, caja, stock ni totales. Se corrige la trazabilidad
+          de cliente de la venta y registros asociados a esta venta.
+        </div>
+
+        <footer style={modalFooterStyle}>
+          <button type="button" onClick={onClose} disabled={procesando} style={modalSecondaryButtonStyle}>
+            Cancelar
+          </button>
+          <button
+            type="button"
+            disabled={!puedeConfirmar}
+            onClick={() => onConfirm({ cliente: clienteSeleccionado, motivo: motivo.trim() })}
+            style={{
+              ...modalPrimaryButtonStyle,
+              opacity: puedeConfirmar ? 1 : 0.5,
+              cursor: puedeConfirmar ? "pointer" : "not-allowed",
+            }}
+          >
+            Corregir cliente
+          </button>
+        </footer>
+      </section>
     </div>
   );
 }
@@ -805,4 +1183,210 @@ const reservaOrigenLinkStyle = {
   borderRadius: "10px",
   padding: "8px 12px",
   fontWeight: 800,
+};
+
+const correccionClienteCardStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 14,
+  flexWrap: "wrap",
+  background: "#fff7ed",
+  border: "1px solid #fed7aa",
+  borderRadius: 14,
+  padding: "14px 16px",
+  margin: "12px 0",
+};
+
+const correccionClienteTitleStyle = {
+  margin: "0 0 4px",
+  fontSize: 18,
+  fontWeight: 950,
+  color: "#9a3412",
+};
+
+const correccionClienteTextStyle = {
+  margin: 0,
+  color: "#7c2d12",
+  fontSize: 13,
+  fontWeight: 650,
+};
+
+const correccionClienteButtonStyle = {
+  border: "1px solid #fb923c",
+  background: "#fff",
+  color: "#c2410c",
+  borderRadius: 12,
+  padding: "10px 14px",
+  fontWeight: 900,
+  cursor: "pointer",
+};
+
+const modalBackdropStyle = {
+  position: "fixed",
+  inset: 0,
+  zIndex: 80,
+  display: "grid",
+  placeItems: "center",
+  padding: 16,
+  background: "rgba(15, 23, 42, 0.48)",
+};
+
+const modalCardStyle = {
+  width: "min(720px, calc(100vw - 32px))",
+  maxHeight: "calc(100vh - 32px)",
+  overflowY: "auto",
+  display: "grid",
+  gap: 14,
+  background: "#fff",
+  border: "1px solid #d0d5dd",
+  borderRadius: 18,
+  padding: 18,
+  boxShadow: "0 28px 70px rgba(15, 23, 42, 0.28)",
+};
+
+const modalHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: 14,
+  paddingBottom: 12,
+  borderBottom: "1px solid #eaecf0",
+};
+
+const modalKickerStyle = {
+  margin: 0,
+  color: "#f97316",
+  fontSize: 12,
+  fontWeight: 1000,
+  textTransform: "uppercase",
+};
+
+const modalTitleStyle = {
+  margin: "4px 0",
+  fontSize: 24,
+  fontWeight: 1000,
+  color: "#0f172a",
+};
+
+const modalTextStyle = {
+  margin: 0,
+  color: "#475467",
+  fontWeight: 700,
+};
+
+const modalCloseStyle = {
+  width: 38,
+  height: 38,
+  border: "1px solid #cbd5e1",
+  borderRadius: 12,
+  background: "#fff",
+  cursor: "pointer",
+  fontWeight: 900,
+};
+
+const modalFieldStyle = {
+  display: "grid",
+  gap: 6,
+  fontWeight: 900,
+  color: "#0f172a",
+};
+
+const modalInputStyle = {
+  minHeight: 44,
+  border: "1px solid #cbd5e1",
+  borderRadius: 12,
+  padding: "0 12px",
+  fontWeight: 750,
+};
+
+const modalTextareaStyle = {
+  border: "1px solid #cbd5e1",
+  borderRadius: 12,
+  padding: 12,
+  fontWeight: 700,
+  resize: "vertical",
+};
+
+const clienteResultadosStyle = {
+  display: "grid",
+  gap: 8,
+  maxHeight: 250,
+  overflowY: "auto",
+};
+
+const clienteResultadoStyle = {
+  textAlign: "left",
+  display: "grid",
+  gap: 3,
+  border: "1px solid #e2e8f0",
+  background: "#fff",
+  borderRadius: 12,
+  padding: "10px 12px",
+  cursor: "pointer",
+};
+
+const clienteResultadoSeleccionadoStyle = {
+  borderColor: "#f97316",
+  background: "#fff7ed",
+};
+
+const clienteEmptyStyle = {
+  border: "1px dashed #cbd5e1",
+  borderRadius: 12,
+  padding: 12,
+  color: "#667085",
+  fontWeight: 750,
+};
+
+const clienteErrorStyle = {
+  ...clienteEmptyStyle,
+  color: "#b42318",
+  borderColor: "#fecdca",
+  background: "#fff1f0",
+};
+
+const clienteSeleccionadoStyle = {
+  display: "grid",
+  gap: 4,
+  border: "1px solid #abefc6",
+  background: "#ecfdf3",
+  color: "#067647",
+  borderRadius: 12,
+  padding: 12,
+};
+
+const modalWarningStyle = {
+  border: "1px solid #fed7aa",
+  background: "#fff7ed",
+  color: "#9a3412",
+  borderRadius: 12,
+  padding: 12,
+  fontWeight: 750,
+};
+
+const modalFooterStyle = {
+  display: "flex",
+  justifyContent: "flex-end",
+  gap: 10,
+  flexWrap: "wrap",
+};
+
+const modalSecondaryButtonStyle = {
+  border: "1px solid #cbd5e1",
+  background: "#fff",
+  color: "#0f172a",
+  borderRadius: 12,
+  padding: "10px 14px",
+  fontWeight: 900,
+  cursor: "pointer",
+};
+
+const modalPrimaryButtonStyle = {
+  border: "1px solid #f97316",
+  background: "#f97316",
+  color: "#fff",
+  borderRadius: 12,
+  padding: "10px 14px",
+  fontWeight: 950,
 };

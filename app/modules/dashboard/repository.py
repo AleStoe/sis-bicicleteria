@@ -9,6 +9,15 @@ NO_BICICLETAS_SQL = """
   AND LOWER(COALESCE(p.nombre, '')) NOT LIKE '%%bicicleta%%'
 """
 
+BICICLETAS_SQL = """
+  AND (
+    p.serializable = TRUE
+    OR LOWER(COALESCE(c.nombre, '')) LIKE '%%bicicleta%%'
+    OR LOWER(COALESCE(p.nombre, '')) LIKE '%%bicicleta%%'
+    OR p.tipo_bicicleta IS NOT NULL
+  )
+"""
+
 
 def get_ventas_mes(conn, fecha_desde, fecha_hasta, id_sucursal=None):
     params = [fecha_desde, fecha_hasta, list(VENTA_ESTADOS_REPORTING)]
@@ -392,18 +401,37 @@ def get_taller_atrasado_count(conn, *, id_sucursal=None):
         return cur.fetchone()["cantidad"]
 
 
-def get_top_productos(conn, fecha_desde, fecha_hasta, *, id_sucursal=None, order_by="cantidad", limit=10):
+def get_top_productos(
+    conn,
+    fecha_desde,
+    fecha_hasta,
+    *,
+    id_sucursal=None,
+    order_by="cantidad",
+    limit=10,
+    tipo_operativo=None,
+):
     order_map = {
-        "cantidad": "cantidad_vendida DESC",
-        "facturacion": "venta_total DESC",
-        "margen": "margen_bruto DESC",
+        "cantidad": "top.cantidad_vendida DESC",
+        "facturacion": "top.venta_total DESC",
+        "margen": "top.margen_bruto DESC",
     }
     order_sql = order_map.get(order_by, order_map["cantidad"])
     params = [fecha_desde, fecha_hasta, list(VENTA_ESTADOS_REPORTING)]
     sucursal_sql = ""
+    stock_sucursal_sql = ""
+    stock_params = []
     if id_sucursal is not None:
         sucursal_sql = "AND v.id_sucursal = %s"
         params.append(id_sucursal)
+        stock_sucursal_sql = "WHERE id_sucursal = %s"
+        stock_params.append(id_sucursal)
+    tipo_sql = ""
+    if tipo_operativo == "bicicletas":
+        tipo_sql = BICICLETAS_SQL
+    elif tipo_operativo == "no_bicicletas":
+        tipo_sql = NO_BICICLETAS_SQL
+    params.extend(stock_params)
     params.append(limit)
 
     with conn.cursor(row_factory=dict_row) as cur:
@@ -448,13 +476,16 @@ def get_top_productos(conn, fecha_desde, fecha_hasta, *, id_sucursal=None, order
               LEFT JOIN devoluciones d ON d.id_venta_item = vi.id
               LEFT JOIN variantes var ON var.id = vi.id_variante
               LEFT JOIN productos p ON p.id = var.id_producto
+              LEFT JOIN categorias c ON c.id = p.id_categoria
               WHERE v.fecha::date >= %s
                 AND v.fecha::date <= %s
                 AND v.estado = ANY(%s)
                 AND vi.tipo_item = 'producto'
+                {tipo_sql}
                 {sucursal_sql}
             )
-            SELECT
+            , top AS (
+              SELECT
               id_variante,
               producto,
               variante,
@@ -465,8 +496,39 @@ def get_top_productos(conn, fecha_desde, fecha_hasta, *, id_sucursal=None, order
                 COALESCE(SUM(venta_neta), 0)
                 - COALESCE(SUM(costo_neto), 0)
               )::numeric(14,2) AS margen_bruto
-            FROM items_netos
-            GROUP BY id_variante, producto, variante
+              FROM items_netos
+              GROUP BY id_variante, producto, variante
+            ),
+            stock_actual AS (
+              SELECT
+                id_variante,
+                COALESCE(SUM(stock_fisico), 0)::numeric(14,3) AS stock_fisico,
+                COALESCE(SUM(stock_reservado), 0)::numeric(14,3) AS stock_reservado,
+                COALESCE(SUM(stock_vendido_pendiente_entrega), 0)::numeric(14,3)
+                  AS stock_vendido_pendiente_entrega,
+                COALESCE(
+                  SUM(stock_fisico - stock_reservado - stock_vendido_pendiente_entrega),
+                  0
+                )::numeric(14,3) AS stock_disponible
+              FROM stock_sucursal
+              {stock_sucursal_sql}
+              GROUP BY id_variante
+            )
+            SELECT
+              top.id_variante,
+              top.producto,
+              top.variante,
+              top.cantidad_vendida,
+              top.venta_total,
+              top.costo_total,
+              top.margen_bruto,
+              COALESCE(sa.stock_fisico, 0)::numeric(14,3) AS stock_fisico,
+              COALESCE(sa.stock_reservado, 0)::numeric(14,3) AS stock_reservado,
+              COALESCE(sa.stock_vendido_pendiente_entrega, 0)::numeric(14,3)
+                AS stock_vendido_pendiente_entrega,
+              COALESCE(sa.stock_disponible, 0)::numeric(14,3) AS stock_disponible
+            FROM top
+            LEFT JOIN stock_actual sa ON sa.id_variante = top.id_variante
             ORDER BY {order_sql}
             LIMIT %s
             """,

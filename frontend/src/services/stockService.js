@@ -25,6 +25,11 @@ export function obtenerPedidoCompraSugerido(params = {}) {
   return apiRequest(`/stock/pedido-sugerido${query ? `?${query}` : ""}`);
 }
 
+export function obtenerAnalisisDemanda(params = {}) {
+  const query = cleanParams(params);
+  return apiRequest(`/stock/demanda${query ? `?${query}` : ""}`);
+}
+
 export function crearIngresoStock(data) {
   return apiRequest("/stock/ingresos", {
     method: "POST",

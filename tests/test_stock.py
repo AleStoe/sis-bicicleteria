@@ -1,4 +1,14 @@
+from decimal import Decimal
+from datetime import date
+
 from tests.conftest import get_stock_row, get_auditoria_by_entidad, get_movimientos_by_venta
+
+
+def _sumar_meses_test(value: date, delta: int) -> date:
+    month = value.month - 1 + delta
+    year = value.year + month // 12
+    month = month % 12 + 1
+    return date(year, month, 10)
 
 
 def _payload_ajuste(
@@ -47,6 +57,83 @@ def test_ajuste_stock_positivo_suma_fisico(client, db_conn, seed_venta_basica):
     assert float(stock["stock_fisico"]) == 9.0
     assert float(stock["stock_reservado"]) == 0.0
     assert float(stock["stock_vendido_pendiente_entrega"]) == 0.0
+
+
+def test_analisis_demanda_devuelve_historial_mensual_y_stock(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    venta_1 = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [{"id_variante": seed_venta_basica["variante_id"], "cantidad": 2}],
+        },
+    )
+    assert venta_1.status_code == 200, venta_1.text
+    venta_2 = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [{"id_variante": seed_venta_basica["variante_id"], "cantidad": 1}],
+        },
+    )
+    assert venta_2.status_code == 200, venta_2.text
+    mes_actual = date.today().replace(day=10)
+    mes_anterior = _sumar_meses_test(mes_actual, -1)
+    mes_actual_label = mes_actual.strftime("%Y-%m")
+    mes_anterior_label = mes_anterior.strftime("%Y-%m")
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE ventas
+            SET estado = 'pagada_total',
+                saldo_pendiente = 0,
+                fecha = CASE
+                    WHEN id = %s THEN %s::timestamp
+                    ELSE %s::timestamp
+                END
+            WHERE id = ANY(%s)
+            """,
+            (
+                venta_1.json()["venta_id"],
+                f"{mes_anterior.isoformat()} 10:00:00",
+                f"{mes_actual.isoformat()} 10:00:00",
+                [venta_1.json()["venta_id"], venta_2.json()["venta_id"]],
+            ),
+        )
+    db_conn.commit()
+
+    response = client.get(
+        "/stock/demanda",
+        params={
+            "q": "zefal",
+            "meses": 3,
+            "limit": 10,
+        },
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+
+    assert data["total_items"] == 1
+    item = data["items"][0]
+    assert item["variante_id"] == seed_venta_basica["variante_id"]
+    assert Decimal(str(item["unidades_vendidas"])) == Decimal("3.000")
+    assert Decimal(str(item["stock_fisico"])) == Decimal("6.000")
+    assert len(item["meses"]) == 3
+
+    ventas_por_mes = {
+        mes["etiqueta"]: Decimal(str(mes["unidades_vendidas"]))
+        for mes in item["meses"]
+    }
+    assert ventas_por_mes[mes_anterior_label] == Decimal("2.000")
+    assert ventas_por_mes[mes_actual_label] == Decimal("1.000")
 
 
 def test_ajuste_stock_negativo_resta_fisico(client, db_conn, seed_venta_basica):

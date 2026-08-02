@@ -20,6 +20,7 @@ def dashboard_resumen_route(
     dias_sin_movimiento: int = Query(default=90, ge=1, le=3650),
     umbral_repuestos_criticos: int = Query(default=2, ge=0, le=999999),
     limit: int = Query(default=10, ge=1, le=50),
+    top_productos_limit: int = Query(default=25, ge=1, le=100),
     usuario: CurrentUser = Depends(puede_ver_rentabilidad),
 ):
     return obtener_dashboard_resumen(
@@ -28,5 +29,6 @@ def dashboard_resumen_route(
         dias_sin_movimiento=dias_sin_movimiento,
         umbral_repuestos_criticos=umbral_repuestos_criticos,
         limit=limit,
+        top_productos_limit=top_productos_limit,
         id_usuario=None if usuario.auth_disabled else usuario.id,
     )

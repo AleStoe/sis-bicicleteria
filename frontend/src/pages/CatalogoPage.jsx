@@ -32,6 +32,7 @@ import {
   PackagePlus,
   RefreshCw,
   Search,
+  X,
 } from "lucide-react";
 import { getHistoriaVarianteUrl } from "../services/documentosService";
 import { useSession } from "../context/SessionContext";
@@ -127,6 +128,7 @@ export default function CatalogoPage() {
   const [mensaje, setMensaje] = useState("");
   const [detalle, setDetalle] = useState(null);
   const [seleccionadoId, setSeleccionadoId] = useState(null);
+  const [catalogoModalOpen, setCatalogoModalOpen] = useState(false);
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -156,6 +158,7 @@ export default function CatalogoPage() {
 
       if (e.key === "Escape") {
         setDetalle(null);
+        setCatalogoModalOpen(false);
       }
     }
 
@@ -392,39 +395,31 @@ export default function CatalogoPage() {
           ))}
         </select>
 
-        <Button type="button" variant="outline" onClick={descargarCatalogoMinoristaPdf}><FileDown size={16} /> Catálogo minorista</Button>
-        <Button type="button" variant="outline" onClick={descargarCatalogoMayoristaPdf}><FileDown size={16} /> Catálogo mayorista</Button>
-        <Button type="button" variant="outline" onClick={descargarCatalogoBicicletasPdf}><FileDown size={16} /> Catálogo bicicletas</Button>
-      </section>
-
-      <section style={{ ...styles.pdfFiltersCard, ...(isMobile ? styles.pdfFiltersCardMobile : {}) }}>
-        <div style={styles.pdfFiltersIntro}>
-          <p style={styles.pdfFiltersEyebrow}>PDF de bicicletas</p>
-          <strong>Descargar catálogo filtrado</strong>
-          <span>Usa la búsqueda, marca y estos datos para mandar justo lo que te pidieron.</span>
-        </div>
-        <input
-          value={pdfRodado}
-          onChange={(e) => setPdfRodado(e.target.value)}
-          placeholder="Rodado. Ej: 20 o 29"
-          style={styles.select}
-        />
-        <input
-          value={pdfTalle}
-          onChange={(e) => setPdfTalle(e.target.value)}
-          placeholder="Talle. Ej: S o M"
-          style={styles.select}
-        />
-        <input
-          value={pdfColor}
-          onChange={(e) => setPdfColor(e.target.value)}
-          placeholder="Color. Ej: rojo"
-          style={styles.select}
-        />
-        <Button type="button" onClick={descargarCatalogoBicicletasPdf}>
-          <FileDown size={16} /> Descargar PDF filtrado
+        <Button type="button" onClick={() => setCatalogoModalOpen(true)}>
+          <FileDown size={16} /> Crear catálogo
         </Button>
       </section>
+
+      {catalogoModalOpen && (
+        <CrearCatalogoModal
+          isMobile={isMobile}
+          query={query}
+          categoriaId={categoriaId}
+          marcaId={marcaId}
+          categorias={categorias}
+          marcas={marcas}
+          pdfRodado={pdfRodado}
+          pdfTalle={pdfTalle}
+          pdfColor={pdfColor}
+          setPdfRodado={setPdfRodado}
+          setPdfTalle={setPdfTalle}
+          setPdfColor={setPdfColor}
+          onClose={() => setCatalogoModalOpen(false)}
+          onMinorista={descargarCatalogoMinoristaPdf}
+          onMayorista={descargarCatalogoMayoristaPdf}
+          onBicicletas={descargarCatalogoBicicletasPdf}
+        />
+      )}
 
       <main style={{ ...styles.layout, ...(isMobile ? styles.layoutMobile : {}) }}>
         <section style={styles.catalogPanel}>
@@ -497,6 +492,151 @@ export default function CatalogoPage() {
         />
       )}
     </div>
+  );
+}
+
+function CrearCatalogoModal({
+  isMobile,
+  query,
+  categoriaId,
+  marcaId,
+  categorias,
+  marcas,
+  pdfRodado,
+  pdfTalle,
+  pdfColor,
+  setPdfRodado,
+  setPdfTalle,
+  setPdfColor,
+  onClose,
+  onMinorista,
+  onMayorista,
+  onBicicletas,
+}) {
+  const categoriaNombre =
+    categorias.find((categoria) => String(categoria.id) === String(categoriaId))?.nombre ||
+    "Todas las categorias";
+  const marcaNombre =
+    marcas.find((marca) => String(marca.id) === String(marcaId))?.nombre ||
+    "Todas las marcas";
+  const busqueda = query?.trim();
+
+  async function descargarYCerrar(descargar) {
+    await descargar();
+    onClose();
+  }
+
+  return (
+    <div
+      style={styles.catalogModalBackdrop}
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        style={{
+          ...styles.catalogModal,
+          ...(isMobile ? styles.catalogModalMobile : {}),
+        }}
+      >
+        <header style={styles.catalogModalHeader}>
+          <div>
+            <p style={styles.catalogModalEyebrow}>Crear catalogo</p>
+            <h2 style={styles.catalogModalTitle}>Elegí qué PDF necesitás</h2>
+            <p style={styles.catalogModalSubtitle}>
+              Usa los filtros actuales y, para bicicletas, podés afinar por rodado,
+              talle o color.
+            </p>
+          </div>
+          <button type="button" onClick={onClose} style={styles.catalogModalClose}>
+            <X size={18} />
+          </button>
+        </header>
+
+        <div style={styles.catalogModalFilters}>
+          <span style={styles.catalogFilterPill}>
+            {busqueda ? `Busqueda: ${busqueda}` : "Sin busqueda"}
+          </span>
+          <span style={styles.catalogFilterPill}>{categoriaNombre}</span>
+          <span style={styles.catalogFilterPill}>{marcaNombre}</span>
+        </div>
+
+        <div
+          style={{
+            ...styles.catalogOptionsGrid,
+            ...(isMobile ? styles.catalogOptionsGridMobile : {}),
+          }}
+        >
+          <CatalogDownloadOption
+            title="Catalogo minorista"
+            subtitle="Productos filtrados para responder precios al cliente."
+            detail="Incluye precio de lista, contado/transferencia y cuotas disponibles."
+            onClick={() => descargarYCerrar(onMinorista)}
+          />
+          <CatalogDownloadOption
+            title="Catalogo mayorista"
+            subtitle="Lista comercial para clientes mayoristas."
+            detail="Incluye precio mayorista y condiciones comerciales configuradas."
+            onClick={() => descargarYCerrar(onMayorista)}
+          />
+
+          <article style={styles.catalogOptionWide}>
+            <div style={styles.catalogOptionHeader}>
+              <h3 style={styles.catalogOptionTitle}>Catalogo de bicicletas</h3>
+              <p style={styles.catalogOptionSubtitle}>
+                Ideal para mandar justo lo que te pidieron.
+              </p>
+              <span style={styles.catalogOptionDetail}>
+                Podés usar los filtros generales y sumar rodado, talle o color.
+              </span>
+            </div>
+            <div
+              style={{
+                ...styles.catalogBikeFilters,
+                ...(isMobile ? styles.catalogBikeFiltersMobile : {}),
+              }}
+            >
+              <input
+                value={pdfRodado}
+                onChange={(event) => setPdfRodado(event.target.value)}
+                placeholder="Rodado. Ej: 20 o 29"
+                style={styles.select}
+              />
+              <input
+                value={pdfTalle}
+                onChange={(event) => setPdfTalle(event.target.value)}
+                placeholder="Talle. Ej: S o M"
+                style={styles.select}
+              />
+              <input
+                value={pdfColor}
+                onChange={(event) => setPdfColor(event.target.value)}
+                placeholder="Color. Ej: rojo"
+                style={styles.select}
+              />
+            </div>
+            <Button type="button" onClick={() => descargarYCerrar(onBicicletas)} fullWidth>
+              <FileDown size={16} /> Descargar bicicletas
+            </Button>
+          </article>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function CatalogDownloadOption({ title, subtitle, detail, onClick }) {
+  return (
+    <article style={styles.catalogOption}>
+      <div style={styles.catalogOptionHeader}>
+        <h3 style={styles.catalogOptionTitle}>{title}</h3>
+        <p style={styles.catalogOptionSubtitle}>{subtitle}</p>
+        <span style={styles.catalogOptionDetail}>{detail}</span>
+      </div>
+      <Button type="button" onClick={onClick} fullWidth>
+        <FileDown size={16} /> Descargar PDF
+      </Button>
+    </article>
   );
 }
 
@@ -813,6 +953,143 @@ const styles = {
     borderRadius: radius.lg,
     padding: spacing.md,
     boxShadow: shadows.sm,
+  },
+  catalogModalBackdrop: {
+    position: "fixed",
+    inset: 0,
+    zIndex: 80,
+    display: "grid",
+    placeItems: "center",
+    padding: 16,
+    background: "rgba(15, 23, 42, 0.48)",
+  },
+  catalogModal: {
+    width: "min(920px, calc(100vw - 32px))",
+    maxHeight: "calc(100vh - 32px)",
+    overflowY: "auto",
+    display: "grid",
+    gap: 16,
+    background: colors.surface,
+    border: `1px solid ${colors.borderSoft}`,
+    borderRadius: radius.lg,
+    padding: 20,
+    boxShadow: "0 28px 70px rgba(15, 23, 42, 0.28)",
+  },
+  catalogModalMobile: {
+    width: "100%",
+    padding: 14,
+    borderRadius: 16,
+  },
+  catalogModalHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 16,
+    paddingBottom: 12,
+    borderBottom: `1px solid ${colors.borderSoft}`,
+  },
+  catalogModalEyebrow: {
+    margin: 0,
+    color: "#f97316",
+    fontSize: 12,
+    fontWeight: 1000,
+    textTransform: "uppercase",
+    letterSpacing: 0,
+  },
+  catalogModalTitle: {
+    margin: "4px 0",
+    fontSize: 24,
+    fontWeight: 1000,
+    color: colors.text,
+  },
+  catalogModalSubtitle: {
+    margin: 0,
+    color: colors.textMuted,
+    fontWeight: 700,
+    lineHeight: 1.35,
+  },
+  catalogModalClose: {
+    width: 40,
+    height: 40,
+    display: "grid",
+    placeItems: "center",
+    border: `1px solid ${colors.border}`,
+    borderRadius: radius.md,
+    background: colors.surface,
+    color: colors.text,
+    cursor: "pointer",
+  },
+  catalogModalFilters: {
+    display: "flex",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  catalogFilterPill: {
+    border: `1px solid ${colors.borderSoft}`,
+    background: colors.surfaceMuted,
+    borderRadius: 999,
+    padding: "6px 10px",
+    fontSize: 12,
+    fontWeight: 850,
+    color: colors.textMuted,
+  },
+  catalogOptionsGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: 12,
+  },
+  catalogOptionsGridMobile: {
+    gridTemplateColumns: "1fr",
+  },
+  catalogOption: {
+    display: "grid",
+    gap: 12,
+    alignContent: "space-between",
+    background: colors.surface,
+    border: `1px solid ${colors.borderSoft}`,
+    borderRadius: radius.md,
+    padding: 14,
+    boxShadow: shadows.sm,
+  },
+  catalogOptionWide: {
+    display: "grid",
+    gap: 12,
+    gridColumn: "1 / -1",
+    background: "#fff7ed",
+    border: "1px solid #fed7aa",
+    borderRadius: radius.md,
+    padding: 14,
+    boxShadow: shadows.sm,
+  },
+  catalogOptionHeader: {
+    display: "grid",
+    gap: 4,
+  },
+  catalogOptionTitle: {
+    margin: 0,
+    fontSize: 18,
+    fontWeight: 1000,
+    color: colors.text,
+  },
+  catalogOptionSubtitle: {
+    margin: 0,
+    color: colors.text,
+    fontWeight: 850,
+    lineHeight: 1.35,
+  },
+  catalogOptionDetail: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: 700,
+    lineHeight: 1.35,
+  },
+  catalogBikeFilters: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gap: 10,
+  },
+  catalogBikeFiltersMobile: {
+    gridTemplateColumns: "1fr",
   },
   pdfFiltersCard: {
     display: "grid",

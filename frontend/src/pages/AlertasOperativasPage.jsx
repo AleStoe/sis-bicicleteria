@@ -104,6 +104,7 @@ export default function AlertasOperativasPage() {
       ["Saldos sin deuda", correcciones.ventas_saldo_sin_deuda?.length || 0],
       ["Creditos a revisar", correcciones.creditos_anulacion_dudosos?.length || 0],
       ["Cajas viejas", correcciones.cajas_abiertas_anteriores?.length || 0],
+      ["Costos sospechosos", correcciones.costos_sospechosos?.length || 0],
     ];
   }, [correcciones]);
 

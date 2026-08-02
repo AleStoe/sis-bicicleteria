@@ -348,6 +348,61 @@ def desactivar_imagenes_variantes_unicas_producto(conn, producto_id: int):
         )
 
 
+def _query_token_patterns(token: str) -> list[str]:
+    limpio = token.strip()
+    if not limpio:
+        return []
+
+    patrones = [f"%{limpio}%"]
+    normalizado = limpio.lower()
+    if normalizado.startswith("r") and normalizado[1:].isdigit():
+        patrones.append(f"%{normalizado[1:]}%")
+
+    return list(dict.fromkeys(patrones))
+
+
+def _es_token_medida_corto(token: str) -> bool:
+    normalizado = token.strip().lower()
+    if normalizado.startswith("r") and normalizado[1:].isdigit():
+        return True
+    return normalizado.isdigit() and len(normalizado) <= 2
+
+
+def _campos_busqueda_para_token(campos: list[str], token: str) -> list[str]:
+    if not _es_token_medida_corto(token):
+        return campos
+
+    campos_codigo = {"v.sku", "v.codigo_barras", "v.codigo_proveedor"}
+    return [campo for campo in campos if campo not in campos_codigo]
+
+
+def _aplicar_busqueda_por_tokens(
+    filtros: list[str],
+    params: dict,
+    query: str | None,
+    campos: list[str],
+    *,
+    prefix: str,
+):
+    if not query:
+        return
+
+    tokens = [token for token in query.strip().split() if token.strip()]
+    for token_index, token in enumerate(tokens):
+        campos_token = _campos_busqueda_para_token(campos, token)
+        condiciones_token = []
+        for pattern_index, pattern in enumerate(_query_token_patterns(token)):
+            param_name = f"{prefix}_{token_index}_{pattern_index}"
+            params[param_name] = pattern
+            condiciones_token.extend(
+                f"{campo} ILIKE %({param_name})s"
+                for campo in campos_token
+            )
+
+        if condiciones_token:
+            filtros.append(f"({' OR '.join(condiciones_token)})")
+
+
 def get_catalogo_pos(
     conn,
     id_sucursal: int,
@@ -413,20 +468,26 @@ def get_catalogo_pos(
             )
         """)
 
-    if query:
-        filtros.append("""
-            (
-                p.nombre ILIKE %(query)s
-                OR v.nombre_variante ILIKE %(query)s
-                OR v.sku ILIKE %(query)s
-                OR v.codigo_barras ILIKE %(query)s
-                OR v.codigo_proveedor ILIKE %(query)s
-                OR m.nombre ILIKE %(query)s
-                OR v.talle ILIKE %(query)s
-                OR v.color ILIKE %(query)s
-            )
-        """)
-        params["query"] = f"%{query.strip()}%"
+    _aplicar_busqueda_por_tokens(
+        filtros,
+        params,
+        query,
+        [
+            "p.nombre",
+            "v.nombre_variante",
+            "v.sku",
+            "v.codigo_barras",
+            "v.codigo_proveedor",
+            "m.nombre",
+            "c.nombre",
+            "pr.nombre",
+            "p.rodado",
+            "v.talle",
+            "v.color",
+            "p.tipo_bicicleta",
+        ],
+        prefix="query_token",
+    )
 
     where_sql = " AND ".join(filtros)
     query_exacta = query.strip() if query else ""
@@ -441,6 +502,8 @@ def get_catalogo_pos(
                 ON c.id = p.id_categoria
             LEFT JOIN marcas m
                 ON m.id = p.id_marca
+            LEFT JOIN proveedores pr
+                ON pr.id = v.proveedor_preferido_id
             LEFT JOIN stock_sucursal ss
                 ON ss.id_variante = v.id
                AND ss.id_sucursal = %(id_sucursal)s
@@ -810,22 +873,22 @@ def get_catalogo_minorista_pdf_items(
         filtros.append("m.id = %(marca_id)s")
         params["marca_id"] = marca_id
 
-    if query:
-        filtros.append(
-            """
-            (
-                p.nombre ILIKE %(query)s
-                OR v.nombre_variante ILIKE %(query)s
-                OR v.sku ILIKE %(query)s
-                OR v.codigo_barras ILIKE %(query)s
-                OR v.codigo_proveedor ILIKE %(query)s
-                OR m.nombre ILIKE %(query)s
-                OR c.nombre ILIKE %(query)s
-                OR pr.nombre ILIKE %(query)s
-            )
-            """
-        )
-        params["query"] = f"%{query.strip()}%"
+    _aplicar_busqueda_por_tokens(
+        filtros,
+        params,
+        query,
+        [
+            "p.nombre",
+            "v.nombre_variante",
+            "v.sku",
+            "v.codigo_barras",
+            "v.codigo_proveedor",
+            "m.nombre",
+            "c.nombre",
+            "pr.nombre",
+        ],
+        prefix="query_token",
+    )
 
     where_sql = " AND ".join(filtros)
 
@@ -955,24 +1018,24 @@ def get_catalogo_bicicletas_pdf_items(
         filtros.append("m.id = %(marca_id)s")
         params["marca_id"] = marca_id
 
-    if query:
-        filtros.append(
-            """
-            (
-                p.nombre ILIKE %(query)s
-                OR v.nombre_variante ILIKE %(query)s
-                OR v.sku ILIKE %(query)s
-                OR v.codigo_proveedor ILIKE %(query)s
-                OR m.nombre ILIKE %(query)s
-                OR c.nombre ILIKE %(query)s
-                OR p.rodado ILIKE %(query)s
-                OR v.talle ILIKE %(query)s
-                OR v.color ILIKE %(query)s
-                OR p.tipo_bicicleta ILIKE %(query)s
-            )
-            """
-        )
-        params["query"] = f"%{query.strip()}%"
+    _aplicar_busqueda_por_tokens(
+        filtros,
+        params,
+        query,
+        [
+            "p.nombre",
+            "v.nombre_variante",
+            "v.sku",
+            "v.codigo_proveedor",
+            "m.nombre",
+            "c.nombre",
+            "p.rodado",
+            "v.talle",
+            "v.color",
+            "p.tipo_bicicleta",
+        ],
+        prefix="query_token",
+    )
 
     if rodado:
         filtros.append("p.rodado ILIKE %(rodado)s")

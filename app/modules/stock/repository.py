@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from app.db.connection import get_connection
 from psycopg.rows import dict_row
+from app.shared.constants import VENTA_ESTADOS_REPORTING
 from app.shared.money import to_decimal
 
 # =========================================================
@@ -380,6 +381,267 @@ def get_stock_resumen(
             [stock_bajo_umbral, *params],
         )
         return cur.fetchone()
+
+
+def _build_demanda_search_filter(q: str | None):
+    tokens = [
+        token.strip().upper()
+        for token in str(q or "").split()
+        if token.strip()
+    ]
+    if not tokens:
+        return "", []
+
+    clauses = []
+    params = []
+    fields = (
+        "p.nombre",
+        "v.nombre_variante",
+        "v.sku",
+        "v.codigo_barras",
+        "v.codigo_proveedor",
+        "c.nombre",
+        "m.nombre",
+        "pr.nombre",
+    )
+    for token in tokens:
+        like = f"%{token}%"
+        clauses.append(
+            "("
+            + " OR ".join(f"UPPER(COALESCE({field}, '')) LIKE %s" for field in fields)
+            + ")"
+        )
+        params.extend([like] * len(fields))
+
+    return " AND " + " AND ".join(clauses), params
+
+
+def get_analisis_demanda(
+    conn,
+    *,
+    fecha_desde,
+    fecha_hasta,
+    q=None,
+    id_sucursal=None,
+    tipo_operativo=None,
+    limit=80,
+):
+    ventas_sucursal_sql = ""
+    stock_sucursal_sql = ""
+    params = [
+        fecha_desde,
+        fecha_hasta,
+        fecha_desde,
+        fecha_hasta,
+        list(VENTA_ESTADOS_REPORTING),
+    ]
+
+    if id_sucursal is not None:
+        ventas_sucursal_sql = "AND ve.id_sucursal = %s"
+        params.append(id_sucursal)
+        stock_sucursal_sql = "WHERE ss.id_sucursal = %s"
+
+    tipo_sql = ""
+    if tipo_operativo and tipo_operativo != "todos":
+        if tipo_operativo == "no_bicicletas":
+            tipo_sql = f"AND ({TIPO_OPERATIVO_SQL}) <> 'bicicleta'"
+        else:
+            tipo_sql = f"AND ({TIPO_OPERATIVO_SQL}) = %s"
+
+    q_sql, q_params = _build_demanda_search_filter(q)
+
+    if id_sucursal is not None:
+        params.append(id_sucursal)
+    if tipo_operativo and tipo_operativo not in (None, "todos", "no_bicicletas"):
+        params.append(tipo_operativo)
+    params.extend(q_params)
+    params.append(limit)
+
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            f"""
+            WITH meses AS (
+                SELECT generate_series(%s::date, %s::date, interval '1 month')::date AS periodo
+            ),
+            devoluciones AS (
+                SELECT
+                    vid.id_venta_item,
+                    COALESCE(SUM(vid.cantidad_devuelta), 0) AS cantidad_devuelta,
+                    COALESCE(SUM(vid.monto_credito_generado), 0) AS monto_devuelto
+                FROM venta_item_devoluciones vid
+                GROUP BY vid.id_venta_item
+            ),
+            ventas_raw AS (
+                SELECT
+                    vi.id_variante,
+                    date_trunc('month', ve.fecha)::date AS periodo,
+                    GREATEST(vi.cantidad - COALESCE(d.cantidad_devuelta, 0), 0) AS cantidad_neta,
+                    (
+                        vi.subtotal
+                        * CASE
+                            WHEN COALESCE(ve.subtotal_base, 0) > 0
+                              THEN GREATEST(ve.total_final - ve.recargo_total, 0) / ve.subtotal_base
+                            ELSE 1
+                          END
+                        - COALESCE(d.monto_devuelto, 0)
+                          * CASE
+                              WHEN ve.total_final > 0
+                                THEN GREATEST(ve.total_final - ve.recargo_total, 0) / ve.total_final
+                              ELSE 1
+                            END
+                    ) AS venta_neta,
+                    (
+                        vi.costo_unitario_aplicado
+                        * GREATEST(vi.cantidad - COALESCE(d.cantidad_devuelta, 0), 0)
+                    ) AS costo_neto,
+                    ve.id AS id_venta,
+                    ve.fecha
+                FROM venta_items vi
+                INNER JOIN ventas ve ON ve.id = vi.id_venta
+                LEFT JOIN devoluciones d ON d.id_venta_item = vi.id
+                WHERE ve.fecha::date >= %s
+                  AND ve.fecha::date <= %s
+                  AND ve.estado = ANY(%s)
+                  AND vi.tipo_item = 'producto'
+                  {ventas_sucursal_sql}
+            ),
+            ventas_agg AS (
+                SELECT
+                    id_variante,
+                    periodo,
+                    COALESCE(SUM(cantidad_neta), 0)::numeric(14,3) AS unidades_vendidas,
+                    COUNT(DISTINCT id_venta)::int AS ventas_distintas,
+                    COALESCE(SUM(venta_neta), 0)::numeric(14,2) AS venta_neta,
+                    COALESCE(SUM(costo_neto), 0)::numeric(14,2) AS costo_total,
+                    (
+                      COALESCE(SUM(venta_neta), 0) - COALESCE(SUM(costo_neto), 0)
+                    )::numeric(14,2) AS margen_bruto,
+                    MAX(fecha) AS ultima_venta
+                FROM ventas_raw
+                GROUP BY id_variante, periodo
+            ),
+            stock_actual AS (
+                SELECT
+                    ss.id_variante,
+                    COALESCE(SUM(ss.stock_fisico), 0)::numeric(14,3) AS stock_fisico,
+                    COALESCE(
+                        SUM(ss.stock_fisico - ss.stock_reservado - ss.stock_vendido_pendiente_entrega),
+                        0
+                    )::numeric(14,3) AS stock_disponible
+                FROM stock_sucursal ss
+                {stock_sucursal_sql}
+                GROUP BY ss.id_variante
+            ),
+            base AS (
+                SELECT
+                    v.id AS variante_id,
+                    p.id AS producto_id,
+                    p.nombre AS producto_nombre,
+                    v.nombre_variante,
+                    v.sku,
+                    v.codigo_barras,
+                    v.codigo_proveedor,
+                    c.nombre AS categoria_nombre,
+                    m.nombre AS marca_nombre,
+                    pr.nombre AS proveedor_nombre,
+                    {TIPO_OPERATIVO_SQL} AS tipo_operativo,
+                    p.serializable,
+                    v.reponer_stock,
+                    COALESCE(sa.stock_fisico, 0)::numeric(14,3) AS stock_fisico,
+                    COALESCE(sa.stock_disponible, 0)::numeric(14,3) AS stock_disponible
+                FROM variantes v
+                INNER JOIN productos p ON p.id = v.id_producto
+                INNER JOIN categorias c ON c.id = p.id_categoria
+                LEFT JOIN marcas m ON m.id = p.id_marca
+                LEFT JOIN proveedores pr ON pr.id = v.proveedor_preferido_id
+                LEFT JOIN stock_actual sa ON sa.id_variante = v.id
+                WHERE v.activo = TRUE
+                  AND p.activo = TRUE
+                  AND p.stockeable = TRUE
+                  AND p.tipo_item = 'producto'
+                  {tipo_sql}
+                  {q_sql}
+            ),
+            totales AS (
+                SELECT
+                    id_variante,
+                    COALESCE(SUM(unidades_vendidas), 0)::numeric(14,3) AS unidades_vendidas,
+                    COALESCE(SUM(ventas_distintas), 0)::int AS ventas_distintas,
+                    COALESCE(SUM(venta_neta), 0)::numeric(14,2) AS venta_neta,
+                    COALESCE(SUM(costo_total), 0)::numeric(14,2) AS costo_total,
+                    COALESCE(SUM(margen_bruto), 0)::numeric(14,2) AS margen_bruto,
+                    MAX(ultima_venta) AS ultima_venta
+                FROM ventas_agg
+                GROUP BY id_variante
+            ),
+            seleccion AS (
+                SELECT
+                    b.*,
+                    COALESCE(t.unidades_vendidas, 0)::numeric(14,3) AS unidades_vendidas,
+                    COALESCE(t.ventas_distintas, 0)::int AS ventas_distintas,
+                    COALESCE(t.venta_neta, 0)::numeric(14,2) AS venta_neta,
+                    COALESCE(t.costo_total, 0)::numeric(14,2) AS costo_total,
+                    COALESCE(t.margen_bruto, 0)::numeric(14,2) AS margen_bruto,
+                    t.ultima_venta
+                FROM base b
+                LEFT JOIN totales t ON t.id_variante = b.variante_id
+                ORDER BY COALESCE(t.venta_neta, 0) DESC,
+                         COALESCE(t.unidades_vendidas, 0) DESC,
+                         b.stock_disponible DESC,
+                         b.producto_nombre ASC
+                LIMIT %s
+            )
+            SELECT
+                s.*,
+                COALESCE(
+                    jsonb_agg(
+                        jsonb_build_object(
+                            'periodo', meses.periodo,
+                            'etiqueta', to_char(meses.periodo, 'YYYY-MM'),
+                            'unidades_vendidas', COALESCE(va.unidades_vendidas, 0),
+                            'ventas_distintas', COALESCE(va.ventas_distintas, 0),
+                            'venta_neta', COALESCE(va.venta_neta, 0),
+                            'margen_bruto', COALESCE(va.margen_bruto, 0)
+                        )
+                        ORDER BY meses.periodo
+                    ),
+                    '[]'::jsonb
+                ) AS meses
+            FROM seleccion s
+            CROSS JOIN meses
+            LEFT JOIN ventas_agg va
+                ON va.id_variante = s.variante_id
+               AND va.periodo = meses.periodo
+            GROUP BY
+                s.variante_id,
+                s.producto_id,
+                s.producto_nombre,
+                s.nombre_variante,
+                s.sku,
+                s.codigo_barras,
+                s.codigo_proveedor,
+                s.categoria_nombre,
+                s.marca_nombre,
+                s.proveedor_nombre,
+                s.tipo_operativo,
+                s.serializable,
+                s.reponer_stock,
+                s.stock_fisico,
+                s.stock_disponible,
+                s.unidades_vendidas,
+                s.ventas_distintas,
+                s.venta_neta,
+                s.costo_total,
+                s.margen_bruto,
+                s.ultima_venta
+            ORDER BY s.venta_neta DESC,
+                     s.unidades_vendidas DESC,
+                     s.stock_disponible DESC,
+                     s.producto_nombre ASC
+            """,
+            params,
+        )
+        return cur.fetchall()
 
 
 def obtener_stock_disponible(conn, id_sucursal: int, id_variante: int) -> Decimal:

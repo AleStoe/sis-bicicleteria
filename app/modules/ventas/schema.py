@@ -138,6 +138,19 @@ class VentaAnulacionInput(BaseModel):
     id_usuario: int = Field(gt=0)
 
 
+class VentaCorreccionClienteInput(BaseModel):
+    id_cliente_nuevo: int = Field(gt=0)
+    motivo: str = Field(min_length=3, max_length=500)
+    id_usuario: int = Field(default=0, ge=0)
+
+
+class VentaAsignarBicicletaSerializadaInput(BaseModel):
+    id_venta_item: int = Field(gt=0)
+    numero_cuadro: str = Field(min_length=3, max_length=100)
+    motivo: str = Field(min_length=3, max_length=500)
+    id_usuario: int = Field(default=0, ge=0)
+
+
 class VentaCreateOutput(BaseModel):
     ok: bool
     venta_id: int
@@ -162,6 +175,29 @@ class VentaAnulacionOutput(BaseModel):
     credito_generado: bool
     monto_credito: Decimal
     credito_restaurado: Decimal = Decimal("0")
+
+
+class VentaCorreccionClienteOutput(BaseModel):
+    ok: bool
+    venta_id: int
+    id_cliente_anterior: int
+    cliente_anterior_nombre: str
+    id_cliente_nuevo: int
+    cliente_nuevo_nombre: str
+    pagos_actualizados: int = 0
+    deudas_actualizadas: int = 0
+    creditos_actualizados: int = 0
+    bicicletas_cliente_actualizadas: int = 0
+
+
+class VentaAsignarBicicletaSerializadaOutput(BaseModel):
+    ok: bool
+    venta_id: int
+    id_venta_item: int
+    id_bicicleta_serializada: int
+    numero_cuadro: str
+    estado_bicicleta: str
+    bicicleta_cliente_creada: bool = False
 
 
 class VentaResumenOutput(BaseModel):
@@ -208,6 +244,7 @@ class VentaDetalleItemOutput(BaseModel):
     id_variante: Optional[int] = None
     id_servicio_taller: Optional[int] = None
     id_bicicleta_serializada: Optional[int] = None
+    bicicleta_numero_cuadro: Optional[str] = None
     id_orden_taller_item: Optional[int] = None
     stockeable: Optional[bool] = None
     serializable: Optional[bool] = None

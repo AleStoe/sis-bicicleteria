@@ -8,8 +8,13 @@ from .schema import (
     CorreccionesPendientesOutput,
     CorregirCapitalSinCajaInput,
     CorregirCapitalSinCajaOutput,
+    ValidarCapitalSinCajaOutput,
 )
-from .service import corregir_capital_sin_caja, obtener_correcciones_pendientes
+from .service import (
+    corregir_capital_sin_caja,
+    obtener_correcciones_pendientes,
+    validar_capital_sin_caja,
+)
 
 router = APIRouter()
 puede_gestionar_correcciones = requerir_permiso(PERMISO_GESTIONAR_CORRECCIONES)
@@ -33,3 +38,16 @@ def corregir_capital_sin_caja_route(
 ):
     aplicar_actor_actual(data, usuario)
     return corregir_capital_sin_caja(movimiento_id, data)
+
+
+@router.post(
+    "/capital-sin-caja/{movimiento_id}/validar-fuera-caja",
+    response_model=ValidarCapitalSinCajaOutput,
+)
+def validar_capital_sin_caja_route(
+    movimiento_id: int,
+    data: CorregirCapitalSinCajaInput,
+    usuario: CurrentUser = Depends(puede_gestionar_correcciones),
+):
+    aplicar_actor_actual(data, usuario)
+    return validar_capital_sin_caja(movimiento_id, data)
