@@ -17,6 +17,7 @@ from .repository import (
     get_capital_sin_caja,
     get_creditos_anulacion_dudosos,
     get_movimiento_capital_correccion_for_update,
+    get_venta_item_costo_sospechoso_for_update,
     get_ventas_items_costos_sospechosos,
     get_ventas_saldo_sin_deuda,
     vincular_capital_a_caja,
@@ -199,6 +200,49 @@ def validar_capital_sin_caja(movimiento_id: int, data):
             "ok": True,
             "movimiento_id": movimiento_id,
             "historial_id": historial_id,
+        }
+    finally:
+        conn.close()
+
+
+def validar_costo_sospechoso(item_id: int, data):
+    conn = get_connection()
+    try:
+        with conn.transaction():
+            item = get_venta_item_costo_sospechoso_for_update(conn, item_id)
+            if item is None:
+                raise HTTPException(status_code=404, detail=f"No existe el item de venta {item_id}")
+
+            auditoria_id = auditoria_service.registrar_evento(
+                conn,
+                id_usuario=data.id_usuario,
+                id_sucursal=item["id_sucursal"],
+                entidad=AUDITORIA_ENTIDAD_CORRECCION,
+                entidad_id=item_id,
+                accion=AUDITORIA_ACCION_CORRECCION_APLICADA,
+                detalle=(
+                    f"Item de venta #{item_id} validado como costo correcto/no corregible. "
+                    f"No se modifico venta, caja ni stock."
+                ),
+                metadata={
+                    "tipo": "costo_sospechoso_validado",
+                    "item_id": item_id,
+                    "venta_id": item["id_venta"],
+                    "descripcion": item["descripcion_snapshot"],
+                    "cantidad": str(item["cantidad"]),
+                    "subtotal": str(item["subtotal"]),
+                    "costo_unitario_aplicado": str(item["costo_unitario_aplicado"]),
+                    "cmv_item": str(item["cmv_item"]),
+                    "motivo": data.motivo,
+                },
+                origen_tipo="venta_item",
+                origen_id=item_id,
+            )
+
+        return {
+            "ok": True,
+            "item_id": item_id,
+            "auditoria_id": auditoria_id,
         }
     finally:
         conn.close()

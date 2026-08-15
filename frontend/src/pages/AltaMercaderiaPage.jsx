@@ -23,13 +23,60 @@ import useMediaQuery from "../hooks/useMediaQuery";
 import { normalizeTextUpper } from "../utils/textNormalization";
 import { DEFAULT_CONFIGURACION_NEGOCIO } from "../config/defaultConfiguracionNegocio";
 import { formatProductoVariante } from "../utils/productPresentation";
+import { SUBTIPOS_POR_RUBRO } from "../utils/catalogTaxonomy";
 
 const ID_SUCURSAL_DEFAULT = 1;
 
 const MARGEN_MINORISTA = 1.2;
 const MARGEN_MAYORISTA = 0.55;
-const UPPER_FIELDS = new Set(["nombre_producto", "nombre_variante", "codigo_proveedor"]);
-const RUBROS_MERCADERIA = ["REPUESTOS", "ACCESORIOS", "INDUMENTARIA"];
+const UPPER_FIELDS = new Set(["nombre_producto", "nombre_variante", "codigo_proveedor", "subtipo_catalogo"]);
+const RUBROS_MERCADERIA = ["REPUESTOS", "ACCESORIOS", "INDUMENTARIA", "HERRAMIENTAS", "CUBIERTAS AUTO"];
+const CATEGORIAS_POR_RUBRO = {
+  BICICLETAS: ["BICI"],
+  REPUESTOS: [],
+  ACCESORIOS: ["ACCESORIO", "LUZ", "LUCES", "BOLSO", "PORTA", "CANDADO", "TIMBRE", "SOPORTE", "CASCO"],
+  INDUMENTARIA: ["INDUMENTARIA", "ROPA", "CASCO", "GUANTE", "GUANTES", "PROTECCION"],
+  HERRAMIENTAS: ["HERRAMIENTA", "HERRAMIENTAS", "EXTRACTOR", "LLAVE", "KIT"],
+  "CUBIERTAS AUTO": ["CUBIERTA", "CUBIERTAS", "NEUMATICO", "NEUMATICOS"],
+};
+const CATEGORIAS_EXCLUIDAS_REPUESTOS = [
+  "BICI",
+  "ACCESORIO",
+  "INDUMENTARIA",
+  "SERVICIO",
+  "HERRAMIENTA",
+  "HERRAMIENTAS",
+  "EXTRACTOR",
+  "LLAVE",
+  "CUBIERTA AUTO",
+  "CUBIERTAS AUTO",
+  "NEUMATICO",
+  "NEUMATICOS",
+];
+
+function normalizarCategoria(valor) {
+  return String(valor || "")
+    .trim()
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function categoriaCoincideConRubro(categoria, rubro) {
+  const nombre = normalizarCategoria(categoria?.nombre);
+  const rubroNormalizado = normalizarCategoria(rubro);
+
+  if (!nombre) return false;
+
+  if (rubroNormalizado === "REPUESTOS") {
+    return !CATEGORIAS_EXCLUIDAS_REPUESTOS.some((palabra) => nombre.includes(palabra));
+  }
+
+  const palabras = CATEGORIAS_POR_RUBRO[rubroNormalizado] || [];
+  if (palabras.length === 0) return true;
+
+  return palabras.some((palabra) => nombre.includes(palabra));
+}
 
 export default function AltaMercaderiaPage() {
   const { usuarioId } = useSession();
@@ -61,6 +108,7 @@ export default function AltaMercaderiaPage() {
     rubro: "REPUESTOS",
     id_categoria: "",
     id_marca: "",
+    subtipo_catalogo: "",
     nombre_producto: "",
     tipo_item: "producto",
 
@@ -110,8 +158,9 @@ export default function AltaMercaderiaPage() {
     }
   }
  const categoriasPermitidas = useMemo(() => {
-    return categorias.filter((c) => c.activo !== false);
-  }, [categorias]);
+    const activas = categorias.filter((c) => c.activo !== false);
+    return activas.filter((c) => categoriaCoincideConRubro(c, form.rubro));
+  }, [categorias, form.rubro]);
 
   const categoriaSeleccionada = useMemo(() => {
     return categorias.find((c) => String(c.id) === String(form.id_categoria));
@@ -121,6 +170,18 @@ export default function AltaMercaderiaPage() {
     const nombre = categoriaSeleccionada?.nombre?.toLowerCase() || "";
     return nombre.includes("bici");
   }, [categoriaSeleccionada]);
+
+  useEffect(() => {
+    if (!form.id_categoria) return;
+
+    const sigueDisponible = categoriasPermitidas.some(
+      (categoria) => String(categoria.id) === String(form.id_categoria)
+    );
+
+    if (!sigueDisponible) {
+      setForm((prev) => ({ ...prev, id_categoria: "" }));
+    }
+  }, [categoriasPermitidas, form.id_categoria]);
 
   useEffect(() => {
     if (esBicicleta) {
@@ -308,6 +369,7 @@ export default function AltaMercaderiaPage() {
         ? [
             `Rubro: ${form.rubro || "-"}`,
             `Categoría: ${categoria?.nombre || "-"}`,
+            `Subtipo: ${form.subtipo_catalogo || "-"}`,
             `Marca: ${marca?.nombre || "Sin marca"}`,
           ]
         : []),
@@ -416,6 +478,7 @@ export default function AltaMercaderiaPage() {
         id_marca: form.id_marca ? Number(form.id_marca) : null,
         nombre: form.nombre_producto.trim(),
         rubro: form.rubro || "REPUESTOS",
+        subtipo_catalogo: form.subtipo_catalogo || null,
         tipo_item: "producto",
         stockeable: true,
         serializable: Boolean(form.controlar_numero_cuadro),
@@ -540,6 +603,7 @@ export default function AltaMercaderiaPage() {
       rubro: "REPUESTOS",
       id_categoria: "",
       id_marca: "",
+      subtipo_catalogo: "",
       nombre_producto: "",
       tipo_item: "producto",
       tiene_variantes: false,
@@ -771,7 +835,14 @@ export default function AltaMercaderiaPage() {
                       <select
                         style={styles.input}
                         value={form.rubro}
-                        onChange={(e) => setCampo("rubro", e.target.value)}
+                        onChange={(e) =>
+                          setForm((prev) => ({
+                            ...prev,
+                            rubro: e.target.value,
+                            id_categoria: "",
+                            subtipo_catalogo: "",
+                          }))
+                        }
                       >
                         {RUBROS_MERCADERIA.map((rubro) => (
                           <option key={rubro} value={rubro}>
@@ -791,12 +862,42 @@ export default function AltaMercaderiaPage() {
                         }
                       >
                         <option value="">Seleccionar...</option>
-                        {categoriasPermitidas.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.nombre}
+                        {categoriasPermitidas.length === 0 ? (
+                          <option value="" disabled>
+                            No hay categorÃ­as compatibles
                           </option>
-                        ))}
+                        ) : (
+                          categoriasPermitidas.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.nombre}
+                            </option>
+                          ))
+                        )}
                       </select>
+                      <small style={styles.fieldHint}>
+                        {categoriasPermitidas.length > 0
+                          ? `Mostrando categorÃ­as compatibles con ${form.rubro}.`
+                          : `CreÃ¡ una categorÃ­a compatible para ${form.rubro}.`}
+                      </small>
+                    </label>
+
+                    <label style={styles.label}>
+                      Subtipo
+                      <input
+                        style={styles.input}
+                        value={form.subtipo_catalogo}
+                        onChange={(e) => setCampo("subtipo_catalogo", e.target.value)}
+                        list="subtipos-mercaderia"
+                        placeholder="Ej: PIÑÓN, EJE DE MAZA, CUBIERTA AUTO..."
+                      />
+                      <datalist id="subtipos-mercaderia">
+                        {(SUBTIPOS_POR_RUBRO[form.rubro] || []).map((subtipo) => (
+                          <option key={subtipo} value={subtipo} />
+                        ))}
+                      </datalist>
+                      <small style={styles.fieldHint}>
+                        Ayuda a filtrar mejor. Se puede corregir despuÃ©s desde catÃ¡logo.
+                      </small>
                     </label>
 
                     <label style={styles.label}>
@@ -1243,6 +1344,11 @@ const styles = {
     gap: "6px",
     fontWeight: 800,
     fontSize: "13px",
+  },
+  fieldHint: {
+    color: "#64748b",
+    fontSize: "12px",
+    fontWeight: 700,
   },
 
   input: {

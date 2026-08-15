@@ -5,6 +5,7 @@ import {
   corregirCapitalSinCaja,
   obtenerCorreccionesPendientes,
   validarCapitalFueraCaja,
+  validarCostoSospechoso,
 } from "../services/correccionesService";
 import { useSession } from "../context/SessionContext";
 import { formatMoney } from "../utils/formatters";
@@ -124,6 +125,35 @@ export default function CorreccionesPage() {
     }
   }
 
+  async function validarCostoCorrecto(item) {
+    const motivo = window.prompt(
+      `Este item quedara validado y no volvera a aparecer como costo sospechoso.\n\nVenta #${item.id_venta} - Item #${item.id}\n${item.descripcion_snapshot}\n\nMotivo:`,
+      "Costo 0 correcto por bonificacion/promocion del proveedor",
+    );
+    if (!motivo) return;
+
+    const confirmar = window.confirm(
+      `No se modificara venta, caja ni stock.\n\nSolo se registrara auditoria indicando que el costo aplicado es correcto/no corregible.\n\nConfirmas la validacion?`,
+    );
+    if (!confirmar) return;
+
+    setCorrigiendoId(item.id);
+    setError("");
+    setOk("");
+    try {
+      await validarCostoSospechoso(item.id, {
+        motivo,
+        id_usuario: usuarioId,
+      });
+      setOk("Costo validado. El item deja de aparecer como sospechoso.");
+      await cargar();
+    } catch (err) {
+      setError(err.message || "No se pudo validar el costo");
+    } finally {
+      setCorrigiendoId(null);
+    }
+  }
+
   return (
     <main style={{ display: "grid", gap: 18, padding: 18 }}>
       <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 14, flexWrap: "wrap" }}>
@@ -181,6 +211,14 @@ export default function CorreccionesPage() {
                 <Link to={`/ventas/${item.id_venta}`} style={secondaryButton}>
                   Ver venta <ExternalLink size={14} />
                 </Link>
+                <button
+                  type="button"
+                  style={primaryButton}
+                  disabled={corrigiendoId === item.id}
+                  onClick={() => validarCostoCorrecto(item)}
+                >
+                  {corrigiendoId === item.id ? "Validando..." : "Validar / omitir"}
+                </button>
               </div>
             }
           />

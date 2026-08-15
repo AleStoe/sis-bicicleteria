@@ -20,6 +20,7 @@ class StockSucursalOut(BaseModel):
 
     id_categoria: int | None = None
     categoria_nombre: str | None = None
+    subtipo_catalogo: str | None = None
     id_marca: int | None = None
     marca_nombre: str | None = None
     id_proveedor: int | None = None
@@ -69,6 +70,7 @@ class DemandaItemOut(BaseModel):
     codigo_barras: str | None = None
     codigo_proveedor: str | None = None
     categoria_nombre: str | None = None
+    subtipo_catalogo: str | None = None
     marca_nombre: str | None = None
     proveedor_nombre: str | None = None
     tipo_operativo: str | None = None
@@ -112,6 +114,7 @@ class PedidoCompraSugeridoItemOut(BaseModel):
     tipo_operativo: str | None = None
     marca_nombre: str | None = None
     categoria_nombre: str | None = None
+    subtipo_catalogo: str | None = None
     stock_fisico: Decimal
     stock_disponible: Decimal
     stock_bajo_umbral: int
@@ -162,6 +165,30 @@ class IngresoStockResponse(BaseModel):
     stock_nuevo: Decimal
     costo_promedio_anterior: Decimal
     costo_promedio_nuevo: Decimal
+
+
+class IngresoStockLoteItemCreate(BaseModel):
+    id_variante: int
+    id_proveedor: int
+    cantidad_ingresada: Decimal = Field(gt=0)
+    costo_productos: Decimal = Field(ge=0)
+    gastos_adicionales: Decimal = Field(ge=0, default=0)
+    observacion: str | None = None
+
+
+class IngresoStockLoteCreate(BaseModel):
+    id_sucursal: int
+    origen_ingreso: str = "manual"
+    observacion: str | None = None
+    id_usuario: int
+    items: list[IngresoStockLoteItemCreate] = Field(min_length=1)
+
+
+class IngresoStockLoteResponse(BaseModel):
+    ok: bool
+    total_items: int
+    total_unidades: Decimal
+    ingresos: list[IngresoStockResponse]
 
 
 class AjusteStockCreate(BaseModel):

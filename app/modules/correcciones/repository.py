@@ -199,6 +199,15 @@ def get_ventas_items_costos_sospechosos(conn, limit: int = 50):
                 LEFT JOIN productos p ON p.id = var.id_producto
                 WHERE vi.tipo_item = 'producto'
                   AND v.estado IN ('creada', 'pagada_parcial', 'pagada_total', 'entregada')
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM auditoria_eventos ae
+                      WHERE ae.origen_tipo = 'venta_item'
+                        AND ae.origen_id = vi.id
+                        AND ae.entidad = 'correccion_operativa'
+                        AND ae.accion = 'correccion_aplicada'
+                        AND ae.metadata->>'tipo' = 'costo_sospechoso_validado'
+                  )
             )
             SELECT *
             FROM items
@@ -217,6 +226,30 @@ def get_ventas_items_costos_sospechosos(conn, limit: int = 50):
             (limit,),
         )
         return cur.fetchall()
+
+
+def get_venta_item_costo_sospechoso_for_update(conn, item_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT
+                vi.id,
+                vi.id_venta,
+                v.id_sucursal,
+                v.estado AS venta_estado,
+                vi.descripcion_snapshot,
+                vi.cantidad,
+                vi.subtotal,
+                vi.costo_unitario_aplicado,
+                COALESCE(vi.costo_unitario_aplicado * vi.cantidad, 0) AS cmv_item
+            FROM venta_items vi
+            INNER JOIN ventas v ON v.id = vi.id_venta
+            WHERE vi.id = %s
+            FOR UPDATE
+            """,
+            (item_id,),
+        )
+        return cur.fetchone()
 
 
 def get_movimiento_capital_correccion_for_update(conn, movimiento_id: int):

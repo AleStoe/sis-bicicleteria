@@ -141,6 +141,57 @@ def test_lista_items_con_costo_sospechoso(client, db_conn, seed_venta_basica):
     assert Decimal(str(item["margen_item"])) < 0
 
 
+def test_valida_costo_sospechoso_y_deja_de_listarlo(client, db_conn, seed_venta_basica):
+    venta = _crear_venta_basica(client, seed_venta_basica)
+    assert venta.status_code == 200, venta.text
+    venta_id = venta.json()["venta_id"]
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE venta_items
+            SET costo_unitario_aplicado = 0
+            WHERE id_venta = %s
+            RETURNING id
+            """,
+            (venta_id,),
+        )
+        item_id = cur.fetchone()["id"]
+    db_conn.commit()
+
+    pendientes = client.get("/correcciones/pendientes")
+    assert pendientes.status_code == 200, pendientes.text
+    assert any(item["id"] == item_id for item in pendientes.json()["costos_sospechosos"])
+
+    response = client.post(
+        f"/correcciones/costos-sospechosos/{item_id}/validar",
+        json={
+            "motivo": "Costo cero correcto por promocion del proveedor",
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["item_id"] == item_id
+
+    pendientes_despues = client.get("/correcciones/pendientes")
+    assert pendientes_despues.status_code == 200, pendientes_despues.text
+    assert not any(item["id"] == item_id for item in pendientes_despues.json()["costos_sospechosos"])
+
+    eventos = get_auditoria_by_entidad(db_conn, AUDITORIA_ENTIDAD_CORRECCION, item_id)
+    auditoria = next(
+        (
+            evento
+            for evento in eventos
+            if evento["accion"] == AUDITORIA_ACCION_CORRECCION_APLICADA
+            and evento["metadata"]["tipo"] == "costo_sospechoso_validado"
+        ),
+        None,
+    )
+    assert auditoria is not None
+    assert auditoria["metadata"]["tipo"] == "costo_sospechoso_validado"
+
+
 def test_corrige_capital_sin_caja_creando_egreso_vinculado(
     client,
     db_conn,

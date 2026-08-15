@@ -106,6 +106,10 @@ export function listarProductos() {
   return apiRequest("/catalogo/productos");
 }
 
+export function listarSubtiposCatalogo(params = {}) {
+  return apiRequest(`/catalogo/subtipos${buildQuery(params)}`);
+}
+
 export function obtenerProducto(productoId) {
   return apiRequest(`/catalogo/productos/${productoId}`);
 }
@@ -176,6 +180,10 @@ export function cambiarReponerStockVariantesMasivo(data) {
 
 export function listarCatalogoPOS(params = {}) {
   return apiRequest(`/catalogo/pos${buildQuery(params)}`);
+}
+
+export function previsualizarCatalogoPdf(params = {}) {
+  return apiRequest(`/catalogo/pdf/preview${buildQuery(params)}`);
 }
 
 export function getCatalogoMayoristaPdfUrl(params = {}) {

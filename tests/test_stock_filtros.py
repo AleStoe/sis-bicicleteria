@@ -21,10 +21,30 @@ def test_stock_listado_acepta_filtros_avanzados(client, seed_venta_basica):
         assert "producto_nombre" in item
         assert "stock_disponible" in item
         assert "categoria_nombre" in item
+        assert "subtipo_catalogo" in item
         assert "tipo_operativo" in item
         assert "capital_inmovilizado" in item
         assert "ultima_venta" in item
         assert "dias_sin_movimiento" in item
+
+
+def test_stock_listado_filtra_por_variante_exacta(client, seed_venta_basica):
+    base = client.get("/stock/", params={"limit": 5})
+    assert base.status_code == 200, base.text
+    data = base.json()
+    assert data
+
+    variante_id = data[0]["variante_id"]
+    response = client.get("/stock/", params={"id_variante": variante_id})
+    assert response.status_code == 200, response.text
+    filtrado = response.json()
+
+    assert filtrado
+    assert {item["variante_id"] for item in filtrado} == {variante_id}
+
+    resumen = client.get("/stock/resumen", params={"id_variante": variante_id})
+    assert resumen.status_code == 200, resumen.text
+    assert resumen.json()["total_items"] == len(filtrado)
 
 
 def test_stock_resumen_acepta_filtros_avanzados(client, seed_venta_basica):
@@ -46,7 +66,7 @@ def test_stock_resumen_acepta_filtros_avanzados(client, seed_venta_basica):
 
 
 def test_stock_ordenamiento_backend(client, seed_venta_basica):
-    for ordenar_por in ["producto", "stock", "fisico", "capital", "ultima_venta", "categoria", "marca", "proveedor"]:
+    for ordenar_por in ["producto", "stock", "fisico", "capital", "ultima_venta", "categoria", "subtipo", "marca", "proveedor"]:
         response = client.get(
             "/stock/",
             params={
@@ -65,6 +85,89 @@ def test_stock_parametros_invalidos(client, seed_venta_basica):
 
     response = client.get("/stock/", params={"orden": "sideways"})
     assert response.status_code == 422
+
+
+def test_stock_filtra_por_subtipo_catalogo(client, db_conn, seed_venta_basica):
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO productos (
+                id_categoria,
+                nombre,
+                rubro,
+                subtipo_catalogo,
+                tipo_item,
+                stockeable,
+                serializable,
+                activo
+            )
+            VALUES
+                (%s, 'Stock filtro eje de maza', 'REPUESTOS', 'EJE DE MAZA', 'producto', TRUE, FALSE, TRUE),
+                (%s, 'Stock filtro cierre rapido', 'REPUESTOS', 'CIERRE RÁPIDO', 'producto', TRUE, FALSE, TRUE)
+            RETURNING id
+            """,
+            (seed_venta_basica["categoria_id"], seed_venta_basica["categoria_id"]),
+        )
+        producto_eje_id = cur.fetchone()["id"]
+        producto_cierre_id = cur.fetchone()["id"]
+
+        cur.execute(
+            """
+            INSERT INTO variantes (
+                id_producto,
+                nombre_variante,
+                sku,
+                codigo_proveedor,
+                precio_minorista,
+                precio_mayorista,
+                activo
+            )
+            VALUES
+                (%s, 'UNICA', 'STOCK-SUBTIPO-EJE', 'STOCK-SUBTIPO-EJE', 1000, 800, TRUE),
+                (%s, 'UNICA', 'STOCK-SUBTIPO-CIERRE', 'STOCK-SUBTIPO-CIERRE', 1000, 800, TRUE)
+            RETURNING id
+            """,
+            (producto_eje_id, producto_cierre_id),
+        )
+        variante_eje_id = cur.fetchone()["id"]
+        variante_cierre_id = cur.fetchone()["id"]
+
+        cur.execute(
+            """
+            INSERT INTO stock_sucursal (
+                id_sucursal,
+                id_variante,
+                stock_fisico,
+                stock_reservado,
+                stock_vendido_pendiente_entrega
+            )
+            VALUES
+                (%s, %s, 3, 0, 0),
+                (%s, %s, 3, 0, 0)
+            """,
+            (
+                seed_venta_basica["sucursal_id"],
+                variante_eje_id,
+                seed_venta_basica["sucursal_id"],
+                variante_cierre_id,
+            ),
+        )
+    db_conn.commit()
+
+    response = client.get(
+        "/stock/",
+        params={
+            "q": "Stock filtro",
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "subtipo_catalogo": "EJE DE MAZA",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert [item["variante_id"] for item in data] == [variante_eje_id]
+    assert data[0]["subtipo_catalogo"] == "EJE DE MAZA"
+    assert variante_cierre_id not in [item["variante_id"] for item in data]
 
 
 def test_variante_sin_fila_stock_aparece_y_permite_primer_ingreso(

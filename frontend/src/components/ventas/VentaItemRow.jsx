@@ -3,6 +3,7 @@ import VentaItemPrecioPanel from "./item/VentaItemPrecioPanel";
 import VentaItemBonificacionPanel from "./item/VentaItemBonificacionPanel";
 import VentaItemSerializadaPanel from "./item/VentaItemSerializadaPanel";
 import { esVarianteUnica } from "../../utils/productPresentation";
+import { buildImageUrl } from "../../utils/images";
 
 function formatMoney(value) {
   const n = Number(value || 0);
@@ -142,6 +143,18 @@ export default function VentaItemRow({
     <div style={styles.row}>
       <div style={styles.main}>
         <div style={styles.header}>
+          <div style={styles.imageBox}>
+            {item.imagen_principal ? (
+              <img
+                src={buildImageUrl(item.imagen_principal)}
+                alt={descripcion}
+                style={styles.image}
+              />
+            ) : (
+              <span style={styles.imagePlaceholder}>+</span>
+            )}
+          </div>
+
           <div style={styles.productInfo}>
             <div style={styles.title}>{descripcion}</div>
             <div style={styles.subtitle}>{codigo}</div>
@@ -218,6 +231,7 @@ export default function VentaItemRow({
           <div style={styles.qty}>
             <button
               type="button"
+              style={styles.qtyBtn}
               onClick={() =>
                 onCambiarCantidad?.(item.line_id, Number(item.cantidad || 1) - 1)
               }
@@ -229,10 +243,25 @@ export default function VentaItemRow({
               -
             </button>
 
-            <span>{item.cantidad}</span>
+            <input
+              value={String(item.cantidad ?? 1)}
+              inputMode="decimal"
+              disabled={
+                item.serializable &&
+                Boolean(item.id_bicicleta_serializada)
+              }
+              onFocus={(event) => event.target.select()}
+              onChange={(event) => {
+                const value = event.target.value.replace(",", ".");
+                if (value === "") return;
+                onCambiarCantidad?.(item.line_id, value);
+              }}
+              style={styles.qtyInput}
+            />
 
             <button
               type="button"
+              style={styles.qtyBtn}
               onClick={() =>
                 onCambiarCantidad?.(item.line_id, Number(item.cantidad || 1) + 1)
               }
@@ -355,9 +384,11 @@ export default function VentaItemRow({
 
 const styles = {
   row: {
-    borderBottom: "1px solid #e5e7eb",
-    padding: "12px 10px",
+    border: "1px solid #d8e0ea",
+    borderRadius: 14,
+    padding: 10,
     background: "white",
+    boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
   },
   main: {
     display: "grid",
@@ -365,9 +396,34 @@ const styles = {
   },
   header: {
     display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) 140px",
+    gridTemplateColumns: "54px minmax(0, 1fr) 118px",
     gap: 10,
     alignItems: "start",
+  },
+  imageBox: {
+    width: 54,
+    height: 50,
+    border: "1px solid #e2e8f0",
+    borderRadius: 10,
+    background: "#fff",
+    display: "grid",
+    placeItems: "center",
+    overflow: "hidden",
+  },
+  image: {
+    width: "100%",
+    height: "100%",
+    objectFit: "contain",
+  },
+  imagePlaceholder: {
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    background: "#fff7ed",
+    color: "#ea580c",
+    display: "grid",
+    placeItems: "center",
+    fontWeight: 1000,
   },
   productInfo: {
     minWidth: 0,
@@ -464,8 +520,34 @@ const styles = {
   qty: {
     display: "flex",
     alignItems: "center",
-    gap: 6,
+    gap: 0,
     marginRight: 4,
+    border: "1px solid #d0d5dd",
+    borderRadius: 8,
+    overflow: "hidden",
+    background: "#f8fafc",
+  },
+  qtyInput: {
+    width: 44,
+    height: 28,
+    border: 0,
+    borderLeft: "1px solid #d0d5dd",
+    borderRight: "1px solid #d0d5dd",
+    background: "white",
+    textAlign: "center",
+    fontWeight: 950,
+    fontSize: 14,
+    color: "#0f172a",
+    outline: "none",
+  },
+  qtyBtn: {
+    width: 30,
+    height: 28,
+    border: 0,
+    background: "#f1f5f9",
+    color: "#0f172a",
+    fontWeight: 950,
+    cursor: "pointer",
   },
   actionBtn: {
     border: "1px solid #d0d5dd",

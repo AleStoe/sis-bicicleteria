@@ -19,3 +19,10 @@ export function validarCapitalFueraCaja(movimientoId, payload) {
     body: JSON.stringify(payload),
   });
 }
+
+export function validarCostoSospechoso(itemId, payload) {
+  return apiRequest(`${BASE}/costos-sospechosos/${itemId}/validar`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}

@@ -27,6 +27,16 @@ const CATEGORIAS_SUGERIDAS = [
   "Indumentaria",
 ];
 
+const RUBROS_DISPONIBLES = [
+  { nombre: "BICICLETAS", descripcion: "Bicicletas completas y variantes serializables." },
+  { nombre: "REPUESTOS", descripcion: "Piezas, cubiertas, camaras y componentes stockeables." },
+  { nombre: "ACCESORIOS", descripcion: "Accesorios de venta directa para bici o local." },
+  { nombre: "INDUMENTARIA", descripcion: "Ropa, protecciones y articulos personales." },
+  { nombre: "HERRAMIENTAS", descripcion: "Herramientas, extractores, llaves y kits de trabajo." },
+  { nombre: "CUBIERTAS AUTO", descripcion: "Cubiertas de auto separadas del catalogo de bicicletas." },
+  { nombre: "SERVICIOS", descripcion: "Mano de obra y servicios de taller." },
+];
+
 function normalizarTexto(valor) {
   return String(valor || "")
     .trim()
@@ -191,6 +201,26 @@ export default function CategoriasCatalogoPage() {
         <Metric label="Total" value={categorias.length} />
         <Metric label="Activas" value={activas} tone="ok" />
         <Metric label="Inactivas" value={inactivas} tone={inactivas > 0 ? "warning" : "muted"} />
+        <Metric label="Rubros" value={RUBROS_DISPONIBLES.length} tone="muted" />
+      </section>
+
+      <section style={styles.card}>
+        <div style={styles.sectionHeader}>
+          <div>
+            <h2 style={styles.sectionTitle}>Rubros disponibles</h2>
+            <p style={styles.muted}>
+              Se eligen al cargar o editar productos. No se crean desde esta pantalla para mantener reportes consistentes.
+            </p>
+          </div>
+        </div>
+        <div style={styles.rubroGrid}>
+          {RUBROS_DISPONIBLES.map((rubro) => (
+            <div key={rubro.nombre} style={styles.rubroCard}>
+              <strong>{rubro.nombre}</strong>
+              <span>{rubro.descripcion}</span>
+            </div>
+          ))}
+        </div>
       </section>
 
       <main style={styles.layout}>
@@ -405,6 +435,20 @@ const styles = {
     borderRadius: 20,
     padding: 16,
     boxShadow: "0 14px 30px rgba(15,23,42,.06)",
+  },
+  rubroGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+    gap: 10,
+  },
+  rubroCard: {
+    display: "grid",
+    gap: 5,
+    border: "1px solid #fed7aa",
+    borderRadius: 14,
+    padding: 12,
+    background: "#fff7ed",
+    color: "#0f172a",
   },
   sectionHeader: {
     display: "flex",

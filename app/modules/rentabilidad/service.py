@@ -13,6 +13,7 @@ from .repository import (
     get_cierre_by_periodo,
     get_cierre_distribuciones,
     get_cierres,
+    get_cobros_rentabilidad_periodo_por_venta,
     get_detalle_rentabilidad_diaria,
     get_gastos_periodo,
     get_bonificaciones_garantias,
@@ -21,6 +22,7 @@ from .repository import (
     get_regla_by_id,
     get_regla_items,
     get_reglas,
+    get_recuperacion_caja_periodo,
     get_ventas_rentabilidad,
     insert_cierre,
     insert_cierre_distribucion,
@@ -381,6 +383,18 @@ def calcular_rentabilidad_diaria(
             fecha,
             id_sucursal=id_sucursal,
         )
+        caja_dia = get_recuperacion_caja_periodo(
+            conn,
+            fecha,
+            fecha,
+            id_sucursal=id_sucursal,
+        )
+        cobros_ventas = get_cobros_rentabilidad_periodo_por_venta(
+            conn,
+            fecha,
+            fecha,
+            id_sucursal=id_sucursal,
+        )
 
         grupos = {}
         for detalle in detalles:
@@ -554,37 +568,22 @@ def calcular_rentabilidad_diaria(
             (Decimal(str(item["costo_total"] or 0)) for item in detalles),
             Decimal("0"),
         )
-        ventas_cobradas = sum(
+        ventas_cobradas_items = sum(
             (Decimal(str(item["venta_cobrada"] or 0)) for item in detalles),
             Decimal("0"),
         )
-        cobrado_comercial_reconocido = sum(
-            (
-                Decimal(str(item["cobrado_comercial_reconocido"] or 0))
-                for item in detalles
-            ),
-            Decimal("0"),
+        saldo_pendiente_por_cobrar = ventas_netas - ventas_cobradas_items
+        ventas_cobradas = Decimal(
+            str(caja_dia["cobrado_comercial_reconocido"] or 0)
         )
-        saldo_pendiente_por_cobrar = ventas_netas - ventas_cobradas
-        cmv_cobrado = sum(
-            (Decimal(str(item["costo_cobrado"] or 0)) for item in detalles),
-            Decimal("0"),
-        )
-        capital_recuperado = sum(
-            (Decimal(str(item["capital_recuperado"] or 0)) for item in detalles),
-            Decimal("0"),
-        )
-        capital_inmovilizado = sum(
-            (
-                Decimal(str(item["capital_inmovilizado"] or 0))
-                for item in detalles
-            ),
-            Decimal("0"),
-        )
-        utilidad_liberada = sum(
-            (Decimal(str(item["utilidad_liberada"] or 0)) for item in detalles),
-            Decimal("0"),
-        )
+        cobrado_comercial_reconocido = ventas_cobradas
+        financiacion_cobrada = Decimal(str(caja_dia["financiacion_cobrada"] or 0))
+        costos_financieros = Decimal(str(caja_dia["costos_financieros"] or 0))
+        ingreso_real_neto = Decimal(str(caja_dia["ingreso_real_neto"] or 0))
+        cmv_cobrado = Decimal(str(caja_dia["capital_recuperado"] or 0))
+        capital_recuperado = cmv_cobrado
+        capital_inmovilizado = Decimal(str(caja_dia["capital_inmovilizado"] or 0))
+        utilidad_liberada = Decimal(str(caja_dia["utilidad_liberada"] or 0))
         margen_cobrado = sum(
             (Decimal(str(item["margen_cobrado"] or 0)) for item in detalles),
             Decimal("0"),
@@ -635,6 +634,7 @@ def calcular_rentabilidad_diaria(
                 if ventas_cobradas > 0
                 else Decimal("0")
             ),
+            "cobros_ventas": cobros_ventas,
             "articulos": salida_articulos,
         }
     finally:

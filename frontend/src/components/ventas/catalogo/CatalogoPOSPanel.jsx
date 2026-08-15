@@ -16,6 +16,7 @@ export default function CatalogoPOSPanel({
   productoSeleccionadoId,
   variantesEnCarrito,
   isMobile = false,
+  searchInputRef,
 }) {
   const categoriasVisibles = categorias.filter((categoria) => {
     return categoria.nombre?.trim().toLowerCase() !== "servicios";
@@ -37,6 +38,7 @@ export default function CatalogoPOSPanel({
     <section style={{ ...leftPanelStyle, ...(isMobile ? mobileLeftPanelStyle : {}) }}>
       <div style={{ ...searchRowStyle, ...(isMobile ? mobileSearchRowStyle : {}) }}>
         <input
+          ref={searchInputRef}
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           onKeyDown={onBuscarEnter}

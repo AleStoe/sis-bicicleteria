@@ -5,6 +5,7 @@ import CheckoutClienteVentaCard from "../components/ventas/checkout/CheckoutClie
 import CheckoutResumenLateral from "../components/ventas/checkout/CheckoutResumenLateral";
 import { ConfirmModal } from "../components/ui/ConfirmModal";
 import { crearVenta, entregarVenta } from "../services/ventasService";
+import { convertirPedidoCliente } from "../services/pedidosClienteService";
 import { listarDeudas } from "../services/deudasService";
 import { buildEntregaVentaPayload, buildVentaPayload } from "../builders/ventasPayloadBuilder";
 import { validarVentaAntesDeCrear } from "../validators/ventasValidator";
@@ -130,6 +131,11 @@ export default function NuevaVentaCheckoutPage() {
   }
 
   function volverAlCarrito() {
+    if (draft?.pedidoClienteId) {
+      navigate(`/pedidos-cliente/${draft.pedidoClienteId}`);
+      return;
+    }
+
     navigate("/ventas/nueva", {
       state: {
         restaurarVentaDraft: true,
@@ -225,6 +231,20 @@ export default function NuevaVentaCheckoutPage() {
             items: draft.items,
           })
         );
+      }
+
+      if (draft.pedidoClienteId) {
+        try {
+          await convertirPedidoCliente(draft.pedidoClienteId, {
+            id_venta: resultado.venta_id,
+            id_usuario: draft.idUsuario ?? usuarioId,
+          });
+        } catch (err) {
+          toast.warning?.(
+            err.message ||
+              "La venta se creó, pero no se pudo cerrar automáticamente el pedido."
+          );
+        }
       }
 
       borrarVentaDraftGuardado({

@@ -11,6 +11,7 @@ from .service import (
     obtener_pedido_compra_sugerido,
     obtener_analisis_demanda,
     crear_ingreso_stock,
+    crear_ingreso_stock_lote,
     crear_ajuste_stock,
 )
 from .schema import (
@@ -20,6 +21,8 @@ from .schema import (
     DemandaResumenOut,
     IngresoStockCreate,
     IngresoStockResponse,
+    IngresoStockLoteCreate,
+    IngresoStockLoteResponse,
     AjusteStockCreate,
     AjusteStockResponse,
 )
@@ -38,8 +41,10 @@ def _puede_ver_costos(usuario: CurrentUser) -> bool:
 
 def _stock_filtros(
     q: str | None = None,
+    id_variante: int | None = None,
     id_sucursal: int | None = None,
     id_categoria: int | None = None,
+    subtipo_catalogo: str | None = None,
     id_marca: int | None = None,
     id_proveedor: int | None = None,
     tipo_operativo: str | None = None,
@@ -54,8 +59,10 @@ def _stock_filtros(
 ):
     return {
         "q": q,
+        "id_variante": id_variante,
         "id_sucursal": id_sucursal,
         "id_categoria": id_categoria,
+        "subtipo_catalogo": subtipo_catalogo,
         "id_marca": id_marca,
         "id_proveedor": id_proveedor,
         "tipo_operativo": tipo_operativo,
@@ -73,8 +80,10 @@ def _stock_filtros(
 @router.get("/", response_model=list[StockSucursalOut])
 def stock(
     q: str | None = Query(default=None),
+    id_variante: int | None = Query(default=None, gt=0),
     id_sucursal: int | None = Query(default=None, gt=0),
     id_categoria: int | None = Query(default=None, gt=0),
+    subtipo_catalogo: str | None = Query(default=None),
     id_marca: int | None = Query(default=None, gt=0),
     id_proveedor: int | None = Query(default=None, gt=0),
     tipo_operativo: str | None = Query(default=None, pattern="^(todos|bicicleta|repuesto|accesorio|producto|no_bicicletas)$"),
@@ -82,7 +91,7 @@ def stock(
     reponer_stock: bool | None = Query(default=None),
     stock_bajo_umbral: int = Query(default=2, ge=0, le=999999),
     dias_sin_movimiento: int | None = Query(default=None, ge=1, le=3650),
-    ordenar_por: str = Query(default="producto", pattern="^(producto|variante|stock|fisico|capital|ultima_venta|categoria|marca|proveedor)$"),
+    ordenar_por: str = Query(default="producto", pattern="^(producto|variante|stock|fisico|capital|ultima_venta|categoria|subtipo|marca|proveedor)$"),
     orden: str = Query(default="asc", pattern="^(asc|desc)$"),
     limit: int = Query(default=500, ge=1, le=2000),
     offset: int = Query(default=0, ge=0),
@@ -91,8 +100,10 @@ def stock(
     items = listar_stock(
         _stock_filtros(
             q=q,
+            id_variante=id_variante,
             id_sucursal=id_sucursal,
             id_categoria=id_categoria,
+            subtipo_catalogo=subtipo_catalogo,
             id_marca=id_marca,
             id_proveedor=id_proveedor,
             tipo_operativo=tipo_operativo,
@@ -122,8 +133,10 @@ def stock(
 @router.get("/resumen", response_model=StockResumenOut)
 def stock_resumen(
     q: str | None = Query(default=None),
+    id_variante: int | None = Query(default=None, gt=0),
     id_sucursal: int | None = Query(default=None, gt=0),
     id_categoria: int | None = Query(default=None, gt=0),
+    subtipo_catalogo: str | None = Query(default=None),
     id_marca: int | None = Query(default=None, gt=0),
     id_proveedor: int | None = Query(default=None, gt=0),
     tipo_operativo: str | None = Query(default=None, pattern="^(todos|bicicleta|repuesto|accesorio|producto|no_bicicletas)$"),
@@ -136,8 +149,10 @@ def stock_resumen(
     resumen = obtener_resumen_stock(
         _stock_filtros(
             q=q,
+            id_variante=id_variante,
             id_sucursal=id_sucursal,
             id_categoria=id_categoria,
+            subtipo_catalogo=subtipo_catalogo,
             id_marca=id_marca,
             id_proveedor=id_proveedor,
             tipo_operativo=tipo_operativo,
@@ -204,6 +219,16 @@ def analisis_demanda(
 def crear_ingreso(payload: IngresoStockCreate):
     try:
         return crear_ingreso_stock(payload.model_dump())
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
+
+
+@router.post("/ingresos/lote", response_model=IngresoStockLoteResponse)
+def crear_ingreso_lote(payload: IngresoStockLoteCreate):
+    try:
+        return crear_ingreso_stock_lote(payload.model_dump())
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

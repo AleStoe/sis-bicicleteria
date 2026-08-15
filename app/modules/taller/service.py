@@ -1403,6 +1403,21 @@ def _format_money_mensaje(value) -> str:
 
     return f"${monto:,.0f}".replace(",", ".")
 
+def _build_total_bloque_retiro(total) -> str:
+    try:
+        total_float = float(total or 0)
+    except (TypeError, ValueError):
+        total_float = 0
+
+    if total_float <= 0:
+        return f"*Total:* {_format_money_mensaje(total_float)}\n\n"
+
+    total_contado = total_float * 0.9
+    return (
+        f"*Total lista:* {_format_money_mensaje(total_float)}\n"
+        f"*Efectivo / transferencia (10% OFF):* {_format_money_mensaje(total_contado)}\n\n"
+    )
+
 def _build_mensaje_lista_retiro(orden, conn, items, notas_cliente):
     config = obtener_configuracion_negocio()
     cliente = _resolver_nombre_visible_cliente(orden)
@@ -1443,7 +1458,7 @@ def _build_mensaje_lista_retiro(orden, conn, items, notas_cliente):
 
     total_bloque = ""
     if config.get("whatsapp_retiro_mostrar_total"):
-        total_bloque = f"*Total:* {_format_money_mensaje(orden.get('total_final'))}\n\n"
+        total_bloque = _build_total_bloque_retiro(orden.get("total_final"))
 
     variables = {
         **config,

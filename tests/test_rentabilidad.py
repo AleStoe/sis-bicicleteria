@@ -158,12 +158,14 @@ def test_rentabilidad_mensual_usa_total_final_de_ventas(client, db_conn, seed_ve
                 monto_costo_financiero,
                 monto_neto_liquidado,
                 estado,
-                id_usuario
+                id_usuario,
+                fecha
             )
             VALUES (
                 %s, 'venta', %s, 'efectivo',
                 22000, 24440, 2440, 0,
-                0, 22000, 'confirmado', %s
+                0, 22000, 'confirmado', %s,
+                '2026-06-10 10:00:00-03'
             )
             """,
             (
@@ -237,12 +239,14 @@ def test_rentabilidad_diaria_detalla_ganancia_por_articulo(
                 monto_costo_financiero,
                 monto_neto_liquidado,
                 estado,
-                id_usuario
+                id_usuario,
+                fecha
             )
             VALUES (
                 %s, 'venta', %s, 'efectivo',
                 44000, 48880, 4880, 0,
-                0, 44000, 'confirmado', %s
+                0, 44000, 'confirmado', %s,
+                '2026-07-04 10:10:00-03'
             )
             """,
             (
@@ -351,12 +355,14 @@ def test_rentabilidad_parcial_menor_al_cmv_no_libera_utilidad(
                 monto_costo_financiero,
                 monto_neto_liquidado,
                 estado,
-                id_usuario
+                id_usuario,
+                fecha
             )
             VALUES (
                 %s, 'venta', %s, 'transferencia',
                 250000, 250000, 0, 0,
-                0, 250000, 'confirmado', %s
+                0, 250000, 'confirmado', %s,
+                '2026-07-06 10:10:00-03'
             )
             """,
             (
@@ -379,7 +385,7 @@ def test_rentabilidad_parcial_menor_al_cmv_no_libera_utilidad(
     assert _dec(mensual_data["cobrado_comercial_reconocido"]) == Decimal("250000.00")
     assert _dec(mensual_data["saldo_pendiente_por_cobrar"]) == Decimal("400000.00")
     assert _dec(mensual_data["cmv_neto"]) == Decimal("500000.00")
-    assert _dec(mensual_data["cmv_cobrado"]) == Decimal("192307.69")
+    assert _dec(mensual_data["cmv_cobrado"]) == Decimal("250000.00")
     assert _dec(mensual_data["capital_recuperado"]) == Decimal("250000.00")
     assert _dec(mensual_data["capital_inmovilizado"]) == Decimal("250000.00")
     assert _dec(mensual_data["margen_bruto"]) == Decimal("150000.00")
@@ -527,12 +533,14 @@ def test_rentabilidad_parcial_mayor_al_cmv_libera_solo_excedente(
                 monto_costo_financiero,
                 monto_neto_liquidado,
                 estado,
-                id_usuario
+                id_usuario,
+                fecha
             )
             VALUES (
                 %s, 'venta', %s, 'transferencia',
                 500000, 500000, 0, 0,
-                0, 500000, 'confirmado', %s
+                0, 500000, 'confirmado', %s,
+                '2026-07-08 10:10:00-03'
             )
             """,
             (
@@ -559,6 +567,165 @@ def test_rentabilidad_parcial_mayor_al_cmv_libera_solo_excedente(
     assert _dec(data["utilidad_liberada"]) == Decimal("80000.00")
     assert _dec(data["utilidad_pendiente"]) == Decimal("150000.00")
     assert _dec(data["margen_real"]) == Decimal("80000.00")
+
+
+def test_rentabilidad_libera_utilidad_en_mes_del_cobro_posterior(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    crear = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 1,
+                    "precio_unitario_manual": 650000,
+                    "motivo_precio_manual": "Precio test cobro posterior",
+                }
+            ],
+        },
+    )
+    assert crear.status_code == 200, crear.text
+    venta_id = crear.json()["venta_id"]
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE venta_items
+            SET precio_lista = 650000,
+                precio_final = 650000,
+                subtotal = 650000,
+                costo_unitario_aplicado = 420000
+            WHERE id_venta = %s
+            """,
+            (venta_id,),
+        )
+        cur.execute(
+            """
+            UPDATE ventas
+            SET fecha = '2026-07-31 17:00:00-03',
+                estado = 'entregada',
+                subtotal_base = 650000,
+                descuento_total = 0,
+                recargo_total = 0,
+                total_final = 650000,
+                saldo_pendiente = 0
+            WHERE id = %s
+            """,
+            (venta_id,),
+        )
+        cur.execute(
+            """
+            INSERT INTO pagos (
+                id_cliente,
+                origen_tipo,
+                origen_id,
+                medio_pago,
+                monto_total_cobrado,
+                monto_base_aplicado,
+                monto_descuento_aplicado,
+                monto_recargo_aplicado,
+                monto_costo_financiero,
+                monto_neto_liquidado,
+                estado,
+                id_usuario,
+                fecha
+            )
+            VALUES (
+                %s, 'venta', %s, 'efectivo',
+                250000, 250000, 0, 0,
+                0, 250000, 'confirmado', %s,
+                '2026-07-31 17:05:00-03'
+            )
+            """,
+            (
+                seed_venta_basica["cliente_id"],
+                venta_id,
+                seed_venta_basica["usuario_id"],
+            ),
+        )
+        cur.execute(
+            """
+            INSERT INTO pagos (
+                id_cliente,
+                origen_tipo,
+                origen_id,
+                medio_pago,
+                monto_total_cobrado,
+                monto_base_aplicado,
+                monto_descuento_aplicado,
+                monto_recargo_aplicado,
+                monto_costo_financiero,
+                monto_neto_liquidado,
+                estado,
+                id_usuario,
+                fecha
+            )
+            VALUES (
+                %s, 'venta', %s, 'efectivo',
+                400000, 400000, 0, 0,
+                0, 400000, 'confirmado', %s,
+                '2026-08-04 10:00:00-03'
+            )
+            """,
+            (
+                seed_venta_basica["cliente_id"],
+                venta_id,
+                seed_venta_basica["usuario_id"],
+            ),
+        )
+    db_conn.commit()
+
+    julio = client.get(
+        "/rentabilidad/mensual",
+        params={"periodo_mes": "2026-07-01"},
+    )
+    assert julio.status_code == 200, julio.text
+    julio_data = julio.json()
+
+    assert _dec(julio_data["venta_comercial"]) == Decimal("650000.00")
+    assert _dec(julio_data["cmv_comercial"]) == Decimal("420000.00")
+    assert _dec(julio_data["margen_esperado"]) == Decimal("230000.00")
+    assert _dec(julio_data["cobrado_comercial_reconocido"]) == Decimal("250000.00")
+    assert _dec(julio_data["capital_recuperado"]) == Decimal("250000.00")
+    assert _dec(julio_data["utilidad_liberada"]) == Decimal("0.00")
+    assert _dec(julio_data["resultado_distribuible"]) == Decimal("0.00")
+
+    agosto = client.get(
+        "/rentabilidad/mensual",
+        params={"periodo_mes": "2026-08-01"},
+    )
+    assert agosto.status_code == 200, agosto.text
+    agosto_data = agosto.json()
+
+    assert _dec(agosto_data["venta_comercial"]) == Decimal("0.00")
+    assert _dec(agosto_data["cobrado_comercial_reconocido"]) == Decimal("400000.00")
+    assert _dec(agosto_data["capital_recuperado"]) == Decimal("170000.00")
+    assert _dec(agosto_data["utilidad_liberada"]) == Decimal("230000.00")
+    assert _dec(agosto_data["resultado_distribuible"]) == Decimal("230000.00")
+
+    diaria_agosto = client.get(
+        "/rentabilidad/diaria",
+        params={
+            "fecha": "2026-08-04",
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+        },
+    )
+    assert diaria_agosto.status_code == 200, diaria_agosto.text
+    diaria_data = diaria_agosto.json()
+
+    assert _dec(diaria_data["venta_comercial"]) == Decimal("0.00")
+    assert _dec(diaria_data["cobrado_comercial_reconocido"]) == Decimal("400000.00")
+    assert _dec(diaria_data["ventas_cobradas"]) == Decimal("400000.00")
+    assert _dec(diaria_data["capital_recuperado"]) == Decimal("170000.00")
+    assert _dec(diaria_data["cmv_cobrado"]) == Decimal("170000.00")
+    assert _dec(diaria_data["utilidad_liberada"]) == Decimal("230000.00")
+    assert _dec(diaria_data["margen_real"]) == Decimal("230000.00")
 
 
 def test_financiacion_tarjeta_no_se_cuenta_como_ganancia(
@@ -704,13 +871,15 @@ def test_rentabilidad_descuenta_comision_y_muestra_margen_real(
                 monto_costo_financiero,
                 monto_neto_liquidado,
                 estado,
-                id_usuario
+                id_usuario,
+                fecha
             )
             VALUES (
                 %s, 'venta', %s, 'tarjeta',
                 34440, 24440, 0, 10000,
                 11.6144, 4000, 30440,
-                'confirmado', %s
+                'confirmado', %s,
+                '2026-07-04 12:10:00-03'
             )
             """,
             (
@@ -803,12 +972,13 @@ def test_venta_mixta_usa_neto_tarjeta_congelado_para_margen_real(
                 monto_total_cobrado, monto_base_aplicado,
                 monto_descuento_aplicado, monto_recargo_aplicado,
                 monto_costo_financiero, monto_neto_liquidado,
-                estado, id_usuario
+                estado, id_usuario, fecha
             )
             VALUES (
                 %s, 'venta', %s, 'efectivo',
                 89999.93, 99999.92, 9999.99, 0,
-                0, 89999.93, 'confirmado', %s
+                0, 89999.93, 'confirmado', %s,
+                '2026-07-04 20:25:00-03'
             )
             RETURNING id
             """,
@@ -826,12 +996,13 @@ def test_venta_mixta_usa_neto_tarjeta_congelado_para_margen_real(
                 monto_total_cobrado, monto_base_aplicado,
                 monto_descuento_aplicado, monto_recargo_aplicado,
                 monto_costo_financiero, monto_neto_liquidado,
-                estado, id_usuario
+                estado, id_usuario, fecha
             )
             VALUES (
                 %s, 'venta', %s, 'tarjeta',
                 398333.03, 333333.08, 0, 64999.95,
-                78981.03, 319352.00, 'confirmado', %s
+                78981.03, 319352.00, 'confirmado', %s,
+                '2026-07-04 20:26:00-03'
             )
             RETURNING id
             """,

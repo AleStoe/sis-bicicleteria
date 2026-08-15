@@ -115,6 +115,7 @@ function dateShort(value) {
 export default function DashboardPage() {
   const isMobile = useMediaQuery("(max-width: 760px)");
   const isNarrow = useMediaQuery("(max-width: 1000px)");
+  const [vista, setVista] = useState("operativa");
   const [periodoMes, setPeriodoMes] = useState(mesActual());
   const [diasSinMovimiento, setDiasSinMovimiento] = useState(90);
   const [umbralRepuestosCriticos, setUmbralRepuestosCriticos] = useState(2);
@@ -153,6 +154,7 @@ export default function DashboardPage() {
   const ventasChartData = data?.ventas_ultimos_meses || [];
   const alertas = data?.alertas_operativas || [];
   const resultadoHoy = data?.resultado_hoy;
+  const isOperativa = vista === "operativa";
 
   return (
     <div style={{ padding: isMobile ? 12 : 24, display: "grid", gap: isMobile ? 14 : 20, minWidth: 0 }}>
@@ -160,10 +162,13 @@ export default function DashboardPage() {
         <div style={{ minWidth: 0 }}>
           <h1 style={{ margin: 0, color: "#101828", fontSize: isMobile ? 26 : 32, lineHeight: 1.1 }}>Dashboard Administrativo</h1>
           <p style={{ margin: "6px 0 0", color: "#667085" }}>
-            Lectura ejecutiva de ventas, resultado, caja y pendientes del negocio.
+            {isOperativa
+              ? "Vista de trabajo para resolver alertas, pendientes, caja, taller y stock."
+              : "Vista ejecutiva de ventas, resultado, caja y decisiones del negocio."}
           </p>
         </div>
         <div style={{ display: isMobile ? "grid" : "flex", gridTemplateColumns: "1fr", gap: 8, width: isMobile ? "100%" : undefined }}>
+          <DashboardViewSwitch vista={vista} onChange={setVista} isMobile={isMobile} />
           <label style={{ display: "grid", gap: 4, color: "#475467", fontSize: 12, fontWeight: 800 }}>
             Mes analizado
             <input
@@ -183,6 +188,24 @@ export default function DashboardPage() {
       {error && <div style={{ ...card, padding: 14, borderColor: "#fecaca", color: "#b91c1c", background: "#fef2f2" }}>{error}</div>}
 
       <DashboardHero k={k} alertas={alertas} loading={loading} isMobile={isMobile} />
+
+      {isOperativa ? (
+        <VistaOperativa
+          k={k}
+          data={data}
+          alertas={alertas}
+          loading={loading}
+          isMobile={isMobile}
+          isNarrow={isNarrow}
+          diasSinMovimiento={diasSinMovimiento}
+          setDiasSinMovimiento={setDiasSinMovimiento}
+          umbralRepuestosCriticos={umbralRepuestosCriticos}
+          setUmbralRepuestosCriticos={setUmbralRepuestosCriticos}
+          topProductosLimit={topProductosLimit}
+          setTopProductosLimit={setTopProductosLimit}
+        />
+      ) : (
+        <>
 
       <SectionHeader
         eyebrow="Resultado"
@@ -324,6 +347,8 @@ export default function DashboardPage() {
       <section style={{ display: "grid", gridTemplateColumns: isNarrow ? "1fr" : "1fr 1fr", gap: isMobile ? 12 : 18, alignItems: "start", minWidth: 0 }}>
         <ProductosSinMovimientoCard rows={data?.productos_sin_movimiento || []} loading={loading} />
       </section>
+        </>
+      )}
 
       {productosVendidosAbierto ? (
         <ProductosVendidosModal
@@ -342,6 +367,178 @@ export default function DashboardPage() {
         />
       ) : null}
     </div>
+  );
+}
+
+function DashboardViewSwitch({ vista, onChange, isMobile }) {
+  const optionStyle = (active) => ({
+    border: "1px solid",
+    borderColor: active ? "#ff6b00" : "#d0d5dd",
+    background: active ? "#fff7ed" : "#fff",
+    color: active ? "#c2410c" : "#344054",
+    borderRadius: 10,
+    padding: "10px 12px",
+    fontWeight: 950,
+    cursor: "pointer",
+    minHeight: 42,
+  });
+
+  return (
+    <div
+      style={{
+        alignSelf: "end",
+        display: "grid",
+        gridTemplateColumns: "1fr 1fr",
+        gap: 6,
+        padding: 4,
+        border: "1px solid #e4e7ec",
+        borderRadius: 12,
+        background: "#f8fafc",
+        minWidth: isMobile ? 0 : 260,
+      }}
+      aria-label="Vista del dashboard"
+    >
+      <button type="button" style={optionStyle(vista === "operativa")} onClick={() => onChange("operativa")}>
+        Operativa
+      </button>
+      <button type="button" style={optionStyle(vista === "ejecutiva")} onClick={() => onChange("ejecutiva")}>
+        Ejecutiva
+      </button>
+    </div>
+  );
+}
+
+function VistaOperativa({
+  k,
+  data,
+  alertas,
+  loading,
+  isMobile,
+  isNarrow,
+  diasSinMovimiento,
+  setDiasSinMovimiento,
+  umbralRepuestosCriticos,
+  setUmbralRepuestosCriticos,
+  topProductosLimit,
+  setTopProductosLimit,
+}) {
+  return (
+    <>
+      <SectionHeader
+        eyebrow="Vista operativa"
+        title="Qué hay que resolver ahora"
+        subtitle="Pendientes, caja, taller y reposición en una lectura corta para trabajar el día."
+      />
+
+      <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: isMobile ? 8 : 12, minWidth: 0 }}>
+        <Metric title="Alertas activas" value={formatInteger(alertas.length)} tone={alertas.length ? "negative" : "positive"} loading={loading} />
+        <Metric title="Pendientes entrega" value={formatInteger(k.ventas_pendientes_entrega)} loading={loading} />
+        <Metric title="Órdenes en taller" value={formatInteger(k.taller_pendiente)} loading={loading} />
+        <Metric title="Repuestos críticos" value={formatInteger(k.repuestos_criticos)} tone={Number(k.repuestos_criticos || 0) ? "negative" : "default"} loading={loading} />
+        <Metric title="Sin movimiento" value={formatInteger(k.productos_sin_movimiento)} loading={loading} />
+        <Metric title="Caja actual" value={money(k.caja_actual)} loading={loading} />
+      </section>
+
+      <section style={{ display: "grid", gridTemplateColumns: isNarrow ? "1fr" : "minmax(0, 1.35fr) minmax(280px, .65fr)", gap: isMobile ? 12 : 18, alignItems: "stretch", minWidth: 0 }}>
+        <OperacionHoyCard alertas={alertas} loading={loading} caja={data?.caja} isMobile={isMobile} />
+        <QuickMoneyCard k={k} loading={loading} />
+      </section>
+
+      <section style={{ display: "grid", gridTemplateColumns: isNarrow ? "1fr" : "1fr 1fr", gap: isMobile ? 12 : 18, alignItems: "start", minWidth: 0 }}>
+        <VentasPendientesEntregaCard rows={data?.ventas_pendientes_entrega || []} loading={loading} />
+        <TallerPendienteCard rows={data?.taller_pendiente || []} loading={loading} />
+      </section>
+
+      <SectionHeader
+        eyebrow="Reposición"
+        title="Stock que merece atención"
+        subtitle="Listas acotadas para decidir pedido, reposición o limpieza de productos quietos."
+      />
+      <section style={{ display: "grid", gridTemplateColumns: isNarrow ? "1fr" : "1fr 1fr", gap: isMobile ? 12 : 18, alignItems: "start", minWidth: 0 }}>
+        <RepuestosCriticosCard rows={data?.repuestos_criticos || []} loading={loading} />
+        <CapitalInmovilizadoCard rows={data?.capital_inmovilizado || []} loading={loading} />
+      </section>
+
+      <section style={{ display: "grid", gridTemplateColumns: isNarrow ? "1fr" : "1fr 1fr", gap: isMobile ? 12 : 18, alignItems: "start", minWidth: 0 }}>
+        <ProductosSinMovimientoCard rows={data?.productos_sin_movimiento || []} loading={loading} />
+        <DashboardFilters
+          isMobile={isMobile}
+          diasSinMovimiento={diasSinMovimiento}
+          setDiasSinMovimiento={setDiasSinMovimiento}
+          umbralRepuestosCriticos={umbralRepuestosCriticos}
+          setUmbralRepuestosCriticos={setUmbralRepuestosCriticos}
+          topProductosLimit={topProductosLimit}
+          setTopProductosLimit={setTopProductosLimit}
+          compact
+        />
+      </section>
+    </>
+  );
+}
+
+function QuickMoneyCard({ k, loading }) {
+  return (
+    <section style={{ ...card, padding: 16, display: "grid", gap: 12, minWidth: 0 }}>
+      <div>
+        <div style={{ color: "#344054", fontSize: 13, fontWeight: 950 }}>Caja y cartera</div>
+        <h2 style={{ margin: "4px 0 0", fontSize: 22, color: "#101828" }}>Lectura rápida</h2>
+      </div>
+      <div style={{ display: "grid", gap: 8 }}>
+        <MiniBalanceRow label="Caja actual" value={loading ? "..." : money(k.caja_actual)} />
+        <MiniBalanceRow label="Deudas abiertas" value={loading ? "..." : money(k.deudas_abiertas)} />
+        <MiniBalanceRow label="Créditos disponibles" value={loading ? "..." : money(k.creditos_abiertos)} />
+        <MiniBalanceRow label="Resultado distribuible" value={loading ? "..." : money(k.resultado_estimado)} />
+      </div>
+      <div style={{ background: "#fff7ed", border: "1px solid #fed7aa", color: "#9a3412", borderRadius: 10, padding: 10, fontSize: 13, fontWeight: 800, lineHeight: 1.35 }}>
+        Si el número no cierra, primero mirá caja abierta, deudas sin formalizar y créditos pendientes.
+      </div>
+    </section>
+  );
+}
+
+function DashboardFilters({
+  isMobile,
+  diasSinMovimiento,
+  setDiasSinMovimiento,
+  umbralRepuestosCriticos,
+  setUmbralRepuestosCriticos,
+  topProductosLimit,
+  setTopProductosLimit,
+  compact = false,
+}) {
+  return (
+    <section style={{ ...card, padding: isMobile ? 12 : 14, display: "grid", alignContent: "start", gap: 12, minWidth: 0 }}>
+      <div>
+        <div style={{ color: "#f97316", fontSize: 12, fontWeight: 950, letterSpacing: 0, textTransform: "uppercase" }}>Filtros</div>
+        <h2 style={{ margin: "3px 0 0", color: "#101828", fontSize: compact ? 18 : 22 }}>Parámetros del tablero</h2>
+        <p style={{ margin: "4px 0 0", color: "#667085", fontSize: 13 }}>Ajustan la lectura sin cambiar datos del sistema.</p>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile || compact ? "1fr" : "repeat(3, minmax(180px, 240px))", gap: 12, minWidth: 0 }}>
+        <label style={{ display: "grid", gap: 6, fontWeight: 800, color: "#344054" }}>
+          Sin movimiento desde
+          <select style={input} value={diasSinMovimiento} onChange={(e) => setDiasSinMovimiento(Number(e.target.value))}>
+            <option value={30}>30 días</option>
+            <option value={60}>60 días</option>
+            <option value={90}>90 días</option>
+            <option value={180}>180 días</option>
+            <option value={365}>365 días</option>
+          </select>
+        </label>
+        <label style={{ display: "grid", gap: 6, fontWeight: 800, color: "#344054" }}>
+          Umbral repuestos críticos
+          <input style={input} type="number" min="0" value={umbralRepuestosCriticos} onChange={(e) => setUmbralRepuestosCriticos(Number(e.target.value))} />
+        </label>
+        <label style={{ display: "grid", gap: 6, fontWeight: 800, color: "#344054" }}>
+          Productos vendidos
+          <select style={input} value={topProductosLimit} onChange={(e) => setTopProductosLimit(Number(e.target.value))}>
+            <option value={10}>Top 10</option>
+            <option value={25}>Top 25</option>
+            <option value={50}>Top 50</option>
+            <option value={100}>Top 100</option>
+          </select>
+        </label>
+      </div>
+    </section>
   );
 }
 

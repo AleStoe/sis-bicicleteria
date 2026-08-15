@@ -17,6 +17,7 @@ from .service import (
     editar_categoria,
     cambiar_estado_categoria,
     listar_productos,
+    listar_subtipos_catalogo,
     listar_variantes,
     crear_imagen,
     obtener_imagenes_producto,
@@ -44,6 +45,7 @@ from .service import (
     generar_catalogo_mayorista_pdf_service,
     generar_catalogo_minorista_pdf_service,
     generar_catalogo_bicicletas_pdf_service,
+    previsualizar_catalogo_pdf_service,
    
 )
 
@@ -74,6 +76,7 @@ from .schema import (
     VariantesReponerStockMasivoUpdate,
     VariantesReponerStockMasivoOut,
     CatalogoPOSPaginatedOut,
+    CatalogoPdfPreviewOut,
     ProductoFichaTecnicaItemOut,
     ProductoFichaTecnicaReplaceInput,
 )
@@ -118,6 +121,14 @@ def productos(
     _usuario: CurrentUser = Depends(puede_gestionar_catalogo),
 ):
     return listar_productos()
+
+
+@router.get("/subtipos", response_model=list[str])
+def subtipos_catalogo(
+    rubro: str | None = None,
+    categoria_id: int | None = None,
+):
+    return listar_subtipos_catalogo(rubro=rubro, categoria_id=categoria_id)
 
 
 @router.get("/variantes", response_model=list[VarianteOut])
@@ -167,6 +178,8 @@ def catalogo_pos(
     query: str | None = None,
     categoria_id: int | None = None,
     marca_id: int | None = None,
+    rubro: str | None = None,
+    subtipo_catalogo: str | None = None,
     limit: int = 50,
     offset: int = 0,
     solo_disponibles: bool = False,
@@ -176,6 +189,8 @@ def catalogo_pos(
         query=query,
         categoria_id=categoria_id,
         marca_id=marca_id,
+        rubro=rubro,
+        subtipo_catalogo=subtipo_catalogo,
         limit=limit,
         offset=offset,
         solo_disponibles=solo_disponibles,
@@ -185,13 +200,17 @@ def catalogo_pos(
 @router.get("/pdf/mayorista")
 def catalogo_mayorista_pdf(
     id_sucursal: int,
+    rubro: str | None = None,
     categoria_id: int | None = None,
     marca_id: int | None = None,
+    subtipo_catalogo: str | None = None,
 ):
     pdf_bytes = generar_catalogo_mayorista_pdf_service(
         id_sucursal=id_sucursal,
+        rubro=rubro,
         categoria_id=categoria_id,
         marca_id=marca_id,
+        subtipo_catalogo=subtipo_catalogo,
     )
 
     return Response(
@@ -205,18 +224,51 @@ def catalogo_mayorista_pdf(
     )
 
 
-@router.get("/pdf/minorista")
-def catalogo_minorista_pdf(
+@router.get("/pdf/preview", response_model=CatalogoPdfPreviewOut)
+def catalogo_pdf_preview(
+    tipo: str,
     id_sucursal: int,
+    rubro: str | None = None,
     categoria_id: int | None = None,
     marca_id: int | None = None,
     query: str | None = None,
+    subtipo_catalogo: str | None = None,
+    rodado: str | None = None,
+    talle: str | None = None,
+    color: str | None = None,
+    solo_disponibles: bool = True,
 ):
-    pdf_bytes = generar_catalogo_minorista_pdf_service(
+    return previsualizar_catalogo_pdf_service(
+        tipo=tipo,
         id_sucursal=id_sucursal,
+        rubro=rubro,
         categoria_id=categoria_id,
         marca_id=marca_id,
         query=query,
+        subtipo_catalogo=subtipo_catalogo,
+        rodado=rodado,
+        talle=talle,
+        color=color,
+        solo_disponibles=solo_disponibles,
+    )
+
+
+@router.get("/pdf/minorista")
+def catalogo_minorista_pdf(
+    id_sucursal: int,
+    rubro: str | None = None,
+    categoria_id: int | None = None,
+    marca_id: int | None = None,
+    query: str | None = None,
+    subtipo_catalogo: str | None = None,
+):
+    pdf_bytes = generar_catalogo_minorista_pdf_service(
+        id_sucursal=id_sucursal,
+        rubro=rubro,
+        categoria_id=categoria_id,
+        marca_id=marca_id,
+        query=query,
+        subtipo_catalogo=subtipo_catalogo,
     )
 
     return Response(

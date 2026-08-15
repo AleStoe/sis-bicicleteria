@@ -9,11 +9,13 @@ from .schema import (
     CorregirCapitalSinCajaInput,
     CorregirCapitalSinCajaOutput,
     ValidarCapitalSinCajaOutput,
+    ValidarCostoSospechosoOutput,
 )
 from .service import (
     corregir_capital_sin_caja,
     obtener_correcciones_pendientes,
     validar_capital_sin_caja,
+    validar_costo_sospechoso,
 )
 
 router = APIRouter()
@@ -51,3 +53,16 @@ def validar_capital_sin_caja_route(
 ):
     aplicar_actor_actual(data, usuario)
     return validar_capital_sin_caja(movimiento_id, data)
+
+
+@router.post(
+    "/costos-sospechosos/{item_id}/validar",
+    response_model=ValidarCostoSospechosoOutput,
+)
+def validar_costo_sospechoso_route(
+    item_id: int,
+    data: CorregirCapitalSinCajaInput,
+    usuario: CurrentUser = Depends(puede_gestionar_correcciones),
+):
+    aplicar_actor_actual(data, usuario)
+    return validar_costo_sospechoso(item_id, data)

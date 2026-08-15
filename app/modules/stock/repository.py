@@ -70,6 +70,7 @@ def _stock_base_select():
             ) AS stock_disponible,
             c.id AS id_categoria,
             c.nombre AS categoria_nombre,
+            p.subtipo_catalogo,
             m.id AS id_marca,
             m.nombre AS marca_nombre,
             pr.id AS id_proveedor,
@@ -107,8 +108,10 @@ def _stock_base_select():
 def _build_stock_filters(
     *,
     q=None,
+    id_variante=None,
     id_sucursal=None,
     id_categoria=None,
+    subtipo_catalogo=None,
     id_marca=None,
     id_proveedor=None,
     tipo_operativo=None,
@@ -136,13 +139,18 @@ def _build_stock_filters(
                 OR v.codigo_barras ILIKE %s
                 OR v.codigo_proveedor ILIKE %s
                 OR c.nombre ILIKE %s
+                OR COALESCE(p.subtipo_catalogo, '') ILIKE %s
                 OR COALESCE(m.nombre, '') ILIKE %s
                 OR COALESCE(pr.nombre, '') ILIKE %s
                 OR CAST(v.id AS TEXT) = %s
             )
             """
         )
-        params.extend([like, like, like, like, like, like, like, like, q.strip()])
+        params.extend([like, like, like, like, like, like, like, like, like, q.strip()])
+
+    if id_variante is not None:
+        where.append("v.id = %s")
+        params.append(id_variante)
 
     if id_sucursal is not None:
         where.append("s.id = %s")
@@ -151,6 +159,10 @@ def _build_stock_filters(
     if id_categoria is not None:
         where.append("p.id_categoria = %s")
         params.append(id_categoria)
+
+    if subtipo_catalogo:
+        where.append("p.subtipo_catalogo = %s")
+        params.append(subtipo_catalogo)
 
     if id_marca is not None:
         where.append("p.id_marca = %s")
@@ -218,8 +230,10 @@ def get_stock_sucursal(
     conn,
     *,
     q=None,
+    id_variante=None,
     id_sucursal=None,
     id_categoria=None,
+    subtipo_catalogo=None,
     id_marca=None,
     id_proveedor=None,
     tipo_operativo=None,
@@ -240,6 +254,7 @@ def get_stock_sucursal(
         "capital": "capital_inmovilizado",
         "ultima_venta": "vs.ultima_venta",
         "categoria": "c.nombre",
+        "subtipo": "p.subtipo_catalogo",
         "marca": "m.nombre",
         "proveedor": "pr.nombre",
     }
@@ -248,8 +263,10 @@ def get_stock_sucursal(
 
     where, params = _build_stock_filters(
         q=q,
+        id_variante=id_variante,
         id_sucursal=id_sucursal,
         id_categoria=id_categoria,
+        subtipo_catalogo=subtipo_catalogo,
         id_marca=id_marca,
         id_proveedor=id_proveedor,
         tipo_operativo=tipo_operativo,
@@ -278,8 +295,10 @@ def get_stock_resumen(
     conn,
     *,
     q=None,
+    id_variante=None,
     id_sucursal=None,
     id_categoria=None,
+    subtipo_catalogo=None,
     id_marca=None,
     id_proveedor=None,
     tipo_operativo=None,
@@ -290,8 +309,10 @@ def get_stock_resumen(
 ):
     where, params = _build_stock_filters(
         q=q,
+        id_variante=id_variante,
         id_sucursal=id_sucursal,
         id_categoria=id_categoria,
+        subtipo_catalogo=subtipo_catalogo,
         id_marca=id_marca,
         id_proveedor=id_proveedor,
         tipo_operativo=tipo_operativo,

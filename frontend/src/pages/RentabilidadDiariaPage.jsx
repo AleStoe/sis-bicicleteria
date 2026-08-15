@@ -178,6 +178,9 @@ export default function RentabilidadDiariaPage() {
 
   const ventasAgrupadas = useMemo(() => {
     const grupos = new Map();
+    const cobrosPorVenta = new Map(
+      (rentabilidadDiaria?.cobros_ventas || []).map((venta) => [venta.id_venta, venta])
+    );
 
     detalles.forEach((detalle) => {
       const id = detalle.id_venta;
@@ -209,26 +212,75 @@ export default function RentabilidadDiariaPage() {
         const financiacionCobrada = sumar(items, "financiacion_cobrada");
         const costoFinanciero = sumar(items, "costo_financiero");
         const resultadoFinanciero = financiacionCobrada - costoFinanciero;
+        const cobroDia = cobrosPorVenta.get(venta.id_venta);
+        const cobradoComercial = cobroDia
+          ? numero(cobroDia.cobrado_comercial_reconocido)
+          : sumar(items, "cobrado_comercial_reconocido");
+        const capitalRecuperado = cobroDia
+          ? numero(cobroDia.capital_recuperado)
+          : sumar(items, "capital_recuperado");
+        const capitalInmovilizado = cobroDia
+          ? numero(cobroDia.capital_inmovilizado)
+          : sumar(items, "capital_inmovilizado");
+        const utilidadLiberada = cobroDia
+          ? numero(cobroDia.utilidad_liberada)
+          : sumar(items, "utilidad_liberada");
+        const utilidadPendiente = cobroDia
+          ? numero(cobroDia.utilidad_pendiente)
+          : sumar(items, "utilidad_pendiente");
+        const resultadoFinancieroDia = cobroDia
+          ? numero(cobroDia.resultado_financiero)
+          : resultadoFinanciero;
         return {
           ...venta,
-          medios_pago_texto: Array.from(venta.medios_pago).filter(Boolean).join(", ") || "Sin pago confirmado",
+          medios_pago_texto: cobroDia?.medios_pago || Array.from(venta.medios_pago).filter(Boolean).join(", ") || "Sin pago confirmado",
+          fecha_ultimo_cobro: cobroDia?.fecha_ultimo_cobro || null,
+          es_cobro_posterior: Boolean(cobroDia?.es_cobro_posterior),
           cantidad_items: items.length,
           cantidad_unidades: items.reduce((total, item) => total + numero(item.cantidad_neta), 0),
           venta_comercial: ventaComercial,
           cmv_comercial: cmvComercial,
           margen_esperado: ventaComercial - cmvComercial,
-          cobrado_comercial_reconocido: sumar(items, "cobrado_comercial_reconocido"),
-          saldo_pendiente: Math.max(ventaComercial - ventaCobrada, 0),
-          capital_recuperado: sumar(items, "capital_recuperado"),
-          capital_inmovilizado: sumar(items, "capital_inmovilizado"),
-          utilidad_liberada: sumar(items, "utilidad_liberada"),
-          utilidad_pendiente: sumar(items, "utilidad_pendiente"),
-          resultado_financiero: resultadoFinanciero,
-          utilidad_mas_financiero: sumar(items, "utilidad_liberada") + resultadoFinanciero,
+          cobrado_comercial_reconocido: cobradoComercial,
+          saldo_pendiente: cobroDia ? numero(cobroDia.saldo_pendiente) : Math.max(ventaComercial - ventaCobrada, 0),
+          capital_recuperado: capitalRecuperado,
+          capital_inmovilizado: capitalInmovilizado,
+          utilidad_liberada: utilidadLiberada,
+          utilidad_pendiente: utilidadPendiente,
+          resultado_financiero: resultadoFinancieroDia,
+          utilidad_mas_financiero: utilidadLiberada + resultadoFinancieroDia,
         };
       })
-      .sort((a, b) => new Date(b.fecha || 0) - new Date(a.fecha || 0));
-  }, [detalles]);
+      .concat(
+        (rentabilidadDiaria?.cobros_ventas || [])
+          .filter((venta) => !grupos.has(venta.id_venta))
+          .map((venta) => ({
+            id_venta: venta.id_venta,
+            fecha: venta.fecha,
+            fecha_ultimo_cobro: venta.fecha_ultimo_cobro,
+            cliente_nombre: venta.cliente_nombre,
+            estado_venta: venta.estado_venta,
+            origen: venta.origen,
+            medios_pago_texto: venta.medios_pago || "Sin pago confirmado",
+            cantidad_items: Number(venta.cantidad_items || 0),
+            cantidad_unidades: numero(venta.cantidad_unidades),
+            venta_comercial: numero(venta.venta_comercial),
+            cmv_comercial: numero(venta.cmv_comercial),
+            margen_esperado: numero(venta.margen_esperado),
+            cobrado_comercial_reconocido: numero(venta.cobrado_comercial_reconocido),
+            saldo_pendiente: numero(venta.saldo_pendiente),
+            capital_recuperado: numero(venta.capital_recuperado),
+            capital_inmovilizado: numero(venta.capital_inmovilizado),
+            utilidad_liberada: numero(venta.utilidad_liberada),
+            utilidad_pendiente: numero(venta.utilidad_pendiente),
+            resultado_financiero: numero(venta.resultado_financiero),
+            utilidad_mas_financiero: numero(venta.utilidad_liberada) + numero(venta.resultado_financiero),
+            es_cobro_posterior: Boolean(venta.es_cobro_posterior),
+            items: [],
+          }))
+      )
+      .sort((a, b) => new Date((b.fecha_ultimo_cobro || b.fecha) || 0) - new Date((a.fecha_ultimo_cobro || a.fecha) || 0));
+  }, [detalles, rentabilidadDiaria]);
 
   const resumenRubros = useMemo(() => {
     const grupos = new Map();
@@ -278,6 +330,12 @@ export default function RentabilidadDiariaPage() {
         return (posA === -1 ? 99 : posA) - (posB === -1 ? 99 : posB);
       });
   }, [detalles]);
+
+  const cobradoDia = numero(rentabilidadDiaria?.cobrado_comercial_reconocido);
+  const capitalRecuperadoDia = numero(rentabilidadDiaria?.capital_recuperado);
+  const utilidadLiberadaDia = numero(rentabilidadDiaria?.utilidad_liberada);
+  const resultadoFinancieroDia = numero(rentabilidadDiaria?.resultado_financiero);
+  const utilidadMasFinancieroDia = numero(rentabilidadDiaria?.margen_real);
 
   function toggleVenta(idVenta) {
     setVentasAbiertas((actual) => {
@@ -368,6 +426,43 @@ export default function RentabilidadDiariaPage() {
           tone={Number(rentabilidadDiaria?.margen_real || 0) < 0 ? "danger" : "positive"}
         />
       </section>
+
+      {cobradoDia > 0 ? (
+        <section
+          style={{
+            ...card,
+            padding: isMobile ? 14 : 18,
+            borderColor: "#fed7aa",
+            background: "#fff7ed",
+            display: "grid",
+            gap: 12,
+          }}
+        >
+          <div>
+            <p style={{ margin: 0, color: "#c2410c", fontSize: 12, fontWeight: 950, textTransform: "uppercase" }}>
+              Movimiento de caja/capital del dia
+            </p>
+            <h2 style={{ margin: "4px 0 0", color: "#101828", fontSize: 20 }}>
+              Hoy se reconocieron {money(cobradoDia)}
+            </h2>
+            <p style={{ margin: "5px 0 0", color: "#667085", lineHeight: 1.45 }}>
+              Incluye pagos confirmados en esta fecha, aunque la venta se haya creado en un dia anterior.
+            </p>
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: isMobile ? "1fr" : "repeat(4, minmax(0, 1fr))",
+              gap: 10,
+            }}
+          >
+            <MiniResume title="Capital recuperado" value={capitalRecuperadoDia} />
+            <MiniResume title="Utilidad liberada" value={utilidadLiberadaDia} tone="positive" />
+            <MiniResume title="Resultado financiero" value={resultadoFinancieroDia} tone={resultadoFinancieroDia < 0 ? "danger" : "positive"} />
+            <MiniResume title="Utilidad + financiero" value={utilidadMasFinancieroDia} tone={utilidadMasFinancieroDia < 0 ? "danger" : "positive"} />
+          </div>
+        </section>
+      ) : null}
 
       <section style={{ ...card, padding: isMobile ? 12 : 18, display: "grid", gap: 14, minWidth: 0 }}>
         <div>
@@ -514,6 +609,11 @@ export default function RentabilidadDiariaPage() {
                               <strong>Venta #{venta.id_venta}</strong>
                             </button>
                             <div style={{ color: "#667085", marginTop: 2 }}>{fechaHora(venta.fecha)}</div>
+                            {venta.es_cobro_posterior ? (
+                              <div style={{ color: "#c2410c", marginTop: 2, fontWeight: 850 }}>
+                                Cobro del dia: {fechaHora(venta.fecha_ultimo_cobro)}
+                              </div>
+                            ) : null}
                             <div style={{ color: "#667085", marginTop: 2 }}>
                               {venta.cantidad_items} ítem(s) · {venta.cantidad_unidades} unidad(es)
                             </div>
@@ -555,7 +655,14 @@ export default function RentabilidadDiariaPage() {
                         {abierta ? (
                           <tr key={`detalle-${venta.id_venta}`} style={{ borderBottom: "1px solid #f2f4f7", background: "#fbfcfe" }}>
                             <td colSpan="10" style={{ padding: 12 }}>
-                              <VentaItemsDetalle items={venta.items} onAudit={setDetalleAuditoria} />
+                              {venta.items.length > 0 ? (
+                                <VentaItemsDetalle items={venta.items} onAudit={setDetalleAuditoria} />
+                              ) : (
+                                <div style={emptyDetailBox}>
+                                  Esta venta no se hizo en la fecha seleccionada, pero tuvo cobro confirmado ese dia.
+                                  Abrila para ver el detalle completo de productos y pagos.
+                                </div>
+                              )}
                             </td>
                           </tr>
                         ) : null}
@@ -729,6 +836,16 @@ const openSaleButton = {
   whiteSpace: "nowrap",
 };
 
+const emptyDetailBox = {
+  border: "1px solid #fed7aa",
+  borderRadius: 12,
+  background: "#fff7ed",
+  color: "#9a3412",
+  padding: 14,
+  fontWeight: 800,
+  lineHeight: 1.45,
+};
+
 function MoneyLine({ label, value, strong = false, color = "#101828" }) {
   return (
     <div
@@ -745,6 +862,25 @@ function MoneyLine({ label, value, strong = false, color = "#101828" }) {
     >
       <span style={{ color: "#667085", fontSize: 11, fontWeight: 800 }}>{label}</span>
       <span>{money(value)}</span>
+    </div>
+  );
+}
+
+function MiniResume({ title, value, tone }) {
+  const color =
+    tone === "positive" ? "#067647" : tone === "danger" ? "#b42318" : "#101828";
+  return (
+    <div
+      style={{
+        border: "1px solid #fed7aa",
+        borderRadius: 14,
+        background: "#fff",
+        padding: 12,
+        minWidth: 0,
+      }}
+    >
+      <div style={{ color: "#667085", fontSize: 12, fontWeight: 850 }}>{title}</div>
+      <div style={{ color, fontSize: 22, fontWeight: 950, marginTop: 4 }}>{money(value)}</div>
     </div>
   );
 }

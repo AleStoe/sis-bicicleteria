@@ -19,7 +19,9 @@ from app.modules.documentos.download_names import (
 )
 from app.modules.documentos.pdf_taller_presupuesto import (
     generar_presupuesto_taller_pdf,
+    _limpiar_codigo_fabrica_detalle,
 )
+from app.modules.documentos.service import obtener_datos_presupuesto_taller
 from app.modules.documentos.pdf_layout import (
     collapse_repeated_words,
     strip_leading_label,
@@ -228,6 +230,19 @@ def test_presupuesto_taller_envuelve_texto_y_respeta_saltos_de_pagina(clean_db):
     assert "REFERENCIA-COMPLETA-FINAL-987654321" in "".join(
         wrap_text(descripcion_larga, 260, "Helvetica", 8)
     )
+
+
+def test_presupuesto_taller_oculta_codigo_fabrica_en_detalle():
+    item = {
+        "descripcion_snapshot": "PIÑON A ROSCA SHIMANO 7V - EMFTZ5007428",
+        "codigo_proveedor": "EMFTZ5007428",
+        "sku": "VAR-000001",
+    }
+
+    assert _limpiar_codigo_fabrica_detalle(
+        item["descripcion_snapshot"],
+        item,
+    ) == "PIÑON A ROSCA SHIMANO 7V"
 
 
 def test_comprobante_x_no_trunca_items_largos_y_mueve_totales():
@@ -619,6 +634,10 @@ def test_presupuesto_taller_devuelve_pdf(
         in response.headers["content-disposition"]
     )
     assert response.content.startswith(b"%PDF")
+
+    datos_pdf = obtener_datos_presupuesto_taller(orden_id)
+    assert "opciones_pago" in datos_pdf
+    assert {"contado", "tarjeta"}.issubset(datos_pdf["opciones_pago"].keys())
 
 
 def test_resumen_cobros_venta_devuelve_pdf(client, seed_venta_basica):

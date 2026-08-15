@@ -358,7 +358,523 @@ def get_ventas_rentabilidad(
             """,
             (*params[:2], estados_rentabilidad, *params[2:]),
         )
+        row = cur.fetchone()
+
+    caja = get_recuperacion_caja_periodo(
+        conn,
+        fecha_desde,
+        fecha_hasta,
+        id_sucursal=id_sucursal,
+        estados=estados_rentabilidad,
+    )
+    if row is None or caja is None:
+        return row
+
+    row = dict(row)
+    row["base_comercial_cobrada"] = caja["base_comercial_cobrada"]
+    row["descuentos_cobrados"] = caja["descuentos_cobrados"]
+    row["ventas_cobradas"] = caja["cobrado_comercial_reconocido"]
+    row["cobrado_comercial_reconocido"] = caja["cobrado_comercial_reconocido"]
+    row["financiacion_cobrada"] = caja["financiacion_cobrada"]
+    row["costos_financieros"] = caja["costos_financieros"]
+    row["ingreso_real_neto"] = caja["ingreso_real_neto"]
+    row["cmv_cobrado"] = caja["capital_recuperado"]
+    row["capital_recuperado"] = caja["capital_recuperado"]
+    row["capital_inmovilizado"] = caja["capital_inmovilizado"]
+    row["utilidad_liberada"] = caja["utilidad_liberada"]
+    return row
+
+
+def get_recuperacion_caja_periodo(
+    conn,
+    fecha_desde,
+    fecha_hasta,
+    id_sucursal=None,
+    estados=None,
+):
+    estados_rentabilidad = list(estados or RENTABILIDAD_ESTADOS_COMERCIALES)
+    params = [fecha_hasta]
+    sucursal_sql = ""
+    if id_sucursal is not None:
+        sucursal_sql = " AND v.id_sucursal = %s"
+        params.append(id_sucursal)
+
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            f"""
+            WITH ventas_base AS (
+                SELECT
+                    v.id,
+                    COALESCE(
+                        SUM(
+                            vi.costo_unitario_aplicado
+                            * (
+                                vi.cantidad
+                                - COALESCE(devoluciones.cantidad_devuelta, 0)
+                            )
+                        ),
+                        0
+                    )::numeric(14,2) AS cmv_neto
+                FROM ventas v
+                INNER JOIN venta_items vi ON vi.id_venta = v.id
+                LEFT JOIN (
+                    SELECT
+                        id_venta_item,
+                        SUM(cantidad_devuelta) AS cantidad_devuelta
+                    FROM venta_item_devoluciones
+                    GROUP BY id_venta_item
+                ) devoluciones ON devoluciones.id_venta_item = vi.id
+                WHERE v.fecha::date <= %s
+                  AND v.estado = ANY(%s)
+                  {sucursal_sql}
+                GROUP BY v.id
+            ),
+            pagos_mapeados AS (
+                SELECT
+                    CASE
+                        WHEN p.origen_tipo = 'venta' THEN p.origen_id
+                        WHEN p.origen_tipo IN ('deuda_cliente', 'deuda')
+                             AND d.origen_tipo = 'venta' THEN d.origen_id
+                        ELSE NULL
+                    END AS id_venta,
+                    p.fecha::date AS fecha_pago,
+                    COALESCE(p.monto_base_aplicado, 0) AS monto_base_aplicado,
+                    COALESCE(p.monto_descuento_aplicado, 0)
+                        AS monto_descuento_aplicado,
+                    GREATEST(
+                        COALESCE(p.monto_base_aplicado, 0)
+                        - COALESCE(p.monto_descuento_aplicado, 0),
+                        0
+                    ) AS cobrado_comercial_reconocido,
+                    COALESCE(p.monto_recargo_aplicado, 0)
+                        AS monto_recargo_aplicado,
+                    COALESCE(p.monto_costo_financiero, 0)
+                        AS monto_costo_financiero,
+                    COALESCE(p.monto_neto_liquidado, p.monto_total_cobrado, 0)
+                        AS monto_neto_liquidado
+                FROM pagos p
+                LEFT JOIN deudas_cliente d
+                    ON p.origen_tipo IN ('deuda_cliente', 'deuda')
+                   AND p.origen_id = d.id
+                WHERE p.estado = 'confirmado'
+                  AND (
+                    p.origen_tipo = 'venta'
+                    OR (
+                        p.origen_tipo IN ('deuda_cliente', 'deuda')
+                        AND d.origen_tipo = 'venta'
+                    )
+                  )
+            ),
+            pagos_por_venta AS (
+                SELECT
+                    vb.id,
+                    vb.cmv_neto,
+                    COALESCE(SUM(
+                        CASE
+                            WHEN pm.fecha_pago < %s
+                                THEN pm.cobrado_comercial_reconocido
+                            ELSE 0
+                        END
+                    ), 0)::numeric(14,2) AS cobrado_antes,
+                    COALESCE(SUM(
+                        CASE
+                            WHEN pm.fecha_pago <= %s
+                                THEN pm.cobrado_comercial_reconocido
+                            ELSE 0
+                        END
+                    ), 0)::numeric(14,2) AS cobrado_hasta_fin,
+                    COALESCE(SUM(
+                        CASE
+                            WHEN pm.fecha_pago >= %s
+                             AND pm.fecha_pago <= %s
+                                THEN pm.monto_base_aplicado
+                            ELSE 0
+                        END
+                    ), 0)::numeric(14,2) AS base_periodo,
+                    COALESCE(SUM(
+                        CASE
+                            WHEN pm.fecha_pago >= %s
+                             AND pm.fecha_pago <= %s
+                                THEN pm.monto_descuento_aplicado
+                            ELSE 0
+                        END
+                    ), 0)::numeric(14,2) AS descuentos_periodo,
+                    COALESCE(SUM(
+                        CASE
+                            WHEN pm.fecha_pago >= %s
+                             AND pm.fecha_pago <= %s
+                                THEN pm.cobrado_comercial_reconocido
+                            ELSE 0
+                        END
+                    ), 0)::numeric(14,2) AS cobrado_periodo,
+                    COALESCE(SUM(
+                        CASE
+                            WHEN pm.fecha_pago >= %s
+                             AND pm.fecha_pago <= %s
+                                THEN pm.monto_recargo_aplicado
+                            ELSE 0
+                        END
+                    ), 0)::numeric(14,2) AS financiacion_periodo,
+                    COALESCE(SUM(
+                        CASE
+                            WHEN pm.fecha_pago >= %s
+                             AND pm.fecha_pago <= %s
+                                THEN pm.monto_costo_financiero
+                            ELSE 0
+                        END
+                    ), 0)::numeric(14,2) AS costo_financiero_periodo,
+                    COALESCE(SUM(
+                        CASE
+                            WHEN pm.fecha_pago >= %s
+                             AND pm.fecha_pago <= %s
+                                THEN pm.monto_neto_liquidado
+                            ELSE 0
+                        END
+                    ), 0)::numeric(14,2) AS neto_periodo
+                FROM ventas_base vb
+                LEFT JOIN pagos_mapeados pm ON pm.id_venta = vb.id
+                GROUP BY vb.id, vb.cmv_neto
+            )
+            SELECT
+                COALESCE(SUM(base_periodo), 0)::numeric(14,2)
+                    AS base_comercial_cobrada,
+                COALESCE(SUM(descuentos_periodo), 0)::numeric(14,2)
+                    AS descuentos_cobrados,
+                COALESCE(SUM(cobrado_periodo), 0)::numeric(14,2)
+                    AS cobrado_comercial_reconocido,
+                COALESCE(SUM(financiacion_periodo), 0)::numeric(14,2)
+                    AS financiacion_cobrada,
+                COALESCE(SUM(costo_financiero_periodo), 0)::numeric(14,2)
+                    AS costos_financieros,
+                COALESCE(SUM(neto_periodo), 0)::numeric(14,2)
+                    AS ingreso_real_neto,
+                COALESCE(SUM(
+                    GREATEST(
+                        LEAST(cobrado_hasta_fin, cmv_neto)
+                        - LEAST(cobrado_antes, cmv_neto),
+                        0
+                    )
+                ), 0)::numeric(14,2) AS capital_recuperado,
+                COALESCE(SUM(GREATEST(cmv_neto - cobrado_hasta_fin, 0)), 0)
+                    ::numeric(14,2) AS capital_inmovilizado,
+                COALESCE(SUM(
+                    GREATEST(
+                        GREATEST(cobrado_hasta_fin - cmv_neto, 0)
+                        - GREATEST(cobrado_antes - cmv_neto, 0),
+                        0
+                    )
+                ), 0)::numeric(14,2) AS utilidad_liberada
+            FROM pagos_por_venta
+            """,
+            (
+                *params[:1],
+                estados_rentabilidad,
+                *params[1:],
+                fecha_desde,
+                fecha_hasta,
+                fecha_desde,
+                fecha_hasta,
+                fecha_desde,
+                fecha_hasta,
+                fecha_desde,
+                fecha_hasta,
+                fecha_desde,
+                fecha_hasta,
+                fecha_desde,
+                fecha_hasta,
+                fecha_desde,
+                fecha_hasta,
+            ),
+        )
         return cur.fetchone()
+
+
+def get_cobros_rentabilidad_periodo_por_venta(
+    conn,
+    fecha_desde,
+    fecha_hasta,
+    id_sucursal=None,
+    estados=None,
+):
+    estados_rentabilidad = list(estados or RENTABILIDAD_ESTADOS_COMERCIALES)
+    params = [fecha_hasta]
+    sucursal_sql = ""
+    if id_sucursal is not None:
+        sucursal_sql = " AND v.id_sucursal = %s"
+        params.append(id_sucursal)
+
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            f"""
+            WITH devoluciones AS (
+                SELECT
+                    id_venta_item,
+                    COALESCE(SUM(cantidad_devuelta), 0) AS cantidad_devuelta,
+                    COALESCE(SUM(monto_credito_generado), 0) AS monto_devuelto
+                FROM venta_item_devoluciones
+                GROUP BY id_venta_item
+            ),
+            ventas_base AS (
+                SELECT
+                    v.id,
+                    v.fecha,
+                    v.estado,
+                    v.id_orden_taller,
+                    v.id_reserva_origen,
+                    v.saldo_pendiente,
+                    c.nombre AS cliente_nombre,
+                    COALESCE(
+                        SUM(
+                            ROUND(
+                                CASE
+                                    WHEN v.subtotal_base > 0
+                                        THEN vi.subtotal
+                                            * (
+                                                GREATEST(v.total_final - v.recargo_total, 0)
+                                                / v.subtotal_base
+                                              )
+                                            - COALESCE(d.monto_devuelto, 0)
+                                              * CASE
+                                                  WHEN v.total_final > 0
+                                                      THEN GREATEST(v.total_final - v.recargo_total, 0)
+                                                          / v.total_final
+                                                  ELSE 1
+                                                END
+                                    ELSE 0
+                                END,
+                                2
+                            )
+                        ),
+                        0
+                    )::numeric(14,2) AS venta_comercial,
+                    COALESCE(
+                        SUM(
+                            vi.costo_unitario_aplicado
+                            * (
+                                vi.cantidad
+                                - COALESCE(d.cantidad_devuelta, 0)
+                            )
+                        ),
+                        0
+                    )::numeric(14,2) AS cmv_comercial,
+                    COALESCE(COUNT(vi.id), 0) AS cantidad_items,
+                    COALESCE(
+                        SUM(
+                            vi.cantidad - COALESCE(d.cantidad_devuelta, 0)
+                        ),
+                        0
+                    ) AS cantidad_unidades
+                FROM ventas v
+                INNER JOIN clientes c ON c.id = v.id_cliente
+                INNER JOIN venta_items vi ON vi.id_venta = v.id
+                LEFT JOIN devoluciones d ON d.id_venta_item = vi.id
+                WHERE v.fecha::date <= %s
+                  AND v.estado = ANY(%s)
+                  {sucursal_sql}
+                GROUP BY
+                    v.id,
+                    v.fecha,
+                    v.estado,
+                    v.id_orden_taller,
+                    v.id_reserva_origen,
+                    v.saldo_pendiente,
+                    c.nombre
+            ),
+            pagos_mapeados AS (
+                SELECT
+                    CASE
+                        WHEN p.origen_tipo = 'venta' THEN p.origen_id
+                        WHEN p.origen_tipo IN ('deuda_cliente', 'deuda')
+                             AND deuda.origen_tipo = 'venta' THEN deuda.origen_id
+                        ELSE NULL
+                    END AS id_venta,
+                    p.fecha AS fecha_pago,
+                    p.medio_pago,
+                    ptd.cuotas,
+                    COALESCE(p.monto_base_aplicado, 0) AS monto_base_aplicado,
+                    COALESCE(p.monto_descuento_aplicado, 0)
+                        AS monto_descuento_aplicado,
+                    GREATEST(
+                        COALESCE(p.monto_base_aplicado, 0)
+                        - COALESCE(p.monto_descuento_aplicado, 0),
+                        0
+                    ) AS cobrado_comercial_reconocido,
+                    COALESCE(p.monto_recargo_aplicado, 0)
+                        AS monto_recargo_aplicado,
+                    COALESCE(p.monto_costo_financiero, 0)
+                        AS monto_costo_financiero,
+                    COALESCE(p.monto_neto_liquidado, p.monto_total_cobrado, 0)
+                        AS monto_neto_liquidado
+                FROM pagos p
+                LEFT JOIN deudas_cliente deuda
+                    ON p.origen_tipo IN ('deuda_cliente', 'deuda')
+                   AND p.origen_id = deuda.id
+                LEFT JOIN pagos_tarjeta_detalle ptd ON ptd.id_pago = p.id
+                WHERE p.estado = 'confirmado'
+                  AND (
+                    p.origen_tipo = 'venta'
+                    OR (
+                        p.origen_tipo IN ('deuda_cliente', 'deuda')
+                        AND deuda.origen_tipo = 'venta'
+                    )
+                  )
+            ),
+            pagos_por_venta AS (
+                SELECT
+                    vb.id,
+                    vb.fecha,
+                    vb.estado,
+                    vb.id_orden_taller,
+                    vb.id_reserva_origen,
+                    vb.saldo_pendiente,
+                    vb.cliente_nombre,
+                    vb.venta_comercial,
+                    vb.cmv_comercial,
+                    vb.cantidad_items,
+                    vb.cantidad_unidades,
+                    COALESCE(SUM(
+                        CASE
+                            WHEN pm.fecha_pago::date < %s
+                                THEN pm.cobrado_comercial_reconocido
+                            ELSE 0
+                        END
+                    ), 0)::numeric(14,2) AS cobrado_antes,
+                    COALESCE(SUM(
+                        CASE
+                            WHEN pm.fecha_pago::date <= %s
+                                THEN pm.cobrado_comercial_reconocido
+                            ELSE 0
+                        END
+                    ), 0)::numeric(14,2) AS cobrado_hasta_fin,
+                    COALESCE(SUM(
+                        CASE
+                            WHEN pm.fecha_pago::date >= %s
+                             AND pm.fecha_pago::date <= %s
+                                THEN pm.cobrado_comercial_reconocido
+                            ELSE 0
+                        END
+                    ), 0)::numeric(14,2) AS cobrado_periodo,
+                    COALESCE(SUM(
+                        CASE
+                            WHEN pm.fecha_pago::date >= %s
+                             AND pm.fecha_pago::date <= %s
+                                THEN pm.monto_recargo_aplicado
+                            ELSE 0
+                        END
+                    ), 0)::numeric(14,2) AS financiacion_periodo,
+                    COALESCE(SUM(
+                        CASE
+                            WHEN pm.fecha_pago::date >= %s
+                             AND pm.fecha_pago::date <= %s
+                                THEN pm.monto_costo_financiero
+                            ELSE 0
+                        END
+                    ), 0)::numeric(14,2) AS costo_financiero_periodo,
+                    COALESCE(MAX(
+                        CASE
+                            WHEN pm.fecha_pago::date >= %s
+                             AND pm.fecha_pago::date <= %s
+                                THEN pm.fecha_pago
+                            ELSE NULL
+                        END
+                    ), NULL) AS fecha_ultimo_cobro,
+                    STRING_AGG(
+                        DISTINCT CASE
+                            WHEN pm.fecha_pago::date >= %s
+                             AND pm.fecha_pago::date <= %s
+                             AND pm.medio_pago = 'tarjeta'
+                             AND pm.cuotas IS NOT NULL
+                                THEN 'Tarjeta ' || pm.cuotas || ' cuotas'
+                            WHEN pm.fecha_pago::date >= %s
+                             AND pm.fecha_pago::date <= %s
+                                THEN INITCAP(REPLACE(pm.medio_pago, '_', ' '))
+                            ELSE NULL
+                        END,
+                        ', '
+                    ) AS medios_pago
+                FROM ventas_base vb
+                LEFT JOIN pagos_mapeados pm ON pm.id_venta = vb.id
+                GROUP BY
+                    vb.id,
+                    vb.fecha,
+                    vb.estado,
+                    vb.id_orden_taller,
+                    vb.id_reserva_origen,
+                    vb.saldo_pendiente,
+                    vb.cliente_nombre,
+                    vb.venta_comercial,
+                    vb.cmv_comercial,
+                    vb.cantidad_items,
+                    vb.cantidad_unidades
+            )
+            SELECT
+                id AS id_venta,
+                fecha,
+                fecha_ultimo_cobro,
+                cliente_nombre,
+                estado AS estado_venta,
+                CASE
+                    WHEN id_orden_taller IS NOT NULL THEN 'taller'
+                    WHEN id_reserva_origen IS NOT NULL THEN 'reserva'
+                    ELSE 'venta'
+                END AS origen,
+                COALESCE(medios_pago, 'Sin pago confirmado') AS medios_pago,
+                cantidad_items,
+                cantidad_unidades,
+                venta_comercial,
+                cmv_comercial,
+                (venta_comercial - cmv_comercial)::numeric(14,2)
+                    AS margen_esperado,
+                cobrado_periodo AS cobrado_comercial_reconocido,
+                COALESCE(saldo_pendiente, 0)::numeric(14,2) AS saldo_pendiente,
+                financiacion_periodo AS financiacion_cobrada,
+                costo_financiero_periodo AS costo_financiero,
+                (financiacion_periodo - costo_financiero_periodo)::numeric(14,2)
+                    AS resultado_financiero,
+                GREATEST(
+                    LEAST(cobrado_hasta_fin, cmv_comercial)
+                    - LEAST(cobrado_antes, cmv_comercial),
+                    0
+                )::numeric(14,2) AS capital_recuperado,
+                GREATEST(cmv_comercial - cobrado_hasta_fin, 0)::numeric(14,2)
+                    AS capital_inmovilizado,
+                GREATEST(
+                    GREATEST(cobrado_hasta_fin - cmv_comercial, 0)
+                    - GREATEST(cobrado_antes - cmv_comercial, 0),
+                    0
+                )::numeric(14,2) AS utilidad_liberada,
+                GREATEST(
+                    (venta_comercial - cmv_comercial)
+                    - GREATEST(cobrado_hasta_fin - cmv_comercial, 0),
+                    0
+                )::numeric(14,2) AS utilidad_pendiente,
+                (fecha::date < %s)::boolean AS es_cobro_posterior
+            FROM pagos_por_venta
+            WHERE cobrado_periodo > 0
+            ORDER BY fecha_ultimo_cobro DESC, id DESC
+            """,
+            (
+                *params[:1],
+                estados_rentabilidad,
+                *params[1:],
+                fecha_desde,
+                fecha_hasta,
+                fecha_desde,
+                fecha_hasta,
+                fecha_desde,
+                fecha_hasta,
+                fecha_desde,
+                fecha_hasta,
+                fecha_desde,
+                fecha_hasta,
+                fecha_desde,
+                fecha_hasta,
+                fecha_desde,
+                fecha_hasta,
+                fecha_desde,
+            ),
+        )
+        return cur.fetchall()
 
 
 def get_bonificaciones_garantias(conn, fecha_desde, fecha_hasta, id_sucursal=None):

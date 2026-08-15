@@ -37,6 +37,13 @@ export function crearIngresoStock(data) {
   });
 }
 
+export function crearIngresoStockLote(data) {
+  return apiRequest("/stock/ingresos/lote", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
 export function crearAjusteStock(data) {
   return apiRequest("/stock/ajustes", {
     method: "POST",

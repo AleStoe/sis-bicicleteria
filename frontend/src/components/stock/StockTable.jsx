@@ -60,31 +60,23 @@ export default function StockTable({
         <table style={styles.table}>
           <colgroup>
             <col style={{ width: 44 }} />
-            <col style={{ width: 300 }} />
-            <col style={{ width: 110 }} />
+            <col style={{ width: 380 }} />
+            <col style={{ width: 150 }} />
             <col style={{ width: 180 }} />
-            <col style={{ width: 76 }} />
-            <col style={{ width: 92 }} />
-            <col style={{ width: 90 }} />
-            <col style={{ width: 92 }} />
-            <col style={{ width: 120 }} />
-            <col style={{ width: 118 }} />
-            <col style={{ width: 110 }} />
-            <col style={{ width: 130 }} />
+            <col style={{ width: 300 }} />
+            <col style={{ width: 140 }} />
+            <col style={{ width: 115 }} />
+            <col style={{ width: 150 }} />
             <col style={{ width: 190 }} />
           </colgroup>
           <thead style={styles.thead}>
             <tr>
               <th style={styles.th} aria-label="Seleccionar" />
               <th style={styles.th}><SortHeader campo="producto">Producto</SortHeader></th>
-              <th style={styles.th}><SortHeader campo="categoria">Tipo</SortHeader></th>
+              <th style={styles.th}><SortHeader campo="categoria">Categoria</SortHeader></th>
               <th style={styles.th}><SortHeader campo="marca">Marca / proveedor</SortHeader></th>
-              <th style={styles.thNumber}><SortHeader campo="fisico" align="right">Fisico</SortHeader></th>
-              <th style={styles.thNumber}>Reservado</th>
-              <th style={styles.thNumber}>Pendiente</th>
-              <th style={styles.thNumber}><SortHeader campo="stock" align="right">Disponible</SortHeader></th>
-              <th style={styles.thNumber}><SortHeader campo="capital" align="right">Capital</SortHeader></th>
-              <th style={styles.th}><SortHeader campo="ultima_venta">Ultima venta</SortHeader></th>
+              <th style={styles.th}><SortHeader campo="stock">Stock</SortHeader></th>
+              <th style={styles.th}><SortHeader campo="ultima_venta">Movimiento</SortHeader></th>
               <th style={styles.th}>Estado</th>
               <th style={styles.th}>Reposicion</th>
               <th style={styles.th}>Acciones</th>
@@ -131,24 +123,33 @@ export default function StockTable({
                   </td>
 
                   <td style={styles.td}>
-                    <strong>{item.tipo_operativo || "producto"}</strong>
-                    <div style={styles.mutedSmall}>{item.categoria_nombre || "Sin categoria"}</div>
+                    <strong style={styles.cellStrong}>{item.categoria_nombre || "Sin categoria"}</strong>
+                    <div style={styles.mutedSmall}>{item.subtipo_catalogo || item.tipo_operativo || "producto"}</div>
                   </td>
 
                   <td style={styles.td}>
-                    <strong>{item.marca_nombre || "Sin marca"}</strong>
+                    <strong style={styles.cellStrong}>{item.marca_nombre || "Sin marca"}</strong>
                     <div style={styles.mutedSmall}>{item.proveedor_nombre || "Sin proveedor"}</div>
                   </td>
 
-                  <td style={styles.tdNumber}>{formatNumber(item.stock_fisico)}</td>
-                  <td style={styles.tdNumber}>{formatNumber(item.stock_reservado)}</td>
-                  <td style={styles.tdNumber}>{formatNumber(item.stock_vendido_pendiente_entrega)}</td>
-                  <td style={styles.tdNumberStrong}>{formatNumber(item.stock_disponible)}</td>
-                  <td style={styles.tdNumber}>{formatMoney(item.capital_inmovilizado || 0)}</td>
+                  <td style={styles.td}>
+                    <div style={styles.stockCell}>
+                      <StockMini label="Disponible" value={formatNumber(item.stock_disponible)} tone="primary" />
+                      <StockMini label="Fisico" value={formatNumber(item.stock_fisico)} />
+                      <StockMini label="Reservado" value={formatNumber(item.stock_reservado)} />
+                      <StockMini label="Pendiente" value={formatNumber(item.stock_vendido_pendiente_entrega)} />
+                    </div>
+                    <div style={styles.mutedSmall}>
+                      Capital: {formatMoney(item.capital_inmovilizado || 0)}
+                    </div>
+                  </td>
 
                   <td style={styles.td}>
-                    {formatFechaUltimaVenta(item.ultima_venta)}
+                    <strong style={styles.cellStrong}>{formatFechaUltimaVenta(item.ultima_venta)}</strong>
                     <div style={styles.mutedSmall}>{formatDiasSinMovimiento(item)}</div>
+                    <div style={styles.mutedSmall}>
+                      Vendidas: {formatNumber(item.unidades_vendidas_total || 0)} / {item.ventas_distintas_total || 0} venta(s)
+                    </div>
                   </td>
 
                   <td style={styles.td}>
@@ -166,30 +167,30 @@ export default function StockTable({
                     <div style={styles.rowActions}>
                       <button
                         type="button"
-                        style={item.reponer_stock === false ? styles.actionButton : styles.ghostButton}
+                        style={item.reponer_stock === false ? styles.actionButtonSm : styles.ghostButtonSm}
                         disabled={procesando}
                         onClick={(event) => {
                           event.stopPropagation();
                           cambiarReposicionItem?.(item, item.reponer_stock === false);
                         }}
                       >
-                        {item.reponer_stock === false ? "Marcar reponer" : "No reponer"}
+                        {item.reponer_stock === false ? "Reponer" : "No reponer"}
                       </button>
 
                       <button
                         type="button"
-                        style={styles.actionButton}
+                        style={styles.actionButtonSm}
                         onClick={(event) => {
                           event.stopPropagation();
                           seleccionarItem(item, "ingreso");
                         }}
                       >
-                        Cargar ingreso
+                        Ingreso
                       </button>
 
                       <button
                         type="button"
-                        style={styles.dangerOutlineButton}
+                        style={styles.dangerOutlineButtonSm}
                         onClick={(event) => {
                           event.stopPropagation();
                           seleccionarItem(item, "ajuste");
@@ -262,6 +263,7 @@ export default function StockTable({
                   <span>Tipo</span>
                   <strong>{item.tipo_operativo || "producto"}</strong>
                   <small>{item.categoria_nombre || "Sin categoria"}</small>
+                  {item.subtipo_catalogo && <small>{item.subtipo_catalogo}</small>}
                 </div>
                 <div>
                   <span>Marca / proveedor</span>
@@ -339,6 +341,15 @@ function MiniDato({ label, value }) {
   );
 }
 
+function StockMini({ label, value, tone }) {
+  return (
+    <div className={tone === "primary" ? "stock-mini stock-mini-primary" : "stock-mini"}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
 function ReposicionBadge({ reponer }) {
   return (
     <span
@@ -384,6 +395,41 @@ function formatDiasSinMovimiento(item) {
 const responsiveCss = `
   .stock-mobile-cards {
     display: none;
+  }
+
+  .stock-mini {
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    background: #ffffff;
+    padding: 6px 8px;
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+  }
+
+  .stock-mini span {
+    color: #667085;
+    font-size: 10px;
+    font-weight: 900;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .stock-mini strong {
+    color: #101828;
+    font-size: 13px;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .stock-mini-primary {
+    border-color: #bfdbfe;
+    background: #eff6ff;
+  }
+
+  .stock-mini-primary span,
+  .stock-mini-primary strong {
+    color: #1d4ed8;
   }
 
   @media (max-width: 768px) {

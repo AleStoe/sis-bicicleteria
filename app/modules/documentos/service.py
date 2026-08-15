@@ -177,6 +177,7 @@ def obtener_datos_presupuesto_taller(orden_id: int):
             "orden": orden,
             "items": items,
             "notas": notas,
+            "opciones_pago": _opciones_pago_etiquetas(conn),
         }
 
     finally:

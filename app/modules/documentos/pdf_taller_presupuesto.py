@@ -28,6 +28,7 @@ from .pdf_layout import (
     strip_leading_label,
     wrap_text,
 )
+from .pdf_cotizacion import _build_opciones_pago
 
 
 ESTADOS_HUMANOS = {
@@ -167,6 +168,63 @@ def _draw_labeled_block(
         leading=TEXT_LEADING,
     )
     return y - 1.5 * mm
+
+
+def _draw_opciones_pago_presupuesto(
+    c,
+    *,
+    y,
+    width,
+    height,
+    margin_x,
+    total,
+    opciones_pago,
+    incluir_marca_agua=True,
+):
+    opciones = _build_opciones_pago(total, opciones_pago)
+    if not opciones:
+        return y
+
+    needed = 9 * mm + min(len(opciones), 5) * 5 * mm
+    y = _ensure_space(
+        c,
+        y,
+        needed,
+        width,
+        height,
+        margin_x,
+        incluir_marca_agua,
+    )
+
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(margin_x, y, "Opciones de pago")
+    y -= 5 * mm
+
+    c.setFont("Helvetica", 8.5)
+    for label, monto in opciones[:5]:
+        c.drawString(margin_x, y, label)
+        c.drawRightString(width - margin_x, y, monto)
+        y -= 5 * mm
+
+    return y - 2 * mm
+
+
+def _limpiar_codigo_fabrica_detalle(detalle, item):
+    texto = collapse_repeated_words(detalle)
+    for codigo in (item.get("codigo_proveedor"), item.get("sku")):
+        codigo = normalize_inline_text(codigo)
+        if not codigo:
+            continue
+        sufijos = (
+            f" - {codigo}",
+            f" / {codigo}",
+            f" | {codigo}",
+            f" {codigo}",
+        )
+        for sufijo in sufijos:
+            if texto.endswith(sufijo):
+                return texto[: -len(sufijo)].rstrip(" -/|")
+    return texto
 
 
 def _bicicleta_textos(orden):
@@ -360,6 +418,7 @@ def generar_presupuesto_taller_pdf(data: dict, incluir_marca_agua: bool = True) 
     orden = data["orden"]
     items = data.get("items", [])
     notas = data.get("notas", [])
+    opciones_pago = data.get("opciones_pago")
     config = obtener_configuracion_negocio()
 
     buffer = BytesIO()
@@ -526,7 +585,10 @@ def generar_presupuesto_taller_pdf(data: dict, incluir_marca_agua: bool = True) 
         subtotal = Decimal(str(item.get("subtotal") or 0))
         total += subtotal
 
-        detalle = collapse_repeated_words(item.get("descripcion_snapshot"))
+        detalle = _limpiar_codigo_fabrica_detalle(
+            item.get("descripcion_snapshot"),
+            item,
+        )
         if cobertura > 0:
             detalle += (
                 f"\nCobertura {normalize_inline_text(item.get('motivo_cobertura'))}: "
@@ -559,6 +621,18 @@ def generar_presupuesto_taller_pdf(data: dict, incluir_marca_agua: bool = True) 
     c.setFont("Helvetica-Bold", 14)
     c.drawRightString(width - margin_x, y, _money(total))
     y -= 12 * mm
+
+    y = _draw_opciones_pago_presupuesto(
+        c,
+        y=y,
+        width=width,
+        height=height,
+        margin_x=margin_x,
+        total=total,
+        opciones_pago=opciones_pago,
+        incluir_marca_agua=incluir_marca_agua,
+    )
+
     y = _line(c, y, width, margin_x)
 
     c.setFont("Helvetica-Bold", 10)

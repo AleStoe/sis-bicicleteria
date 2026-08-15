@@ -15,6 +15,7 @@ from .repository import (
     update_categoria,
     update_categoria_estado,
     get_productos,
+    get_subtipos_catalogo,
     get_variantes,
     crear_imagen_catalogo,
     listar_imagenes_producto,
@@ -174,6 +175,18 @@ def listar_productos():
         conn.close()
 
 
+def listar_subtipos_catalogo(rubro: str | None = None, categoria_id: int | None = None):
+    conn = get_connection()
+    try:
+        return get_subtipos_catalogo(
+            conn,
+            rubro=normalize_text_upper(rubro) if rubro else None,
+            categoria_id=categoria_id,
+        )
+    finally:
+        conn.close()
+
+
 def listar_variantes():
     conn = get_connection()
 
@@ -294,6 +307,8 @@ def listar_catalogo_pos(
     query: str | None = None,
     categoria_id: int | None = None,
     marca_id: int | None = None,
+    rubro: str | None = None,
+    subtipo_catalogo: str | None = None,
     limit: int = 50,
     offset: int = 0,
     solo_disponibles: bool = False,
@@ -315,6 +330,8 @@ def listar_catalogo_pos(
             query=query,
             categoria_id=categoria_id,
             marca_id=marca_id,
+            rubro=rubro,
+            subtipo_catalogo=normalize_text_upper(subtipo_catalogo) if subtipo_catalogo else None,
             limit=limit,
             offset=offset,
             solo_disponibles=solo_disponibles,
@@ -325,16 +342,20 @@ def listar_catalogo_pos(
 
 def generar_catalogo_mayorista_pdf_service(
     id_sucursal: int,
+    rubro: str | None = None,
     categoria_id: int | None = None,
     marca_id: int | None = None,
+    subtipo_catalogo: str | None = None,
 ) -> bytes:
     conn = get_connection()
     try:
         items = get_catalogo_mayorista_pdf_items(
             conn,
             id_sucursal=id_sucursal,
+            rubro=rubro,
             categoria_id=categoria_id,
             marca_id=marca_id,
+            subtipo_catalogo=normalize_text_upper(subtipo_catalogo) if subtipo_catalogo else None,
         )
         opciones_pago = _opciones_pago_catalogo_bicicletas(conn)
 
@@ -350,18 +371,22 @@ def generar_catalogo_mayorista_pdf_service(
 
 def generar_catalogo_minorista_pdf_service(
     id_sucursal: int,
+    rubro: str | None = None,
     categoria_id: int | None = None,
     marca_id: int | None = None,
     query: str | None = None,
+    subtipo_catalogo: str | None = None,
 ) -> bytes:
     conn = get_connection()
     try:
         items = get_catalogo_minorista_pdf_items(
             conn,
             id_sucursal=id_sucursal,
+            rubro=rubro,
             categoria_id=categoria_id,
             marca_id=marca_id,
             query=query,
+            subtipo_catalogo=normalize_text_upper(subtipo_catalogo) if subtipo_catalogo else None,
         )
         opciones_pago = _opciones_pago_catalogo_bicicletas(conn)
 
@@ -421,6 +446,88 @@ def generar_catalogo_bicicletas_pdf_service(
                 "filtros": filtros,
             }
         )
+    finally:
+        conn.close()
+
+
+def previsualizar_catalogo_pdf_service(
+    tipo: str,
+    id_sucursal: int,
+    rubro: str | None = None,
+    categoria_id: int | None = None,
+    marca_id: int | None = None,
+    query: str | None = None,
+    subtipo_catalogo: str | None = None,
+    rodado: str | None = None,
+    talle: str | None = None,
+    color: str | None = None,
+    solo_disponibles: bool = True,
+):
+    tipo_normalizado = (tipo or "").strip().lower()
+    if tipo_normalizado not in {"minorista", "mayorista", "bicicletas"}:
+        raise HTTPException(status_code=400, detail="Tipo de catalogo invalido")
+
+    conn = get_connection()
+    try:
+        filtros = []
+        if query:
+            filtros.append(f"Busqueda: {query.strip()}")
+        if rubro:
+            filtros.append(f"Rubro: {rubro.strip()}")
+        if categoria_id is not None:
+            filtros.append(f"Categoria #{categoria_id}")
+        if marca_id is not None:
+            filtros.append(f"Marca #{marca_id}")
+        if subtipo_catalogo:
+            filtros.append(f"Subtipo: {subtipo_catalogo.strip()}")
+        if rodado:
+            filtros.append(f"Rodado {rodado.strip()}")
+        if talle:
+            filtros.append(f"Talle {talle.strip()}")
+        if color:
+            filtros.append(f"Color {color.strip()}")
+
+        if tipo_normalizado == "bicicletas":
+            items = get_catalogo_bicicletas_pdf_items(
+                conn,
+                id_sucursal=id_sucursal,
+                marca_id=marca_id,
+                query=query,
+                rodado=rodado,
+                talle=talle,
+                color=color,
+                solo_disponibles=solo_disponibles,
+            )
+        elif tipo_normalizado == "mayorista":
+            items = get_catalogo_mayorista_pdf_items(
+                conn,
+                id_sucursal=id_sucursal,
+                rubro=rubro,
+                categoria_id=categoria_id,
+                marca_id=marca_id,
+                subtipo_catalogo=normalize_text_upper(subtipo_catalogo) if subtipo_catalogo else None,
+            )
+        else:
+            items = get_catalogo_minorista_pdf_items(
+                conn,
+                id_sucursal=id_sucursal,
+                rubro=rubro,
+                categoria_id=categoria_id,
+                marca_id=marca_id,
+                query=query,
+                subtipo_catalogo=normalize_text_upper(subtipo_catalogo) if subtipo_catalogo else None,
+            )
+
+        total = len(items)
+        return {
+            "tipo": tipo_normalizado,
+            "total": total,
+            "filtros": filtros,
+            "puede_descargar": total > 0,
+            "mensaje": None
+            if total > 0
+            else "No hay productos disponibles para esos filtros.",
+        }
     finally:
         conn.close()
     
@@ -520,6 +627,7 @@ def crear_producto(data):
                         "id_marca": data.id_marca,
                         "nombre": normalize_text_upper(data.nombre),
                         "rubro": normalize_text_upper(data.rubro),
+                        "subtipo_catalogo": normalize_text_upper(data.subtipo_catalogo),
                         "tipo_item": data.tipo_item,
                         "stockeable": data.stockeable,
                         "serializable": data.serializable,
@@ -744,6 +852,9 @@ def editar_producto(producto_id: int, data):
 
             if "rubro" in payload and payload["rubro"] is not None:
                 payload["rubro"] = normalize_text_upper(payload["rubro"])
+
+            if "subtipo_catalogo" in payload and payload["subtipo_catalogo"] is not None:
+                payload["subtipo_catalogo"] = normalize_text_upper(payload["subtipo_catalogo"])
 
             for campo in ["tipo_bicicleta", "material_cuadro"]:
                 if campo in payload and payload[campo] is not None:

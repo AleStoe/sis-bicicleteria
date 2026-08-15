@@ -42,6 +42,8 @@ def _crear_producto(
     categoria_id: int,
     marca_id: int | None = None,
     nombre: str = "Producto Test Catalogo",
+    rubro: str = "REPUESTOS",
+    subtipo_catalogo: str | None = None,
     tipo_item: str = "producto",
     stockeable: bool = True,
     serializable: bool = False,
@@ -52,6 +54,8 @@ def _crear_producto(
             "id_categoria": categoria_id,
             "id_marca": marca_id,
             "nombre": nombre,
+            "rubro": rubro,
+            "subtipo_catalogo": subtipo_catalogo,
             "tipo_item": tipo_item,
             "stockeable": stockeable,
             "serializable": serializable,
@@ -288,6 +292,21 @@ def test_crear_producto_basico(client):
     assert producto["stockeable"] is True
     assert producto["serializable"] is False
     assert producto["activo"] is True
+
+
+def test_crear_producto_rubro_herramientas(client):
+    categoria = _get_first_categoria(client)
+
+    producto = _crear_producto(
+        client,
+        categoria_id=categoria["id"],
+        nombre="Extractor test rubro herramientas",
+        rubro="HERRAMIENTAS",
+        subtipo_catalogo="EXTRACTOR",
+    )
+
+    assert producto["rubro"] == "HERRAMIENTAS"
+    assert producto["subtipo_catalogo"] == "EXTRACTOR"
 
 
 def test_rechaza_producto_serializable_no_stockeable(client):
@@ -614,6 +633,119 @@ def test_catalogo_pos_busca_por_nombre_sku_codigo_barras_y_codigo_proveedor(
 
         ids = [item["id_variante"] for item in data["items"]]
         assert variante["id"] in ids
+
+
+def test_catalogo_pos_filtra_por_subtipo_catalogo(client, db_conn, seed_venta_basica):
+    categoria = _get_first_categoria(client)
+    producto_eje = _crear_producto(
+        client,
+        categoria_id=categoria["id"],
+        nombre="Maza filtro subtipo eje",
+        subtipo_catalogo="EJE DE MAZA",
+    )
+    producto_cierre = _crear_producto(
+        client,
+        categoria_id=categoria["id"],
+        nombre="Maza filtro subtipo cierre",
+        subtipo_catalogo="CIERRE RÁPIDO",
+    )
+    variante_eje = _crear_variante(
+        client,
+        producto_id=producto_eje["id"],
+        nombre_variante="UNICA",
+        sku="SUBTIPO-EJE",
+        codigo_barras="7791000000001",
+    )
+    variante_cierre = _crear_variante(
+        client,
+        producto_id=producto_cierre["id"],
+        nombre_variante="UNICA",
+        sku="SUBTIPO-CIERRE",
+        codigo_barras="7791000000002",
+    )
+    _upsert_stock_sucursal(
+        db_conn,
+        id_sucursal=seed_venta_basica["sucursal_id"],
+        id_variante=variante_eje["id"],
+        stock_fisico=2,
+    )
+    _upsert_stock_sucursal(
+        db_conn,
+        id_sucursal=seed_venta_basica["sucursal_id"],
+        id_variante=variante_cierre["id"],
+        stock_fisico=2,
+    )
+    db_conn.commit()
+
+    response = client.get(
+        "/catalogo/pos",
+        params={
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "query": "Maza filtro subtipo",
+            "subtipo_catalogo": "EJE DE MAZA",
+            "solo_disponibles": True,
+            "limit": 50,
+            "offset": 0,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    ids = [item["id_variante"] for item in response.json()["items"]]
+    assert ids == [variante_eje["id"]]
+    assert variante_cierre["id"] not in ids
+
+
+def test_catalogo_pdf_preview_bloquea_vacio_y_cuenta_resultados(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    categoria = _get_first_categoria(client)
+    producto = _crear_producto(
+        client,
+        categoria_id=categoria["id"],
+        nombre="Asiento preview catalogo",
+        subtipo_catalogo="ASIENTO",
+    )
+    variante = _crear_variante(
+        client,
+        producto_id=producto["id"],
+        nombre_variante="UNICA",
+        sku="PREVIEW-ASIENTO",
+        codigo_barras="7791999999999",
+    )
+    _upsert_stock_sucursal(
+        db_conn,
+        id_sucursal=seed_venta_basica["sucursal_id"],
+        id_variante=variante["id"],
+        stock_fisico=3,
+    )
+
+    vacio = client.get(
+        "/catalogo/pdf/preview",
+        params={
+            "tipo": "minorista",
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "query": "SIN RESULTADOS PREVIEW",
+        },
+    )
+    assert vacio.status_code == 200, vacio.text
+    assert vacio.json()["total"] == 0
+    assert vacio.json()["puede_descargar"] is False
+
+    con_resultados = client.get(
+        "/catalogo/pdf/preview",
+        params={
+            "tipo": "minorista",
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "query": "asiento preview",
+            "subtipo_catalogo": "ASIENTO",
+        },
+    )
+    assert con_resultados.status_code == 200, con_resultados.text
+    data = con_resultados.json()
+    assert data["total"] >= 1
+    assert data["puede_descargar"] is True
 
 
 def test_catalogo_pos_busqueda_por_rodado_no_matchea_codigos(

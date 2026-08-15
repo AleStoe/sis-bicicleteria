@@ -83,6 +83,7 @@ import {
 
 const DEFAULT_LIMIT = 80;
 const MOBILE_BREAKPOINT = 760;
+const NOTICE_AUTO_CLOSE_MS = 12000;
 
 function formatMoneyPOS(value) {
   return Number(value || 0).toLocaleString("es-AR", {
@@ -103,6 +104,41 @@ function formatUsuarioSesion(usuario) {
   }
 
   return usuario.id ? `Usuario #${usuario.id}` : "-";
+}
+
+function VentaNotice({ tone = "info", title, children, actionLabel, onAction, onClose }) {
+  const toneStyle = posNoticeToneStyles[tone] || posNoticeToneStyles.info;
+
+  return (
+    <div style={{ ...posNoticeStyles.card, ...toneStyle.card }}>
+      <div style={{ ...posNoticeStyles.accent, background: toneStyle.accent }} />
+      <div style={posNoticeStyles.content}>
+        <div style={posNoticeStyles.titleRow}>
+          {title && <strong style={{ ...posNoticeStyles.title, color: toneStyle.title }}>{title}</strong>}
+          {onClose && (
+            <button
+              type="button"
+              aria-label="Cerrar aviso"
+              onClick={onClose}
+              style={posNoticeStyles.closeButton}
+            >
+              x
+            </button>
+          )}
+        </div>
+        {children && <div style={posNoticeStyles.text}>{children}</div>}
+        {actionLabel && onAction && (
+          <button
+            type="button"
+            onClick={onAction}
+            style={{ ...posNoticeStyles.actionButton, color: toneStyle.title, borderColor: toneStyle.border }}
+          >
+            {actionLabel}
+          </button>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function useIsMobile(breakpoint = MOBILE_BREAKPOINT) {
@@ -251,6 +287,26 @@ export default function NuevaVentaPage() {
   }, [clienteQuery]);
 
   useEffect(() => {
+    if (!mensaje) return;
+
+    const handle = setTimeout(() => {
+      setMensaje("");
+    }, NOTICE_AUTO_CLOSE_MS);
+
+    return () => clearTimeout(handle);
+  }, [mensaje]);
+
+  useEffect(() => {
+    if (!mostrarAvisoConsumidorFinal) return;
+
+    const handle = setTimeout(() => {
+      setMostrarAvisoConsumidorFinal(false);
+    }, NOTICE_AUTO_CLOSE_MS);
+
+    return () => clearTimeout(handle);
+  }, [mostrarAvisoConsumidorFinal]);
+
+  useEffect(() => {
     let cancelado = false;
 
     async function cargarDeudaCliente() {
@@ -266,9 +322,6 @@ export default function NuevaVentaPage() {
         const resumen = calcularDeudaAbiertaCliente(deudas, clienteId);
         setDeudaCliente(resumen);
 
-        if (resumen.tieneDeuda) {
-          setMensaje(`Este cliente tiene deuda pendiente: ${formatMoneyPOS(resumen.saldo)}.`);
-        }
       } catch (err) {
         if (!cancelado) {
           setDeudaCliente({ tieneDeuda: false, saldo: 0 });
@@ -305,7 +358,7 @@ export default function NuevaVentaPage() {
 
     setTimeout(() => {
       setMensajePOS("");
-    }, 2500);
+    }, NOTICE_AUTO_CLOSE_MS);
   }
 
   function pedirConfirmacion(config) {
@@ -466,7 +519,7 @@ async function handleBuscarEnter(e) {
 
   e.preventDefault();
 
-  const codigo = codigoRapido.trim();
+  const codigo = query.trim();
 
   if (!codigo) return;
 
@@ -487,7 +540,7 @@ async function handleBuscarEnter(e) {
 
     if (!agregado) return;
 
-    setCodigoRapido("");
+    setQuery("");
     mostrarMensajePOS(`${producto.producto_nombre} agregado`);
     setTimeout(() => {
       searchRef.current?.focus();
@@ -805,7 +858,7 @@ async function handleBuscarEnter(e) {
     setDraftPendiente(null);
 
     if (mostrarMensaje) {
-      setMensaje("Venta pendiente recuperada.");
+      setMensaje("Recuperé la venta pendiente.");
     }
 
     if (abrirCarrito) {
@@ -828,7 +881,7 @@ async function handleBuscarEnter(e) {
     setClienteQuery(consumidorFinal ? formatearClienteParaBusqueda(consumidorFinal) : "");
     setMostrarRecuperacionDraft(false);
     setDraftPendiente(null);
-    setMensaje("Venta pendiente descartada.");
+    setMensaje("Descarté la venta pendiente.");
     consumidorFinalAvisadoRef.current = false;
     setMostrarAvisoConsumidorFinal(false);
     setDeudaCliente({ tieneDeuda: false, saldo: 0 });
@@ -1060,9 +1113,8 @@ async function handleBuscarEnter(e) {
           </div>
         </div>
 
-        <div style={{ ...topSearchWrapStyle, ...(isMobile ? posMobileStyles.topSearchWrap : {}) }}>
+        <div style={{ display: "none" }}>
           <input
-            ref={searchRef}
             value={codigoRapido}
             onChange={(e) => setCodigoRapido(e.target.value)}
             onKeyDown={handleBuscarEnter}
@@ -1079,6 +1131,56 @@ async function handleBuscarEnter(e) {
         </div>
       </header>
 
+      {(error || mensaje || mostrarAvisoConsumidorFinal || deudaCliente.tieneDeuda || mensajePOS) && (
+        <div style={posNoticeStyles.stack}>
+          {error && (
+            <VentaNotice tone="danger" title="No se pudo continuar">
+              {error}
+            </VentaNotice>
+          )}
+          {mensaje && (
+            <VentaNotice
+              tone="success"
+              title="Listo"
+              actionLabel="Ok"
+              onAction={() => setMensaje("")}
+              onClose={() => setMensaje("")}
+            >
+              {mensaje}
+            </VentaNotice>
+          )}
+          {mostrarAvisoConsumidorFinal && (
+            <VentaNotice
+              tone="warning"
+              title="Consumidor Final seleccionado"
+              actionLabel="Entendido"
+              onAction={() => setMostrarAvisoConsumidorFinal(false)}
+              onClose={() => setMostrarAvisoConsumidorFinal(false)}
+            >
+              La venta queda sin historial personalizado. Cargá el cliente si necesitás garantía,
+              deuda o seguimiento.
+            </VentaNotice>
+          )}
+          {deudaCliente.tieneDeuda && (
+            <VentaNotice tone="warning" title="Cliente con deuda abierta">
+              Saldo pendiente: {formatMoneyPOS(deudaCliente.saldo)}.
+            </VentaNotice>
+          )}
+          {mensajePOS && (
+            <VentaNotice
+              tone="info"
+              title="Lectura rápida"
+              actionLabel="Ok"
+              onAction={() => setMensajePOS("")}
+              onClose={() => setMensajePOS("")}
+            >
+              {mensajePOS}
+            </VentaNotice>
+          )}
+        </div>
+      )}
+      {false && (
+        <>
       {error && <div style={alertStyle}>Error: {error}</div>}
       {mensaje && <div style={successStyle}>{mensaje}</div>}
       {mostrarAvisoConsumidorFinal && (
@@ -1114,6 +1216,8 @@ async function handleBuscarEnter(e) {
           {mensajePOS}
         </div>
       )}
+        </>
+      )}
 
       <main style={isMobile ? posMobileStyles.layout : layoutStyle}>
         <CatalogoPOSPanel
@@ -1132,6 +1236,7 @@ async function handleBuscarEnter(e) {
           productoSeleccionadoId={productoSeleccionadoId}
           variantesEnCarrito={variantesEnCarrito}
           isMobile={isMobile}
+          searchInputRef={searchRef}
         />
 
         {!isMobile && (
@@ -1194,6 +1299,100 @@ async function handleBuscarEnter(e) {
     </div>
   );
 }
+
+const posNoticeStyles = {
+  stack: {
+    display: "grid",
+    gap: 8,
+    margin: "0 6px 12px",
+  },
+  card: {
+    position: "relative",
+    display: "grid",
+    gridTemplateColumns: "4px minmax(0, 1fr)",
+    gap: 12,
+    alignItems: "start",
+    border: "1px solid #e2e8f0",
+    borderRadius: 14,
+    padding: "11px 14px 11px 10px",
+    boxShadow: "0 8px 18px rgba(15, 23, 42, 0.06)",
+  },
+  accent: {
+    width: 4,
+    height: "100%",
+    minHeight: 42,
+    borderRadius: 999,
+  },
+  content: {
+    display: "grid",
+    gap: 5,
+    minWidth: 0,
+  },
+  titleRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  title: {
+    fontSize: 14,
+    fontWeight: 1000,
+    lineHeight: 1.2,
+  },
+  text: {
+    color: "#334155",
+    fontSize: 13,
+    fontWeight: 700,
+    lineHeight: 1.35,
+  },
+  closeButton: {
+    border: "none",
+    background: "transparent",
+    color: "#64748b",
+    fontSize: 16,
+    fontWeight: 1000,
+    lineHeight: 1,
+    cursor: "pointer",
+    padding: 2,
+  },
+  actionButton: {
+    justifySelf: "start",
+    border: "1px solid #cbd5e1",
+    background: "white",
+    borderRadius: 10,
+    padding: "6px 10px",
+    fontSize: 12,
+    fontWeight: 1000,
+    cursor: "pointer",
+  },
+};
+
+const posNoticeToneStyles = {
+  info: {
+    card: { background: "#eff6ff", borderColor: "#bfdbfe" },
+    accent: "#2563eb",
+    title: "#1d4ed8",
+    border: "#93c5fd",
+  },
+  success: {
+    card: { background: "#ecfdf5", borderColor: "#bbf7d0" },
+    accent: "#16a34a",
+    title: "#047857",
+    border: "#86efac",
+  },
+  warning: {
+    card: { background: "#fff7ed", borderColor: "#fed7aa" },
+    accent: "#f97316",
+    title: "#c2410c",
+    border: "#fdba74",
+  },
+  danger: {
+    card: { background: "#fef2f2", borderColor: "#fecaca" },
+    accent: "#dc2626",
+    title: "#b91c1c",
+    border: "#fca5a5",
+  },
+};
 
 const posMobileStyles = {
   page: {

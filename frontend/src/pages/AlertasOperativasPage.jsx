@@ -283,7 +283,7 @@ export default function AlertasOperativasPage() {
             <AlertaCard
               title="Stock critico"
               items={data.stock_critico}
-              to={() => "/stock?estado_stock=stock_bajo"}
+              to={(item) => `/stock?id_variante=${item.id_variante}`}
               render={(item) =>
                 `${formatProductoVariante(
                   item.producto_nombre || "Producto",

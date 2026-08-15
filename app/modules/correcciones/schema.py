@@ -100,3 +100,9 @@ class ValidarCapitalSinCajaOutput(BaseModel):
     ok: bool
     movimiento_id: int
     historial_id: int
+
+
+class ValidarCostoSospechosoOutput(BaseModel):
+    ok: bool
+    item_id: int
+    auditoria_id: int

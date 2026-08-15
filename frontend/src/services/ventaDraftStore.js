@@ -18,6 +18,7 @@ export function normalizarVentaDraft(draft) {
     observaciones: draft.observaciones || "",
     usarCredito:
       typeof draft.usarCredito === "boolean" ? draft.usarCredito : true,
+    pedidoClienteId: draft.pedidoClienteId ?? null,
     idUsuario: draft.idUsuario ?? null,
     idSucursal: draft.idSucursal ?? null,
     advertencias: {

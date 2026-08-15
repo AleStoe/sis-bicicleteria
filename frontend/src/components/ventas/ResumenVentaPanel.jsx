@@ -6,13 +6,26 @@ function formatMoney(value) {
   });
 }
 
-export default function ResumenVentaPanel({ total }) {
+const DESCUENTO_CONTADO_ESTIMADO = 10;
+
+export default function ResumenVentaPanel({ total, mostrarContado = false }) {
+  const totalContado = Number(total || 0) * (1 - DESCUENTO_CONTADO_ESTIMADO / 100);
+
   return (
     <section style={summaryStyle}>
       <div style={summaryLineStyle}>
         <span>Subtotal</span>
         <strong>{formatMoney(total)}</strong>
       </div>
+      {mostrarContado && Number(total || 0) > 0 && (
+        <div style={cashLineStyle}>
+          <div>
+            <span>Efectivo / transferencia</span>
+            <small>{DESCUENTO_CONTADO_ESTIMADO}% OFF estimado</small>
+          </div>
+          <strong>{formatMoney(totalContado)}</strong>
+        </div>
+      )}
       <div style={totalLineStyle}>
         <span>Total</span>
         <strong>{formatMoney(total)}</strong>
@@ -40,4 +53,18 @@ const totalLineStyle = {
   paddingTop: "10px",
   fontSize: "24px",
   color: "#0b5bd3",
+};
+
+const cashLineStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 10,
+  margin: "6px 0",
+  padding: "10px 12px",
+  border: "1px solid #fed7aa",
+  borderRadius: 12,
+  background: "#fff7ed",
+  color: "#c2410c",
+  fontWeight: 900,
 };

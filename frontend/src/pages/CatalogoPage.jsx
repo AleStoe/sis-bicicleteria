@@ -7,6 +7,8 @@ import {
   listarCatalogoPOS,
   listarCategorias,
   listarMarcas,
+  listarSubtiposCatalogo,
+  previsualizarCatalogoPdf,
 } from "../services/catalogoService";
 import ProductImage from "../components/catalogo/ProductImage";
 import EstadoBadge from "../components/catalogo/EstadoBadge";
@@ -32,6 +34,7 @@ import {
   PackagePlus,
   RefreshCw,
   Search,
+  Tags,
   X,
 } from "lucide-react";
 import { getHistoriaVarianteUrl } from "../services/documentosService";
@@ -40,6 +43,16 @@ import { colors, controls, radius, shadows, spacing, typography } from "../theme
 const ID_SUCURSAL_DEFAULT = 1;
 const LIMIT = 24;
 const MOBILE_BREAKPOINT = 760;
+const RUBROS_CATALOGO = [
+  { value: "", label: "Todos los rubros" },
+  { value: "BICICLETAS", label: "Bicicletas" },
+  { value: "REPUESTOS", label: "Repuestos" },
+  { value: "ACCESORIOS", label: "Accesorios" },
+  { value: "INDUMENTARIA", label: "Indumentaria" },
+  { value: "HERRAMIENTAS", label: "Herramientas" },
+  { value: "CUBIERTAS AUTO", label: "Cubiertas auto" },
+  { value: "SERVICIOS", label: "Servicios" },
+];
 
 function useIsMobile(breakpoint = MOBILE_BREAKPOINT) {
   const [isMobile, setIsMobile] = useState(() => {
@@ -116,8 +129,11 @@ export default function CatalogoPage() {
   const [categorias, setCategorias] = useState([]);
   const [marcas, setMarcas] = useState([]);
   const [query, setQuery] = useState("");
+  const [rubro, setRubro] = useState("");
   const [categoriaId, setCategoriaId] = useState("");
   const [marcaId, setMarcaId] = useState("");
+  const [subtipoCatalogo, setSubtipoCatalogo] = useState("");
+  const [subtiposCatalogo, setSubtiposCatalogo] = useState([]);
   const [pdfRodado, setPdfRodado] = useState("");
   const [pdfTalle, setPdfTalle] = useState("");
   const [pdfColor, setPdfColor] = useState("");
@@ -138,7 +154,11 @@ export default function CatalogoPage() {
 
   useEffect(() => {
     cargarCatalogo();
-  }, [offset, categoriaId, marcaId]);
+  }, [offset, rubro, categoriaId, marcaId, subtipoCatalogo]);
+
+  useEffect(() => {
+    cargarSubtiposCatalogo();
+  }, [rubro, categoriaId]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -185,8 +205,10 @@ export default function CatalogoPage() {
       const data = await listarCatalogoPOS({
         id_sucursal: ID_SUCURSAL_DEFAULT,
         query: query.trim() || undefined,
+        rubro: rubro || undefined,
         categoria_id: categoriaId || undefined,
         marca_id: marcaId || undefined,
+        subtipo_catalogo: subtipoCatalogo || undefined,
         limit: LIMIT,
         offset: nextOffset,
         solo_disponibles: true,
@@ -207,6 +229,21 @@ export default function CatalogoPage() {
       setMarcas(data || []);
     } catch (err) {
       setError(err.message || "No se pudieron cargar las marcas");
+    }
+  }
+
+  async function cargarSubtiposCatalogo() {
+    try {
+      const data = await listarSubtiposCatalogo({
+        rubro: rubro || undefined,
+        categoria_id: categoriaId || undefined,
+      });
+      setSubtiposCatalogo(data || []);
+      setSubtipoCatalogo((actual) =>
+        actual && !(data || []).includes(actual) ? "" : actual
+      );
+    } catch (err) {
+      setError(err.message || "No se pudieron cargar los subtipos");
     }
   }
 
@@ -260,8 +297,10 @@ export default function CatalogoPage() {
       await descargarCatalogoMayoristaPdfService(
         {
           id_sucursal: ID_SUCURSAL_DEFAULT,
+          rubro: rubro || undefined,
           categoria_id: categoriaId || undefined,
           marca_id: marcaId || undefined,
+          subtipo_catalogo: subtipoCatalogo || undefined,
         },
         `Catalogo-Mayorista-${fechaDescargaActual()}.pdf`
       );
@@ -276,9 +315,11 @@ export default function CatalogoPage() {
       await descargarCatalogoMinoristaPdfService(
         {
           id_sucursal: ID_SUCURSAL_DEFAULT,
+          rubro: rubro || undefined,
           categoria_id: categoriaId || undefined,
           marca_id: marcaId || undefined,
           query: query.trim() || undefined,
+          subtipo_catalogo: subtipoCatalogo || undefined,
         },
         `Catalogo-Minorista-Repuestos-${fechaDescargaActual()}.pdf`
       );
@@ -326,6 +367,7 @@ export default function CatalogoPage() {
               <>
                 <Button type="button" onClick={() => navigate("/mercaderia/alta")}><PackagePlus size={16} /> Alta mercadería</Button>
                 <Button type="button" variant="outline" onClick={() => navigate("/mercaderia/bicicletas/alta")}><Bike size={16} /> Alta bicicleta</Button>
+                <Button type="button" variant="outline" onClick={() => navigate("/catalogo/categorias")}><Tags size={16} /> Categorias</Button>
               </>
             )}
           </>
@@ -364,9 +406,27 @@ export default function CatalogoPage() {
         </div>
 
         <select
+          value={rubro}
+          onChange={(e) => {
+            setRubro(e.target.value);
+            setCategoriaId("");
+            setSubtipoCatalogo("");
+            setOffset(0);
+          }}
+          style={styles.select}
+        >
+          {RUBROS_CATALOGO.map((opcion) => (
+            <option key={opcion.value || "todos"} value={opcion.value}>
+              {opcion.label}
+            </option>
+          ))}
+        </select>
+
+        <select
           value={categoriaId}
           onChange={(e) => {
             setCategoriaId(e.target.value);
+            setSubtipoCatalogo("");
             setOffset(0);
           }}
           style={styles.select}
@@ -375,6 +435,22 @@ export default function CatalogoPage() {
           {categorias.map((categoria) => (
             <option key={categoria.id} value={categoria.id}>
               {categoria.nombre}
+            </option>
+          ))}
+        </select>
+
+        <select
+          value={subtipoCatalogo}
+          onChange={(e) => {
+            setSubtipoCatalogo(e.target.value);
+            setOffset(0);
+          }}
+          style={styles.select}
+        >
+          <option value="">Todos los subtipos</option>
+          {subtiposCatalogo.map((subtipo) => (
+            <option key={subtipo} value={subtipo}>
+              {subtipo}
             </option>
           ))}
         </select>
@@ -401,11 +477,13 @@ export default function CatalogoPage() {
       </section>
 
       {catalogoModalOpen && (
-        <CrearCatalogoModal
+        <CrearCatalogoModalGuiado
           isMobile={isMobile}
           query={query}
+          rubro={rubro}
           categoriaId={categoriaId}
           marcaId={marcaId}
+          subtipoCatalogo={subtipoCatalogo}
           categorias={categorias}
           marcas={marcas}
           pdfRodado={pdfRodado}
@@ -415,9 +493,6 @@ export default function CatalogoPage() {
           setPdfTalle={setPdfTalle}
           setPdfColor={setPdfColor}
           onClose={() => setCatalogoModalOpen(false)}
-          onMinorista={descargarCatalogoMinoristaPdf}
-          onMayorista={descargarCatalogoMayoristaPdf}
-          onBicicletas={descargarCatalogoBicicletasPdf}
         />
       )}
 
@@ -495,11 +570,391 @@ export default function CatalogoPage() {
   );
 }
 
+function CrearCatalogoModalGuiado({
+  isMobile,
+  query,
+  rubro,
+  categoriaId,
+  marcaId,
+  categorias,
+  marcas,
+  pdfRodado,
+  pdfTalle,
+  pdfColor,
+  onClose,
+}) {
+  const [tipo, setTipo] = useState(rubro === "BICICLETAS" ? "bicicletas" : "minorista");
+  const [modalQuery, setModalQuery] = useState(query || "");
+  const [modalRubro, setModalRubro] = useState(rubro === "BICICLETAS" ? "BICICLETAS" : rubro || "");
+  const [modalCategoriaId, setModalCategoriaId] = useState(categoriaId || "");
+  const [modalMarcaId, setModalMarcaId] = useState(marcaId || "");
+  const [modalSubtipo, setModalSubtipo] = useState("");
+  const [modalRodado, setModalRodado] = useState(pdfRodado || "");
+  const [modalTalle, setModalTalle] = useState(pdfTalle || "");
+  const [modalColor, setModalColor] = useState(pdfColor || "");
+  const [modalSubtipos, setModalSubtipos] = useState([]);
+  const [preview, setPreview] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState("");
+  const [descargando, setDescargando] = useState(false);
+
+  const esBicicletas = tipo === "bicicletas";
+  const esMayorista = tipo === "mayorista";
+  const queryPareceBicicleta = /\b(r|rodado|talle|mtb|bmx|bicicleta|topmega|venzo|tigris|totem)\s*\d*|\b\d{2}\b/i.test(
+    modalQuery
+  );
+  const rubrosDisponiblesModal = esBicicletas
+    ? RUBROS_CATALOGO.filter((opcion) => opcion.value === "BICICLETAS")
+    : RUBROS_CATALOGO.filter((opcion) => opcion.value !== "BICICLETAS");
+
+  useEffect(() => {
+    let cancelado = false;
+
+    async function cargarSubtiposModal() {
+      if (esBicicletas) {
+        setModalSubtipos([]);
+        setModalSubtipo("");
+        return;
+      }
+
+      try {
+        const data = await listarSubtiposCatalogo({
+          rubro: modalRubro || undefined,
+          categoria_id: modalCategoriaId || undefined,
+        });
+        if (cancelado) return;
+        setModalSubtipos(data || []);
+        setModalSubtipo((actual) =>
+          actual && !(data || []).includes(actual) ? "" : actual
+        );
+      } catch {
+        if (!cancelado) setModalSubtipos([]);
+      }
+    }
+
+    cargarSubtiposModal();
+    return () => {
+      cancelado = true;
+    };
+  }, [esBicicletas, modalRubro, modalCategoriaId]);
+
+  function crearParamsPreview() {
+    if (esBicicletas) {
+      return {
+        tipo,
+        id_sucursal: ID_SUCURSAL_DEFAULT,
+        marca_id: modalMarcaId || undefined,
+        query: modalQuery.trim() || undefined,
+        rodado: modalRodado.trim() || undefined,
+        talle: modalTalle.trim() || undefined,
+        color: modalColor.trim() || undefined,
+        solo_disponibles: true,
+      };
+    }
+
+    return {
+      tipo,
+      id_sucursal: ID_SUCURSAL_DEFAULT,
+      rubro: modalRubro || undefined,
+      categoria_id: modalCategoriaId || undefined,
+      marca_id: modalMarcaId || undefined,
+      query: esMayorista ? undefined : modalQuery.trim() || undefined,
+      subtipo_catalogo: modalSubtipo || undefined,
+    };
+  }
+
+  useEffect(() => {
+    let cancelado = false;
+    const timer = setTimeout(async () => {
+      try {
+        setPreviewLoading(true);
+        setPreviewError("");
+        const data = await previsualizarCatalogoPdf(crearParamsPreview());
+        if (!cancelado) setPreview(data);
+      } catch (err) {
+        if (!cancelado) {
+          setPreview(null);
+          setPreviewError(err.message || "No se pudo calcular el catalogo");
+        }
+      } finally {
+        if (!cancelado) setPreviewLoading(false);
+      }
+    }, 260);
+
+    return () => {
+      cancelado = true;
+      clearTimeout(timer);
+    };
+  }, [
+    tipo,
+    modalQuery,
+    modalRubro,
+    modalCategoriaId,
+    modalMarcaId,
+    modalSubtipo,
+    modalRodado,
+    modalTalle,
+    modalColor,
+  ]);
+
+  function cambiarTipo(nuevoTipo) {
+    setTipo(nuevoTipo);
+    if (nuevoTipo === "bicicletas") {
+      setModalRubro("BICICLETAS");
+      setModalCategoriaId("");
+      setModalSubtipo("");
+      return;
+    }
+
+    if (modalRubro === "BICICLETAS") {
+      setModalRubro("");
+      setModalCategoriaId("");
+      setModalSubtipo("");
+    }
+  }
+
+  function nombreArchivo() {
+    const marcaNombre = modalMarcaId
+      ? marcas.find((marca) => String(marca.id) === String(modalMarcaId))?.nombre
+      : "";
+    const partes = [
+      tipo === "bicicletas"
+        ? "Catalogo-Bicicletas"
+        : tipo === "mayorista"
+          ? "Catalogo-Mayorista"
+          : "Catalogo-Minorista",
+      modalRubro || "",
+      modalSubtipo || "",
+      marcaNombre || "",
+      esBicicletas && modalRodado.trim() ? `Rodado-${modalRodado.trim()}` : "",
+      esBicicletas && modalTalle.trim() ? `Talle-${modalTalle.trim()}` : "",
+      esBicicletas && modalColor.trim() ? `Color-${modalColor.trim()}` : "",
+      fechaDescargaActual(),
+    ].filter(Boolean);
+
+    return `${partes.join("-").replace(/\s+/g, "-")}.pdf`;
+  }
+
+  async function descargarCatalogoSeleccionado() {
+    if (!preview?.puede_descargar || descargando) return;
+
+    try {
+      setDescargando(true);
+      if (tipo === "bicicletas") {
+        await descargarCatalogoBicicletasPdfService(crearParamsPreview(), nombreArchivo());
+      } else if (tipo === "mayorista") {
+        await descargarCatalogoMayoristaPdfService(crearParamsPreview(), nombreArchivo());
+      } else {
+        await descargarCatalogoMinoristaPdfService(crearParamsPreview(), nombreArchivo());
+      }
+      onClose();
+    } catch (err) {
+      setPreviewError(err.message || "No se pudo descargar el catalogo");
+    } finally {
+      setDescargando(false);
+    }
+  }
+
+  return (
+    <div
+      style={styles.catalogModalBackdrop}
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        style={{
+          ...styles.catalogModal,
+          ...(isMobile ? styles.catalogModalMobile : {}),
+        }}
+      >
+        <header style={styles.catalogModalHeader}>
+          <div>
+            <p style={styles.catalogModalEyebrow}>Crear catalogo</p>
+            <h2 style={styles.catalogModalTitle}>Arma el PDF antes de descargar</h2>
+            <p style={styles.catalogModalSubtitle}>
+              Elegi el tipo, filtra con datos reales y confirma que tenga productos.
+            </p>
+          </div>
+          <button type="button" onClick={onClose} style={styles.catalogModalClose}>
+            <X size={18} />
+          </button>
+        </header>
+
+        <div style={styles.catalogTypeGrid}>
+          {[
+            ["minorista", "Minorista", "Precios para cliente final."],
+            ["mayorista", "Mayorista", "Lista para clientes mayoristas."],
+            ["bicicletas", "🚲 Bicicletas", "Bicis disponibles por marca, rodado, talle o color."],
+          ].map(([valor, titulo, descripcion]) => (
+            <button
+              key={valor}
+              type="button"
+              onClick={() => cambiarTipo(valor)}
+              style={tipo === valor ? styles.catalogTypeSelected : styles.catalogTypeButton}
+            >
+              <strong>{titulo}</strong>
+              <span>{descripcion}</span>
+            </button>
+          ))}
+        </div>
+
+        <div style={{ ...styles.catalogBuilderGrid, ...(isMobile ? styles.catalogBuilderGridMobile : {}) }}>
+          <div style={styles.catalogBuilderPanel}>
+            <label style={styles.label}>Que te pidieron</label>
+            <input
+              value={modalQuery}
+              onChange={(event) => setModalQuery(event.target.value)}
+              placeholder={esBicicletas ? "Ej: topmega r29 talle s" : "Ej: asientos, venzo, camaras"}
+              style={styles.select}
+              disabled={esMayorista}
+            />
+            {!esBicicletas && queryPareceBicicleta && (
+              <button
+                type="button"
+                onClick={() => cambiarTipo("bicicletas")}
+                style={styles.catalogBikeSuggestion}
+              >
+                Parece una búsqueda de bicicleta. Usar catálogo de bicicletas
+              </button>
+            )}
+            {esMayorista && (
+              <p style={styles.catalogHelpText}>
+                Para mayorista usa rubro, categoria, subtipo y marca.
+              </p>
+            )}
+
+            {!esBicicletas && (
+              <div style={styles.catalogFormGrid}>
+                <p style={styles.catalogInlineNotice}>
+                  Para bicicletas usá la opción “Bicicletas” de arriba.
+                </p>
+                <select
+                  value={modalRubro}
+                  onChange={(event) => {
+                    setModalRubro(event.target.value);
+                    setModalCategoriaId("");
+                    setModalSubtipo("");
+                  }}
+                  style={styles.select}
+                >
+                  {rubrosDisponiblesModal.map((opcion) => (
+                    <option key={opcion.value || "todos"} value={opcion.value}>
+                      {opcion.label}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={modalCategoriaId}
+                  onChange={(event) => {
+                    setModalCategoriaId(event.target.value);
+                    setModalSubtipo("");
+                  }}
+                  style={styles.select}
+                >
+                  <option value="">Todas las categorias</option>
+                  {categorias.map((categoria) => (
+                    <option key={categoria.id} value={categoria.id}>
+                      {categoria.nombre}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={modalSubtipo}
+                  onChange={(event) => setModalSubtipo(event.target.value)}
+                  style={styles.select}
+                >
+                  <option value="">Todos los subtipos</option>
+                  {modalSubtipos.map((subtipo) => (
+                    <option key={subtipo} value={subtipo}>
+                      {subtipo}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={modalMarcaId}
+                  onChange={(event) => setModalMarcaId(event.target.value)}
+                  style={styles.select}
+                >
+                  <option value="">Todas las marcas</option>
+                  {marcas.map((marca) => (
+                    <option key={marca.id} value={marca.id}>
+                      {marca.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {esBicicletas && (
+              <div style={styles.catalogFormGrid}>
+                <select
+                  value={modalMarcaId}
+                  onChange={(event) => setModalMarcaId(event.target.value)}
+                  style={styles.select}
+                >
+                  <option value="">Todas las marcas</option>
+                  {marcas.map((marca) => (
+                    <option key={marca.id} value={marca.id}>
+                      {marca.nombre}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  value={modalRodado}
+                  onChange={(event) => setModalRodado(event.target.value)}
+                  placeholder="Rodado. Ej: 20 o 29"
+                  style={styles.select}
+                />
+                <input
+                  value={modalTalle}
+                  onChange={(event) => setModalTalle(event.target.value)}
+                  placeholder="Talle. Ej: S o M"
+                  style={styles.select}
+                />
+                <input
+                  value={modalColor}
+                  onChange={(event) => setModalColor(event.target.value)}
+                  placeholder="Color. Ej: rojo"
+                  style={styles.select}
+                />
+              </div>
+            )}
+          </div>
+
+          <aside style={styles.catalogPreviewBox}>
+            <p style={styles.catalogModalEyebrow}>Vista previa</p>
+            <strong style={styles.catalogPreviewNumber}>
+              {previewLoading ? "Calculando..." : `${preview?.total ?? 0} productos`}
+            </strong>
+            <p style={styles.catalogOptionSubtitle}>
+              {preview?.puede_descargar
+                ? "Listo para descargar. El PDF va a salir con esos productos."
+                : preview?.mensaje || "Ajusta filtros para generar el PDF."}
+            </p>
+            {previewError && <div style={styles.alert}>Error: {previewError}</div>}
+            <Button
+              type="button"
+              onClick={descargarCatalogoSeleccionado}
+              disabled={!preview?.puede_descargar || previewLoading || descargando}
+              fullWidth
+            >
+              <FileDown size={16} /> {descargando ? "Descargando..." : "Descargar PDF"}
+            </Button>
+          </aside>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function CrearCatalogoModal({
   isMobile,
   query,
+  rubro,
   categoriaId,
   marcaId,
+  subtipoCatalogo,
   categorias,
   marcas,
   pdfRodado,
@@ -513,12 +968,16 @@ function CrearCatalogoModal({
   onMayorista,
   onBicicletas,
 }) {
+  const rubroNombre =
+    RUBROS_CATALOGO.find((opcion) => opcion.value === rubro)?.label ||
+    "Todos los rubros";
   const categoriaNombre =
     categorias.find((categoria) => String(categoria.id) === String(categoriaId))?.nombre ||
     "Todas las categorias";
   const marcaNombre =
     marcas.find((marca) => String(marca.id) === String(marcaId))?.nombre ||
     "Todas las marcas";
+  const subtipoNombre = subtipoCatalogo || "Todos los subtipos";
   const busqueda = query?.trim();
 
   async function descargarYCerrar(descargar) {
@@ -557,7 +1016,9 @@ function CrearCatalogoModal({
           <span style={styles.catalogFilterPill}>
             {busqueda ? `Busqueda: ${busqueda}` : "Sin busqueda"}
           </span>
+          <span style={styles.catalogFilterPill}>{rubroNombre}</span>
           <span style={styles.catalogFilterPill}>{categoriaNombre}</span>
+          <span style={styles.catalogFilterPill}>{subtipoNombre}</span>
           <span style={styles.catalogFilterPill}>{marcaNombre}</span>
         </div>
 
@@ -690,6 +1151,7 @@ function CatalogoCard({
           <div style={styles.tagsRow}>
             {item.marca_nombre && <span style={styles.tag}>{item.marca_nombre}</span>}
             <span style={styles.tag}>{item.categoria_nombre}</span>
+            {item.subtipo_catalogo && <span style={styles.tagSoft}>{item.subtipo_catalogo}</span>}
             {item.serializable && <span style={styles.serialTag}>Serializada</span>}
           </div>
           <div style={styles.statusGroup}>
@@ -1033,6 +1495,104 @@ const styles = {
     fontWeight: 850,
     color: colors.textMuted,
   },
+  catalogTypeGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gap: 10,
+  },
+  catalogTypeButton: {
+    display: "grid",
+    gap: 6,
+    textAlign: "left",
+    border: `1px solid ${colors.borderSoft}`,
+    borderRadius: radius.md,
+    background: colors.surface,
+    padding: 12,
+    color: colors.text,
+    cursor: "pointer",
+    boxShadow: shadows.sm,
+  },
+  catalogTypeSelected: {
+    display: "grid",
+    gap: 6,
+    textAlign: "left",
+    border: "1px solid #fb923c",
+    borderRadius: radius.md,
+    background: "#fff7ed",
+    padding: 12,
+    color: colors.text,
+    cursor: "pointer",
+    boxShadow: "0 10px 22px rgba(249, 115, 22, 0.14)",
+  },
+  catalogBuilderGrid: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1.7fr) minmax(240px, 0.8fr)",
+    gap: 14,
+    alignItems: "stretch",
+  },
+  catalogBuilderGridMobile: {
+    gridTemplateColumns: "1fr",
+  },
+  catalogBuilderPanel: {
+    display: "grid",
+    gap: 12,
+    border: `1px solid ${colors.borderSoft}`,
+    borderRadius: radius.md,
+    padding: 14,
+    background: colors.surface,
+  },
+  catalogFormGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: 10,
+  },
+  catalogPreviewBox: {
+    display: "grid",
+    gap: 12,
+    alignContent: "center",
+    border: "1px solid #fed7aa",
+    borderRadius: radius.md,
+    padding: 16,
+    background: "#fff7ed",
+  },
+  catalogPreviewNumber: {
+    fontSize: 30,
+    fontWeight: 1000,
+    color: "#c2410c",
+  },
+  catalogHelpText: {
+    margin: "-4px 0 0",
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: 750,
+    lineHeight: 1.35,
+  },
+  catalogBikeSuggestion: {
+    border: "1px solid #fed7aa",
+    background: "#fff7ed",
+    color: "#c2410c",
+    borderRadius: radius.md,
+    padding: "10px 12px",
+    fontWeight: 1000,
+    cursor: "pointer",
+    textAlign: "left",
+  },
+  catalogInlineNotice: {
+    gridColumn: "1 / -1",
+    margin: 0,
+    padding: "8px 10px",
+    border: "1px solid #dbeafe",
+    borderRadius: radius.md,
+    background: "#eff6ff",
+    color: "#1d4ed8",
+    fontSize: 13,
+    fontWeight: 850,
+  },
+  label: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: 1000,
+  },
   catalogOptionsGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
@@ -1304,6 +1864,14 @@ const styles = {
   tag: {
     background: "#f1f5f9",
     color: "#334155",
+    borderRadius: 999,
+    padding: "5px 8px",
+    fontSize: 12,
+    fontWeight: 900,
+  },
+  tagSoft: {
+    background: "#eef2ff",
+    color: "#3730a3",
     borderRadius: 999,
     padding: "5px 8px",
     fontSize: 12,

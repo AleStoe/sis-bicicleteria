@@ -5,6 +5,7 @@ import Sidebar from "./Sidebar";
 import useMediaQuery from "../../hooks/useMediaQuery";
 import { useSession } from "../../context/SessionContext";
 import CambiarPasswordModal from "./CambiarPasswordModal";
+import AsistenteInformativoPanel from "../asistente/AsistenteInformativoPanel";
 import {
   appShellStyle,
   mainContainerStyle,
@@ -183,6 +184,8 @@ export default function AppLayout({ children }) {
           <main ref={contentRef} style={contentStyle(isMobile)}>{children || <Outlet />}</main>
         </div>
       </div>
+
+      <AsistenteInformativoPanel />
     </>
   );
 }

@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { Link } from "react-router-dom";
 import CarritoVentaPanel from "../CarritoVentaPanel";
 import ResumenVentaPanel from "../ResumenVentaPanel";
 
@@ -46,6 +48,7 @@ export default function VentaCarritoSidebar({
   onVaciar,
   onIrACobrar,
 }) {
+  const [clienteBuscadorActivo, setClienteBuscadorActivo] = useState(false);
   const cantidadItems = items.reduce(
     (acc, item) => acc + Number(item.cantidad || 0),
     0
@@ -55,6 +58,12 @@ export default function VentaCarritoSidebar({
     (cliente) => Number(cliente.id) === Number(clienteId)
   );
   const clienteEsConsumidorFinal = Number(clienteId) === 1;
+  const clienteSeleccionadoTexto = formatearCliente(clienteSeleccionado);
+  const mostrarResultadosCliente =
+    clienteBuscadorActivo &&
+    (buscandoClientes ||
+      clientes.length === 0 ||
+      clienteQuery.trim() !== clienteSeleccionadoTexto.trim());
 
   return (
     <div style={styles.wrapper}>
@@ -64,14 +73,28 @@ export default function VentaCarritoSidebar({
           <p style={styles.subtitle}>{cantidadItems || 0} ítem(s) en carrito</p>
         </div>
 
-        <button
-          type="button"
-          onClick={onVaciar}
-          disabled={items.length === 0}
-          style={items.length === 0 ? styles.clearBtnDisabled : styles.clearBtn}
-        >
-          Vaciar
-        </button>
+        <div style={styles.headerActions}>
+          <label style={styles.headerCondition}>
+            <span>Lista</span>
+            <select
+              value={tipoPrecio}
+              onChange={(event) => onCambiarTipoPrecio(event.target.value)}
+              style={styles.headerConditionSelect}
+            >
+              <option value="minorista">Minorista</option>
+              <option value="mayorista">Mayorista</option>
+            </select>
+          </label>
+
+          <button
+            type="button"
+            onClick={onVaciar}
+            disabled={items.length === 0}
+            style={items.length === 0 ? styles.clearBtnDisabled : styles.clearBtn}
+          >
+            Vaciar
+          </button>
+        </div>
       </div>
 
       <div style={styles.fieldsGrid}>
@@ -81,8 +104,12 @@ export default function VentaCarritoSidebar({
 
             <input
               value={clienteQuery}
-              onChange={(e) => onClienteQueryChange(e.target.value)}
+              onChange={(e) => {
+                setClienteBuscadorActivo(true);
+                onClienteQueryChange(e.target.value);
+              }}
               onFocus={() => {
+                setClienteBuscadorActivo(true);
                 if (clienteEsConsumidorFinal) {
                   onClienteQueryChange("");
                 }
@@ -93,6 +120,7 @@ export default function VentaCarritoSidebar({
             />
           </label>
 
+          {mostrarResultadosCliente && (
           <div style={styles.clientResults}>
             {buscandoClientes && (
               <div style={styles.clientResultMuted}>Buscando clientes...</div>
@@ -110,7 +138,10 @@ export default function VentaCarritoSidebar({
                   <button
                     key={cliente.id}
                     type="button"
-                    onClick={() => onCambiarCliente(String(cliente.id))}
+                    onClick={() => {
+                      onCambiarCliente(String(cliente.id));
+                      setClienteBuscadorActivo(false);
+                    }}
                     style={
                       activo ? styles.clientResultActive : styles.clientResult
                     }
@@ -128,26 +159,67 @@ export default function VentaCarritoSidebar({
                 );
               })}
           </div>
+          )}
 
           {clienteSeleccionado && (
-            <span style={styles.selectedClientHint}>
-              Seleccionado: {formatearCliente(clienteSeleccionado)}
-            </span>
+            <div
+              style={
+                clienteEsConsumidorFinal
+                  ? styles.selectedClientCardWarning
+                  : styles.selectedClientCard
+              }
+            >
+              <div style={styles.selectedClientTop}>
+                <strong>{clienteSeleccionado.nombre}</strong>
+                {!clienteEsConsumidorFinal && (
+                  <Link to={`/clientes/${clienteSeleccionado.id}`} style={styles.clientProfileLink}>
+                    Ver perfil
+                  </Link>
+                )}
+              </div>
+
+              <div style={styles.selectedClientMeta}>
+                {clienteSeleccionado.dni && <span style={styles.clientMetaStrong}>DNI {clienteSeleccionado.dni}</span>}
+                {clienteSeleccionado.telefono && <span style={styles.clientMetaStrong}>Tel {clienteSeleccionado.telefono}</span>}
+                <span style={styles.clientMetaSoft}>{tipoPrecio === "mayorista" ? "Mayorista" : "Minorista"}</span>
+              </div>
+
+              {clienteEsConsumidorFinal ? (
+                <small>Venta sin historial personalizado.</small>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setClienteBuscadorActivo(true);
+                    onClienteQueryChange("");
+                  }}
+                  style={styles.changeClientBtn}
+                >
+                  Cambiar cliente
+                </button>
+              )}
+            </div>
           )}
         </div>
 
-        <label style={styles.priceColumn}>
-          <span style={styles.priceLabel}>Precio</span>
-
-          <select
-            value={tipoPrecio}
-            onChange={(event) => onCambiarTipoPrecio(event.target.value)}
-            style={styles.priceSelect}
-          >
-            <option value="minorista">Minorista</option>
-            <option value="mayorista">Mayorista</option>
-          </select>
-        </label>
+        <div style={{ display: "none" }}>
+          <span style={styles.conditionLabel}>Condición</span>
+          <strong style={styles.conditionValue}>
+            {tipoPrecio === "mayorista" ? "Mayorista" : "Minorista"}
+          </strong>
+          <span style={styles.conditionBenefit}>Efvo / transf. 10% OFF</span>
+          <label style={styles.conditionChange}>
+            Cambiar lista
+            <select
+              value={tipoPrecio}
+              onChange={(event) => onCambiarTipoPrecio(event.target.value)}
+              style={styles.conditionSelect}
+            >
+              <option value="minorista">Minorista</option>
+              <option value="mayorista">Mayorista</option>
+            </select>
+          </label>
+        </div>
       </div>
 
       <CarritoVentaPanel
@@ -161,7 +233,7 @@ export default function VentaCarritoSidebar({
         onActualizarItem={onActualizarItem}
       />
 
-      <ResumenVentaPanel total={total} />
+      <ResumenVentaPanel total={total} mostrarContado />
 
       <label style={styles.fieldBlock}>
         <span>Observaciones</span>
@@ -218,6 +290,33 @@ const styles = {
     justifyContent: "space-between",
     gap: 12,
   },
+  headerActions: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  headerCondition: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    border: "1px solid #fed7aa",
+    background: "#fff7ed",
+    color: "#c2410c",
+    borderRadius: 10,
+    padding: "6px 8px",
+    fontSize: 11,
+    fontWeight: 950,
+  },
+  headerConditionSelect: {
+    border: 0,
+    background: "transparent",
+    color: "#0f172a",
+    fontWeight: 950,
+    outline: "none",
+    cursor: "pointer",
+  },
   title: {
     margin: 0,
     fontSize: 24,
@@ -249,7 +348,7 @@ const styles = {
   },
   fieldsGrid: {
     display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) 195px",
+    gridTemplateColumns: "minmax(0, 1fr)",
     gap: 12,
     alignItems: "start",
   },
@@ -265,25 +364,53 @@ const styles = {
     fontWeight: 900,
     color: "#334155",
   },
-  priceColumn: {
-    display: "grid",
-    gap: 6,
+  saleConditionCard: {
     alignSelf: "start",
+    border: "1px solid #fed7aa",
+    borderRadius: 14,
+    background: "#fff7ed",
+    padding: 10,
+    display: "grid",
+    gap: 5,
+    color: "#9a3412",
     minWidth: 0,
   },
-  priceLabel: {
-    fontSize: 12,
-    fontWeight: 900,
-    color: "#334155",
+  conditionLabel: {
+    fontSize: 11,
+    fontWeight: 950,
+    textTransform: "uppercase",
+    letterSpacing: "0.03em",
   },
-  priceSelect: {
-    width: "100%",
-    height: 44,
-    border: "1px solid #cbd5e1",
-    borderRadius: 10,
-    padding: "0 12px",
+  conditionValue: {
+    color: "#0f172a",
+    fontSize: 18,
+    lineHeight: 1,
+  },
+  conditionBenefit: {
+    borderRadius: 999,
     background: "white",
-    fontWeight: 800,
+    color: "#c2410c",
+    padding: "4px 8px",
+    fontSize: 11,
+    fontWeight: 950,
+    justifySelf: "start",
+  },
+  conditionChange: {
+    display: "grid",
+    gap: 4,
+    color: "#64748b",
+    fontSize: 10,
+    fontWeight: 900,
+    marginTop: 2,
+  },
+  conditionSelect: {
+    width: "100%",
+    height: 32,
+    border: "1px solid #fdba74",
+    borderRadius: 9,
+    padding: "0 8px",
+    background: "white",
+    fontWeight: 850,
     color: "#0f172a",
     cursor: "pointer",
   },
@@ -347,10 +474,68 @@ const styles = {
     fontWeight: 800,
     fontSize: 12,
   },
-  selectedClientHint: {
-    color: "#64748b",
-    fontWeight: 800,
+  selectedClientCard: {
+    border: "1px solid #bfdbfe",
+    borderRadius: 12,
+    background: "#eff6ff",
+    padding: 10,
+    display: "grid",
+    gap: 7,
+  },
+  selectedClientCardWarning: {
+    border: "1px solid #fed7aa",
+    borderRadius: 12,
+    background: "#fff7ed",
+    color: "#9a3412",
+    padding: 10,
+    display: "grid",
+    gap: 7,
+  },
+  selectedClientTop: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "start",
+    gap: 8,
+    color: "#0f172a",
+    fontSize: 13,
+  },
+  selectedClientMeta: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 6,
     fontSize: 11,
+    fontWeight: 850,
+  },
+  clientMetaStrong: {
+    borderRadius: 999,
+    background: "#dbeafe",
+    color: "#1e3a8a",
+    padding: "3px 7px",
+    fontWeight: 950,
+  },
+  clientMetaSoft: {
+    borderRadius: 999,
+    background: "rgba(255,255,255,0.7)",
+    color: "#475569",
+    padding: "3px 7px",
+    fontWeight: 850,
+  },
+  clientProfileLink: {
+    color: "#0b5bd3",
+    textDecoration: "none",
+    fontSize: 11,
+    fontWeight: 950,
+    whiteSpace: "nowrap",
+  },
+  changeClientBtn: {
+    justifySelf: "start",
+    border: 0,
+    background: "transparent",
+    color: "#0b5bd3",
+    padding: 0,
+    fontSize: 11,
+    fontWeight: 950,
+    cursor: "pointer",
   },
   fieldBlock: {
     display: "grid",

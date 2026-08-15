@@ -152,7 +152,7 @@ function ItemsVenta({ items }) {
         <span>{items.length}</span>
       </div>
 
-      {items.slice(0, 6).map((item) => {
+      {items.map((item) => {
         const numeroCuadro = getNumeroCuadroItem(item);
         const requiereCuadro = itemRequiereCuadro(item);
         const esBiciEnCaja = item.serializable && !numeroCuadro && !requiereCuadro;
@@ -180,7 +180,7 @@ function ItemsVenta({ items }) {
         );
       })}
 
-      {items.length > 6 && (
+      {false && items.length > 6 && (
         <p style={styles.moreItems}>+{items.length - 6} ítem(s) más</p>
       )}
     </section>

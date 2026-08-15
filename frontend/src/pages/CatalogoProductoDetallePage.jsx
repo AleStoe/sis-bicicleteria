@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { getImageUrl } from "../utils/images";
 import {
   obtenerProducto,
@@ -15,6 +15,7 @@ import {
   listarCatalogoPOS,
 } from "../services/catalogoService";
 import { listarProveedores } from "../services/proveedoresService";
+import { obtenerAnalisisDemanda } from "../services/stockService";
 import CorreccionCargaInicialPanel from "../components/precios/CorreccionCargaInicialPanel";
 import { useSession } from "../context/SessionContext";
 import { formatMoney, formatNumber } from "../utils/formatters";
@@ -22,13 +23,15 @@ import { Button, EmptyState, PageHeader } from "../components/ui";
 import { ArrowLeft, PackageSearch, RefreshCw } from "lucide-react";
 import { colors, controls, radius, shadows, spacing, typography } from "../theme";
 import { esVarianteUnica } from "../utils/productPresentation";
+import { SUBTIPOS_POR_RUBRO } from "../utils/catalogTaxonomy";
 
 const ID_SUCURSAL_DEFAULT = 1;
 const TAB_OPERATIVO = "operativo";
 const TAB_VARIANTES = "variantes";
 const TAB_FICHA = "ficha";
+const TAB_ANALISIS = "analisis";
 const MOBILE_BREAKPOINT = 760;
-const RUBROS_PRODUCTO = ["BICICLETAS", "REPUESTOS", "ACCESORIOS", "INDUMENTARIA", "SERVICIOS"];
+const RUBROS_PRODUCTO = ["BICICLETAS", "REPUESTOS", "ACCESORIOS", "INDUMENTARIA", "HERRAMIENTAS", "CUBIERTAS AUTO", "SERVICIOS"];
 
 function useIsMobile(breakpoint = MOBILE_BREAKPOINT) {
   const [isMobile, setIsMobile] = useState(() => {
@@ -75,8 +78,13 @@ function valorMostrar(valor) {
 export default function CatalogoProductoDetallePage() {
   const { productoId } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { usuarioId, esAdministrador, esEncargado } = useSession();
-  const puedeEditarCatalogo = esAdministrador || esEncargado;
+  const modoSoloLectura = searchParams.get("lectura") === "1";
+  const origenMaestro = searchParams.get("origen") === "maestro";
+  const puedeConsultarMaestroCatalogo = esAdministrador || esEncargado;
+  const puedeEditarCatalogo = puedeConsultarMaestroCatalogo && !modoSoloLectura;
+  const puedeVerFichaAdministrativa = esAdministrador;
   const isMobile = useIsMobile();
 
   const [producto, setProducto] = useState(null);
@@ -97,10 +105,25 @@ export default function CatalogoProductoDetallePage() {
   const [imagenForm, setImagenForm] = useState({});
   const [productoImagenArchivo, setProductoImagenArchivo] = useState(null);
   const [productoImagenPreview, setProductoImagenPreview] = useState("");
+  const [demanda, setDemanda] = useState(null);
+  const [demandaLoading, setDemandaLoading] = useState(false);
+  const [demandaError, setDemandaError] = useState("");
+  const [varianteDemandaId, setVarianteDemandaId] = useState(null);
 
   useEffect(() => {
     cargar();
-  }, [productoId, puedeEditarCatalogo]);
+  }, [productoId, puedeEditarCatalogo, puedeConsultarMaestroCatalogo]);
+
+  useEffect(() => {
+    if (tabActiva === TAB_ANALISIS && !puedeVerFichaAdministrativa) {
+      setTabActiva(TAB_OPERATIVO);
+      return;
+    }
+    if (tabActiva === TAB_ANALISIS && producto && demanda === null && !demandaLoading) {
+      cargarDemandaProducto();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabActiva, producto?.id, puedeVerFichaAdministrativa]);
 
   useEffect(() => {
     if (!productoImagenArchivo) {
@@ -127,10 +150,10 @@ export default function CatalogoProductoDetallePage() {
         listarImagenesProducto(productoId),
       ]);
 
-      const [variantesData, proveedoresData] = puedeEditarCatalogo
+      const [variantesData, proveedoresData] = puedeConsultarMaestroCatalogo
         ? await Promise.all([
             listarVariantes(),
-            listarProveedores({ solo_activos: true }),
+            puedeEditarCatalogo ? listarProveedores({ solo_activos: true }) : Promise.resolve([]),
           ])
         : [[], []];
 
@@ -143,7 +166,7 @@ export default function CatalogoProductoDetallePage() {
       const items = (Array.isArray(posData) ? posData : posData?.items || [])
         .filter((item) => String(item.id_producto) === String(productoId));
 
-      const variantesFiltradas = puedeEditarCatalogo
+      const variantesFiltradas = puedeConsultarMaestroCatalogo
         ? (variantesData || []).filter(
             (v) => String(v.id_producto) === String(productoId)
           )
@@ -164,6 +187,7 @@ export default function CatalogoProductoDetallePage() {
       setProductoForm({
         nombre: productoData?.nombre || "",
         rubro: productoData?.rubro || "REPUESTOS",
+        subtipo_catalogo: productoData?.subtipo_catalogo || "",
         id_categoria: productoData?.id_categoria || "",
         id_marca: productoData?.id_marca || "",
         rodado: productoData?.rodado || "",
@@ -186,10 +210,37 @@ export default function CatalogoProductoDetallePage() {
       );
       setImagenForm({});
       setProductoImagenArchivo(null);
+      setDemanda(null);
+      setDemandaError("");
+      setVarianteDemandaId(null);
     } catch (err) {
       setError(err.message || "No se pudo cargar el producto");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function cargarDemandaProducto() {
+    if (!producto) return;
+
+    try {
+      setDemandaLoading(true);
+      setDemandaError("");
+      const respuesta = await obtenerAnalisisDemanda({
+        q: producto.nombre,
+        meses: 12,
+        limit: 120,
+      });
+      const items = (respuesta?.items || []).filter((item) => String(item.producto_id) === String(producto.id));
+      setDemanda({ ...respuesta, items });
+      setVarianteDemandaId((actual) => {
+        if (actual && items.some((item) => String(item.variante_id) === String(actual))) return actual;
+        return items[0]?.variante_id || null;
+      });
+    } catch (err) {
+      setDemandaError(err.message || "No se pudo cargar el analisis del producto");
+    } finally {
+      setDemandaLoading(false);
     }
   }
 
@@ -218,6 +269,7 @@ export default function CatalogoProductoDetallePage() {
       await editarProducto(producto.id, {
         nombre: productoForm.nombre,
         rubro: productoForm.rubro || "REPUESTOS",
+        subtipo_catalogo: productoForm.subtipo_catalogo || null,
         id_categoria: Number(productoForm.id_categoria),
         id_marca: productoForm.id_marca ? Number(productoForm.id_marca) : null,
         rodado: productoForm.rodado || null,
@@ -443,6 +495,31 @@ export default function CatalogoProductoDetallePage() {
     return { label: "Operativo", tone: "ok" };
   }, [producto, resumenOperativo]);
 
+  const demandaItems = demanda?.items || [];
+  const demandaSeleccionada = useMemo(() => {
+    return (
+      demandaItems.find((item) => String(item.variante_id) === String(varianteDemandaId)) ||
+      demandaItems[0] ||
+      null
+    );
+  }, [demandaItems, varianteDemandaId]);
+
+  const resumenDemanda = useMemo(() => {
+    return demandaItems.reduce(
+      (acc, item) => {
+        acc.unidades += Number(item.unidades_vendidas || 0);
+        acc.venta += Number(item.venta_neta || 0);
+        acc.stock += Number(item.stock_disponible || 0);
+        if (item.margen_bruto !== null && item.margen_bruto !== undefined) {
+          acc.margen += Number(item.margen_bruto || 0);
+          acc.tieneMargen = true;
+        }
+        return acc;
+      },
+      { unidades: 0, venta: 0, stock: 0, margen: 0, tieneMargen: false },
+    );
+  }, [demandaItems]);
+
   if (loading) {
     return <EmptyState icon={PackageSearch} title="Cargando producto..." description="Actualizando ficha, variantes y stock." />;
   }
@@ -463,7 +540,7 @@ export default function CatalogoProductoDetallePage() {
         eyebrow="Detalle operativo"
         actions={(
           <>
-            <Button type="button" variant="outline" onClick={() => navigate("/catalogo")}><ArrowLeft size={16} /> Volver</Button>
+            <Button type="button" variant="outline" onClick={() => navigate(origenMaestro ? "/catalogo/maestro" : "/catalogo")}><ArrowLeft size={16} /> Volver</Button>
             {puedeEditarCatalogo && (
               <Button type="button" onClick={() => setTabActiva(TAB_OPERATIVO)}>Editar producto</Button>
             )}
@@ -513,6 +590,9 @@ export default function CatalogoProductoDetallePage() {
       <nav style={{ ...styles.tabs, ...(isMobile ? styles.tabsMobile : {}) }}>
         <TabButton active={tabActiva === TAB_OPERATIVO} onClick={() => setTabActiva(TAB_OPERATIVO)}>Operativo</TabButton>
         <TabButton active={tabActiva === TAB_VARIANTES} onClick={() => setTabActiva(TAB_VARIANTES)}>Variantes ({resumenOperativo.variantes})</TabButton>
+        {puedeVerFichaAdministrativa && (
+          <TabButton active={tabActiva === TAB_ANALISIS} onClick={() => setTabActiva(TAB_ANALISIS)}>Historial del producto</TabButton>
+        )}
         <TabButton active={tabActiva === TAB_FICHA} onClick={() => setTabActiva(TAB_FICHA)}>Ficha técnica ({fichaTecnica.length})</TabButton>
       </nav>
 
@@ -534,9 +614,34 @@ export default function CatalogoProductoDetallePage() {
             </label>
             <label style={styles.field}>
               <span>Rubro</span>
-              <select style={styles.input} value={productoForm?.rubro || "REPUESTOS"} onChange={(e) => setProductoCampo("rubro", e.target.value)}>
+              <select
+                style={styles.input}
+                value={productoForm?.rubro || "REPUESTOS"}
+                onChange={(e) =>
+                  setProductoForm((prev) => ({
+                    ...prev,
+                    rubro: e.target.value,
+                    subtipo_catalogo: "",
+                  }))
+                }
+              >
                 {RUBROS_PRODUCTO.map((rubro) => <option key={rubro} value={rubro}>{rubro}</option>)}
               </select>
+            </label>
+            <label style={styles.field}>
+              <span>Subtipo</span>
+              <input
+                style={styles.input}
+                value={productoForm?.subtipo_catalogo || ""}
+                onChange={(e) => setProductoCampo("subtipo_catalogo", e.target.value.toUpperCase())}
+                list="subtipos-producto"
+                placeholder="Ej: PIÑÓN, EJE DE MAZA, CUBIERTA AUTO"
+              />
+              <datalist id="subtipos-producto">
+                {(SUBTIPOS_POR_RUBRO[productoForm?.rubro || "REPUESTOS"] || []).map((subtipo) => (
+                  <option key={subtipo} value={subtipo} />
+                ))}
+              </datalist>
             </label>
             <label style={styles.field}>
               <span>Categoría</span>
@@ -705,6 +810,7 @@ export default function CatalogoProductoDetallePage() {
           <div style={{ ...styles.infoGrid, ...(isMobile ? styles.infoGridMobile : {}) }}>
             <Info label="Nombre" value={producto.nombre} />
             <Info label="Rubro" value={producto.rubro} />
+            <Info label="Subtipo" value={producto.subtipo_catalogo} />
             <Info label="Categoría" value={categoriaNombre} />
             <Info label="Marca" value={marcaNombre} />
             <Info label="Tipo item" value={producto.tipo_item} />
@@ -750,6 +856,7 @@ export default function CatalogoProductoDetallePage() {
                       <Info label="Pendiente entrega" value={formatNumber(itemPOS?.stock_vendido_pendiente_entrega ?? 0)} />
                       <Info label="Minorista" value={formatMoney(variante.precio_minorista)} />
                       <Info label="Mayorista" value={formatMoney(variante.precio_mayorista)} />
+                      {puedeVerFichaAdministrativa && <Info label="Costo vigente" value={formatMoney(variante.costo_promedio_vigente)} />}
                       <Info label="SKU" value={variante.sku} />
                       <Info label="EAN" value={variante.codigo_barras} />
                       <Info label="Código proveedor" value={variante.codigo_proveedor} />
@@ -794,6 +901,90 @@ export default function CatalogoProductoDetallePage() {
                   </article>
                 );
               })}
+            </div>
+          )}
+        </section>
+      )}
+
+      {tabActiva === TAB_ANALISIS && puedeVerFichaAdministrativa && (
+        <section style={{ ...styles.card, ...(isMobile ? styles.cardMobile : {}) }}>
+          <div style={styles.sectionHeader}>
+            <div>
+              <h2 style={styles.sectionTitle}>Historial administrativo del producto</h2>
+              <p style={styles.muted}>Ventas, stock y comportamiento mensual para decidir compra, oferta o reposición.</p>
+            </div>
+            <button type="button" style={styles.secondaryButton} onClick={cargarDemandaProducto} disabled={demandaLoading}>
+              {demandaLoading ? "Actualizando..." : "Actualizar demanda"}
+            </button>
+          </div>
+
+          {demandaError && <div style={styles.errorBox}>{demandaError}</div>}
+
+          <div style={{ ...styles.analysisMetrics, ...(isMobile ? styles.analysisMetricsMobile : {}) }}>
+            <Metric label="Unidades vendidas" value={demandaLoading ? "..." : formatNumber(resumenDemanda.unidades)} tone="info" />
+            <Metric label="Venta neta" value={demandaLoading ? "..." : formatMoney(resumenDemanda.venta)} tone="ok" />
+            <Metric label="Stock disponible" value={demandaLoading ? "..." : formatNumber(resumenDemanda.stock)} tone="warning" />
+            <Metric
+              label="Margen observado"
+              value={demandaLoading ? "..." : resumenDemanda.tieneMargen ? formatMoney(resumenDemanda.margen) : "Sin permiso"}
+              tone="muted"
+            />
+          </div>
+
+          {demandaLoading && !demanda ? (
+            <div style={styles.empty}>Cargando historia comercial...</div>
+          ) : demandaItems.length === 0 ? (
+            <div style={styles.empty}>Todavía no hay ventas registradas para estudiar este producto.</div>
+          ) : (
+            <div style={{ ...styles.analysisGrid, ...(isMobile ? styles.analysisGridMobile : {}) }}>
+              <div style={styles.analysisList}>
+                <h3 style={styles.analysisTitle}>Variantes</h3>
+                {demandaItems.map((item) => {
+                  const active = String(item.variante_id) === String(demandaSeleccionada?.variante_id);
+                  return (
+                    <button
+                      key={item.variante_id}
+                      type="button"
+                      style={{ ...styles.analysisRow, ...(active ? styles.analysisRowActive : {}) }}
+                      onClick={() => setVarianteDemandaId(item.variante_id)}
+                    >
+                      <span style={styles.analysisRowMain}>
+                        <strong>{labelVarianteDemanda(item)}</strong>
+                        <small>{item.sku || "Sin SKU"} · {item.proveedor_nombre || "Sin proveedor"}</small>
+                      </span>
+                      <span style={styles.analysisRowNumbers}>
+                        <strong>{formatMoney(item.venta_neta)}</strong>
+                        <small>{formatNumber(item.unidades_vendidas)} u. · stock {formatNumber(item.stock_disponible)}</small>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div style={styles.analysisDetail}>
+                <span style={styles.previewLabel}>Lectura rápida</span>
+                <h3 style={styles.analysisDetailTitle}>{labelVarianteDemanda(demandaSeleccionada)}</h3>
+                <div style={styles.readingBox}>{lecturaDemanda(demandaSeleccionada)}</div>
+
+                <div style={styles.analysisInfoGrid}>
+                  <Info label="Última venta" value={formatDateSafe(demandaSeleccionada?.ultima_venta)} />
+                  <Info label="Ventas distintas" value={formatNumber(demandaSeleccionada?.ventas_distintas || 0)} />
+                  <Info label="Físico actual" value={formatNumber(demandaSeleccionada?.stock_fisico || 0)} />
+                  <Info label="Disponible actual" value={formatNumber(demandaSeleccionada?.stock_disponible || 0)} />
+                </div>
+
+                <h3 style={styles.analysisTitle}>Evolución mensual</h3>
+                <MonthlyDemandBars meses={demandaSeleccionada?.meses || []} />
+
+                <div style={styles.decisionBox}>
+                  <strong>Para decidir</strong>
+                  <ul>
+                    <li>Si vende todos los meses y queda poco stock, revisá reposición.</li>
+                    <li>Si tiene stock alto y no se mueve, revisá precio, oferta o no reponer.</li>
+                    <li>Si tuvo picos por temporada, usalo para preparar la compra del año que viene.</li>
+                  </ul>
+                </div>
+              </div>
             </div>
           )}
         </section>
@@ -857,6 +1048,70 @@ function Info({ label, value }) {
       <strong>{valorMostrar(value)}</strong>
     </div>
   );
+}
+
+function labelVarianteDemanda(item) {
+  if (!item) return "-";
+  if (esVarianteUnica(item.variante_nombre)) return item.producto_nombre || "Producto";
+  return item.variante_nombre || `Variante #${item.variante_id}`;
+}
+
+function formatDateSafe(value) {
+  if (!value) return "-";
+  return String(value).slice(0, 10).split("-").reverse().join("/");
+}
+
+function lecturaDemanda(item) {
+  const unidades = Number(item?.unidades_vendidas || 0);
+  const stock = Number(item?.stock_disponible || 0);
+  const ventas = Number(item?.ventas_distintas || 0);
+
+  if (unidades <= 0) {
+    return "Sin ventas en el período. Si tiene stock, conviene revisar si quedó quieto, si falta exposición o si no se repone más.";
+  }
+  if (unidades >= 12 && stock <= Math.max(2, unidades / 6)) {
+    return "Se mueve bien y queda poco stock. Es candidato claro para revisar compra o pedido al proveedor.";
+  }
+  if (unidades >= 6) {
+    return "Tiene demanda comprobada. Mirá en qué meses se concentró para preparar temporada.";
+  }
+  if (ventas <= 2 && stock > unidades * 2) {
+    return "Movimiento bajo contra el stock disponible. Puede servir revisar precio, oferta o no reponer por ahora.";
+  }
+  return "Tiene ventas registradas, pero todavía conviene mirar mes a mes antes de decidir sobrestock.";
+}
+
+function MonthlyDemandBars({ meses }) {
+  const max = Math.max(...meses.map((mes) => Number(mes.unidades_vendidas || 0)), 1);
+  return (
+    <div style={styles.monthlyBars}>
+      {meses.map((mes) => {
+        const value = Number(mes.unidades_vendidas || 0);
+        const height = value > 0 ? Math.max(10, (value / max) * 68) : 0;
+        return (
+          <div key={mes.periodo} style={styles.monthlyBarItem} title={`${mes.etiqueta}: ${formatNumber(value)} unidades`}>
+            <div style={styles.monthlyBarTrack}>
+              {value > 0 ? <div style={{ ...styles.monthlyBar, height }} /> : null}
+            </div>
+            <span style={styles.monthlyBarLabel}>{shortMonth(mes.etiqueta || mes.periodo)}</span>
+            <strong>{formatNumber(value, { maximumFractionDigits: 0 })}</strong>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function shortMonth(label) {
+  const value = String(label || "").trim();
+  const isoMatch = value.match(/^(\d{4})-(\d{1,2})/);
+  if (isoMatch) {
+    const monthIndex = Number(isoMatch[2]) - 1;
+    const year = isoMatch[1].slice(2);
+    const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+    return `${months[monthIndex] || value.slice(5, 7)} ${year}`;
+  }
+  return value.length > 7 ? value.slice(0, 7) : value;
 }
 
 const tabBase = {
@@ -1288,6 +1543,142 @@ const styles = {
     background: "#f8fafc",
     fontWeight: 900,
   },
+  errorBox: {
+    border: "1px solid #fecaca",
+    background: "#fef2f2",
+    color: "#b91c1c",
+    borderRadius: 14,
+    padding: 12,
+    fontWeight: 900,
+    marginBottom: 12,
+  },
+  analysisMetrics: {
+    display: "grid",
+    gridTemplateColumns: "repeat(4, minmax(150px, 1fr))",
+    gap: 10,
+    marginBottom: 14,
+  },
+  analysisGrid: {
+    display: "grid",
+    gridTemplateColumns: "minmax(320px, 0.9fr) minmax(0, 1.35fr)",
+    gap: 14,
+    alignItems: "start",
+  },
+  analysisList: {
+    border: "1px solid #e2e8f0",
+    borderRadius: 18,
+    background: "#f8fafc",
+    padding: 12,
+    display: "grid",
+    gap: 8,
+  },
+  analysisTitle: {
+    margin: 0,
+    fontSize: 16,
+    fontWeight: 1000,
+    color: "#0f172a",
+  },
+  analysisRow: {
+    width: "100%",
+    border: "1px solid #e2e8f0",
+    borderRadius: 14,
+    background: "white",
+    padding: 12,
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) auto",
+    gap: 10,
+    textAlign: "left",
+    cursor: "pointer",
+  },
+  analysisRowActive: {
+    borderColor: "#fb923c",
+    background: "#fff7ed",
+    boxShadow: "0 8px 18px rgba(249, 115, 22, 0.12)",
+  },
+  analysisRowMain: {
+    minWidth: 0,
+    display: "grid",
+    gap: 4,
+  },
+  analysisRowNumbers: {
+    display: "grid",
+    justifyItems: "end",
+    gap: 4,
+    whiteSpace: "nowrap",
+  },
+  analysisDetail: {
+    border: "1px solid #dbeafe",
+    borderRadius: 18,
+    background: "#ffffff",
+    padding: 14,
+    display: "grid",
+    gap: 12,
+  },
+  analysisDetailTitle: {
+    margin: 0,
+    fontSize: 20,
+    lineHeight: 1.15,
+  },
+  readingBox: {
+    border: "1px solid #fed7aa",
+    background: "#fff7ed",
+    color: "#9a3412",
+    borderRadius: 14,
+    padding: 12,
+    fontWeight: 850,
+    lineHeight: 1.4,
+  },
+  analysisInfoGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+    gap: 10,
+  },
+  monthlyBars: {
+    display: "grid",
+    gridTemplateColumns: "repeat(12, minmax(58px, 1fr))",
+    gap: 10,
+    alignItems: "end",
+    border: "1px solid #e2e8f0",
+    borderRadius: 16,
+    padding: "14px 16px",
+    overflowX: "auto",
+    background: "#fff",
+  },
+  monthlyBarItem: {
+    display: "grid",
+    justifyItems: "center",
+    gap: 6,
+    color: "#64748b",
+    fontSize: 11,
+    fontWeight: 900,
+    minWidth: 58,
+  },
+  monthlyBarTrack: {
+    height: 72,
+    width: 16,
+    borderRadius: 999,
+    background: "#f1f5f9",
+    display: "flex",
+    alignItems: "end",
+    overflow: "hidden",
+  },
+  monthlyBar: {
+    width: "100%",
+    borderRadius: 999,
+    background: "linear-gradient(180deg, #fb923c, #f97316)",
+  },
+  monthlyBarLabel: {
+    whiteSpace: "nowrap",
+    lineHeight: 1,
+  },
+  decisionBox: {
+    border: "1px solid #e2e8f0",
+    borderRadius: 16,
+    background: "#f8fafc",
+    padding: 12,
+    color: "#334155",
+    lineHeight: 1.45,
+  },
   state: {
     padding: 24,
     fontWeight: 900,
@@ -1348,6 +1739,12 @@ const styles = {
   stockGridMobile: {
     gridTemplateColumns: "1fr 1fr",
     gap: 8,
+  },
+  analysisMetricsMobile: {
+    gridTemplateColumns: "1fr 1fr",
+  },
+  analysisGridMobile: {
+    gridTemplateColumns: "1fr",
   },
   tabsMobile: {
     flexWrap: "nowrap",

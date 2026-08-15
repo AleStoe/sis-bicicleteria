@@ -30,11 +30,14 @@ import BicicletasSerializadasPage from "./pages/BicicletasSerializadasPage";
 import ProveedoresPage from "./pages/ProveedoresPage";
 import PreciosPage from "./pages/PreciosPage";
 import CatalogoPage from "./pages/CatalogoPage";
+import CatalogoMaestroPage from "./pages/CatalogoMaestroPage";
 import CategoriasCatalogoPage from "./pages/CategoriasCatalogoPage";
 import AltaMercaderiaPage from "./pages/AltaMercaderiaPage";
+import IngresoMercaderiaLotePage from "./pages/IngresoMercaderiaLotePage";
 import VentaCobroPage from "./pages/VentaCobroPage";
 import ClienteBicicletaDetallePage from "./pages/ClienteBicicletaDetallePage";
 import AltaBicicletaPage from "./pages/AltaBicicletaPage";
+import IngresoBicicletasLotePage from "./pages/IngresoBicicletasLotePage";
 import CatalogoProductoDetallePage from "./pages/CatalogoProductoDetallePage";
 import ConfiguracionComercialPage from "./pages/ConfiguracionComercialPage";
 import ConfiguracionNegocioPage from "./pages/ConfiguracionNegocioPage";
@@ -51,6 +54,8 @@ import { useSession } from "./context/SessionContext";
 import AgendaTallerPage from "./pages/AgendaTallerPage";
 import CotizacionesListPage from "./pages/CotizacionesListPage";
 import CotizacionDetallePage from "./pages/CotizacionDetallePage";
+import PedidosClientePage from "./pages/PedidosClientePage";
+import PedidoClienteDetallePage from "./pages/PedidoClienteDetallePage";
 import EtiquetasPage from "./pages/EtiquetasPage";
 import InventarioFisicoPage from "./pages/InventarioFisicoPage";
 import AlertasOperativasPage from "./pages/AlertasOperativasPage";
@@ -114,14 +119,19 @@ const TITULOS_RUTA = [
   [/^\/correcciones$/, "Correcciones"],
   [/^\/etiquetas$/, "Etiquetas"],
   [/^\/catalogo\/categorias$/, "Categorias"],
+  [/^\/catalogo\/maestro$/, "Maestro de productos"],
   [/^\/catalogo\/productos\/\d+$/, "Detalle de catalogo"],
   [/^\/catalogo$/, "Catalogo"],
+  [/^\/mercaderia\/ingreso-lote$/, "Ingreso mercaderia"],
   [/^\/mercaderia\/alta$/, "Alta mercaderia"],
+  [/^\/mercaderia\/bicicletas\/ingreso-lote$/, "Ingreso bicicletas"],
   [/^\/mercaderia\/bicicletas\/alta$/, "Alta bicicletas"],
   [/^\/proveedores$/, "Proveedores"],
   [/^\/precios$/, "Precios"],
   [/^\/cotizaciones\/\d+$/, "Detalle de cotizacion"],
   [/^\/cotizaciones$/, "Cotizaciones"],
+  [/^\/pedidos-cliente\/\d+$/, "Pedido de cliente"],
+  [/^\/pedidos-cliente$/, "Pedidos de cliente"],
   [/^\/configuracion-comercial$/, "Config. comercial"],
   [/^\/configuracion-negocio$/, "Config. negocio"],
   [/^\/dashboard$/, "Dashboard admin"],
@@ -223,6 +233,22 @@ export default function App() {
             element={
               <ProtectedRoute rolesPermitidos={OPERACION_TALLER}>
                 <CotizacionDetallePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/pedidos-cliente"
+            element={
+              <ProtectedRoute rolesPermitidos={OPERACION}>
+                <PedidosClientePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/pedidos-cliente/:pedidoId"
+            element={
+              <ProtectedRoute rolesPermitidos={OPERACION}>
+                <PedidoClienteDetallePage />
               </ProtectedRoute>
             }
           />
@@ -537,6 +563,14 @@ export default function App() {
             }
           />
           <Route
+            path="/catalogo/maestro"
+            element={
+              <ProtectedRoute rolesPermitidos={ADMIN}>
+                <CatalogoMaestroPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/catalogo/categorias"
             element={
               <ProtectedRoute rolesPermitidos={ADMIN_ENCARGADO}>
@@ -561,10 +595,26 @@ export default function App() {
             }
           />
           <Route
+            path="/mercaderia/ingreso-lote"
+            element={
+              <ProtectedRoute rolesPermitidos={ADMIN_ENCARGADO}>
+                <IngresoMercaderiaLotePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/mercaderia/bicicletas/alta"
             element={
               <ProtectedRoute rolesPermitidos={ADMIN_ENCARGADO}>
                 <AltaBicicletaPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/mercaderia/bicicletas/ingreso-lote"
+            element={
+              <ProtectedRoute rolesPermitidos={ADMIN_ENCARGADO}>
+                <IngresoBicicletasLotePage />
               </ProtectedRoute>
             }
           />

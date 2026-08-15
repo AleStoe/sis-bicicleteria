@@ -81,6 +81,7 @@ def get_productos(conn):
                 p.id,
                 p.nombre,
                 p.rubro,
+                p.subtipo_catalogo,
                 p.tipo_item,
                 p.stockeable,
                 p.serializable,
@@ -102,6 +103,35 @@ def get_productos(conn):
         return cur.fetchall()
 
 
+def get_subtipos_catalogo(conn, rubro: str | None = None, categoria_id: int | None = None):
+    filtros = [
+        "p.activo = TRUE",
+        "p.subtipo_catalogo IS NOT NULL",
+        "TRIM(p.subtipo_catalogo) <> ''",
+    ]
+    params = {}
+
+    if rubro:
+        filtros.append("p.rubro = %(rubro)s")
+        params["rubro"] = rubro
+
+    if categoria_id is not None:
+        filtros.append("p.id_categoria = %(categoria_id)s")
+        params["categoria_id"] = categoria_id
+
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT DISTINCT p.subtipo_catalogo AS nombre
+            FROM productos p
+            WHERE {' AND '.join(filtros)}
+            ORDER BY p.subtipo_catalogo
+            """,
+            params,
+        )
+        return [row["nombre"] for row in cur.fetchall()]
+
+
 def get_variantes(conn):
     with conn.cursor() as cur:
         cur.execute("""
@@ -112,6 +142,7 @@ def get_variantes(conn):
                 p.tipo_item,
                 p.stockeable,
                 p.serializable,
+                p.subtipo_catalogo,
                 c.id AS categoria_id,
                 c.nombre AS categoria_nombre,
                 v.nombre_variante,
@@ -409,6 +440,8 @@ def get_catalogo_pos(
     query: str | None = None,
     categoria_id: int | None = None,
     marca_id: int | None = None,
+    rubro: str | None = None,
+    subtipo_catalogo: str | None = None,
     limit: int = 50,
     offset: int = 0,
     solo_disponibles: bool = False,
@@ -433,6 +466,14 @@ def get_catalogo_pos(
     if marca_id is not None:
         filtros.append("m.id = %(marca_id)s")
         params["marca_id"] = marca_id
+
+    if rubro:
+        filtros.append("p.rubro = %(rubro)s")
+        params["rubro"] = rubro
+
+    if subtipo_catalogo:
+        filtros.append("p.subtipo_catalogo = %(subtipo_catalogo)s")
+        params["subtipo_catalogo"] = subtipo_catalogo
 
     if solo_disponibles:
         filtros.append("""
@@ -480,6 +521,7 @@ def get_catalogo_pos(
             "v.codigo_proveedor",
             "m.nombre",
             "c.nombre",
+            "p.subtipo_catalogo",
             "pr.nombre",
             "p.rodado",
             "v.talle",
@@ -525,6 +567,8 @@ def get_catalogo_pos(
                 v.id AS id_variante,
                 v.id_producto,
                 p.nombre AS producto_nombre,
+                p.rubro,
+                p.subtipo_catalogo,
                 v.nombre_variante,
                 v.talle,
                 v.color, 
@@ -711,8 +755,10 @@ def get_catalogo_pos(
 def get_catalogo_mayorista_pdf_items(
     conn,
     id_sucursal: int,
+    rubro: str | None = None,
     categoria_id: int | None = None,
     marca_id: int | None = None,
+    subtipo_catalogo: str | None = None,
 ):
     filtros = [
         "v.activo = TRUE",
@@ -749,6 +795,10 @@ def get_catalogo_mayorista_pdf_items(
     ]
     params = {"id_sucursal": id_sucursal}
 
+    if rubro:
+        filtros.append("p.rubro = %(rubro)s")
+        params["rubro"] = rubro
+
     if categoria_id is not None:
         filtros.append("c.id = %(categoria_id)s")
         params["categoria_id"] = categoria_id
@@ -756,6 +806,10 @@ def get_catalogo_mayorista_pdf_items(
     if marca_id is not None:
         filtros.append("m.id = %(marca_id)s")
         params["marca_id"] = marca_id
+
+    if subtipo_catalogo:
+        filtros.append("p.subtipo_catalogo = %(subtipo_catalogo)s")
+        params["subtipo_catalogo"] = subtipo_catalogo
 
     where_sql = " AND ".join(filtros)
 
@@ -766,6 +820,7 @@ def get_catalogo_mayorista_pdf_items(
                 v.id_producto,
                 p.nombre AS producto_nombre,
                 p.rubro,
+                p.subtipo_catalogo,
                 v.nombre_variante,
                 c.id AS categoria_id,
                 c.nombre AS categoria_nombre,
@@ -832,9 +887,11 @@ def get_catalogo_mayorista_pdf_items(
 def get_catalogo_minorista_pdf_items(
     conn,
     id_sucursal: int,
+    rubro: str | None = None,
     categoria_id: int | None = None,
     marca_id: int | None = None,
     query: str | None = None,
+    subtipo_catalogo: str | None = None,
 ):
     filtros = [
         "v.activo = TRUE",
@@ -865,6 +922,10 @@ def get_catalogo_minorista_pdf_items(
     ]
     params = {"id_sucursal": id_sucursal}
 
+    if rubro:
+        filtros.append("p.rubro = %(rubro)s")
+        params["rubro"] = rubro
+
     if categoria_id is not None:
         filtros.append("c.id = %(categoria_id)s")
         params["categoria_id"] = categoria_id
@@ -872,6 +933,10 @@ def get_catalogo_minorista_pdf_items(
     if marca_id is not None:
         filtros.append("m.id = %(marca_id)s")
         params["marca_id"] = marca_id
+
+    if subtipo_catalogo:
+        filtros.append("p.subtipo_catalogo = %(subtipo_catalogo)s")
+        params["subtipo_catalogo"] = subtipo_catalogo
 
     _aplicar_busqueda_por_tokens(
         filtros,
@@ -885,6 +950,7 @@ def get_catalogo_minorista_pdf_items(
             "v.codigo_proveedor",
             "m.nombre",
             "c.nombre",
+            "p.subtipo_catalogo",
             "pr.nombre",
         ],
         prefix="query_token",
@@ -899,6 +965,7 @@ def get_catalogo_minorista_pdf_items(
                 v.id_producto,
                 p.nombre AS producto_nombre,
                 p.rubro,
+                p.subtipo_catalogo,
                 v.nombre_variante,
                 c.id AS categoria_id,
                 c.nombre AS categoria_nombre,
@@ -1058,6 +1125,7 @@ def get_catalogo_bicicletas_pdf_items(
                 v.id_producto,
                 p.nombre AS producto_nombre,
                 p.rubro,
+                p.subtipo_catalogo,
                 v.nombre_variante,
                 p.rodado,
                 p.tipo_bicicleta,
@@ -1140,6 +1208,7 @@ def get_catalogo_pos_por_codigo(
                 v.color,  
                 p.nombre AS producto_nombre,
                 p.rubro,
+                p.subtipo_catalogo,
                 v.nombre_variante,
                 c.id AS categoria_id,
                 c.nombre AS categoria_nombre,
@@ -1357,6 +1426,7 @@ def get_producto_by_id(conn, producto_id: int):
                 m.nombre AS marca_nombre,
                 p.nombre,
                 p.rubro,
+                p.subtipo_catalogo,
                 p.tipo_item,
                 p.stockeable,
                 p.serializable,
@@ -1386,6 +1456,7 @@ def crear_producto_catalogo(conn, data: dict):
                 id_marca,
                 nombre,
                 rubro,
+                subtipo_catalogo,
                 tipo_item,
                 stockeable,
                 serializable,
@@ -1394,13 +1465,14 @@ def crear_producto_catalogo(conn, data: dict):
                 material_cuadro,
                 activo
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE)
             RETURNING
                 id,
                 id_categoria,
                 id_marca,
                 nombre,
                 rubro,
+                subtipo_catalogo,
                 tipo_item,
                 stockeable,
                 serializable,
@@ -1414,6 +1486,7 @@ def crear_producto_catalogo(conn, data: dict):
                 data.get("id_marca"),
                 data["nombre"],
                 data["rubro"],
+                data.get("subtipo_catalogo"),
                 data["tipo_item"],
                 data["stockeable"],
                 data["serializable"],
@@ -1577,6 +1650,7 @@ def update_producto_catalogo(conn, producto_id: int, data: dict):
         "id_marca",
         "nombre",
         "rubro",
+        "subtipo_catalogo",
         "tipo_item",
         "stockeable",
         "serializable",
@@ -1603,6 +1677,7 @@ def update_producto_catalogo(conn, producto_id: int, data: dict):
                 id_marca,
                 nombre,
                 rubro,
+                subtipo_catalogo,
                 tipo_item,
                 stockeable,
                 serializable,
@@ -1628,6 +1703,7 @@ def update_producto_estado(conn, producto_id: int, activo: bool):
                 id_marca,
                 nombre,
                 rubro,
+                subtipo_catalogo,
                 tipo_item,
                 stockeable,
                 serializable,

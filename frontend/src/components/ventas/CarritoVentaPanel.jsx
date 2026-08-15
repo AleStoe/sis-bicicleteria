@@ -35,10 +35,15 @@ export default function CarritoVentaPanel({
 }
 
 const cartStyle = {
+  display: "grid",
+  gap: 10,
   border: "1px solid #eaecf0",
-  borderRadius: "12px",
-  overflow: "hidden",
+  borderRadius: "14px",
+  background: "#f8fafc",
+  padding: 8,
+  overflowY: "auto",
   minHeight: "240px",
+  maxHeight: "46vh",
   marginBottom: "12px",
 };
 

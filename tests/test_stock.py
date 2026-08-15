@@ -59,6 +59,74 @@ def test_ajuste_stock_positivo_suma_fisico(client, db_conn, seed_venta_basica):
     assert float(stock["stock_vendido_pendiente_entrega"]) == 0.0
 
 
+def test_ingreso_stock_lote_registra_varias_lineas_en_una_operacion(client, db_conn, seed_venta_basica):
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO proveedores (nombre, activo)
+            VALUES ('Proveedor Bicis Test', TRUE)
+            RETURNING id
+            """
+        )
+        proveedor_id = cur.fetchone()["id"]
+
+    db_conn.commit()
+
+    response = client.post(
+        "/stock/ingresos/lote",
+        json={
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "origen_ingreso": "manual",
+            "observacion": "lote test bicicletas",
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "id_proveedor": proveedor_id,
+                    "cantidad_ingresada": 2,
+                    "costo_productos": 30000,
+                    "gastos_adicionales": 0,
+                    "observacion": "linea uno",
+                },
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "id_proveedor": proveedor_id,
+                    "cantidad_ingresada": 1,
+                    "costo_productos": 18000,
+                    "gastos_adicionales": 0,
+                    "observacion": "linea dos",
+                },
+            ],
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["ok"] is True
+    assert data["total_items"] == 2
+    assert Decimal(str(data["total_unidades"])) == Decimal("3")
+
+    stock = get_stock_row(
+        db_conn,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["variante_id"],
+    )
+    assert Decimal(str(stock["stock_fisico"])) == Decimal("9.000")
+
+    with db_conn.cursor() as cur:
+        cur.execute("SELECT COUNT(*) AS total FROM ingresos_stock")
+        assert cur.fetchone()["total"] == 2
+        cur.execute(
+            """
+            SELECT COUNT(*) AS total
+            FROM movimientos_stock
+            WHERE tipo_movimiento = 'ingreso'
+              AND origen_tipo = 'ingreso_stock'
+            """
+        )
+        assert cur.fetchone()["total"] == 2
+
+
 def test_analisis_demanda_devuelve_historial_mensual_y_stock(
     client,
     db_conn,

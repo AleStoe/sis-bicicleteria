@@ -482,6 +482,60 @@ def test_ot_con_servicio_sin_cargo_puede_cerrar_sin_generar_venta(client, seed_t
     assert _to_decimal(detalle["total_final"]) == Decimal("0.00")
 
 
+def test_mensaje_retiro_muestra_total_contado_con_descuento(client, seed_taller_basico):
+    servicio = _crear_servicio_taller_test(
+        client,
+        nombre="Service facturable retiro",
+        precio=10000,
+    )
+    orden = _crear_orden_taller_test(
+        client,
+        seed_taller_basico,
+        problema="Service facturable para retiro",
+    )
+    usuario_id = seed_taller_basico["usuario_id"]
+
+    item_response = client.post(
+        f"/ordenes_taller/{orden['id']}/items",
+        json={
+            "tipo_item": "servicio",
+            "id_servicio_taller": servicio["id"],
+            "cantidad": 1,
+            "precio_unitario": 10000,
+            "id_usuario": usuario_id,
+        },
+    )
+    assert item_response.status_code == 201, item_response.text
+    item_id = item_response.json()["id"]
+
+    aprobar = client.post(
+        f"/ordenes_taller/{orden['id']}/items/{item_id}/aprobacion",
+        json={"aprobado": True, "id_usuario": usuario_id},
+    )
+    assert aprobar.status_code == 200, aprobar.text
+
+    ejecutar = client.post(
+        f"/ordenes_taller/{orden['id']}/items/{item_id}/ejecutar",
+        params={"id_usuario": usuario_id},
+    )
+    assert ejecutar.status_code == 200, ejecutar.text
+
+    for estado in ["presupuestada", "en_reparacion", "terminada"]:
+        response = client.post(
+            f"/ordenes_taller/{orden['id']}/estado",
+            json={"nuevo_estado": estado, "id_usuario": usuario_id},
+        )
+        assert response.status_code == 200, response.text
+
+    whatsapp = client.get(f"/ordenes_taller/{orden['id']}/mensaje-lista-retiro")
+    assert whatsapp.status_code == 200, whatsapp.text
+    mensaje = whatsapp.json()["mensaje"]
+    assert "Total lista" in mensaje
+    assert "$10.000" in mensaje
+    assert "Efectivo / transferencia (10% OFF)" in mensaje
+    assert "$9.000" in mensaje
+
+
 def test_ot_con_servicio_bonificado_total_puede_retirar_sin_venta(
     client,
     seed_taller_basico,

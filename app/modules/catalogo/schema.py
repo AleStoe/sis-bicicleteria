@@ -26,6 +26,7 @@ class ProductoOut(BaseModel):
     id: int
     nombre: str
     rubro: str | None = None
+    subtipo_catalogo: str | None = None
     tipo_item: str
     stockeable: bool
     serializable: bool
@@ -48,6 +49,7 @@ class VarianteOut(BaseModel):
     serializable: bool
     categoria_id: int
     categoria_nombre: str
+    subtipo_catalogo: str | None = None
     nombre_variante: str
     sku: str | None = None
     codigo_barras: str | None = None
@@ -106,6 +108,7 @@ class CatalogoPOSItemOut(BaseModel):
     producto_nombre: str
     nombre_variante: str
     rubro: str | None = None
+    subtipo_catalogo: str | None = None
     categoria_id: int
     categoria_nombre: str
     tipo_item: str
@@ -145,19 +148,31 @@ class CatalogoPOSItemOut(BaseModel):
     oferta_fecha_hasta: object | None = None
 
 TipoItemCatalogo = Literal["producto", "servicio"]
-RubroProducto = Literal["BICICLETAS", "REPUESTOS", "ACCESORIOS", "INDUMENTARIA", "SERVICIOS"]
+RubroProducto = Literal["BICICLETAS", "REPUESTOS", "ACCESORIOS", "INDUMENTARIA", "HERRAMIENTAS", "CUBIERTAS AUTO", "SERVICIOS"]
 
 class CatalogoPOSPaginatedOut(BaseModel):
     total: int
     limit: int
     offset: int
     items: list[CatalogoPOSItemOut]
+
+
+TipoCatalogoPdf = Literal["minorista", "mayorista", "bicicletas"]
+
+
+class CatalogoPdfPreviewOut(BaseModel):
+    tipo: TipoCatalogoPdf
+    total: int
+    filtros: list[str] = []
+    puede_descargar: bool
+    mensaje: str | None = None
     
 class ProductoCreate(BaseModel):
     id_categoria: int = Field(gt=0)
     id_marca: int | None = Field(default=None, gt=0)
     nombre: str = Field(min_length=2, max_length=150)
     rubro: RubroProducto = "REPUESTOS"
+    subtipo_catalogo: str | None = Field(default=None, max_length=80)
     tipo_item: TipoItemCatalogo = "producto"
     stockeable: bool = True
     serializable: bool = False
@@ -172,6 +187,7 @@ class ProductoCreateOut(BaseModel):
     id_marca: int | None = None
     nombre: str
     rubro: str | None = None
+    subtipo_catalogo: str | None = None
     tipo_item: str
     stockeable: bool
     serializable: bool
@@ -245,6 +261,7 @@ class ProductoUpdate(BaseModel):
     id_marca: int | None = Field(default=None, gt=0)
     nombre: str | None = Field(default=None, min_length=2, max_length=150)
     rubro: RubroProducto | None = None
+    subtipo_catalogo: str | None = Field(default=None, max_length=80)
     tipo_item: TipoItemCatalogo | None = None
     stockeable: bool | None = None
     serializable: bool | None = None

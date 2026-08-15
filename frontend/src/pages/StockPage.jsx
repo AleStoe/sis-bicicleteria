@@ -43,6 +43,9 @@ export default function StockPage() {
   const navigate = useNavigate();
   const { usuarioId, sucursalId } = useSession();
   const searchInputRef = useRef(null);
+  const initialUrlParamsRef = useRef(
+    typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams()
+  );
   const filtrosMontadosRef = useRef(false);
   const busquedaMontadaRef = useRef(false);
   const isMobile = useMediaQuery("(max-width: 760px)");
@@ -51,11 +54,17 @@ export default function StockPage() {
   const [stockBase, setStockBase] = useState([]);
   const [resumenServer, setResumenServer] = useState(null);
   const [proveedores, setProveedores] = useState([]);
-  const [query, setQuery] = useState("");
-  const [filtroEstado, setFiltroEstado] = useState("todos");
+  const [query, setQuery] = useState(() => initialUrlParamsRef.current.get("q") || "");
+  const [idVarianteFiltro, setIdVarianteFiltro] = useState(
+    () => initialUrlParamsRef.current.get("id_variante") || ""
+  );
+  const [filtroEstado, setFiltroEstado] = useState(
+    () => initialUrlParamsRef.current.get("estado_stock") || "todos"
+  );
   const [filtrosAvanzadosAbiertos, setFiltrosAvanzadosAbiertos] = useState(false);
   const [tipoOperativo, setTipoOperativo] = useState("todos");
   const [idCategoria, setIdCategoria] = useState("");
+  const [subtipoCatalogo, setSubtipoCatalogo] = useState("");
   const [idMarca, setIdMarca] = useState("");
   const [idProveedor, setIdProveedor] = useState("");
   const [diasSinMovimiento, setDiasSinMovimiento] = useState("");
@@ -123,6 +132,7 @@ export default function StockPage() {
     filtroEstado,
     tipoOperativo,
     idCategoria,
+    subtipoCatalogo,
     idMarca,
     idProveedor,
     diasSinMovimiento,
@@ -179,9 +189,11 @@ export default function StockPage() {
   function stockParams(extra = {}) {
     return {
       q: query,
+      id_variante: idVarianteFiltro,
       estado_stock: filtroEstado === "todos" ? "" : filtroEstado,
       tipo_operativo: tipoOperativo === "todos" ? "" : tipoOperativo,
       id_categoria: idCategoria,
+      subtipo_catalogo: subtipoCatalogo,
       id_marca: idMarca,
       id_proveedor: idProveedor,
       dias_sin_movimiento: diasSinMovimiento,
@@ -232,7 +244,9 @@ export default function StockPage() {
       setStock(items);
       setResumenServer(resumen || null);
 
-      if (autoSeleccionarUnico && items.length === 1) {
+      if (idVarianteFiltro && items.length > 0) {
+        seleccionarItem(items[0], "detalle");
+      } else if (autoSeleccionarUnico && items.length === 1) {
         seleccionarItem(items[0], "detalle");
       }
     } catch (err) {
@@ -244,8 +258,9 @@ export default function StockPage() {
   }
 
   async function buscarAhora({ autoSeleccionarUnico = false } = {}) {
+    setIdVarianteFiltro("");
     await cargarStock({
-      paramsExtra: { q: query.trim() },
+      paramsExtra: { q: query.trim(), id_variante: "" },
       autoSeleccionarUnico,
       silencioso: true,
     });
@@ -255,8 +270,10 @@ export default function StockPage() {
 
   function limpiarBusqueda() {
     setQuery("");
+    setIdVarianteFiltro("");
     setFiltroEstado("todos");
     setFiltroReponerStock("todos");
+    setSubtipoCatalogo("");
     setTimeout(() => searchInputRef.current?.focus(), 0);
   }
 
@@ -406,6 +423,7 @@ export default function StockPage() {
     capital: "Capital inmovilizado",
     ultima_venta: "Última venta",
     categoria: "Categoría",
+    subtipo: "Subtipo",
     marca: "Marca",
     proveedor: "Proveedor",
   };
@@ -414,11 +432,15 @@ export default function StockPage() {
 
   const filtroOpciones = useMemo(() => {
     const categorias = new Map();
+    const subtipos = new Set();
     const marcas = new Map();
 
     stockBase.forEach((item) => {
       if (item.id_categoria && item.categoria_nombre) {
         categorias.set(item.id_categoria, item.categoria_nombre);
+      }
+      if (item.subtipo_catalogo) {
+        subtipos.add(item.subtipo_catalogo);
       }
       if (item.id_marca && item.marca_nombre) {
         marcas.set(item.id_marca, item.marca_nombre);
@@ -427,6 +449,7 @@ export default function StockPage() {
 
     return {
       categorias: [...categorias.entries()].sort((a, b) => a[1].localeCompare(b[1])),
+      subtipos: [...subtipos].sort((a, b) => a.localeCompare(b)),
       marcas: [...marcas.entries()].sort((a, b) => a[1].localeCompare(b[1])),
     };
   }, [stockBase]);
@@ -654,7 +677,10 @@ export default function StockPage() {
           <input
             ref={searchInputRef}
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setIdVarianteFiltro("");
+              setQuery(e.target.value);
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
@@ -718,6 +744,16 @@ export default function StockPage() {
           </label>
 
           <label style={styles.filterField}>
+            <span style={styles.filterLabel}>Subtipo</span>
+            <select value={subtipoCatalogo} onChange={(e) => setSubtipoCatalogo(e.target.value)} style={styles.select}>
+              <option value="">Todos</option>
+              {filtroOpciones.subtipos.map((subtipo) => (
+                <option key={subtipo} value={subtipo}>{subtipo}</option>
+              ))}
+            </select>
+          </label>
+
+          <label style={styles.filterField}>
             <span style={styles.filterLabel}>Marca</span>
             <select value={idMarca} onChange={(e) => setIdMarca(e.target.value)} style={styles.select}>
               <option value="">Todas</option>
@@ -772,6 +808,7 @@ export default function StockPage() {
               <option value="capital">Capital inmovilizado</option>
               <option value="ultima_venta">Última venta</option>
               <option value="categoria">Categoría</option>
+              <option value="subtipo">Subtipo</option>
               <option value="marca">Marca</option>
               <option value="proveedor">Proveedor</option>
             </select>
@@ -857,13 +894,18 @@ export default function StockPage() {
                 tdNumberStrong: styles.tdNumberStrong,
                 mutedSmall: styles.mutedSmall,
                 rowActions: styles.rowActions,
+                stockCell: styles.stockCell,
                 tr: styles.tr,
                 trActive: styles.trActive,
                 productName: styles.productName,
                 variantName: styles.variantName,
+                cellStrong: styles.cellStrong,
                 actionButton: styles.actionButton,
+                actionButtonSm: styles.actionButtonSm,
                 dangerOutlineButton: styles.dangerOutlineButton,
+                dangerOutlineButtonSm: styles.dangerOutlineButtonSm,
                 ghostButton: styles.ghostButton,
+                ghostButtonSm: styles.ghostButtonSm,
               }}
             />
           </div>
@@ -1219,7 +1261,7 @@ const styles = {
   muted: { color: "#6b7280", margin: "4px 0 0" },
   mutedSmall: { color: "#6b7280", fontSize: "13px", marginTop: "4px" },
   tableWrap: { overflowX: "auto" },
-  table: { width: "100%", borderCollapse: "collapse", minWidth: "1460px", tableLayout: "auto" },
+  table: { width: "100%", borderCollapse: "collapse", minWidth: "1320px", tableLayout: "fixed" },
   thead: { background: "#f9fafb" },
   th: {
     textAlign: "left",
@@ -1247,8 +1289,8 @@ const styles = {
   },
   tr: { borderTop: "1px solid #f3f4f6", cursor: "pointer", background: "#ffffff" },
   trActive: { borderTop: "1px solid #bfdbfe", cursor: "pointer", background: "#eff6ff" },
-  td: { padding: "12px 10px", verticalAlign: "top" },
-  tdProduct: { padding: "12px 10px", verticalAlign: "top", minWidth: "280px" },
+  td: { padding: "12px 10px", verticalAlign: "top", overflowWrap: "anywhere" },
+  tdProduct: { padding: "12px 10px", verticalAlign: "top", minWidth: "340px", overflowWrap: "anywhere" },
   tdNumber: { padding: "12px 10px", verticalAlign: "top", textAlign: "right" },
   tdNumberStrong: {
     padding: "12px 10px",
@@ -1257,9 +1299,15 @@ const styles = {
     fontWeight: 900,
     color: "#1d4ed8",
   },
-  productName: { display: "block", fontSize: "14px" },
+  productName: { display: "block", fontSize: "14px", lineHeight: 1.25 },
   variantName: { marginTop: "3px", color: "#374151" },
-  rowActions: { display: "flex", gap: "6px", flexWrap: "wrap" },
+  cellStrong: { display: "block", fontSize: "13px", lineHeight: 1.25 },
+  stockCell: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: "6px",
+  },
+  rowActions: { display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center" },
   bulkActions: {
     display: "flex",
     alignItems: "center",
@@ -1276,6 +1324,16 @@ const styles = {
     fontWeight: 900,
     cursor: "pointer",
   },
+  actionButtonSm: {
+    border: "1px solid #bfdbfe",
+    background: "#eff6ff",
+    color: "#1d4ed8",
+    borderRadius: "9px",
+    padding: "6px 8px",
+    fontSize: "12px",
+    fontWeight: 900,
+    cursor: "pointer",
+  },
   dangerOutlineButton: {
     border: "1px solid #fecaca",
     background: "#fef2f2",
@@ -1285,12 +1343,32 @@ const styles = {
     fontWeight: 900,
     cursor: "pointer",
   },
+  dangerOutlineButtonSm: {
+    border: "1px solid #fecaca",
+    background: "#fef2f2",
+    color: "#991b1b",
+    borderRadius: "9px",
+    padding: "6px 8px",
+    fontSize: "12px",
+    fontWeight: 900,
+    cursor: "pointer",
+  },
   ghostButton: {
     border: "1px solid #d1d5db",
     background: "#ffffff",
     color: "#374151",
     borderRadius: "10px",
     padding: "8px 10px",
+    fontWeight: 900,
+    cursor: "pointer",
+  },
+  ghostButtonSm: {
+    border: "1px solid #d1d5db",
+    background: "#ffffff",
+    color: "#374151",
+    borderRadius: "9px",
+    padding: "6px 8px",
+    fontSize: "12px",
     fontWeight: 900,
     cursor: "pointer",
   },

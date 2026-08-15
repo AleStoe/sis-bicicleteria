@@ -236,6 +236,31 @@ class RentabilidadArticuloDiarioOutput(BaseModel):
     detalles: List[RentabilidadDetalleDiarioOutput] = []
 
 
+class RentabilidadCobroVentaDiarioOutput(BaseModel):
+    id_venta: int
+    fecha: datetime
+    fecha_ultimo_cobro: Optional[datetime] = None
+    cliente_nombre: str
+    estado_venta: str
+    origen: str
+    medios_pago: str
+    cantidad_items: int = 0
+    cantidad_unidades: Decimal = Decimal("0")
+    venta_comercial: Decimal = Decimal("0")
+    cmv_comercial: Decimal = Decimal("0")
+    margen_esperado: Decimal = Decimal("0")
+    cobrado_comercial_reconocido: Decimal = Decimal("0")
+    saldo_pendiente: Decimal = Decimal("0")
+    financiacion_cobrada: Decimal = Decimal("0")
+    costo_financiero: Decimal = Decimal("0")
+    resultado_financiero: Decimal = Decimal("0")
+    capital_recuperado: Decimal = Decimal("0")
+    capital_inmovilizado: Decimal = Decimal("0")
+    utilidad_liberada: Decimal = Decimal("0")
+    utilidad_pendiente: Decimal = Decimal("0")
+    es_cobro_posterior: bool = False
+
+
 class RentabilidadDiariaOutput(BaseModel):
     fecha: date
     id_sucursal: Optional[int] = None
@@ -264,6 +289,7 @@ class RentabilidadDiariaOutput(BaseModel):
     utilidad_pendiente: Decimal = Decimal("0")
     margen_real: Decimal
     margen_porcentaje: Decimal
+    cobros_ventas: List[RentabilidadCobroVentaDiarioOutput] = []
     articulos: List[RentabilidadArticuloDiarioOutput] = []
 
 

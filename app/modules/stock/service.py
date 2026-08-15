@@ -413,6 +413,39 @@ def crear_ingreso_stock(data: dict):
         conn.close()
 
 
+def crear_ingreso_stock_lote(data: dict):
+    conn = get_connection()
+    try:
+        with conn.transaction():
+            exigir_permiso_ajustar_stock(conn, data["id_usuario"])
+
+            ingresos = []
+            total_unidades = to_decimal(0)
+
+            for index, item in enumerate(data["items"], start=1):
+                item_data = {
+                    **item,
+                    "id_sucursal": data["id_sucursal"],
+                    "id_usuario": data["id_usuario"],
+                    "origen_ingreso": data.get("origen_ingreso", "manual"),
+                    "observacion": item.get("observacion")
+                    or data.get("observacion")
+                    or f"Ingreso lote bicicletas linea {index}",
+                }
+                ingreso = repository.crear_ingreso_stock(conn, item_data)
+                ingresos.append(ingreso)
+                total_unidades += to_decimal(item["cantidad_ingresada"])
+
+            return {
+                "ok": True,
+                "total_items": len(ingresos),
+                "total_unidades": total_unidades,
+                "ingresos": ingresos,
+            }
+    finally:
+        conn.close()
+
+
 def crear_ajuste_stock(data: dict):
     conn = get_connection()
     try:

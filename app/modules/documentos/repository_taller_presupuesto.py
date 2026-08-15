@@ -80,6 +80,8 @@ def get_orden_taller_items_presupuesto_by_orden_id(conn, orden_id: int):
                 oti.subtotal,
                 oti.etapa,
                 oti.aprobado,
+                v.codigo_proveedor,
+                v.sku,
                 COALESCE(oti.tipo_item, p.tipo_item) AS tipo_item,
                 p.stockeable,
                 CASE
