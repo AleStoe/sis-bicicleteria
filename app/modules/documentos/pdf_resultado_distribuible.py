@@ -82,6 +82,17 @@ def _metric_card(label, value, styles, *, highlight=False):
     ]
 
 
+def _summary_card(label, value, styles, *, tone="normal"):
+    color = {
+        "highlight": ORANGE_HEX,
+        "muted": MUTED_HEX,
+    }.get(tone, INK_HEX)
+    return [
+        _p(label, styles["cover_metric_label"]),
+        _p(value, ParagraphStyle("CoverMetricValueCustom", parent=styles["cover_metric_value"], textColor=color)),
+    ]
+
+
 def _kpis(data: dict) -> list[tuple[str, str]]:
     venta = _dec(data.get("venta_comercial") or data.get("ventas_netas"))
     cmv = _dec(data.get("cmv_comercial") or data.get("cmv_neto"))
@@ -194,10 +205,21 @@ def generar_resultado_distribuible_pdf(
             "EAReportTitle",
             parent=base["Title"],
             fontName="Helvetica-Bold",
-            fontSize=26,
-            leading=30,
+            fontSize=28,
+            leading=32,
             textColor=colors.HexColor(BROWN_HEX),
-            spaceAfter=12,
+            alignment=0,
+            spaceAfter=8,
+        ),
+        "eyebrow": ParagraphStyle(
+            "EAEyebrow",
+            parent=base["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=8,
+            leading=10,
+            textColor=colors.HexColor(ORANGE_HEX),
+            uppercase=True,
+            spaceAfter=5,
         ),
         "subtitle": ParagraphStyle(
             "EAReportSubtitle",
@@ -207,6 +229,14 @@ def generar_resultado_distribuible_pdf(
             leading=16,
             textColor=colors.HexColor(MUTED_HEX),
             spaceAfter=8,
+        ),
+        "cover_note": ParagraphStyle(
+            "EACoverNote",
+            parent=base["Normal"],
+            fontName="Helvetica",
+            fontSize=10,
+            leading=14,
+            textColor=colors.HexColor(MUTED_HEX),
         ),
         "section": ParagraphStyle(
             "EASection",
@@ -243,6 +273,23 @@ def generar_resultado_distribuible_pdf(
             textColor=colors.HexColor(MUTED_HEX),
             uppercase=True,
         ),
+        "cover_metric_label": ParagraphStyle(
+            "EACoverMetricLabel",
+            parent=base["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=7.4,
+            leading=9,
+            textColor=colors.HexColor(MUTED_HEX),
+            uppercase=True,
+        ),
+        "cover_metric_value": ParagraphStyle(
+            "EACoverMetricValue",
+            parent=base["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=13,
+            leading=15,
+            textColor=colors.HexColor(INK_HEX),
+        ),
         "metric_value": ParagraphStyle(
             "EAMetricValue",
             parent=base["Normal"],
@@ -256,8 +303,17 @@ def generar_resultado_distribuible_pdf(
             parent=base["Normal"],
             alignment=TA_CENTER,
             fontName="Helvetica-Bold",
-            fontSize=28,
-            leading=32,
+            fontSize=26,
+            leading=29,
+            textColor=colors.HexColor(ORANGE_HEX),
+        ),
+        "result_value_table": ParagraphStyle(
+            "EAResultValueTable",
+            parent=base["Normal"],
+            alignment=TA_RIGHT,
+            fontName="Helvetica-Bold",
+            fontSize=21,
+            leading=24,
             textColor=colors.HexColor(ORANGE_HEX),
         ),
         "result_label": ParagraphStyle(
@@ -294,27 +350,66 @@ def generar_resultado_distribuible_pdf(
             leading=10,
             textColor=colors.HexColor(INK_HEX),
         ),
+        "formula": ParagraphStyle(
+            "EAFormula",
+            parent=base["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=8.2,
+            leading=11,
+            textColor=colors.HexColor(BROWN_HEX),
+        ),
     }
 
     story = []
     sucursal = sucursal_label or ("Todas las sucursales" if not data.get("id_sucursal") else f"Sucursal #{data.get('id_sucursal')}")
     generado = datetime.now().strftime("%d/%m/%Y %H:%M")
 
-    story.append(Spacer(1, 28 * mm))
-    story.append(_p("Informe ejecutivo", styles["subtitle"]))
+    venta_comercial = _dec(data.get("venta_comercial") or data.get("ventas_netas"))
+    cobrado_comercial = _dec(data.get("cobrado_comercial_reconocido"))
+    saldo_pendiente = _dec(data.get("saldo_pendiente_por_cobrar"))
+    capital_inmovilizado = _dec(data.get("capital_inmovilizado"))
+    utilidad_liberada = _dec(data.get("utilidad_liberada"))
+    resultado_distribuible = _dec(data.get("resultado_distribuible"))
+
+    story.append(Spacer(1, 12 * mm))
+    story.append(_p("Informe ejecutivo", styles["eyebrow"]))
     story.append(_p("Resultado Distribuible", styles["title"]))
-    story.append(_p("Emprendimiento Agus", styles["section"]))
-    story.append(_p(f"Periodo analizado: {_periodo(data)}", styles["body"]))
-    story.append(_p(f"Fecha de emision: {generado}", styles["body"]))
-    story.append(_p(f"Sucursal: {sucursal}", styles["body"]))
-    story.append(Spacer(1, 18 * mm))
+    story.append(_p("Lectura economica del periodo para revisar ventas, cobranza, capital y capacidad real de distribucion.", styles["cover_note"]))
+    story.append(Spacer(1, 8 * mm))
+
+    meta = Table(
+        [[
+            _summary_card("Empresa", "Emprendimiento Agus", styles),
+            _summary_card("Periodo", _periodo(data), styles),
+            _summary_card("Emision", generado, styles),
+            _summary_card("Sucursal", sucursal, styles),
+        ]],
+        colWidths=[49 * mm, 47 * mm, 34 * mm, 26 * mm],
+    )
+    meta.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.white),
+                ("BOX", (0, 0), (-1, -1), 0.7, colors.HexColor(BORDER_HEX)),
+                ("INNERGRID", (0, 0), (-1, -1), 0.45, colors.HexColor(BORDER_HEX)),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 8),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+            ]
+        )
+    )
+    story.append(meta)
+    story.append(Spacer(1, 10 * mm))
 
     result_box = Table(
-        [[
-            _p("RESULTADO DISTRIBUIBLE FINAL", styles["result_label"]),
-            _p(_money(data.get("resultado_distribuible")), styles["result_value"]),
-        ]],
-        colWidths=[70 * mm, 86 * mm],
+        [
+            [_p("RESULTADO DISTRIBUIBLE FINAL", styles["result_label"])],
+            [_p(_money(resultado_distribuible), styles["result_value"])],
+            [_p("Utilidad liberada + resultado financiero - gastos operativos", styles["formula"])],
+        ],
+        colWidths=[156 * mm],
     )
     result_box.setStyle(
         TableStyle(
@@ -324,16 +419,48 @@ def generar_resultado_distribuible_pdf(
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                 ("LEFTPADDING", (0, 0), (-1, -1), 14),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 14),
-                ("TOPPADDING", (0, 0), (-1, -1), 16),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 16),
+                ("TOPPADDING", (0, 0), (-1, -1), 8),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
             ]
         )
     )
     story.append(result_box)
-    story.append(Spacer(1, 18 * mm))
+    story.append(Spacer(1, 8 * mm))
+
+    cover_summary = Table(
+        [
+            [
+                _summary_card("Venta comercial", _money(venta_comercial), styles),
+                _summary_card("Cobrado comercial", _money(cobrado_comercial), styles),
+                _summary_card("Utilidad liberada", _money(utilidad_liberada), styles, tone="highlight"),
+            ],
+            [
+                _summary_card("Saldo pendiente", _money(saldo_pendiente), styles),
+                _summary_card("Capital inmovilizado", _money(capital_inmovilizado), styles),
+                _summary_card("Resultado distribuible", _money(resultado_distribuible), styles, tone="highlight"),
+            ],
+        ],
+        colWidths=[52 * mm, 52 * mm, 52 * mm],
+    )
+    cover_summary.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.white),
+                ("BOX", (0, 0), (-1, -1), 0.7, colors.HexColor(BORDER_HEX)),
+                ("INNERGRID", (0, 0), (-1, -1), 0.45, colors.HexColor(BORDER_HEX)),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 9),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 9),
+                ("TOPPADDING", (0, 0), (-1, -1), 9),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 9),
+            ]
+        )
+    )
+    story.append(cover_summary)
+    story.append(Spacer(1, 8 * mm))
     story.append(_p(
-        "Este informe separa rentabilidad comercial, recuperacion de capital, resultado financiero y capacidad real de distribucion.",
-        styles["subtitle"],
+        "No es un comprobante de caja: resume hechos registrados y separa negocio vendido, cobro reconocido, capital recuperado y utilidad disponible.",
+        styles["cover_note"],
     ))
     story.append(PageBreak())
 
@@ -393,7 +520,7 @@ def generar_resultado_distribuible_pdf(
             [_p("Utilidad liberada", styles["table_cell"]), _p(_money(data.get("utilidad_liberada")), styles["table_money"])],
             [_p("Resultado financiero", styles["table_cell"]), _p(_money(data.get("resultado_financiero")), styles["table_money"])],
             [_p("Gastos operativos", styles["table_cell"]), _p(f"- {_money(data.get('gastos_operativos'))}", styles["table_money"])],
-            [_p("Resultado distribuible final", styles["metric_value"]), _p(_money(data.get("resultado_distribuible")), styles["result_value"])],
+            [_p("Resultado distribuible final", styles["metric_value"]), _p(_money(data.get("resultado_distribuible")), styles["result_value_table"])],
         ],
         colWidths=[95 * mm, 61 * mm],
     )
@@ -407,8 +534,10 @@ def generar_resultado_distribuible_pdf(
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                 ("LEFTPADDING", (0, 0), (-1, -1), 12),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 12),
-                ("TOPPADDING", (0, 0), (-1, -1), 9),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 9),
+                ("TOPPADDING", (0, 0), (-1, -2), 7),
+                ("BOTTOMPADDING", (0, 0), (-1, -2), 7),
+                ("TOPPADDING", (0, -1), (-1, -1), 11),
+                ("BOTTOMPADDING", (0, -1), (-1, -1), 11),
             ]
         )
     )
@@ -431,6 +560,7 @@ def generar_resultado_distribuible_pdf(
     )
     story.append(kpi_table)
 
+    story.append(PageBreak())
     story.append(_p("5. Observaciones automaticas", styles["section"]))
     obs_rows = [[_p(f"- {text}", styles["body"])] for text in _observaciones(data, periodo_anterior)]
     obs_table = Table(obs_rows, colWidths=[156 * mm])

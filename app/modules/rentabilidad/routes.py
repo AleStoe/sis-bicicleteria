@@ -106,7 +106,8 @@ def resultado_distribuible_pdf_route(
         periodo_anterior=periodo_anterior,
         detalle_diario=detalle_diario,
     )
-    filename = f"Resultado-Distribuible-{data['periodo_mes'].strftime('%Y-%m')}.pdf"
+    fecha_descarga = date.today().strftime("%Y-%m-%d")
+    filename = f"Resultado-Distribuible-{data['periodo_mes'].strftime('%Y-%m')}-{fecha_descarga}.pdf"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",

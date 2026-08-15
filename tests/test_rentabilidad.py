@@ -107,7 +107,8 @@ def test_resultado_distribuible_pdf(client, seed_venta_basica):
 
     assert response.status_code == 200, response.text
     assert response.headers["content-type"].startswith("application/pdf")
-    assert "Resultado-Distribuible-2026-06.pdf" in response.headers["content-disposition"]
+    assert "Resultado-Distribuible-2026-06-" in response.headers["content-disposition"]
+    assert response.headers["content-disposition"].endswith('.pdf"')
     assert response.content.startswith(b"%PDF")
 
 

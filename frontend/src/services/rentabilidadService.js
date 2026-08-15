@@ -70,6 +70,19 @@ function filenameFromDisposition(disposition, fallback) {
   return match?.[1] || fallback;
 }
 
+function fechaDescargaLocal() {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function resultadoDistribuibleFallbackName(params = {}) {
+  const periodo = String(params.periodo_mes || "").slice(0, 7) || "Periodo";
+  return `Resultado-Distribuible-${periodo}-${fechaDescargaLocal()}.pdf`;
+}
+
 export async function descargarResultadoDistribuiblePdf(params = {}) {
   const query = cleanParams(params);
   const token = getStoredAuthToken();
@@ -108,7 +121,7 @@ export async function descargarResultadoDistribuiblePdf(params = {}) {
   link.href = url;
   link.download = filenameFromDisposition(
     response.headers.get("content-disposition"),
-    "Resultado-Distribuible.pdf",
+    resultadoDistribuibleFallbackName(params),
   );
   document.body.appendChild(link);
   link.click();
