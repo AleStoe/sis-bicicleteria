@@ -4,6 +4,7 @@ import {
   obtenerAlertasOperativas,
   sincronizarSaldoVentaDesdeDeuda,
 } from "../services/alertasOperativasService";
+import { cambiarReponerStockVariante } from "../services/catalogoService";
 import { obtenerCorreccionesPendientes } from "../services/correccionesService";
 import { formatMoney } from "../utils/formatters";
 import { useSession } from "../context/SessionContext";
@@ -32,6 +33,7 @@ export default function AlertasOperativasPage() {
   const [mensaje, setMensaje] = useState("");
   const [loading, setLoading] = useState(false);
   const [sincronizandoId, setSincronizandoId] = useState(null);
+  const [actualizandoReposicionId, setActualizandoReposicionId] = useState(null);
   const [informeIndex, setInformeIndex] = useState(0);
   const puedeVerCorrecciones = rolActual === "administrador";
 
@@ -79,6 +81,30 @@ export default function AlertasOperativasPage() {
       setError(err.message || "No se pudo sincronizar la venta");
     } finally {
       setSincronizandoId(null);
+    }
+  }
+
+  async function marcarNoReponer(item) {
+    const nombre = formatProductoVariante(item.producto_nombre || "Producto", item.nombre_variante);
+    const confirmar = window.confirm(
+      `¿Marcar como "No reponer"?\n\n${nombre}\n\nVa a salir de Stock crítico, pedidos sugeridos y alertas de reposición. No cambia stock, ventas ni visibilidad en catálogo.`
+    );
+    if (!confirmar) return;
+
+    setActualizandoReposicionId(item.id_variante);
+    setError("");
+    setMensaje("");
+    try {
+      await cambiarReponerStockVariante(item.id_variante, {
+        reponer_stock: false,
+        id_usuario: usuarioId,
+      });
+      setMensaje(`${nombre} marcado como no reponer. Ya no va a ensuciar stock crítico.`);
+      await cargar();
+    } catch (err) {
+      setError(err.message || "No se pudo actualizar la reposición");
+    } finally {
+      setActualizandoReposicionId(null);
     }
   }
 
@@ -290,6 +316,11 @@ export default function AlertasOperativasPage() {
                   item.nombre_variante
                 )} · disp. ${item.stock_disponible}`
               }
+              action={(item) => ({
+                label: actualizandoReposicionId === item.id_variante ? "Guardando..." : "No reponer",
+                disabled: actualizandoReposicionId === item.id_variante,
+                onClick: () => marcarNoReponer(item),
+              })}
             />
             <AlertaCard
               title="Productos incompletos"

@@ -56,6 +56,13 @@ export function crearCierreRentabilidad(payload) {
   });
 }
 
+export function anularCierreRentabilidad(cierreId, payload) {
+  return apiRequest(`/rentabilidad/cierres/${cierreId}/anular`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function getCierresRentabilidad(params = {}) {
   const query = cleanParams(params);
   return apiRequest(`/rentabilidad/cierres${query ? `?${query}` : ""}`);

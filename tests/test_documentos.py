@@ -11,6 +11,10 @@ from app.modules.documentos.pdf_etiquetas import (
     _titulo_etiqueta,
     _variant_parts,
 )
+from app.modules.documentos.pdf_estado_deuda import (
+    _descuento_efectivo_transferencia,
+    _monto_con_descuento,
+)
 from app.modules.documentos.download_names import (
     catalog_name,
     compact_date,
@@ -21,7 +25,11 @@ from app.modules.documentos.pdf_taller_presupuesto import (
     generar_presupuesto_taller_pdf,
     _limpiar_codigo_fabrica_detalle,
 )
-from app.modules.documentos.service import obtener_datos_presupuesto_taller
+from app.modules.documentos.service import (
+    obtener_datos_hoja_reparacion_taller,
+    obtener_datos_paquete_trabajo_taller,
+    obtener_datos_presupuesto_taller,
+)
 from app.modules.documentos.pdf_layout import (
     collapse_repeated_words,
     strip_leading_label,
@@ -404,6 +412,87 @@ def test_comprobante_x_venta_devuelve_pdf(client, seed_venta_basica):
     assert response.content.startswith(b"%PDF")
 
 
+def test_comprobante_x_incluye_credito_aplicado_como_cobertura(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    crear = _crear_venta_basica(client, seed_venta_basica)
+    assert crear.status_code == 200
+    venta_id = crear.json()["venta_id"]
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO creditos_cliente (
+                id_cliente,
+                origen_tipo,
+                origen_id,
+                saldo_actual,
+                estado,
+                observacion
+            )
+            VALUES (%s, 'venta', 999, 0, 'aplicado_total', 'Credito de prueba')
+            RETURNING id
+            """,
+            (seed_venta_basica["cliente_id"],),
+        )
+        credito_id = cur.fetchone()["id"]
+
+        cur.execute(
+            """
+            INSERT INTO credito_movimientos (
+                id_credito,
+                tipo_movimiento,
+                monto,
+                monto_base_aplicado,
+                monto_descuento_aplicado,
+                origen_tipo,
+                origen_id,
+                nota,
+                id_usuario
+            )
+            VALUES (%s, 'aplicacion_a_venta', 7600, 8444, 844, 'venta', %s, 'Credito aplicado a venta de prueba', %s)
+            """,
+            (credito_id, venta_id, seed_venta_basica["usuario_id"]),
+        )
+    db_conn.commit()
+
+    pagos_documento = get_pagos_comprobante_by_venta_id(db_conn, venta_id)
+    assert not any(pago["medio_pago"] == "credito" for pago in pagos_documento)
+
+    response = client.get(f"/documentos/ventas/{venta_id}/comprobante-x")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.content.startswith(b"%PDF")
+
+    from app.modules.documentos.service import obtener_datos_comprobante_x_venta
+
+    data = obtener_datos_comprobante_x_venta(venta_id)
+    credito_documento = next(
+        pago for pago in data["pagos"] if pago["medio_pago"] == "credito"
+    )
+    assert Decimal(str(credito_documento["monto_base_aplicado"])) == Decimal("8444")
+    assert Decimal(str(credito_documento["monto_descuento_aplicado"])) == Decimal("844")
+
+
+def test_detalle_pago_financiero_credito_aclara_que_no_es_caja():
+    detalle = _detalle_pago_financiero(
+        {
+            "medio_pago": "credito",
+            "monto_total_cobrado": Decimal("7600"),
+            "monto_base_aplicado": Decimal("8444"),
+            "monto_descuento_aplicado": Decimal("844"),
+        }
+    )
+
+    assert "Saldo a favor usado" in detalle
+    assert "Cubre venta" in detalle
+    assert "Beneficio contado" in detalle
+    assert "No es ingreso nuevo de caja" in detalle
+
+
 def test_comprobante_x_incluye_cuadros_de_varias_bicicletas_serializadas(
     client,
     db_conn,
@@ -640,6 +729,123 @@ def test_presupuesto_taller_devuelve_pdf(
     assert {"contado", "tarjeta"}.issubset(datos_pdf["opciones_pago"].keys())
 
 
+def test_hoja_reparacion_taller_devuelve_pdf(
+    client,
+    seed_taller_basico,
+    seed_venta_basica,
+):
+    crear_orden = client.post(
+        "/ordenes_taller/",
+        json={
+            "id_sucursal": seed_taller_basico["sucursal_id"],
+            "id_cliente": seed_taller_basico["cliente_id"],
+            "id_bicicleta_cliente": seed_taller_basico["bicicleta_cliente_id"],
+            "problema_reportado": "Regular frenos y revisar transmision",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert crear_orden.status_code == 201, crear_orden.text
+    orden_id = crear_orden.json()["id"]
+
+    item = client.post(
+        f"/ordenes_taller/{orden_id}/items",
+        json={
+            "tipo_item": "repuesto",
+            "id_variante": seed_venta_basica["variante_id"],
+            "cantidad": 2,
+            "precio_unitario": 5000,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert item.status_code == 201, item.text
+
+    nota = client.post(
+        f"/ordenes_taller/{orden_id}/notas",
+        json={
+            "tipo": "interna",
+            "contenido": "Revisar juego en maza trasera",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert nota.status_code == 201, nota.text
+
+    response = client.get(f"/documentos/taller/{orden_id}/hoja-reparacion")
+
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"] == "application/pdf"
+    assert (
+        f'filename="HOJA-OT-{str(orden_id).zfill(6)}-{compact_date()}.pdf"'
+        in response.headers["content-disposition"]
+    )
+    assert response.content.startswith(b"%PDF")
+
+    datos_pdf = obtener_datos_hoja_reparacion_taller(orden_id)
+    assert datos_pdf["orden"]["id"] == orden_id
+    assert datos_pdf["items"]
+    assert datos_pdf["notas"][0]["contenido"] == "Revisar juego en maza trasera"
+
+
+def test_paquete_trabajo_taller_devuelve_pdf(
+    client,
+    db_conn,
+    seed_taller_basico,
+    seed_venta_basica,
+):
+    crear_orden = client.post(
+        "/ordenes_taller/",
+        json={
+            "id_sucursal": seed_taller_basico["sucursal_id"],
+            "id_cliente": seed_taller_basico["cliente_id"],
+            "id_bicicleta_cliente": seed_taller_basico["bicicleta_cliente_id"],
+            "problema_reportado": "Paquete de trabajo test",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert crear_orden.status_code == 201, crear_orden.text
+    orden_id = crear_orden.json()["id"]
+
+    item = client.post(
+        f"/ordenes_taller/{orden_id}/items",
+        json={
+            "tipo_item": "repuesto",
+            "id_variante": seed_venta_basica["variante_id"],
+            "cantidad": 2,
+            "precio_unitario": 10000,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert item.status_code == 201, item.text
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE ordenes_taller_items
+            SET costo_unitario_aplicado = 4000
+            WHERE id = %s
+            """,
+            (item.json()["id"],),
+        )
+    db_conn.commit()
+
+    response = client.get(
+        f"/documentos/taller/paquete-trabajo?orden_ids={orden_id}"
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"] == "application/pdf"
+    assert (
+        f'filename="PAQ-OT-000001-{compact_date()}.pdf"'
+        in response.headers["content-disposition"]
+    )
+    assert response.content.startswith(b"%PDF")
+
+    datos_pdf = obtener_datos_paquete_trabajo_taller([orden_id])
+    assert datos_pdf["resumen"]["ordenes"] == 1
+    assert datos_pdf["resumen"]["repuestos_venta"] == Decimal("20000")
+    assert datos_pdf["resumen"]["costo_repuestos"] == Decimal("8000")
+    assert datos_pdf["resumen"]["ganancia_estimada"] == Decimal("12000")
+
+
 def test_resumen_cobros_venta_devuelve_pdf(client, seed_venta_basica):
     crear = _crear_venta_basica(client, seed_venta_basica)
     assert crear.status_code == 200
@@ -686,6 +892,77 @@ def test_recibo_pago_devuelve_pdf(client, seed_venta_basica, caja_abierta_basica
         in response.headers["content-disposition"]
     )
     assert response.content.startswith(b"%PDF")
+
+
+def test_estado_deuda_cliente_devuelve_pdf(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    crear = _crear_venta_basica(client, seed_venta_basica)
+    assert crear.status_code == 200
+    venta_id = crear.json()["venta_id"]
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO deudas_cliente (
+                id_cliente,
+                origen_tipo,
+                origen_id,
+                saldo_actual,
+                genera_recargo,
+                tasa_recargo,
+                proximo_vencimiento,
+                estado,
+                observacion
+            )
+            VALUES (%s, 'venta', %s, 12220, FALSE, NULL, NULL, 'abierta', 'Saldo de prueba')
+            RETURNING id
+            """,
+            (seed_venta_basica["cliente_id"], venta_id),
+        )
+        deuda_id = cur.fetchone()["id"]
+
+        cur.execute(
+            """
+            INSERT INTO deuda_movimientos (
+                id_deuda,
+                tipo_movimiento,
+                monto,
+                origen_tipo,
+                origen_id,
+                nota,
+                id_usuario
+            )
+            VALUES (%s, 'cargo', 12220, 'venta', %s, 'Cargo inicial de prueba', %s)
+            """,
+            (deuda_id, venta_id, seed_venta_basica["usuario_id"]),
+        )
+    db_conn.commit()
+
+    response = client.get(
+        f"/documentos/clientes/{seed_venta_basica['cliente_id']}/estado-deuda"
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"] == "application/pdf"
+    assert "Estado-Deuda-CLIENTE-TEST" in response.headers["content-disposition"]
+    assert response.content.startswith(b"%PDF")
+
+
+def test_estado_deuda_calcula_efectivo_transferencia():
+    opciones_pago = {
+        "contado": [
+            {"medio_pago": "efectivo", "porcentaje_descuento": Decimal("10")},
+            {"medio_pago": "transferencia", "porcentaje_descuento": Decimal("10")},
+        ]
+    }
+
+    descuento = _descuento_efectivo_transferencia(opciones_pago)
+
+    assert descuento == Decimal("10")
+    assert _monto_con_descuento(Decimal("100000"), descuento) == Decimal("90000")
 
 
 def test_cotizacion_devuelve_pdf(client, seed_venta_basica):

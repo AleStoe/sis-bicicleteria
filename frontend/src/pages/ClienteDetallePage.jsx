@@ -339,11 +339,11 @@ export default function ClienteDetallePage() {
         />
       </Card>
 
-      <ResponsiveMetricsGrid mobileColumns={2}>
-        <MetricCard label="Comprado" value={formatMoney(resumen?.total_comprado ?? 0)} tone="primary" emphasize />
-        <MetricCard label="Deuda abierta" value={formatMoney(resumenFinanciero.saldoDeuda)} tone={tieneDeuda ? "danger" : "success"} emphasize />
-        <MetricCard label="Crédito a favor" value={formatMoney(resumenFinanciero.saldoCredito)} tone={tieneCredito ? "success" : "default"} emphasize />
-        <MetricCard label="Balance" value={formatMoney(resumenFinanciero.balance)} tone={resumenFinanciero.balance >= 0 ? "success" : "danger"} emphasize />
+      <ResponsiveMetricsGrid minWidth={178} mobileColumns={2}>
+        <MetricCard label="Comprado" value={formatMoney(resumen?.total_comprado ?? 0)} tone="primary" emphasize valueStyle={styles.moneyMetricValue} />
+        <MetricCard label="Deuda abierta" value={formatMoney(resumenFinanciero.saldoDeuda)} tone={tieneDeuda ? "danger" : "success"} emphasize valueStyle={styles.moneyMetricValue} />
+        <MetricCard label="Crédito a favor" value={formatMoney(resumenFinanciero.saldoCredito)} tone={tieneCredito ? "success" : "default"} emphasize valueStyle={styles.moneyMetricValue} />
+        <MetricCard label="Balance" value={formatMoney(resumenFinanciero.balance)} tone={resumenFinanciero.balance >= 0 ? "success" : "danger"} emphasize valueStyle={styles.moneyMetricValue} />
         <MetricCard label="Ventas" value={resumen?.cantidad_ventas ?? 0} emphasize />
         <MetricCard label="Bicicletas" value={bicicletas.length} tone="primary" emphasize />
         <MetricCard label="Reservas" value={reservas.length} emphasize />
@@ -1408,6 +1408,14 @@ const styles = {
     gap: 10,
     marginBottom: 14,
     flexWrap: "wrap",
+  },
+  moneyMetricValue: {
+    whiteSpace: "nowrap",
+    overflowWrap: "normal",
+    wordBreak: "normal",
+    fontSize: 24,
+    lineHeight: 1.1,
+    fontVariantNumeric: "tabular-nums",
   },
   modalOverlay: {
     position: "fixed",

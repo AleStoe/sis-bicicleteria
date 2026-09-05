@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Minus, Plus, RefreshCcw, ShoppingCart, Trash2 } from "lucide-react";
+import { ArrowLeft, Minus, Plus, Printer, RefreshCcw, ShoppingCart, Trash2 } from "lucide-react";
 import CatalogoPOSPanel from "../components/ventas/catalogo/CatalogoPOSPanel";
 import {
   crearLineId,
@@ -18,6 +18,7 @@ import {
   obtenerPedidoCliente,
   quitarItemPedidoCliente,
 } from "../services/pedidosClienteService";
+import { getPedidoClienteBorradorPdfUrl } from "../services/documentosService";
 import { guardarVentaDraft } from "../services/ventaDraftStore";
 import { useSession } from "../context/SessionContext";
 import { useToast } from "../hooks/useToast";
@@ -271,6 +272,10 @@ export default function PedidoClienteDetallePage() {
     navigate("/ventas/checkout", { state: { ventaDraft } });
   }
 
+  function descargarBorradorPdf() {
+    window.open(getPedidoClienteBorradorPdfUrl(pedido.id), "_blank", "noopener,noreferrer");
+  }
+
   if (!pedido) {
     return (
       <div style={styles.page}>
@@ -292,6 +297,9 @@ export default function PedidoClienteDetallePage() {
             </Button>
             <Button type="button" variant="outline" onClick={cargarInicial}>
               <RefreshCcw size={16} /> Refrescar
+            </Button>
+            <Button type="button" variant="outline" onClick={descargarBorradorPdf} disabled={items.length === 0}>
+              <Printer size={16} /> Descargar PDF
             </Button>
           </>
         }
@@ -443,6 +451,7 @@ export default function PedidoClienteDetallePage() {
           </Card>
         </aside>
       </main>
+
     </div>
   );
 }

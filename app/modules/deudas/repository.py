@@ -118,9 +118,16 @@ def get_deuda_movimientos(conn, deuda_id: int):
                 dm.origen_id,
                 dm.nota,
                 dm.id_usuario,
+                p.medio_pago AS pago_medio_pago,
+                p.monto_total_cobrado AS pago_monto_total_cobrado,
+                p.monto_base_aplicado AS pago_monto_base_aplicado,
+                p.monto_descuento_aplicado AS pago_monto_descuento_aplicado,
                 u.nombre AS usuario_nombre,
                 u.username AS usuario_username
             FROM deuda_movimientos dm
+            LEFT JOIN pagos p
+                ON dm.origen_tipo = 'pago'
+               AND p.id = dm.origen_id
             LEFT JOIN usuarios u ON u.id = dm.id_usuario
             WHERE dm.id_deuda = %s
             ORDER BY dm.id
@@ -222,6 +229,23 @@ def update_venta_saldo_desde_deuda(conn, venta_id: int, saldo_pendiente):
             (saldo_pendiente, venta_id),
         )
         return cur.fetchone()
+
+
+def cerrar_deudas_abiertas_sin_saldo(conn):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            UPDATE deudas_cliente
+            SET
+                estado = 'cerrada',
+                saldo_actual = 0,
+                updated_at = NOW()
+            WHERE estado = 'abierta'
+              AND saldo_actual <= 1
+            RETURNING id
+            """
+        )
+        return cur.fetchall()
     
 def get_deudas_filtradas(
     conn,
@@ -260,6 +284,8 @@ def get_deudas_filtradas(
     if estado is not None:
         sql += " AND d.estado = %s"
         params.append(estado)
+        if estado == "abierta":
+            sql += " AND d.saldo_actual > 1"
 
     if origen_tipo is not None:
         sql += " AND d.origen_tipo = %s"

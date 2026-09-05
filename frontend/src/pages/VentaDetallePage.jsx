@@ -741,6 +741,7 @@ const {
         totalNetoLiquidado={resumenLiquidacion.neto}
         totalCostoFinanciero={resumenLiquidacion.costo}
         cubiertoNoPago={cubiertoNoPago}
+        creditoAplicadoReal={creditoAplicadoReal}
         saldoPendiente={saldoPendiente}
         formatMoney={formatMoney}
       />
@@ -751,6 +752,7 @@ const {
         situacionFinanciera={situacion_financiera}
         totalFinal={totalFinal}
         totalPagadoReal={totalPagadoReal}
+        creditoAplicadoReal={creditoAplicadoReal}
         saldoPendiente={saldoPendiente}
         formatMoney={formatMoney}
       />

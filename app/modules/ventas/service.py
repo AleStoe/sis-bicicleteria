@@ -1148,43 +1148,6 @@ def crear_venta(data, *, conn=None):
             usar_credito = getattr(data, "usar_credito", False)
             monto_credito_a_aplicar = getattr(data, "monto_credito_a_aplicar", None)
 
-            if usar_credito:
-                resultado_credito = creditos_service.aplicar_credito_a_venta(
-                    conn,
-                    id_cliente=data.id_cliente,
-                    id_venta=venta_id,
-                    total_venta=redondear_monto(
-                        resultado_reglas["saldo_base_estimado"]
-                    ),
-                    usar_credito=usar_credito,
-                    monto_credito_a_aplicar=monto_credito_a_aplicar,
-                    id_usuario=data.id_usuario,
-                )
-                credito_aplicado = redondear_monto(resultado_credito["credito_aplicado_total"])
-                credito_base_cubierta = redondear_monto(
-                    resultado_credito["monto_base_cubierto"]
-                )
-                credito_descuento_aplicado = redondear_monto(
-                    resultado_credito["descuento_aplicado"]
-                )
-                saldo_despues_credito = redondear_monto(
-                    resultado_reglas["saldo_base_estimado"]
-                    - credito_base_cubierta
-                )
-
-                if saldo_despues_credito == Decimal("0"):
-                    estado_venta = "pagada_total"
-                elif credito_aplicado > Decimal("0"):
-                    estado_venta = "pagada_parcial"
-                else:
-                    estado_venta = "creada"
-
-                update_venta_saldo_y_estado(
-                    conn,
-                    venta_id,
-                    saldo_despues_credito,
-                    estado_venta,
-                )
             for pago, tramo in zip(pagos, tramos_pago):
                 monto_total_cobrado = redondear_monto(tramo["monto_total_cobrado"])
                 monto_base_aplicado = redondear_monto(tramo["monto_base_aplicado"])
@@ -1215,6 +1178,25 @@ def crear_venta(data, *, conn=None):
 
                 pagos_service.registrar_pago(conn, payload_pago)
 
+            if usar_credito:
+                resultado_credito = creditos_service.aplicar_credito_a_venta(
+                    conn,
+                    id_cliente=data.id_cliente,
+                    id_venta=venta_id,
+                    total_venta=redondear_monto(
+                        resultado_reglas["saldo_base_estimado"]
+                    ),
+                    usar_credito=usar_credito,
+                    monto_credito_a_aplicar=monto_credito_a_aplicar,
+                    id_usuario=data.id_usuario,
+                )
+                credito_aplicado = redondear_monto(resultado_credito["credito_aplicado_total"])
+                credito_base_cubierta = redondear_monto(
+                    resultado_credito["monto_base_cubierto"]
+                )
+                credito_descuento_aplicado = redondear_monto(
+                    resultado_credito["descuento_aplicado"]
+                )
 
             if pagos or credito_aplicado > Decimal("0"):
                 venta_actualizada = sincronizar_venta_financiera_desde_pagos(conn, venta_id)
@@ -1758,6 +1740,7 @@ def entregar_venta(venta_id: int, data):
 
     try:
         with conn.transaction():
+            sincronizar_venta_financiera_desde_pagos(conn, venta_id)
             venta = get_venta_for_update(conn, venta_id)
             _validar_venta_entregable(venta, venta_id)
 
@@ -1890,19 +1873,22 @@ def entregar_venta(venta_id: int, data):
                 if item.get("id_orden_taller_item") is not None:
                     continue
 
-                stock_service.registrar_entrega_stock(
-                    conn,
-                    {
-                        "id_sucursal": venta["id_sucursal"],
-                        "id_variante": item["id_variante"],
-                        "cantidad": to_decimal(item["cantidad"]),
-                        "id_usuario": data.id_usuario,
-                        "origen_tipo": "venta",
-                        "origen_id": venta_id,
-                        "id_bicicleta_serializada": None,
-                        "nota": f"Entrega de venta #{venta_id}",
-                    },
-                )
+                try:
+                    stock_service.registrar_entrega_stock(
+                        conn,
+                        {
+                            "id_sucursal": venta["id_sucursal"],
+                            "id_variante": item["id_variante"],
+                            "cantidad": to_decimal(item["cantidad"]),
+                            "id_usuario": data.id_usuario,
+                            "origen_tipo": "venta",
+                            "origen_id": venta_id,
+                            "id_bicicleta_serializada": None,
+                            "nota": f"Entrega de venta #{venta_id}",
+                        },
+                    )
+                except ValueError as exc:
+                    raise HTTPException(status_code=400, detail=str(exc))
 
             update_venta_estado(conn, venta_id, VENTA_ESTADO_ENTREGADA)
 
@@ -2881,6 +2867,33 @@ def simular_venta(data):
             saldo_credito_restante = redondear_monto(
                 resultado_credito["saldo_credito_restante"]
             )
+
+            if getattr(data, "sugerir_saldo_con_medio_pago", None) is not None:
+                if total_a_cobrar <= Decimal("0"):
+                    resultado_reglas["monto_base_sugerido_para_saldar"] = Decimal("0")
+                    resultado_reglas["monto_sugerido_para_saldar"] = Decimal("0")
+                else:
+                    sugerencia_post_credito = simular_reglas_comerciales(
+                        type(
+                            "TmpSimulacionPostCredito",
+                            (),
+                            {
+                                "subtotal_base": total_a_cobrar,
+                                "medios_pago": [],
+                                "sugerir_saldo_con_medio_pago": getattr(
+                                    data,
+                                    "sugerir_saldo_con_medio_pago",
+                                    None,
+                                ),
+                            },
+                        )()
+                    )
+                    resultado_reglas["monto_base_sugerido_para_saldar"] = redondear_monto(
+                        sugerencia_post_credito["monto_base_sugerido_para_saldar"]
+                    )
+                    resultado_reglas["monto_sugerido_para_saldar"] = redondear_monto(
+                        sugerencia_post_credito["monto_sugerido_para_saldar"]
+                    )
 
         return {
             "subtotal_base": redondear_monto(resultado_reglas["subtotal_base"]),

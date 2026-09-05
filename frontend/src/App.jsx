@@ -17,6 +17,7 @@ import ClienteFormPage from "./pages/ClienteFormPage";
 import TallerListPage from "./pages/TallerListPage";
 import TallerNuevaOrdenPage from "./pages/TallerNuevaOrdenPage";
 import TallerDetallePage from "./pages/TallerDetallePage";
+import TallerRendimientoPage from "./pages/TallerRendimientoPage";
 import DeudasListPage from "./pages/DeudasListPage";
 import DeudaDetallePage from "./pages/DeudaDetallePage";
 import PagosPage from "./pages/PagosPage";
@@ -89,6 +90,7 @@ const TITULOS_RUTA = [
   [/^\/clientes\/\d+$/, "Detalle de cliente"],
   [/^\/clientes$/, "Clientes"],
   [/^\/taller\/nueva$/, "Nueva orden de taller"],
+  [/^\/taller\/rendimiento$/, "Rendimiento taller"],
   [/^\/taller\/\d+$/, "Orden de taller"],
   [/^\/taller$/, "Ordenes de taller"],
   [/^\/postventa\/\d+$/, "Caso de postventa"],
@@ -436,6 +438,14 @@ export default function App() {
             element={
               <ProtectedRoute rolesPermitidos={TALLER}>
                 <TallerNuevaOrdenPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/taller/rendimiento"
+            element={
+              <ProtectedRoute rolesPermitidos={ADMIN_ENCARGADO}>
+                <TallerRendimientoPage />
               </ProtectedRoute>
             }
           />

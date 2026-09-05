@@ -60,6 +60,7 @@ class PagoReversionOutput(BaseModel):
     estado_venta: str
     saldo_restante: Decimal
     reversion_id: int
+    deuda_generada_id: int | None = None
 
 
 class PagoResumenOutput(BaseModel):

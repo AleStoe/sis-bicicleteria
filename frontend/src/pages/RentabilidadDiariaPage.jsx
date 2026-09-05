@@ -64,6 +64,14 @@ function clasificarRubro(detalle) {
     return { clave: "bicicletas", nombre: "Bicicletas", detalle: "Bicicletas vendidas por mostrador, reserva o taller" };
   }
 
+  if (rubro.includes("triciclo") || categoria.includes("triciclo") || nombre.includes("triciclo")) {
+    return { clave: "triciclos", nombre: "Triciclos", detalle: "Triciclos vendidos por mostrador o pedido" };
+  }
+
+  if (rubro.includes("cuatriciclo") || categoria.includes("cuatriciclo") || nombre.includes("cuatriciclo")) {
+    return { clave: "cuatriciclos", nombre: "Cuatriciclos", detalle: "Cuatriciclos vendidos por mostrador o pedido" };
+  }
+
   if (rubro.includes("accesorio") || categoria.includes("accesorio")) {
     return { clave: "accesorios", nombre: "Accesorios", detalle: "Accesorios y complementos" };
   }

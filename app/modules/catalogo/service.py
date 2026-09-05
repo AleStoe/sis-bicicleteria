@@ -10,6 +10,12 @@ from app.modules.reglas_comerciales.repository import (
 from app.modules.auditoria import service as auditoria_service
 from .repository import (
     get_categorias,
+    get_rubros,
+    get_rubro_by_id,
+    get_rubro_by_nombre,
+    insert_rubro,
+    update_rubro,
+    update_rubro_estado,
     get_categoria_by_nombre,
     insert_categoria,
     update_categoria,
@@ -111,6 +117,81 @@ def _validar_nombre_categoria(conn, nombre: str, categoria_id: int | None = None
         raise HTTPException(status_code=400, detail="Ya existe una categoría con ese nombre")
 
     return nombre_normalizado
+
+
+def _validar_rubro_activo(conn, rubro: str | None) -> str:
+    nombre = normalize_text_upper(rubro or "REPUESTOS")
+    if not nombre:
+        raise HTTPException(status_code=400, detail="El rubro es obligatorio")
+
+    rubro_db = get_rubro_by_nombre(conn, nombre)
+    if rubro_db is None:
+        raise HTTPException(status_code=400, detail=f"El rubro {nombre} no existe")
+    if not rubro_db["activo"]:
+        raise HTTPException(status_code=400, detail=f"El rubro {nombre} está inactivo")
+    return nombre
+
+
+def _validar_payload_rubro(conn, data, rubro_id: int | None = None) -> dict:
+    nombre = normalize_text_upper(data.nombre)
+    if not nombre:
+        raise HTTPException(status_code=400, detail="El nombre del rubro es obligatorio")
+
+    existente = get_rubro_by_nombre(conn, nombre, exclude_id=rubro_id)
+    if existente is not None:
+        raise HTTPException(status_code=400, detail="Ya existe un rubro con ese nombre")
+
+    label = clean_text(data.label) or nombre.title()
+    descripcion = clean_text(data.descripcion)
+    return {
+        "nombre": nombre,
+        "label": label,
+        "descripcion": descripcion,
+        "orden": data.orden,
+    }
+
+
+def listar_rubros(incluir_inactivos: bool = False):
+    conn = get_connection()
+    try:
+        return get_rubros(conn, incluir_inactivos=incluir_inactivos)
+    finally:
+        conn.close()
+
+
+def crear_rubro(data):
+    conn = get_connection()
+    try:
+        with conn.transaction():
+            payload = _validar_payload_rubro(conn, data)
+            return insert_rubro(conn, payload)
+    finally:
+        conn.close()
+
+
+def editar_rubro(rubro_id: int, data):
+    conn = get_connection()
+    try:
+        with conn.transaction():
+            rubro = get_rubro_by_id(conn, rubro_id)
+            if rubro is None:
+                raise HTTPException(status_code=404, detail="Rubro no encontrado")
+            payload = _validar_payload_rubro(conn, data, rubro_id=rubro_id)
+            return update_rubro(conn, rubro_id, payload)
+    finally:
+        conn.close()
+
+
+def cambiar_estado_rubro(rubro_id: int, data):
+    conn = get_connection()
+    try:
+        with conn.transaction():
+            rubro = get_rubro_by_id(conn, rubro_id)
+            if rubro is None:
+                raise HTTPException(status_code=404, detail="Rubro no encontrado")
+            return update_rubro_estado(conn, rubro_id, data.activo)
+    finally:
+        conn.close()
 
 
 def listar_categorias(incluir_inactivas: bool = False):
@@ -612,6 +693,7 @@ def crear_producto(data):
 
             _validar_categoria_activa(conn, data.id_categoria)
             _validar_marca_activa(conn, data.id_marca)
+            rubro = _validar_rubro_activo(conn, data.rubro)
 
             if data.serializable and not data.stockeable:
                 raise HTTPException(
@@ -626,7 +708,7 @@ def crear_producto(data):
                         "id_categoria": data.id_categoria,
                         "id_marca": data.id_marca,
                         "nombre": normalize_text_upper(data.nombre),
-                        "rubro": normalize_text_upper(data.rubro),
+                        "rubro": rubro,
                         "subtipo_catalogo": normalize_text_upper(data.subtipo_catalogo),
                         "tipo_item": data.tipo_item,
                         "stockeable": data.stockeable,
@@ -851,7 +933,7 @@ def editar_producto(producto_id: int, data):
                 payload["nombre"] = normalize_text_upper(payload["nombre"])
 
             if "rubro" in payload and payload["rubro"] is not None:
-                payload["rubro"] = normalize_text_upper(payload["rubro"])
+                payload["rubro"] = _validar_rubro_activo(conn, payload["rubro"])
 
             if "subtipo_catalogo" in payload and payload["subtipo_catalogo"] is not None:
                 payload["subtipo_catalogo"] = normalize_text_upper(payload["subtipo_catalogo"])

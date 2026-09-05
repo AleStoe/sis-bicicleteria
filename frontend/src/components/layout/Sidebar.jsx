@@ -79,6 +79,7 @@ const groups = [
     links: [
       { to: "/agenda-taller", label: "Agenda Taller", icon: CalendarDays, roles: OPERACION_TALLER },
       { to: "/taller", label: "Ordenes Taller", icon: Wrench, roles: TALLER },
+      { to: "/taller/rendimiento", label: "Rendimiento", icon: BarChart3, roles: ADMIN_ENCARGADO },
       { to: "/serializadas", label: "Bicicletas", icon: Bike, roles: OPERACION_TALLER },
       { to: "/servicios-taller", label: "Servicios Taller", icon: Wrench, roles: ADMIN_ENCARGADO },
     ],

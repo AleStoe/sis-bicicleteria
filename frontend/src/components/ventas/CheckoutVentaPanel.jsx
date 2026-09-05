@@ -42,6 +42,7 @@ export default function CheckoutVentaPanel({
 
   const ventaSaldada = Number(checkout.pendiente || 0) <= 0;
   const hayPagos = checkout.pagosDraft.length > 0;
+  const hayMontoPagoActual = Number(checkout.monto || 0) > 0;
   const entregaConSaldo = checkout.entregarAhora && !ventaSaldada;
   const montoCreditoManual = Number(checkout.montoCreditoAAplicar);
   const creditoElegido =
@@ -92,7 +93,7 @@ export default function CheckoutVentaPanel({
   async function revisarAdvertenciasAntesDeFinalizar() {
     setMensajeBloqueo("");
 
-    if (!hayPagos && !checkout.entregarAhora) {
+    if (!hayPagos && !hayMontoPagoActual && !checkout.entregarAhora && !finalizaConCredito) {
       setMensajeBloqueo(
         "Todavía no registraste ningún pago para esta venta. Registrá un pago o generá una deuda antes de finalizar."
       );
@@ -140,11 +141,11 @@ export default function CheckoutVentaPanel({
       if (!continuar) return false;
     }
 
-    if (hayPagos && !checkout.entregarAhora) {
+    if ((hayPagos || hayMontoPagoActual || finalizaConCredito) && !checkout.entregarAhora) {
       const continuar = await confirmarAdvertencia("cobrada-sin-entrega", {
         title: "Venta pendiente de entrega",
         message:
-          "Esta venta quedará cobrada pero pendiente de entrega.\nRecordá marcarla como entregada cuando el cliente retire la mercadería.",
+          "Esta venta quedará saldada pero pendiente de entrega.\nRecordá marcarla como entregada cuando el cliente retire la mercadería.",
         confirmText: "Continuar",
         cancelText: "Revisar",
         variant: "info",
@@ -160,7 +161,7 @@ export default function CheckoutVentaPanel({
     const puedeContinuar = await revisarAdvertenciasAntesDeFinalizar();
     if (!puedeContinuar) return;
 
-    const payloadCheckout = checkout.finalizarCheckout();
+    const payloadCheckout = await checkout.finalizarCheckout();
     if (!payloadCheckout) return;
 
     onFinalizar?.(payloadCheckout);
@@ -337,6 +338,7 @@ export default function CheckoutVentaPanel({
             ventaSaldada,
             entregaConSaldo,
             hayPagos,
+            hayMontoPagoActual,
             finalizaConCredito,
           })}
         </button>
@@ -350,12 +352,14 @@ function getFinalizarLabel({
   ventaSaldada,
   entregaConSaldo,
   hayPagos,
+  hayMontoPagoActual,
   finalizaConCredito,
 }) {
   if (guardando) return "Procesando...";
   if (entregaConSaldo) return "Finalizar y entregar con deuda";
   if (finalizaConCredito) return "Finalizar con crédito";
   if (ventaSaldada) return "Finalizar venta saldada";
+  if (!hayPagos && hayMontoPagoActual) return "Finalizar y registrar pago";
   if (hayPagos) return "Finalizar venta parcial";
   return "Finalizar sin pagos";
 }

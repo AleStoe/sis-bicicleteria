@@ -275,20 +275,20 @@ export default function PedidosClientePage() {
                   onClick={() => navigate(`/pedidos-cliente/${pedido.id}`)}
                   style={styles.row}
                 >
-                  <span>
+                  <span style={styles.rowMain}>
                     <strong>Pedido #{pedido.id}</strong>
                     <small>{formatDate(pedido.fecha_creacion)}</small>
                   </span>
-                  <span>
+                  <span style={styles.rowClient}>
                     <strong>{pedido.cliente_nombre}</strong>
-                    <small>{pedido.tipo_precio}</small>
+                    <small>{pedido.tipo_precio === "mayorista" ? "Lista mayorista" : "Lista minorista"}</small>
                   </span>
-                  <span>
+                  <span style={styles.rowMetric}>
                     <strong>{pedido.total_items} ítem(s)</strong>
                     <small>{Number(pedido.cantidad_total || 0).toLocaleString("es-AR")} unidad(es)</small>
                   </span>
                   <span style={styles.money}>{formatMoney(pedido.total_estimado)}</span>
-                  <span style={styles.estadoPill}>{pedido.estado}</span>
+                  <span style={styles.estadoPill}>{pedido.estado.replaceAll("_", " ")}</span>
                 </button>
               ))
             )}
@@ -408,21 +408,26 @@ const styles = {
     border: 0,
     borderBottom: `1px solid ${colors.border}`,
     background: "white",
-    padding: 12,
+    padding: "14px 16px",
     display: "grid",
-    gridTemplateColumns: "140px minmax(180px, 1fr) 150px 130px 150px",
-    gap: 12,
+    gridTemplateColumns: "140px minmax(220px, 1fr) 150px 140px 140px",
+    gap: 18,
     alignItems: "center",
     textAlign: "left",
     cursor: "pointer",
   },
-  money: { fontWeight: 900, color: colors.text },
+  rowMain: { display: "grid", gap: 4, minWidth: 0 },
+  rowClient: { display: "grid", gap: 4, minWidth: 0 },
+  rowMetric: { display: "grid", gap: 4, minWidth: 0 },
+  money: { fontWeight: 900, color: colors.text, fontSize: 17, textAlign: "right" },
   estadoPill: {
     borderRadius: 999,
-    background: colors.surfaceAlt,
-    padding: "7px 10px",
+    background: "#fff7ed",
+    color: "#c2410c",
+    padding: "8px 12px",
     fontWeight: 900,
     textAlign: "center",
+    textTransform: "capitalize",
   },
   emptyState: {
     minHeight: 240,

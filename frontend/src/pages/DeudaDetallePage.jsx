@@ -13,6 +13,7 @@ import DeudaMovimientosTable from "../components/deudas/detalle/DeudaMovimientos
 import DeudaOrigenPanel from "../components/deudas/detalle/DeudaOrigenPanel";
 import { useSession } from "../context/SessionContext";
 import { listarTarjetaPlanes } from "../services/reglasComercialesService";
+import { getEstadoDeudaClientePdfUrl } from "../services/documentosService";
 import { copyTextToClipboard } from "../utils/clipboard";
 import { formatDateTime, formatMoney } from "../utils/formatters";
 const MOBILE_BREAKPOINT = 760;
@@ -112,16 +113,61 @@ function formatOrigenDeuda(deuda, origen) {
   return "-";
 }
 
+function buildMovimientoClienteText(mov) {
+  const tipo = mov.tipo_movimiento || "Movimiento";
+
+  if (tipo === "cargo") {
+    return `- Deuda generada: ${formatCopiableMoney(mov.monto)}`;
+  }
+
+  if (tipo === "pago") {
+    const cobrado = Number(mov.pago_monto_total_cobrado || 0);
+    const cubierto = Number(mov.pago_monto_base_aplicado || mov.monto || 0);
+    const descuento = Number(mov.pago_monto_descuento_aplicado || 0);
+
+    if (cobrado > 0 && Math.abs(cubierto - cobrado) > 0.01) {
+      const partes = [
+        `- Pago registrado: ${formatCopiableMoney(cobrado)}`,
+        `Se descontó ${formatCopiableMoney(cubierto)} del saldo`,
+      ];
+
+      if (descuento > 0) {
+        partes.push(`incluye beneficio contado de ${formatCopiableMoney(descuento)}`);
+      }
+
+      return `${partes[0]}. ${partes.slice(1).join(" · ")}.`;
+    }
+
+    return `- Pago registrado: ${formatCopiableMoney(cobrado || mov.monto)}`;
+  }
+
+  const nota = mov.nota ? ` - ${mov.nota}` : "";
+  return `- ${tipo}: ${formatCopiableMoney(mov.monto)}${nota}`;
+}
+
 function buildDeudaClipboardText(deuda, origen, movimientos) {
+  const saldoActual = Number(deuda.saldo_actual || 0);
+  const tieneSaldoPendiente = saldoActual > 0;
   const lineas = [
     deuda.cliente_nombre || `Cliente #${deuda.id_cliente}`,
     "",
-    "Resumen de deuda - Emprendimiento Agus",
+    "Estado de deuda - Emprendimiento Agus",
     `Deuda #${deuda.id}`,
     `Origen: ${formatOrigenDeuda(deuda, origen)}`,
-    `Estado: ${deuda.estado || "-"}`,
-    `Saldo pendiente: ${formatCopiableMoney(deuda.saldo_actual)}`,
+    `Estado: ${tieneSaldoPendiente ? deuda.estado || "-" : "cerrada"}`,
+    "",
+    tieneSaldoPendiente
+      ? `Saldo pendiente a cubrir: ${formatCopiableMoney(deuda.saldo_actual)}`
+      : "Saldo pendiente: $0",
   ];
+
+  if (tieneSaldoPendiente) {
+    lineas.push(
+      "Si cancela por efectivo o transferencia, puede aplicarse el descuento contado vigente al momento de registrar el pago."
+    );
+  } else {
+    lineas.push("Esta deuda figura sin saldo pendiente para cobrar.");
+  }
 
   if (deuda.proximo_vencimiento) {
     lineas.push(`Proximo vencimiento: ${formatDateTime(deuda.proximo_vencimiento)}`);
@@ -136,13 +182,11 @@ function buildDeudaClipboardText(deuda, origen, movimientos) {
   if (ultimosMovimientos.length > 0) {
     lineas.push("", "Ultimos movimientos:");
     ultimosMovimientos.forEach((mov) => {
-      const tipo = mov.tipo_movimiento || "Movimiento";
-      const nota = mov.nota ? ` - ${mov.nota}` : "";
-      lineas.push(`- ${tipo}: ${formatCopiableMoney(mov.monto)}${nota}`);
+      lineas.push(buildMovimientoClienteText(mov));
     });
   }
 
-  lineas.push("", "Ante cualquier duda escribinos y lo revisamos.");
+  lineas.push("", "El saldo se actualiza con cada pago registrado. Ante cualquier duda escribinos y lo revisamos.");
 
   return lineas.join("\n");
 }
@@ -390,10 +434,18 @@ export default function DeudaDetallePage() {
 
   const deuda = detalle.deuda;
   const movimientos = detalle.movimientos || [];
+  const deudaPdfUrl = deuda?.id_cliente
+    ? getEstadoDeudaClientePdfUrl(deuda.id_cliente)
+    : "";
 
   return (
     <div style={{ ...pageStyle, ...(isMobile ? pageMobileStyle : {}) }}>
-      <DeudaHeader deuda={deuda} onRefresh={cargarDetalle} onCopy={copiarDeuda} />
+      <DeudaHeader
+        deuda={deuda}
+        onRefresh={cargarDetalle}
+        onCopy={copiarDeuda}
+        deudaPdfUrl={deudaPdfUrl}
+      />
 
       {mensaje && <div style={successStyle}>{mensaje}</div>}
       {error && <div style={alertStyle}>Error: {error}</div>}

@@ -56,6 +56,31 @@ export function listarCategorias(params = {}) {
   return apiRequest(`/catalogo/categorias${buildQuery(params)}`);
 }
 
+export function listarRubros(params = {}) {
+  return apiRequest(`/catalogo/rubros${buildQuery(params)}`);
+}
+
+export function crearRubro(data) {
+  return apiRequest("/catalogo/rubros", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function editarRubro(rubroId, data) {
+  return apiRequest(`/catalogo/rubros/${rubroId}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export function cambiarEstadoRubro(rubroId, data) {
+  return apiRequest(`/catalogo/rubros/${rubroId}/estado`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
 export function crearCategoria(data) {
   return apiRequest("/catalogo/categorias", {
     method: "POST",

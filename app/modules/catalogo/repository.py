@@ -19,6 +19,106 @@ def get_categorias(conn, incluir_inactivas: bool = False):
     return result
 
 
+def get_rubros(conn, incluir_inactivos: bool = False):
+    where_sql = "" if incluir_inactivos else "WHERE activo = TRUE"
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT id, nombre, label, descripcion, activo, orden
+            FROM catalogo_rubros
+            {where_sql}
+            ORDER BY activo DESC, orden, label
+            """,
+        )
+        return cur.fetchall()
+
+
+def get_rubro_by_id(conn, rubro_id: int):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id, nombre, label, descripcion, activo, orden
+            FROM catalogo_rubros
+            WHERE id = %s
+            """,
+            (rubro_id,),
+        )
+        return cur.fetchone()
+
+
+def get_rubro_by_nombre(conn, nombre: str, exclude_id: int | None = None):
+    params = [nombre]
+    exclude_sql = ""
+    if exclude_id is not None:
+        exclude_sql = "AND id <> %s"
+        params.append(exclude_id)
+
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT id, nombre, label, descripcion, activo, orden
+            FROM catalogo_rubros
+            WHERE UPPER(TRIM(nombre)) = UPPER(TRIM(%s))
+            {exclude_sql}
+            LIMIT 1
+            """,
+            params,
+        )
+        return cur.fetchone()
+
+
+def insert_rubro(conn, data: dict):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO catalogo_rubros (nombre, label, descripcion, orden, activo)
+            VALUES (%s, %s, %s, %s, TRUE)
+            RETURNING id, nombre, label, descripcion, activo, orden
+            """,
+            (data["nombre"], data["label"], data.get("descripcion"), data["orden"]),
+        )
+        return cur.fetchone()
+
+
+def update_rubro(conn, rubro_id: int, data: dict):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE catalogo_rubros
+            SET nombre = %s,
+                label = %s,
+                descripcion = %s,
+                orden = %s,
+                updated_at = NOW()
+            WHERE id = %s
+            RETURNING id, nombre, label, descripcion, activo, orden
+            """,
+            (
+                data["nombre"],
+                data["label"],
+                data.get("descripcion"),
+                data["orden"],
+                rubro_id,
+            ),
+        )
+        return cur.fetchone()
+
+
+def update_rubro_estado(conn, rubro_id: int, activo: bool):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE catalogo_rubros
+            SET activo = %s,
+                updated_at = NOW()
+            WHERE id = %s
+            RETURNING id, nombre, label, descripcion, activo, orden
+            """,
+            (activo, rubro_id),
+        )
+        return cur.fetchone()
+
+
 def get_categoria_by_nombre(conn, nombre: str):
     with conn.cursor() as cur:
         cur.execute(

@@ -1548,6 +1548,7 @@ def get_cierre_by_periodo(conn, periodo_mes, id_sucursal=None):
                 FROM cierres_rentabilidad
                 WHERE periodo_mes = %s
                   AND id_sucursal IS NULL
+                  AND estado = 'cerrado'
                 """,
                 (periodo_mes,),
             )
@@ -1558,6 +1559,7 @@ def get_cierre_by_periodo(conn, periodo_mes, id_sucursal=None):
                 FROM cierres_rentabilidad
                 WHERE periodo_mes = %s
                   AND id_sucursal = %s
+                  AND estado = 'cerrado'
                 """,
                 (periodo_mes, id_sucursal),
             )
@@ -1677,6 +1679,27 @@ def get_cierre_by_id(conn, cierre_id: int):
             WHERE id = %s
             """,
             (cierre_id,),
+        )
+        return cur.fetchone()
+
+
+def anular_cierre(conn, cierre_id: int, *, motivo: str):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            UPDATE cierres_rentabilidad
+            SET estado = 'anulado',
+                observaciones = CONCAT_WS(
+                    E'\n',
+                    NULLIF(observaciones, ''),
+                    %s::text
+                ),
+                updated_at = now()
+            WHERE id = %s
+              AND estado = 'cerrado'
+            RETURNING *
+            """,
+            (f"Anulado: {motivo}", cierre_id),
         )
         return cur.fetchone()
 

@@ -262,6 +262,7 @@ def sincronizar_venta_financiera_desde_pagos(conn, venta_id: int):
             WITH pagos_resumen AS (
                 SELECT
                     v.id,
+                    v.estado AS estado_actual,
                     COALESCE(v.subtotal_base, 0)::numeric(14,2) AS subtotal_base,
                     COALESCE(SUM(COALESCE(p.monto_base_aplicado, 0)), 0)::numeric(14,2) AS base_pagada,
                     COALESCE(SUM(COALESCE(p.monto_descuento_aplicado, 0)), 0)::numeric(14,2) AS descuento_total,
@@ -278,7 +279,7 @@ def sincronizar_venta_financiera_desde_pagos(conn, venta_id: int):
                     )
                    AND p.estado = 'confirmado'
                 WHERE v.id = %s
-                GROUP BY v.id, v.subtotal_base
+                GROUP BY v.id, v.estado, v.subtotal_base
             ), credito_resumen AS (
                 SELECT
                     cm.origen_id AS venta_id,
@@ -298,6 +299,7 @@ def sincronizar_venta_financiera_desde_pagos(conn, venta_id: int):
             ), resumen AS (
                 SELECT
                     pr.id,
+                    pr.estado_actual,
                     pr.subtotal_base,
                     (
                         pr.base_pagada
@@ -322,6 +324,7 @@ def sincronizar_venta_financiera_desde_pagos(conn, venta_id: int):
                         ELSE GREATEST(subtotal_base - base_pagada, 0)
                     END::numeric(14,2) AS saldo_pendiente,
                     CASE
+                        WHEN estado_actual = 'entregada' THEN 'entregada'
                         WHEN base_pagada <= 0 THEN 'creada'
                         WHEN ABS(subtotal_base - base_pagada) <= 1 THEN 'pagada_total'
                         ELSE 'pagada_parcial'

@@ -109,6 +109,8 @@ def listar_deudas(
 ):
     conn = get_connection()
     try:
+        repository.cerrar_deudas_abiertas_sin_saldo(conn)
+        conn.commit()
         return repository.get_deudas_filtradas(
             conn,
             q=q,
@@ -123,6 +125,8 @@ def listar_deudas(
 def obtener_deuda(deuda_id: int):
     conn = get_connection()
     try:
+        repository.cerrar_deudas_abiertas_sin_saldo(conn)
+        conn.commit()
         deuda = repository.get_deuda_detalle_by_id(conn, deuda_id)
 
         if deuda is None:

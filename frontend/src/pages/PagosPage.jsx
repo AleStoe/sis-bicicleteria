@@ -13,6 +13,7 @@ import { puedeRevertirPago } from "../rules/ventaDetalleActionRules";
 const ESTADOS = ["todos", "confirmado", "revertido", "devuelto_externo"];
 const ORIGENES = ["todos", "venta", "deuda_cliente"];
 const MEDIOS = ["todos", "efectivo", "transferencia", "mercadopago", "tarjeta"];
+const MEDIOS_RESUMEN = ["efectivo", "transferencia", "tarjeta", "mercadopago"];
 
 export default function PagosPage() {
   const { usuarioId, usuarioActual } = useSession();
@@ -27,6 +28,8 @@ export default function PagosPage() {
   const [estadoFiltro, setEstadoFiltro] = useState("todos");
   const [origenFiltro, setOrigenFiltro] = useState("todos");
   const [medioFiltro, setMedioFiltro] = useState("todos");
+  const [fechaDesde, setFechaDesde] = useState(() => getRangoMesActual().desde);
+  const [fechaHasta, setFechaHasta] = useState(() => getRangoMesActual().hasta);
   const [pagoSeleccionado, setPagoSeleccionado] = useState(null);
   const [promptConfig, setPromptConfig] = useState(null);
 
@@ -68,14 +71,14 @@ export default function PagosPage() {
     }
   }
 
-  const pagosFiltrados = useMemo(() => {
+  const pagosSinFiltroMedio = useMemo(() => {
     const q = normalizarTexto(filtro);
     const base = pagos || [];
 
     return base.filter((pago) => {
       if (estadoFiltro !== "todos" && pago.estado !== estadoFiltro) return false;
       if (origenFiltro !== "todos" && pago.origen_tipo !== origenFiltro) return false;
-      if (medioFiltro !== "todos" && pago.medio_pago !== medioFiltro) return false;
+      if (!pagoDentroDelPeriodo(pago, fechaDesde, fechaHasta)) return false;
 
       if (!q) return true;
 
@@ -96,7 +99,12 @@ export default function PagosPage() {
 
       return texto.includes(q);
     });
-  }, [pagos, filtro, estadoFiltro, origenFiltro, medioFiltro]);
+  }, [pagos, filtro, estadoFiltro, origenFiltro, fechaDesde, fechaHasta]);
+
+  const pagosFiltrados = useMemo(() => {
+    if (medioFiltro === "todos") return pagosSinFiltroMedio;
+    return pagosSinFiltroMedio.filter((pago) => pago.medio_pago === medioFiltro);
+  }, [pagosSinFiltroMedio, medioFiltro]);
 
   const resumen = useMemo(() => {
     return pagosFiltrados.reduce(
@@ -135,6 +143,35 @@ export default function PagosPage() {
       }
     );
   }, [pagosFiltrados]);
+
+  const resumenPorMedio = useMemo(() => {
+    const inicial = MEDIOS_RESUMEN.reduce((acc, medio) => {
+      acc[medio] = {
+        medio,
+        cantidad: 0,
+        cobradoReal: 0,
+        baseAplicada: 0,
+        revertidos: 0,
+      };
+      return acc;
+    }, {});
+
+    pagosSinFiltroMedio.forEach((pago) => {
+      const medio = pago.medio_pago || "otros";
+      if (!inicial[medio]) {
+        inicial[medio] = { medio, cantidad: 0, cobradoReal: 0, baseAplicada: 0, revertidos: 0 };
+      }
+
+      inicial[medio].cantidad += 1;
+      if (pago.estado === "revertido") inicial[medio].revertidos += 1;
+      if (pago.estado === "confirmado") {
+        inicial[medio].cobradoReal += Number(pago.monto_total_cobrado || 0);
+        inicial[medio].baseAplicada += Number(pago.monto_base_aplicado || 0);
+      }
+    });
+
+    return Object.values(inicial);
+  }, [pagosSinFiltroMedio]);
 
   async function handleRevertirPago(pago) {
     if (!puedeRevertirPago(pago, usuarioActual)) {
@@ -177,6 +214,14 @@ export default function PagosPage() {
     setEstadoFiltro("todos");
     setOrigenFiltro("todos");
     setMedioFiltro("todos");
+    setFechaDesde("");
+    setFechaHasta("");
+  }
+
+  function aplicarMesActual() {
+    const rango = getRangoMesActual();
+    setFechaDesde(rango.desde);
+    setFechaHasta(rango.hasta);
   }
 
   const detalle = pagoSeleccionado || pagosFiltrados[0] || null;
@@ -213,6 +258,17 @@ export default function PagosPage() {
         <Metric label="Pagos deuda" value={resumen.pagosDeuda} tone="warning" />
       </section>
 
+      <section style={isMobile ? styles.mediumSummaryGridMobile : styles.mediumSummaryGrid}>
+        {resumenPorMedio.map((item) => (
+          <MedioResumenCard
+            key={item.medio}
+            item={item}
+            active={medioFiltro === item.medio}
+            onClick={() => setMedioFiltro(medioFiltro === item.medio ? "todos" : item.medio)}
+          />
+        ))}
+      </section>
+
       <main style={isNarrow ? styles.layoutMobile : styles.layout}>
         <section style={styles.mainColumn}>
           <section style={styles.card}>
@@ -231,6 +287,26 @@ export default function PagosPage() {
                   value={filtro}
                   onChange={(e) => setFiltro(e.target.value)}
                   placeholder="ID, origen, medio, estado, cliente, nota..."
+                  style={styles.input}
+                />
+              </label>
+
+              <label style={styles.field}>
+                <span style={styles.label}>Desde</span>
+                <input
+                  type="date"
+                  value={fechaDesde}
+                  onChange={(e) => setFechaDesde(e.target.value)}
+                  style={styles.input}
+                />
+              </label>
+
+              <label style={styles.field}>
+                <span style={styles.label}>Hasta</span>
+                <input
+                  type="date"
+                  value={fechaHasta}
+                  onChange={(e) => setFechaHasta(e.target.value)}
                   style={styles.input}
                 />
               </label>
@@ -264,6 +340,9 @@ export default function PagosPage() {
 
               <button type="button" onClick={limpiarFiltros} style={{ ...styles.secondaryButton, ...(isMobile ? styles.fullWidth : {}) }}>
                 Limpiar
+              </button>
+              <button type="button" onClick={aplicarMesActual} style={{ ...styles.secondaryButton, ...(isMobile ? styles.fullWidth : {}) }}>
+                Este mes
               </button>
             </div>
           </section>
@@ -485,6 +564,31 @@ function Metric({ label, value, tone }) {
   );
 }
 
+function MedioResumenCard({ item, active, onClick }) {
+  const tone = styles.mediumTones[item.medio] || styles.mediumTones.otros;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        ...styles.mediumCard,
+        ...tone,
+        ...(active ? styles.mediumCardActive : {}),
+      }}
+    >
+      <span style={styles.mediumLabel}>{labelMedioPago(item.medio)}</span>
+      <strong style={styles.mediumAmount}>{formatMoney(item.cobradoReal)}</strong>
+      <span style={styles.mediumMeta}>
+        {item.cantidad} pago{item.cantidad === 1 ? "" : "s"} · cubre {formatMoney(item.baseAplicada)}
+      </span>
+      {item.revertidos > 0 && (
+        <span style={styles.mediumWarning}>{item.revertidos} revertido{item.revertidos === 1 ? "" : "s"}</span>
+      )}
+    </button>
+  );
+}
+
 function Info({ label, value }) {
   return (
     <div style={styles.infoBox}>
@@ -574,6 +678,35 @@ function normalizarTexto(valor) {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
+function fechaPagoISO(fecha) {
+  if (!fecha) return "";
+  if (typeof fecha === "string") return fecha.slice(0, 10);
+
+  try {
+    return new Date(fecha).toISOString().slice(0, 10);
+  } catch {
+    return "";
+  }
+}
+
+function pagoDentroDelPeriodo(pago, desde, hasta) {
+  const fecha = fechaPagoISO(pago.fecha);
+  if (!fecha) return true;
+  if (desde && fecha < desde) return false;
+  if (hasta && fecha > hasta) return false;
+  return true;
+}
+
+function getRangoMesActual() {
+  const hoy = new Date();
+  const year = hoy.getFullYear();
+  const month = hoy.getMonth();
+  return {
+    desde: new Date(year, month, 1).toISOString().slice(0, 10),
+    hasta: new Date(year, month + 1, 0).toISOString().slice(0, 10),
+  };
+}
+
 const styles = {
   page: { minHeight: "100vh", padding: 20, background: "#f1f5f9", color: "#0f172a" },
   pageMobile: { padding: 12, overflowX: "hidden" },
@@ -592,6 +725,21 @@ const styles = {
   metricsGridMobile: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, marginBottom: 14 },
   metric: { background: "white", border: "1px solid #e2e8f0", borderRadius: 18, padding: 14, display: "grid", gap: 5, boxShadow: "0 10px 22px rgba(15,23,42,.06)" },
   metricTones: { ok: { color: "#047857", background: "#ecfdf5", borderColor: "#bbf7d0" }, info: { color: "#1d4ed8", background: "#eff6ff", borderColor: "#bfdbfe" }, warning: { color: "#b45309", background: "#fffbeb", borderColor: "#fde68a" }, danger: { color: "#b42318", background: "#fff1f0", borderColor: "#fecaca" }, muted: { color: "#475569", background: "#f8fafc" }, orange: { color: "#c2410c", background: "#fff7ed", borderColor: "#fed7aa" } },
+  mediumSummaryGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12, marginBottom: 16 },
+  mediumSummaryGridMobile: { display: "grid", gridTemplateColumns: "1fr", gap: 10, marginBottom: 14 },
+  mediumCard: { border: "1px solid #e2e8f0", background: "white", borderRadius: 18, padding: 14, textAlign: "left", display: "grid", gap: 5, cursor: "pointer", boxShadow: "0 10px 22px rgba(15,23,42,.05)", color: "#0f172a" },
+  mediumCardActive: { borderColor: "#f97316", boxShadow: "0 0 0 3px rgba(249,115,22,.14)" },
+  mediumTones: {
+    efectivo: { background: "#ecfdf5", borderColor: "#bbf7d0" },
+    transferencia: { background: "#eff6ff", borderColor: "#bfdbfe" },
+    tarjeta: { background: "#fff7ed", borderColor: "#fed7aa" },
+    mercadopago: { background: "#f0fdf4", borderColor: "#86efac" },
+    otros: { background: "#f8fafc", borderColor: "#e2e8f0" },
+  },
+  mediumLabel: { color: "#475569", fontSize: 12, fontWeight: 1000, textTransform: "uppercase", letterSpacing: ".08em" },
+  mediumAmount: { fontSize: 24, lineHeight: 1.05, color: "#0f172a", whiteSpace: "nowrap" },
+  mediumMeta: { color: "#475569", fontSize: 13, fontWeight: 850 },
+  mediumWarning: { color: "#b42318", fontSize: 12, fontWeight: 1000 },
   layout: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) 360px", gap: 16, alignItems: "start" },
   layoutMobile: { display: "grid", gridTemplateColumns: "1fr", gap: 14, alignItems: "start" },
   mainColumn: { display: "grid", gap: 16 },
@@ -602,7 +750,7 @@ const styles = {
   eyebrow: { margin: 0, color: "#f97316", fontSize: 12, fontWeight: 1000, textTransform: "uppercase", letterSpacing: ".08em" },
   cardTitle: { margin: "3px 0 0", fontSize: 22, letterSpacing: "-.02em" },
   counterBadge: { background: "#f8fafc", border: "1px solid #e2e8f0", color: "#475569", borderRadius: 999, padding: "8px 10px", fontWeight: 900 },
-  filtersGrid: { display: "grid", gridTemplateColumns: "minmax(240px, 1fr) 150px 150px 150px auto", gap: 12, alignItems: "end" },
+  filtersGrid: { display: "grid", gridTemplateColumns: "minmax(260px, 1.4fr) repeat(5, minmax(130px, .7fr)) auto auto", gap: 12, alignItems: "end" },
   filtersGridMobile: { display: "grid", gridTemplateColumns: "1fr", gap: 10, alignItems: "stretch" },
   field: { display: "grid", gap: 7, fontSize: 14, fontWeight: 900 },
   fieldWide: { display: "grid", gap: 7, fontSize: 14, fontWeight: 900 },

@@ -703,12 +703,7 @@ def revertir_pago(pago_id: int, data):
                     status_code=404,
                     detail=f"No existe la venta {pago_original['origen_id']}",
                 )
-
-            if venta["estado"] == VENTA_ESTADO_ENTREGADA:
-                raise HTTPException(
-                    status_code=400,
-                    detail="No se puede revertir un pago de una venta ya entregada",
-                )
+            venta_entregada = venta["estado"] == VENTA_ESTADO_ENTREGADA
 
             saldo_pendiente = redondear_monto(venta["saldo_pendiente"])
             monto_original = redondear_monto(pago_original["monto_total_cobrado"])
@@ -805,6 +800,30 @@ def revertir_pago(pago_id: int, data):
             saldo_restante = redondear_monto(venta_actualizada["saldo_pendiente"])
             nuevo_estado = venta_actualizada["estado"]
 
+            deuda_generada_id = None
+            if venta_entregada and saldo_restante > Decimal("0"):
+                from app.modules.deudas import repository as deudas_repository
+                from app.modules.deudas import service as deudas_service
+
+                deuda_existente = deudas_repository.get_deuda_abierta_by_origen(
+                    conn,
+                    ORIGEN_VENTA,
+                    venta["id"],
+                )
+                if deuda_existente is None:
+                    deuda = deudas_service.crear_deuda_desde_venta_entregada(
+                        conn,
+                        id_cliente=venta["id_cliente"],
+                        id_venta=venta["id"],
+                        monto_inicial=saldo_restante,
+                        id_usuario=data.id_usuario,
+                        observacion=(
+                            "Deuda creada automáticamente al revertir pago "
+                            f"#{pago_original['id']} de venta entregada #{venta['id']}"
+                        ),
+                    )
+                    deuda_generada_id = deuda["id"]
+
             auditoria_service.registrar_evento(
                 conn,
                 id_usuario=data.id_usuario,
@@ -830,6 +849,8 @@ def revertir_pago(pago_id: int, data):
                     "saldo_pendiente_anterior": str(saldo_pendiente),
                     "saldo_pendiente_nuevo": str(saldo_restante),
                     "estado_venta_nuevo": nuevo_estado,
+                    "venta_entregada": venta_entregada,
+                    "deuda_generada_id": deuda_generada_id,
                     "motivo": data.motivo,
                 },
                 origen_tipo="venta",
@@ -844,6 +865,7 @@ def revertir_pago(pago_id: int, data):
             "estado_venta": nuevo_estado,
             "saldo_restante": saldo_restante,
             "reversion_id": reversion_id,
+            "deuda_generada_id": deuda_generada_id,
         }
 
     finally:

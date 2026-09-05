@@ -13,6 +13,10 @@ from app.shared.constants import (
 )
 from .service import (
     listar_categorias,
+    listar_rubros,
+    crear_rubro,
+    editar_rubro,
+    cambiar_estado_rubro,
     crear_categoria,
     editar_categoria,
     cambiar_estado_categoria,
@@ -51,6 +55,10 @@ from .service import (
 
 from .schema import (
     CategoriaOut,
+    RubroCatalogoOut,
+    RubroCatalogoCreate,
+    RubroCatalogoUpdate,
+    RubroCatalogoEstadoUpdate,
     CategoriaCreate,
     CategoriaUpdate,
     CategoriaEstadoUpdate,
@@ -88,6 +96,37 @@ puede_gestionar_catalogo = requerir_permiso(PERMISO_GESTIONAR_CATALOGO)
 @router.get("/categorias", response_model=list[CategoriaOut])
 def categorias(incluir_inactivas: bool = False):
     return listar_categorias(incluir_inactivas=incluir_inactivas)
+
+
+@router.get("/rubros", response_model=list[RubroCatalogoOut])
+def rubros(incluir_inactivos: bool = False):
+    return listar_rubros(incluir_inactivos=incluir_inactivos)
+
+
+@router.post("/rubros", response_model=RubroCatalogoOut)
+def crear_rubro_route(
+    data: RubroCatalogoCreate,
+    _usuario: CurrentUser = Depends(puede_gestionar_catalogo),
+):
+    return crear_rubro(data)
+
+
+@router.put("/rubros/{rubro_id}", response_model=RubroCatalogoOut)
+def editar_rubro_route(
+    rubro_id: int,
+    data: RubroCatalogoUpdate,
+    _usuario: CurrentUser = Depends(puede_gestionar_catalogo),
+):
+    return editar_rubro(rubro_id, data)
+
+
+@router.patch("/rubros/{rubro_id}/estado", response_model=RubroCatalogoOut)
+def cambiar_estado_rubro_route(
+    rubro_id: int,
+    data: RubroCatalogoEstadoUpdate,
+    _usuario: CurrentUser = Depends(puede_gestionar_catalogo),
+):
+    return cambiar_estado_rubro(rubro_id, data)
 
 
 @router.post("/categorias", response_model=CategoriaOut)

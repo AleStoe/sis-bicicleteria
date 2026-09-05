@@ -62,6 +62,7 @@ from .repository import (
     insert_orden_taller,
     get_ordenes_taller,
     get_dashboard_taller,
+    get_rendimiento_taller,
     get_orden_taller_by_id,
     get_orden_taller_by_id_for_update,
     update_orden_taller_estado,
@@ -267,6 +268,58 @@ def obtener_orden_taller(orden_id: int):
             "items": items,
             "notas": notas,
             "alertas_bicicleta": alertas_bicicleta,
+        }
+    finally:
+        conn.close()
+
+
+def obtener_rendimiento_taller(
+    *,
+    estado: str | None = None,
+    solo_pendientes: bool = True,
+    id_sucursal: int | None = None,
+):
+    conn = get_connection()
+    try:
+        ordenes = get_rendimiento_taller(
+            conn,
+            estado=estado,
+            solo_pendientes=solo_pendientes,
+            id_sucursal=id_sucursal,
+        )
+
+        resumen = {
+            "ordenes": len(ordenes),
+            "items": 0,
+            "servicios": 0,
+            "repuestos": 0,
+            "items_sin_costo": 0,
+            "mano_obra": Decimal("0"),
+            "repuestos_venta": Decimal("0"),
+            "repuestos_sin_costo_venta": Decimal("0"),
+            "costo_repuestos": Decimal("0"),
+            "margen_repuestos": Decimal("0"),
+            "total_cliente": Decimal("0"),
+            "ganancia_estimada": Decimal("0"),
+        }
+
+        for orden in ordenes:
+            for key in ["items", "servicios", "repuestos", "items_sin_costo"]:
+                resumen[key] += int(orden.get(key) or 0)
+            for key in [
+                "mano_obra",
+                "repuestos_venta",
+                "repuestos_sin_costo_venta",
+                "costo_repuestos",
+                "margen_repuestos",
+                "total_cliente",
+                "ganancia_estimada",
+            ]:
+                resumen[key] += Decimal(str(orden.get(key) or 0))
+
+        return {
+            "resumen": resumen,
+            "ordenes": ordenes,
         }
     finally:
         conn.close()
@@ -491,6 +544,16 @@ def agregar_item_orden_taller(orden_id: int, data):
                 raise HTTPException(
                     status_code=404,
                     detail=f"No existe la orden de taller {orden_id}",
+                )
+
+            if orden.get("id_venta_generada"):
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"La orden ya tiene una venta generada: #{orden['id_venta_generada']}. "
+                        "No se pueden agregar ítems nuevos desde taller; cargá el adicional "
+                        "en una nueva venta."
+                    ),
                 )
 
             if data.tipo_item == "repuesto":

@@ -14,6 +14,7 @@ import {
   cancelarItemOrdenTaller,
   quitarItemBorradorOrdenTaller,
   generarVentaDesdeOrdenTaller,
+  getHojaReparacionTallerUrl,
   getPresupuestoTallerUrl,
   actualizarOperativoOrdenTaller,
   generarMensajeListaRetiroOrdenTaller,
@@ -37,6 +38,7 @@ import { ESTADOS, TRANSICIONES_UI } from "../components/taller/detalle/tallerDet
 import { styles } from "../components/taller/detalle/tallerDetalleStyles";
 import {
   descripcionBicicletaOrden,
+  codigoVarianteSistema,
   esItemPermitidoParaTaller,
   humanizarEvento,
   labelEtapa,
@@ -84,6 +86,7 @@ function AccionesRapidasTaller({
   puedeGenerarVenta,
   puedeMarcarListaParaRetirar,
   puedeMarcarRetirada,
+  onImprimirHojaReparacion,
   onImprimirPresupuesto,
   onGenerarVenta,
   onCobrar,
@@ -106,6 +109,13 @@ function AccionesRapidasTaller({
       </div>
 
       <div style={styles.quickActionsGrid}>
+        <QuickAction
+          title="Hoja de reparación"
+          detail="PDF interno para dejar con la bici"
+          label="Imprimir"
+          disabled={guardando}
+          onClick={onImprimirHojaReparacion}
+        />
         <QuickAction
           title="Presupuesto"
           detail={
@@ -484,6 +494,7 @@ export default function TallerDetallePage() {
       .filter((v) =>
         normalizarTexto([
           v.id,
+          codigoVarianteSistema(v),
           v.producto_nombre,
           v.nombre_variante,
           v.categoria_nombre,
@@ -1134,6 +1145,11 @@ export default function TallerDetallePage() {
     window.open(getPresupuestoTallerUrl(orden.id), "_blank", "noopener,noreferrer");
   }
 
+  function imprimirHojaReparacion() {
+    if (!orden?.id) return;
+    window.open(getHojaReparacionTallerUrl(orden.id), "_blank", "noopener,noreferrer");
+  }
+
   async function guardarOperativo(e) {
     e.preventDefault();
 
@@ -1733,6 +1749,7 @@ export default function TallerDetallePage() {
               puedeGenerarVenta={puedeGenerarVenta}
               puedeMarcarListaParaRetirar={puedeMarcarListaParaRetirar}
               puedeMarcarRetirada={puedeMarcarRetirada}
+              onImprimirHojaReparacion={imprimirHojaReparacion}
               onImprimirPresupuesto={imprimirPresupuesto}
               onGenerarVenta={generarVenta}
               onCobrar={irACobrarVenta}
@@ -2024,6 +2041,7 @@ function TrabajosOrdenPanel({
   onAbrirAgregar,
 }) {
   const cantidadSeleccionada = seleccionadosPendientes.length;
+  const ventaGenerada = Boolean(orden?.id_venta_generada);
 
   return (
     <section style={styles.workBoard}>
@@ -2133,10 +2151,17 @@ function TrabajosOrdenPanel({
         </div>
       )}
 
-      <button type="button" onClick={onAbrirAgregar} style={styles.addWorkCta}>
-        <strong>+ Agregar ítem</strong>
-        <span>Repuesto o servicio</span>
-      </button>
+      {ventaGenerada ? (
+        <div style={styles.workLockedNotice}>
+          <strong>Venta generada #{orden.id_venta_generada}</strong>
+          <span>Para accesorios o trabajos adicionales, cargá una venta nueva.</span>
+        </div>
+      ) : (
+        <button type="button" onClick={onAbrirAgregar} style={styles.addWorkCta}>
+          <strong>+ Agregar ítem</strong>
+          <span>Repuesto o servicio</span>
+        </button>
+      )}
     </section>
   );
 }
@@ -2369,7 +2394,18 @@ function TallerOrdenCompactHeader({
       </div>
 
       <div style={styles.compactFactsGrid}>
-        <CompactFact label="Cliente" value={nombreClienteOrden(orden)} />
+        <CompactFact
+          label="Cliente"
+          value={
+            orden.id_cliente ? (
+              <Link to={`/clientes/${orden.id_cliente}`} style={localStyles.clientProfileLink}>
+                {nombreClienteOrden(orden)}
+              </Link>
+            ) : (
+              nombreClienteOrden(orden)
+            )
+          }
+        />
         <CompactFact label="Bicicleta" value={descripcionBicicletaOrden(orden)} />
         <CompactFact label="Problema" value={orden.problema_reportado} strong />
         <CompactFact
@@ -2382,6 +2418,14 @@ function TallerOrdenCompactHeader({
     </section>
   );
 }
+
+const localStyles = {
+  clientProfileLink: {
+    color: "#1d4ed8",
+    fontWeight: 900,
+    textDecoration: "none",
+  },
+};
 
 function CompactFact({ label, value, strong = false, accent = false }) {
   return (

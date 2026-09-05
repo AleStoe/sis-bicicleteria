@@ -13,6 +13,7 @@ from app.shared.constants import PERMISO_VER_RENTABILIDAD
 
 from .schema import (
     BonificacionesGarantiasOutput,
+    CierreRentabilidadAnularInput,
     CierreRentabilidadCreateInput,
     CierreRentabilidadCreateOutput,
     CierreRentabilidadOutput,
@@ -23,6 +24,7 @@ from .schema import (
     RentabilidadMensualOutput,
 )
 from .service import (
+    anular_cierre_rentabilidad,
     calcular_bonificaciones_garantias,
     calcular_rentabilidad_diaria,
     calcular_rentabilidad_mensual,
@@ -143,6 +145,16 @@ def crear_cierre_route(
 ):
     aplicar_actor_actual(data, usuario)
     return crear_cierre_rentabilidad(data)
+
+
+@router.post("/cierres/{cierre_id}/anular", response_model=CierreRentabilidadOutput)
+def anular_cierre_route(
+    cierre_id: int,
+    data: CierreRentabilidadAnularInput,
+    usuario: CurrentUser = Depends(puede_ver_rentabilidad),
+):
+    aplicar_actor_actual(data, usuario)
+    return anular_cierre_rentabilidad(cierre_id, data)
 
 
 @router.get("/cierres", response_model=List[CierreRentabilidadOutput])

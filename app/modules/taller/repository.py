@@ -302,6 +302,148 @@ def get_dashboard_taller(conn):
         "total_importe_pendiente": row.get("total_importe_pendiente") or 0,
     }
 
+
+def get_rendimiento_taller(
+    conn,
+    *,
+    estado: str | None = None,
+    solo_pendientes: bool = True,
+    id_sucursal: int | None = None,
+):
+    where = []
+    params = []
+
+    if solo_pendientes:
+        where.append("ot.estado NOT IN ('retirada', 'cancelada')")
+
+    if estado:
+        where.append("ot.estado = %s")
+        params.append(estado)
+
+    if id_sucursal:
+        where.append("ot.id_sucursal = %s")
+        params.append(id_sucursal)
+
+    where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            f"""
+            WITH items AS (
+                SELECT
+                    oti.id_orden_taller,
+                    COUNT(*) FILTER (WHERE oti.etapa <> 'cancelado') AS items,
+                    COUNT(*) FILTER (
+                        WHERE oti.etapa <> 'cancelado'
+                          AND oti.tipo_item = 'servicio'
+                    ) AS servicios,
+                    COUNT(*) FILTER (
+                        WHERE oti.etapa <> 'cancelado'
+                          AND oti.tipo_item = 'repuesto'
+                    ) AS repuestos,
+                    COUNT(*) FILTER (
+                        WHERE oti.etapa <> 'cancelado'
+                          AND oti.tipo_item = 'repuesto'
+                          AND COALESCE(oti.costo_unitario_aplicado, v.costo_promedio_vigente) IS NULL
+                    ) AS items_sin_costo,
+                    COALESCE(SUM(oti.subtotal) FILTER (
+                        WHERE oti.etapa <> 'cancelado'
+                          AND oti.tipo_item = 'servicio'
+                    ), 0)::numeric(14,2) AS mano_obra,
+                    COALESCE(SUM(oti.subtotal) FILTER (
+                        WHERE oti.etapa <> 'cancelado'
+                          AND oti.tipo_item = 'repuesto'
+                    ), 0)::numeric(14,2) AS repuestos_venta,
+                    COALESCE(SUM(oti.subtotal) FILTER (
+                        WHERE oti.etapa <> 'cancelado'
+                          AND oti.tipo_item = 'repuesto'
+                          AND COALESCE(oti.costo_unitario_aplicado, v.costo_promedio_vigente) IS NULL
+                    ), 0)::numeric(14,2) AS repuestos_sin_costo_venta,
+                    COALESCE(SUM(oti.subtotal) FILTER (
+                        WHERE oti.etapa <> 'cancelado'
+                          AND oti.tipo_item = 'repuesto'
+                          AND COALESCE(oti.costo_unitario_aplicado, v.costo_promedio_vigente) IS NOT NULL
+                    ), 0)::numeric(14,2) AS repuestos_con_costo_venta,
+                    COALESCE(SUM(
+                        CASE
+                            WHEN oti.etapa <> 'cancelado'
+                             AND oti.tipo_item = 'repuesto'
+                             AND COALESCE(oti.costo_unitario_aplicado, v.costo_promedio_vigente) IS NOT NULL
+                                THEN COALESCE(oti.costo_unitario_aplicado, v.costo_promedio_vigente) * oti.cantidad
+                            ELSE 0
+                        END
+                    ), 0)::numeric(14,2) AS costo_repuestos
+                FROM ordenes_taller_items oti
+                LEFT JOIN variantes v ON v.id = oti.id_variante
+                GROUP BY oti.id_orden_taller
+            )
+            SELECT
+                ot.id,
+                ot.fecha_ingreso,
+                ot.id_cliente,
+                c.nombre AS cliente_nombre,
+                ot.id_bicicleta_cliente,
+                bc.numero_cuadro AS bicicleta_numero_cuadro,
+                NULLIF(
+                    CONCAT_WS(
+                        ' ',
+                        NULLIF(bc.marca, ''),
+                        NULLIF(bc.modelo, ''),
+                        CASE
+                            WHEN NULLIF(bc.rodado, '') IS NOT NULL THEN 'R' || bc.rodado
+                            ELSE NULL
+                        END,
+                        NULLIF(bc.color, '')
+                    ),
+                    ''
+                ) AS bicicleta_descripcion,
+                ot.estado,
+                ot.prioridad,
+                ot.problema_reportado,
+                ot.fecha_prometida,
+                CASE
+                    WHEN ot.estado IN ('retirada', 'cancelada') THEN NULL
+                    ELSE GREATEST((CURRENT_DATE - ot.fecha_ingreso::date), 0)
+                END AS dias_en_taller,
+                CASE
+                    WHEN ot.fecha_prometida IS NULL THEN 0
+                    WHEN ot.estado IN ('retirada', 'cancelada') AND ot.fecha_retirada IS NOT NULL
+                        THEN GREATEST((ot.fecha_retirada::date - ot.fecha_prometida::date), 0)
+                    WHEN ot.estado NOT IN ('retirada', 'cancelada')
+                        THEN GREATEST((CURRENT_DATE - ot.fecha_prometida::date), 0)
+                    ELSE 0
+                END AS dias_demorados,
+                ot.id_venta_generada,
+                COALESCE(i.items, 0) AS items,
+                COALESCE(i.servicios, 0) AS servicios,
+                COALESCE(i.repuestos, 0) AS repuestos,
+                COALESCE(i.items_sin_costo, 0) AS items_sin_costo,
+                COALESCE(i.mano_obra, 0)::numeric(14,2) AS mano_obra,
+                COALESCE(i.repuestos_venta, 0)::numeric(14,2) AS repuestos_venta,
+                COALESCE(i.repuestos_sin_costo_venta, 0)::numeric(14,2) AS repuestos_sin_costo_venta,
+                COALESCE(i.costo_repuestos, 0)::numeric(14,2) AS costo_repuestos,
+                (
+                    COALESCE(i.repuestos_con_costo_venta, 0) - COALESCE(i.costo_repuestos, 0)
+                )::numeric(14,2) AS margen_repuestos,
+                (
+                    COALESCE(i.mano_obra, 0) + COALESCE(i.repuestos_venta, 0)
+                )::numeric(14,2) AS total_cliente,
+                (
+                    COALESCE(i.mano_obra, 0)
+                    + COALESCE(i.repuestos_con_costo_venta, 0)
+                    - COALESCE(i.costo_repuestos, 0)
+                )::numeric(14,2) AS ganancia_estimada
+            FROM ordenes_taller ot
+            JOIN clientes c ON c.id = ot.id_cliente
+            JOIN bicicletas_clientes bc ON bc.id = ot.id_bicicleta_cliente
+            LEFT JOIN items i ON i.id_orden_taller = ot.id
+            {where_sql}
+            ORDER BY ot.fecha_ingreso DESC, ot.id DESC
+            """,
+            params,
+        )
+        return cur.fetchall()
+
 def get_orden_taller_by_id(conn, orden_id: int):
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(

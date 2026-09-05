@@ -7,6 +7,7 @@ import { styles } from "./tallerDetalleStyles";
 import {
   getPasoOperativo,
   getAccionPrincipal,
+  codigoVarianteSistema,
   labelEstado,
   labelEtapa,
   tipoTallerLabel,
@@ -206,6 +207,7 @@ export function ServicioTallerOption({ servicio, selected, onSelect, onDoubleAdd
 export function TallerItemOption({ item, selected, onSelect, onDoubleAdd }) {
   const tipo = tipoTallerLabel(item);
   const esServicio = tipo === "Servicio";
+  const skuVisible = item.sku || codigoVarianteSistema(item);
 
   return (
     <button
@@ -233,7 +235,7 @@ export function TallerItemOption({ item, selected, onSelect, onDoubleAdd }) {
         )}
         <div style={styles.optionMeta}>
           {item.codigo_proveedor && <span>Prov: {item.codigo_proveedor}</span>}
-          {item.sku && <span>SKU: {item.sku}</span>}
+          {skuVisible && <span>SKU: {skuVisible}</span>}
           {item.stock_disponible != null && !esServicio && <span>Stock: {formatNumber(item.stock_disponible)}</span>}
         </div>
       </div>

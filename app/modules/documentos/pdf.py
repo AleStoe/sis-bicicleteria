@@ -47,10 +47,29 @@ def _decimal(value) -> Decimal:
     return Decimal(str(value or 0))
 
 
+def _es_credito(pago: dict) -> bool:
+    return _text(pago.get("medio_pago")).lower() == "credito"
+
+
+def _sumar_montos(pagos: list[dict], campo: str) -> Decimal:
+    return sum((_decimal(pago.get(campo)) for pago in pagos), Decimal("0"))
+
+
 def _detalle_pago_financiero(pago: dict) -> str:
     medio = _text(pago.get("medio_pago")).lower()
 
     monto = _money(pago.get("monto_total_cobrado"))
+
+    if medio == "credito":
+        base = _decimal(pago.get("monto_base_aplicado"))
+        descuento = _decimal(pago.get("monto_descuento_aplicado"))
+        partes = [f"Saldo a favor usado: {monto}"]
+        if base > 0:
+            partes.append(f"Cubre venta: {_money(base)}")
+        if descuento > 0:
+            partes.append(f"Beneficio contado: {_money(descuento)}")
+        partes.append("No es ingreso nuevo de caja")
+        return " - ".join(partes)
 
     if medio == "efectivo":
         descuento = _decimal(pago.get("monto_descuento_aplicado"))
@@ -71,6 +90,18 @@ def _detalle_pago_financiero(pago: dict) -> str:
         return f"Monto abonado: {monto}"
 
     return f"Monto abonado: {monto}"
+
+
+def _label_medio_pago(value: str) -> str:
+    labels = {
+        "credito": "Crédito a favor",
+        "mercadopago": "MercadoPago QR",
+        "transferencia": "Transferencia",
+        "efectivo": "Efectivo",
+        "tarjeta": "Tarjeta",
+    }
+    medio = _text(value).lower()
+    return labels.get(medio, _text(value).capitalize())
 
 
 def _resolver_imagen_local(url: str | None) -> Path | None:
@@ -415,6 +446,10 @@ def generar_comprobante_x_pdf(data: dict, incluir_marca_agua: bool = True) -> by
     venta = data["venta"]
     items = data["items"]
     pagos = data.get("pagos", [])
+    pagos_reales = [pago for pago in pagos if not _es_credito(pago)]
+    creditos_aplicados = [pago for pago in pagos if _es_credito(pago)]
+    total_cobros_reales = _sumar_montos(pagos_reales, "monto_total_cobrado")
+    total_credito_usado = _sumar_montos(creditos_aplicados, "monto_total_cobrado")
 
     buffer = BytesIO()
 
@@ -622,8 +657,22 @@ def generar_comprobante_x_pdf(data: dict, incluir_marca_agua: bool = True) -> by
 
     y -= 7 * mm
     c.setFont("Helvetica-Bold", 12)
-    c.drawRightString(width - margin_x - 35 * mm, y, "TOTAL COBRADO")
+    c.drawRightString(
+        width - margin_x - 35 * mm,
+        y,
+        "TOTAL FINAL" if creditos_aplicados else "TOTAL COBRADO",
+    )
     c.drawRightString(width - margin_x, y, _money(venta.get("total_final")))
+
+    if creditos_aplicados:
+        y -= 6 * mm
+        c.setFont("Helvetica", 9)
+        c.drawRightString(width - margin_x - 35 * mm, y, "Cobros reales")
+        c.drawRightString(width - margin_x, y, _money(total_cobros_reales))
+
+        y -= 6 * mm
+        c.drawRightString(width - margin_x - 35 * mm, y, "Crédito aplicado")
+        c.drawRightString(width - margin_x, y, _money(total_credito_usado))
 
     y -= 7 * mm
     c.setFont("Helvetica", 9)
@@ -638,12 +687,18 @@ def generar_comprobante_x_pdf(data: dict, incluir_marca_agua: bool = True) -> by
         y -= 12 * mm
 
         c.setFont("Helvetica-Bold", 10)
-        c.drawString(margin_x, y, "Pagos")
+        if pagos_reales and creditos_aplicados:
+            titulo_pagos = "Pagos y saldo a favor"
+        elif creditos_aplicados:
+            titulo_pagos = "Saldo a favor usado"
+        else:
+            titulo_pagos = "Pagos"
+        c.drawString(margin_x, y, titulo_pagos)
 
         y -= 6 * mm
 
         for pago in pagos:
-            medio = _text(pago.get("medio_pago")).capitalize()
+            medio = _label_medio_pago(pago.get("medio_pago"))
             monto_cobrado = pago.get("monto_total_cobrado")
             detalle = _detalle_pago_financiero(pago)
             detalle_lines = wrap_text(

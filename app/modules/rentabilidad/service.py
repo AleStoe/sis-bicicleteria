@@ -7,7 +7,13 @@ from fastapi import HTTPException
 from psycopg import errors
 
 from app.db.connection import get_connection
+from app.modules.auditoria import service as auditoria_service
+from app.shared.constants import (
+    AUDITORIA_ACCION_CIERRE_RENTABILIDAD_ANULADO,
+    AUDITORIA_ENTIDAD_CIERRE_RENTABILIDAD,
+)
 from .repository import (
+    anular_cierre,
     distribuir_monto,
     get_cierre_by_id,
     get_cierre_by_periodo,
@@ -77,6 +83,18 @@ def _clasificar_rubro_detalle(detalle):
             "nombre": "Bicicletas",
             "detalle": "Bicicletas vendidas por mostrador, reserva o taller",
         }
+    if "triciclo" in rubro or "triciclo" in categoria or "triciclo" in nombre:
+        return {
+            "clave": "triciclos",
+            "nombre": "Triciclos",
+            "detalle": "Triciclos vendidos por mostrador o pedido",
+        }
+    if "cuatriciclo" in rubro or "cuatriciclo" in categoria or "cuatriciclo" in nombre:
+        return {
+            "clave": "cuatriciclos",
+            "nombre": "Cuatriciclos",
+            "detalle": "Cuatriciclos vendidos por mostrador o pedido",
+        }
     if "accesorio" in rubro or "accesorio" in categoria:
         return {
             "clave": "accesorios",
@@ -133,7 +151,7 @@ def _resumen_por_rubro(detalles):
         grupo["utilidad_liberada"] += Decimal(str(detalle["utilidad_liberada"] or 0))
         grupo["utilidad_pendiente"] += Decimal(str(detalle["utilidad_pendiente"] or 0))
 
-    orden = ["taller", "bicicletas", "accesorios", "repuestos", "mayorista", "otros"]
+    orden = ["taller", "bicicletas", "triciclos", "cuatriciclos", "accesorios", "repuestos", "mayorista", "otros"]
     salida = []
     for grupo in grupos.values():
         grupo["cantidad_ventas"] = len(grupo.pop("_ventas"))
@@ -142,6 +160,116 @@ def _resumen_por_rubro(detalles):
         key=lambda item: (
             orden.index(item["clave"]) if item["clave"] in orden else 99,
             item["nombre"],
+        )
+    )
+    return salida
+
+
+def _nombre_producto_detalle(detalle) -> str:
+    producto = detalle.get("producto") or detalle.get("descripcion_snapshot") or "Sin producto"
+    variante = str(detalle.get("variante") or "").strip()
+    if variante and _normalizar_clasificacion(variante) not in {"unica"}:
+        return f"{producto} - {variante}"
+    return producto
+
+
+def _top_clientes(detalles, limit: int = 5):
+    grupos = {}
+    for detalle in detalles:
+        cliente = detalle.get("cliente_nombre") or "Sin cliente"
+        if cliente not in grupos:
+            grupos[cliente] = {
+                "cliente_nombre": cliente,
+                "cantidad_ventas": 0,
+                "cantidad_items": 0,
+                "cantidad_unidades": Decimal("0"),
+                "venta_comercial": Decimal("0"),
+                "cobrado_comercial_reconocido": Decimal("0"),
+                "utilidad_liberada": Decimal("0"),
+                "_ventas": set(),
+            }
+
+        grupo = grupos[cliente]
+        grupo["cantidad_items"] += 1
+        grupo["_ventas"].add(detalle["id_venta"])
+        grupo["cantidad_unidades"] += Decimal(str(detalle.get("cantidad_neta") or 0))
+        grupo["venta_comercial"] += Decimal(str(detalle.get("ingreso_comercial") or 0))
+        grupo["cobrado_comercial_reconocido"] += Decimal(
+            str(detalle.get("cobrado_comercial_reconocido") or 0)
+        )
+        grupo["utilidad_liberada"] += Decimal(str(detalle.get("utilidad_liberada") or 0))
+
+    salida = []
+    for grupo in grupos.values():
+        grupo["cantidad_ventas"] = len(grupo.pop("_ventas"))
+        salida.append(grupo)
+    salida.sort(
+        key=lambda item: (
+            item["venta_comercial"],
+            item["utilidad_liberada"],
+            item["cantidad_unidades"],
+        ),
+        reverse=True,
+    )
+    return salida[:limit]
+
+
+def _productos_estrella_por_rubro(detalles):
+    grupos = {}
+    for detalle in detalles:
+        rubro = _clasificar_rubro_detalle(detalle)
+        producto = _nombre_producto_detalle(detalle)
+        clave_producto = (
+            rubro["clave"],
+            detalle.get("tipo_item"),
+            detalle.get("id_variante"),
+            detalle.get("id_servicio_taller"),
+            producto,
+        )
+        if clave_producto not in grupos:
+            grupos[clave_producto] = {
+                "rubro_clave": rubro["clave"],
+                "rubro_nombre": rubro["nombre"],
+                "producto": producto,
+                "cantidad_ventas": 0,
+                "cantidad_unidades": Decimal("0"),
+                "venta_comercial": Decimal("0"),
+                "margen_esperado": Decimal("0"),
+                "utilidad_liberada": Decimal("0"),
+                "_ventas": set(),
+            }
+
+        grupo = grupos[clave_producto]
+        grupo["_ventas"].add(detalle["id_venta"])
+        grupo["cantidad_unidades"] += Decimal(str(detalle.get("cantidad_neta") or 0))
+        grupo["venta_comercial"] += Decimal(str(detalle.get("ingreso_comercial") or 0))
+        grupo["margen_esperado"] += Decimal(str(detalle.get("margen_bruto") or 0))
+        grupo["utilidad_liberada"] += Decimal(str(detalle.get("utilidad_liberada") or 0))
+
+    mejores_por_rubro = {}
+    for grupo in grupos.values():
+        grupo["cantidad_ventas"] = len(grupo.pop("_ventas"))
+        clave = grupo["rubro_clave"]
+        actual = mejores_por_rubro.get(clave)
+        ranking = (
+            grupo["utilidad_liberada"],
+            grupo["venta_comercial"],
+            grupo["cantidad_unidades"],
+        )
+        ranking_actual = (
+            actual["utilidad_liberada"],
+            actual["venta_comercial"],
+            actual["cantidad_unidades"],
+        ) if actual else None
+        if actual is None or ranking > ranking_actual:
+            mejores_por_rubro[clave] = grupo
+
+    orden = ["taller", "bicicletas", "triciclos", "cuatriciclos", "accesorios", "repuestos", "mayorista", "otros"]
+    salida = list(mejores_por_rubro.values())
+    salida.sort(
+        key=lambda item: (
+            orden.index(item["rubro_clave"]) if item["rubro_clave"] in orden else 99,
+            item["rubro_nombre"],
         )
     )
     return salida
@@ -322,6 +450,8 @@ def calcular_rentabilidad_mensual(periodo_mes: date, id_sucursal: int | None = N
             "regla_distribucion": _armar_regla(regla, items) if regla else None,
             "distribuciones_sugeridas": distribuciones,
             "resumen_por_rubro": _resumen_por_rubro(detalles_periodo),
+            "top_clientes": _top_clientes(detalles_periodo),
+            "productos_estrella_por_rubro": _productos_estrella_por_rubro(detalles_periodo),
         }
     finally:
         conn.close()
@@ -643,6 +773,12 @@ def calcular_rentabilidad_diaria(
 
 def crear_cierre_rentabilidad(data):
     fecha_desde, fecha_hasta = _periodo_bounds(data.periodo_mes)
+    if fecha_hasta >= date.today():
+        raise HTTPException(
+            status_code=400,
+            detail="Solo se pueden cerrar meses ya terminados. Elegí el primer día del mes que querés cerrar.",
+        )
+
     conn = get_connection()
     try:
         with conn.transaction():
@@ -715,6 +851,41 @@ def crear_cierre_rentabilidad(data):
                 insert_cierre_distribucion(conn, cierre["id"], dist)
 
             return {"ok": True, "cierre_id": cierre["id"]}
+    finally:
+        conn.close()
+
+
+def anular_cierre_rentabilidad(cierre_id: int, data):
+    conn = get_connection()
+    try:
+        with conn.transaction():
+            cierre_actual = get_cierre_by_id(conn, cierre_id)
+            if cierre_actual is None:
+                raise HTTPException(status_code=404, detail=f"No existe el cierre {cierre_id}")
+
+            if cierre_actual["estado"] != "cerrado":
+                raise HTTPException(status_code=400, detail="El cierre ya está anulado")
+
+            cierre = anular_cierre(conn, cierre_id, motivo=data.motivo)
+            if cierre is None:
+                raise HTTPException(status_code=400, detail="No se pudo anular el cierre")
+
+            auditoria_service.registrar_evento(
+                conn,
+                id_usuario=data.id_usuario,
+                id_sucursal=cierre["id_sucursal"],
+                entidad=AUDITORIA_ENTIDAD_CIERRE_RENTABILIDAD,
+                entidad_id=cierre["id"],
+                accion=AUDITORIA_ACCION_CIERRE_RENTABILIDAD_ANULADO,
+                detalle=f"Cierre de rentabilidad {cierre['periodo_mes']} anulado",
+                metadata={
+                    "periodo_mes": str(cierre["periodo_mes"]),
+                    "motivo": data.motivo,
+                    "resultado_distribuible": str(cierre["resultado_distribuible"]),
+                },
+            )
+
+            return {**cierre, "distribuciones": get_cierre_distribuciones(conn, cierre_id)}
     finally:
         conn.close()
 

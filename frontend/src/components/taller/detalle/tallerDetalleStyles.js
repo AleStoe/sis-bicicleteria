@@ -178,6 +178,7 @@ export const styles = {
   typeBadgeService: { justifySelf: "start", borderRadius: 999, padding: "6px 9px", background: "#fff7ed", color: "#c2410c", border: "1px solid #fed7aa", fontSize: 12, fontWeight: 800 },
   groupActions: { display: "flex", gap: 12, flexWrap: "wrap", padding: "12px 16px", borderTop: `1px solid ${colors.borderSoft}` },
   addWorkCta: { width: "100%", border: "1px dashed #bfdbfe", background: "#fbfdff", color: colors.primary, padding: "18px 16px", display: "grid", gap: 4, justifyItems: "center", fontWeight: 800, cursor: "pointer" },
+  workLockedNotice: { width: "100%", boxSizing: "border-box", border: "1px solid #fed7aa", background: "#fff7ed", color: "#9a3412", padding: "14px 16px", display: "grid", gap: 4, justifyItems: "center", textAlign: "center", fontWeight: 800 },
   otSummaryGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: spacing.md },
   itemsList: { display: "grid", gap: 10, padding: 16 },
   itemCard: { border: "1px solid #e2e8f0", borderRadius: 18, padding: 14, display: "grid", gap: 12, background: "white" },

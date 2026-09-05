@@ -77,6 +77,7 @@ def get_orden_taller_items_presupuesto_by_orden_id(conn, orden_id: int):
                 oti.valor_cobertura_unitario,
                 oti.motivo_cobertura,
                 oti.observacion_cobertura,
+                oti.costo_unitario_aplicado,
                 oti.subtotal,
                 oti.etapa,
                 oti.aprobado,
@@ -127,6 +128,29 @@ def get_notas_visibles_presupuesto_taller(conn, orden_id: int):
               AND tipo IN ('cliente', 'recomendacion_futura')
               AND estado <> 'archivada'
             ORDER BY created_at ASC, id ASC
+            """,
+            (orden_id,),
+        )
+        return cur.fetchall()
+
+
+def get_notas_hoja_reparacion_taller(conn, orden_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT tipo, contenido, estado
+            FROM ordenes_taller_notas
+            WHERE id_orden_taller = %s
+              AND estado <> 'archivada'
+            ORDER BY
+                CASE tipo
+                    WHEN 'alerta_tecnica' THEN 0
+                    WHEN 'interna' THEN 1
+                    WHEN 'cliente' THEN 2
+                    ELSE 3
+                END,
+                created_at ASC,
+                id ASC
             """,
             (orden_id,),
         )

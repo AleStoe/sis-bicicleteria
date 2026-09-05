@@ -116,6 +116,7 @@ def clean_db(db_conn):
                 variantes,
                 productos,
                 categorias,
+                catalogo_rubros,
                 proveedores,
                 marcas,
                 sucursales,
@@ -129,6 +130,22 @@ def clean_db(db_conn):
             """
         )
         cur.execute("ALTER SEQUENCE IF EXISTS armado_orden_codigo_seq RESTART WITH 1")
+
+        cur.execute(
+            """
+            INSERT INTO catalogo_rubros (nombre, label, descripcion, orden, activo)
+            VALUES
+                ('BICICLETAS', 'Bicicletas', 'Bicicletas completas y variantes serializables.', 10, TRUE),
+                ('TRICICLOS', 'Triciclos', 'Triciclos y rodados infantiles no necesariamente serializados.', 20, TRUE),
+                ('CUATRICICLOS', 'Cuatriciclos', 'Cuatriciclos infantiles o recreativos vendidos como unidad.', 30, TRUE),
+                ('REPUESTOS', 'Repuestos', 'Piezas, cubiertas, camaras y componentes stockeables.', 40, TRUE),
+                ('ACCESORIOS', 'Accesorios', 'Accesorios de venta directa para bici o local.', 50, TRUE),
+                ('INDUMENTARIA', 'Indumentaria', 'Ropa, protecciones y articulos personales.', 60, TRUE),
+                ('HERRAMIENTAS', 'Herramientas', 'Herramientas, extractores, llaves y kits de trabajo.', 70, TRUE),
+                ('CUBIERTAS AUTO', 'Cubiertas auto', 'Cubiertas de auto separadas del catalogo de bicicletas.', 80, TRUE),
+                ('SERVICIOS', 'Servicios', 'Mano de obra y servicios de taller.', 90, TRUE)
+            """
+        )
 
         cur.execute(
             """

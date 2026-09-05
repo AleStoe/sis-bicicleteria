@@ -78,6 +78,27 @@ class RentabilidadRubroOutput(BaseModel):
     utilidad_pendiente: Decimal = Decimal("0")
 
 
+class RentabilidadTopClienteOutput(BaseModel):
+    cliente_nombre: str
+    cantidad_ventas: int = 0
+    cantidad_items: int = 0
+    cantidad_unidades: Decimal = Decimal("0")
+    venta_comercial: Decimal = Decimal("0")
+    cobrado_comercial_reconocido: Decimal = Decimal("0")
+    utilidad_liberada: Decimal = Decimal("0")
+
+
+class RentabilidadProductoEstrellaRubroOutput(BaseModel):
+    rubro_clave: str
+    rubro_nombre: str
+    producto: str
+    cantidad_ventas: int = 0
+    cantidad_unidades: Decimal = Decimal("0")
+    venta_comercial: Decimal = Decimal("0")
+    margen_esperado: Decimal = Decimal("0")
+    utilidad_liberada: Decimal = Decimal("0")
+
+
 class RentabilidadMensualOutput(BaseModel):
     periodo_mes: date
     fecha_desde: date
@@ -119,6 +140,8 @@ class RentabilidadMensualOutput(BaseModel):
     regla_distribucion: Optional[ReglaDistribucionOutput] = None
     distribuciones_sugeridas: List[RentabilidadDistribucionOutput] = []
     resumen_por_rubro: List[RentabilidadRubroOutput] = []
+    top_clientes: List[RentabilidadTopClienteOutput] = []
+    productos_estrella_por_rubro: List[RentabilidadProductoEstrellaRubroOutput] = []
 
 
 class BonificacionGarantiaItemOutput(BaseModel):
@@ -299,6 +322,11 @@ class CierreRentabilidadCreateInput(BaseModel):
     id_regla_distribucion: Optional[int] = Field(default=None, gt=0)
     id_usuario: int = Field(gt=0)
     observaciones: Optional[str] = Field(default=None, max_length=1000)
+
+
+class CierreRentabilidadAnularInput(BaseModel):
+    id_usuario: int = Field(gt=0)
+    motivo: str = Field(min_length=3, max_length=500)
 
 
 class CierreRentabilidadDistribucionOutput(BaseModel):

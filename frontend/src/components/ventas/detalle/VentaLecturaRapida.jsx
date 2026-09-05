@@ -6,6 +6,7 @@ export default function VentaLecturaRapida({
   situacionFinanciera,
   totalFinal,
   totalPagadoReal,
+  creditoAplicadoReal,
   saldoPendiente,
   formatMoney,
 }) {
@@ -17,6 +18,7 @@ export default function VentaLecturaRapida({
   const baseCanceladaPorDeuda = Number(resumen.base_cancelada_por_pagos_deuda || 0);
   const cobroPorDeudaDiferencia = pagosDeudaCobrado - baseCanceladaPorDeuda;
   const tieneCobroPorDeuda = pagosDeudaCobrado > 0;
+  const tieneCreditoAplicado = Number(creditoAplicadoReal || 0) > 0;
 
   return (
     <Card
@@ -49,6 +51,8 @@ export default function VentaLecturaRapida({
           detail={
             tieneCobroPorDeuda
               ? `Incluye ${formatMoney(pagosDeudaCobrado)} cobrado desde deuda asociada.`
+              : tieneCreditoAplicado
+                ? "Es plata real ingresada. El crédito usado se muestra separado."
               : saldoPendiente > 0
                 ? "Todavia queda saldo pendiente."
                 : "La venta no tiene saldo por cobrar."
@@ -62,6 +66,15 @@ export default function VentaLecturaRapida({
           detail={<OperationalStatusBadge domain="venta" status={venta.estado} />}
           tone={saldoPendiente > 0 ? "danger" : "success"}
         />
+
+        {tieneCreditoAplicado && (
+          <SummaryBlock
+            title="Credito usado"
+            value={formatMoney(creditoAplicadoReal)}
+            detail="Cubrio saldo de la venta. No es ingreso nuevo de caja."
+            tone="info"
+          />
+        )}
       </div>
 
       {tieneCobroPorDeuda && (
@@ -91,6 +104,7 @@ function SummaryBlock({ title, value, detail, tone = "default" }) {
 
 function getToneStyle(tone) {
   if (tone === "success") return { borderColor: "#bbf7d0", background: "#f0fdf4" };
+  if (tone === "info") return { borderColor: "#bfdbfe", background: "#eff6ff" };
   if (tone === "warning") return { borderColor: "#fde68a", background: "#fffbeb" };
   if (tone === "danger") return { borderColor: "#fecaca", background: "#fff1f0" };
   return {};

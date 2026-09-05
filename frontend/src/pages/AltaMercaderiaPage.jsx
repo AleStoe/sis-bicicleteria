@@ -8,6 +8,7 @@ import {
   listarCatalogoPOS,
   listarCategorias,
   listarMarcas,
+  listarRubros,
 } from "../services/catalogoService";
 import { listarProveedores } from "../services/proveedoresService";
 import { crearIngresoStock } from "../services/stockService";
@@ -30,9 +31,11 @@ const ID_SUCURSAL_DEFAULT = 1;
 const MARGEN_MINORISTA = 1.2;
 const MARGEN_MAYORISTA = 0.55;
 const UPPER_FIELDS = new Set(["nombre_producto", "nombre_variante", "codigo_proveedor", "subtipo_catalogo"]);
-const RUBROS_MERCADERIA = ["REPUESTOS", "ACCESORIOS", "INDUMENTARIA", "HERRAMIENTAS", "CUBIERTAS AUTO"];
+const RUBROS_MERCADERIA = ["REPUESTOS", "ACCESORIOS", "INDUMENTARIA", "HERRAMIENTAS", "CUBIERTAS AUTO", "TRICICLOS", "CUATRICICLOS"];
 const CATEGORIAS_POR_RUBRO = {
   BICICLETAS: ["BICI"],
+  TRICICLOS: ["TRICICLO", "TRICICLOS"],
+  CUATRICICLOS: ["CUATRICICLO", "CUATRICICLOS"],
   REPUESTOS: [],
   ACCESORIOS: ["ACCESORIO", "LUZ", "LUCES", "BOLSO", "PORTA", "CANDADO", "TIMBRE", "SOPORTE", "CASCO"],
   INDUMENTARIA: ["INDUMENTARIA", "ROPA", "CASCO", "GUANTE", "GUANTES", "PROTECCION"],
@@ -50,6 +53,10 @@ const CATEGORIAS_EXCLUIDAS_REPUESTOS = [
   "LLAVE",
   "CUBIERTA AUTO",
   "CUBIERTAS AUTO",
+  "TRICICLO",
+  "TRICICLOS",
+  "CUATRICICLO",
+  "CUATRICICLOS",
   "NEUMATICO",
   "NEUMATICOS",
 ];
@@ -86,6 +93,7 @@ export default function AltaMercaderiaPage() {
   const costoRef = useRef(null);
 
   const [categorias, setCategorias] = useState([]);
+  const [rubros, setRubros] = useState([]);
   const [marcas, setMarcas] = useState([]);
   const [proveedores, setProveedores] = useState([]);
   const [configuracionNegocio, setConfiguracionNegocio] = useState(DEFAULT_CONFIGURACION_NEGOCIO);
@@ -139,14 +147,16 @@ export default function AltaMercaderiaPage() {
 
   async function cargarDatos() {
     try {
-      const [cats, marcasData, provs, config] = await Promise.all([
+      const [cats, rubrosData, marcasData, provs, config] = await Promise.all([
         listarCategorias(),
+        listarRubros(),
         listarMarcas(),
         listarProveedores({ solo_activos: true }),
         obtenerConfiguracionNegocio().catch(() => DEFAULT_CONFIGURACION_NEGOCIO),
       ]);
 
       setCategorias(cats || []);
+      setRubros(rubrosData || []);
       setMarcas(marcasData || []);
       setProveedores(provs || []);
       setConfiguracionNegocio({
@@ -161,6 +171,13 @@ export default function AltaMercaderiaPage() {
     const activas = categorias.filter((c) => c.activo !== false);
     return activas.filter((c) => categoriaCoincideConRubro(c, form.rubro));
   }, [categorias, form.rubro]);
+
+  const rubrosMercaderia = useMemo(() => {
+    const dinamicos = (rubros || [])
+      .map((item) => item.nombre)
+      .filter((nombre) => !["BICICLETAS", "SERVICIOS"].includes(nombre));
+    return dinamicos.length ? dinamicos : RUBROS_MERCADERIA;
+  }, [rubros]);
 
   const categoriaSeleccionada = useMemo(() => {
     return categorias.find((c) => String(c.id) === String(form.id_categoria));
@@ -844,7 +861,7 @@ export default function AltaMercaderiaPage() {
                           }))
                         }
                       >
-                        {RUBROS_MERCADERIA.map((rubro) => (
+                        {rubrosMercaderia.map((rubro) => (
                           <option key={rubro} value={rubro}>
                             {rubro}
                           </option>

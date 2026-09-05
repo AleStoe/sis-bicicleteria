@@ -137,6 +137,7 @@ AUDITORIA_ENTIDAD_STOCK = "stock"
 AUDITORIA_ENTIDAD_RESERVA = "reserva"
 AUDITORIA_ENTIDAD_CREDITO = "credito"
 AUDITORIA_ENTIDAD_DEUDA = "deuda"
+AUDITORIA_ENTIDAD_CIERRE_RENTABILIDAD = "cierre_rentabilidad"
 
 # =========================
 # AUDITORIA - ACCIONES
@@ -166,6 +167,7 @@ AUDITORIA_ACCION_CREDITO_ANULADO_ADMINISTRATIVO = "credito_anulado_administrativ
 AUDITORIA_ACCION_DEUDA_GENERADA = "deuda_generada"
 AUDITORIA_ACCION_DEUDA_PAGO_REGISTRADO = "deuda_pago_registrado"
 AUDITORIA_ACCION_PAGO_DEVUELTO_EXTERNO = "pago_devuelto_externo"
+AUDITORIA_ACCION_CIERRE_RENTABILIDAD_ANULADO = "cierre_rentabilidad_anulado"
 
 # =========================
 # AUTHZ - ROLES

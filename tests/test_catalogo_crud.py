@@ -180,6 +180,97 @@ def test_listar_categorias(client):
     assert "nombre" in data[0]
 
 
+def test_abm_rubros_catalogo(client):
+    nombre = f"RUBRO TEST {uuid.uuid4().hex[:6]}"
+    nombre_normalizado = nombre.upper()
+
+    crear = client.post(
+        "/catalogo/rubros",
+        json={
+            "nombre": nombre,
+            "label": "Rubro test",
+            "descripcion": "Rubro creado desde test",
+            "orden": 321,
+        },
+    )
+    assert crear.status_code == 200, crear.text
+    rubro = crear.json()
+    assert rubro["nombre"] == nombre_normalizado
+    assert rubro["label"] == "Rubro test"
+    assert rubro["activo"] is True
+
+    editar = client.put(
+        f"/catalogo/rubros/{rubro['id']}",
+        json={
+            "nombre": f"{nombre} EDITADO",
+            "label": "Rubro editado",
+            "descripcion": "Actualizado",
+            "orden": 322,
+        },
+    )
+    assert editar.status_code == 200, editar.text
+    rubro_editado = editar.json()
+    assert rubro_editado["nombre"] == f"{nombre_normalizado} EDITADO"
+    assert rubro_editado["orden"] == 322
+
+    desactivar = client.patch(
+        f"/catalogo/rubros/{rubro['id']}/estado",
+        json={"activo": False},
+    )
+    assert desactivar.status_code == 200, desactivar.text
+    assert desactivar.json()["activo"] is False
+
+    listar_activos = client.get("/catalogo/rubros")
+    assert listar_activos.status_code == 200, listar_activos.text
+    assert all(item["id"] != rubro["id"] for item in listar_activos.json())
+
+    listar_todos = client.get("/catalogo/rubros?incluir_inactivos=true")
+    assert listar_todos.status_code == 200, listar_todos.text
+    assert any(item["id"] == rubro["id"] and item["activo"] is False for item in listar_todos.json())
+
+
+def test_producto_usa_rubro_dinamico_y_rechaza_rubro_inactivo(client):
+    categoria = _get_first_categoria(client)
+    nombre = f"RUBRO DINAMICO {uuid.uuid4().hex[:6]}"
+    nombre_normalizado = nombre.upper()
+
+    crear = client.post(
+        "/catalogo/rubros",
+        json={"nombre": nombre, "label": "Rubro dinamico", "orden": 333},
+    )
+    assert crear.status_code == 200, crear.text
+    rubro = crear.json()
+
+    producto = _crear_producto(
+        client,
+        categoria_id=categoria["id"],
+        nombre="Producto rubro dinamico",
+        rubro=nombre,
+    )
+    assert producto["rubro"] == nombre_normalizado
+
+    desactivar = client.patch(
+        f"/catalogo/rubros/{rubro['id']}/estado",
+        json={"activo": False},
+    )
+    assert desactivar.status_code == 200, desactivar.text
+
+    rechazado = client.post(
+        "/catalogo/productos",
+        json={
+            "id_categoria": categoria["id"],
+            "id_marca": None,
+            "nombre": "Producto rubro inactivo",
+            "rubro": nombre,
+            "tipo_item": "producto",
+            "stockeable": True,
+            "serializable": False,
+        },
+    )
+    assert rechazado.status_code == 400
+    assert "está inactivo" in rechazado.json()["detail"]
+
+
 def test_crear_marca(client):
     marca = _crear_marca(client, "Marca Test Crear")
 
@@ -307,6 +398,30 @@ def test_crear_producto_rubro_herramientas(client):
 
     assert producto["rubro"] == "HERRAMIENTAS"
     assert producto["subtipo_catalogo"] == "EXTRACTOR"
+
+
+def test_crear_producto_rubros_triciclos_y_cuatriciclos(client):
+    categoria = _get_first_categoria(client)
+
+    triciclo = _crear_producto(
+        client,
+        categoria_id=categoria["id"],
+        nombre="Triciclo test rubro",
+        rubro="TRICICLOS",
+        subtipo_catalogo="TRICICLO",
+    )
+    cuatriciclo = _crear_producto(
+        client,
+        categoria_id=categoria["id"],
+        nombre="Cuatriciclo test rubro",
+        rubro="CUATRICICLOS",
+        subtipo_catalogo="CUATRICICLO",
+    )
+
+    assert triciclo["rubro"] == "TRICICLOS"
+    assert triciclo["subtipo_catalogo"] == "TRICICLO"
+    assert cuatriciclo["rubro"] == "CUATRICICLOS"
+    assert cuatriciclo["subtipo_catalogo"] == "CUATRICICLO"
 
 
 def test_rechaza_producto_serializable_no_stockeable(client):

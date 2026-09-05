@@ -604,9 +604,86 @@ def generar_resultado_distribuible_pdf(
         )
         story.append(dist_table)
 
+    top_clientes = data.get("top_clientes") or []
+    productos_estrella = data.get("productos_estrella_por_rubro") or []
+    if top_clientes or productos_estrella:
+        story.append(PageBreak())
+        story.append(_p("6. Anexo comercial", styles["section"]))
+        story.append(_p(
+            "Lecturas utiles para entender quienes impulsaron el periodo y que producto destaco en cada rubro.",
+            styles["subtitle"],
+        ))
+
+        if top_clientes:
+            story.append(_p("Top clientes", styles["section"]))
+            rows = [[
+                _p("Cliente", styles["table_header"]),
+                _p("Ventas", styles["table_header"]),
+                _p("Vendido", styles["table_header"]),
+                _p("Cobrado", styles["table_header"]),
+                _p("Utilidad", styles["table_header"]),
+            ]]
+            for item in top_clientes:
+                rows.append([
+                    _p(item.get("cliente_nombre"), styles["table_cell"]),
+                    _p(str(item.get("cantidad_ventas") or 0), styles["table_money"]),
+                    _p(_money(item.get("venta_comercial")), styles["table_money"]),
+                    _p(_money(item.get("cobrado_comercial_reconocido")), styles["table_money"]),
+                    _p(_money(item.get("utilidad_liberada")), styles["table_money"]),
+                ])
+            clientes_table = Table(rows, colWidths=[56 * mm, 19 * mm, 30 * mm, 30 * mm, 21 * mm], repeatRows=1)
+            clientes_table.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(ORANGE_SOFT_HEX)),
+                        ("BOX", (0, 0), (-1, -1), 0.7, colors.HexColor(BORDER_HEX)),
+                        ("INNERGRID", (0, 0), (-1, -1), 0.35, colors.HexColor(BORDER_HEX)),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                        ("TOPPADDING", (0, 0), (-1, -1), 6),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                    ]
+                )
+            )
+            story.append(clientes_table)
+
+        if productos_estrella:
+            story.append(_p("Producto estrella por rubro", styles["section"]))
+            rows = [[
+                _p("Rubro", styles["table_header"]),
+                _p("Producto destacado", styles["table_header"]),
+                _p("Unid.", styles["table_header"]),
+                _p("Vendido", styles["table_header"]),
+                _p("Utilidad", styles["table_header"]),
+            ]]
+            for item in productos_estrella:
+                rows.append([
+                    _p(item.get("rubro_nombre"), styles["table_cell"]),
+                    _p(item.get("producto"), styles["table_cell"]),
+                    _p(str(item.get("cantidad_unidades") or 0), styles["table_money"]),
+                    _p(_money(item.get("venta_comercial")), styles["table_money"]),
+                    _p(_money(item.get("utilidad_liberada")), styles["table_money"]),
+                ])
+            estrellas_table = Table(rows, colWidths=[31 * mm, 58 * mm, 17 * mm, 29 * mm, 21 * mm], repeatRows=1)
+            estrellas_table.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(ORANGE_SOFT_HEX)),
+                        ("BOX", (0, 0), (-1, -1), 0.7, colors.HexColor(BORDER_HEX)),
+                        ("INNERGRID", (0, 0), (-1, -1), 0.35, colors.HexColor(BORDER_HEX)),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                        ("TOPPADDING", (0, 0), (-1, -1), 6),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                    ]
+                )
+            )
+            story.append(estrellas_table)
+
     if detalle_diario:
         story.append(PageBreak())
-        story.append(_p("6. Anexo - detalle diario", styles["section"]))
+        numero_anexo = "7" if top_clientes or productos_estrella else "6"
+        story.append(_p(f"{numero_anexo}. Anexo - detalle diario", styles["section"]))
         story.append(_p("Resumen por dia con ventas, cobranza, capital y utilidad liberada.", styles["subtitle"]))
         rows = [[
             _p("Fecha", styles["table_header"]),

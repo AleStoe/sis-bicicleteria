@@ -7,6 +7,7 @@ import {
   listarCatalogoPOS,
   listarCategorias,
   listarMarcas,
+  listarRubros,
   listarSubtiposCatalogo,
   previsualizarCatalogoPdf,
 } from "../services/catalogoService";
@@ -46,6 +47,8 @@ const MOBILE_BREAKPOINT = 760;
 const RUBROS_CATALOGO = [
   { value: "", label: "Todos los rubros" },
   { value: "BICICLETAS", label: "Bicicletas" },
+  { value: "TRICICLOS", label: "Triciclos" },
+  { value: "CUATRICICLOS", label: "Cuatriciclos" },
   { value: "REPUESTOS", label: "Repuestos" },
   { value: "ACCESORIOS", label: "Accesorios" },
   { value: "INDUMENTARIA", label: "Indumentaria" },
@@ -127,6 +130,7 @@ export default function CatalogoPage() {
 
   const [items, setItems] = useState([]);
   const [categorias, setCategorias] = useState([]);
+  const [rubrosCatalogo, setRubrosCatalogo] = useState([]);
   const [marcas, setMarcas] = useState([]);
   const [query, setQuery] = useState("");
   const [rubro, setRubro] = useState("");
@@ -149,8 +153,20 @@ export default function CatalogoPage() {
 
   useEffect(() => {
     cargarCategorias();
+    cargarRubros();
     cargarMarcas();
   }, []);
+
+  const rubrosOpciones = useMemo(() => {
+    if (!rubrosCatalogo.length) return RUBROS_CATALOGO;
+    return [
+      { value: "", label: "Todos los rubros" },
+      ...rubrosCatalogo.map((item) => ({
+        value: item.nombre,
+        label: item.label || item.nombre,
+      })),
+    ];
+  }, [rubrosCatalogo]);
 
   useEffect(() => {
     cargarCatalogo();
@@ -192,6 +208,15 @@ export default function CatalogoPage() {
       setCategorias(data || []);
     } catch (err) {
       setError(err.message || "No se pudieron cargar las categorías");
+    }
+  }
+
+  async function cargarRubros() {
+    try {
+      const data = await listarRubros();
+      setRubrosCatalogo(data || []);
+    } catch (err) {
+      setError(err.message || "No se pudieron cargar los rubros");
     }
   }
 
@@ -415,7 +440,7 @@ export default function CatalogoPage() {
           }}
           style={styles.select}
         >
-          {RUBROS_CATALOGO.map((opcion) => (
+          {rubrosOpciones.map((opcion) => (
             <option key={opcion.value || "todos"} value={opcion.value}>
               {opcion.label}
             </option>
@@ -481,6 +506,7 @@ export default function CatalogoPage() {
           isMobile={isMobile}
           query={query}
           rubro={rubro}
+          rubrosOpciones={rubrosOpciones}
           categoriaId={categoriaId}
           marcaId={marcaId}
           subtipoCatalogo={subtipoCatalogo}
@@ -574,6 +600,7 @@ function CrearCatalogoModalGuiado({
   isMobile,
   query,
   rubro,
+  rubrosOpciones,
   categoriaId,
   marcaId,
   categorias,
@@ -604,8 +631,8 @@ function CrearCatalogoModalGuiado({
     modalQuery
   );
   const rubrosDisponiblesModal = esBicicletas
-    ? RUBROS_CATALOGO.filter((opcion) => opcion.value === "BICICLETAS")
-    : RUBROS_CATALOGO.filter((opcion) => opcion.value !== "BICICLETAS");
+    ? rubrosOpciones.filter((opcion) => opcion.value === "BICICLETAS")
+    : rubrosOpciones.filter((opcion) => opcion.value !== "BICICLETAS");
 
   useEffect(() => {
     let cancelado = false;

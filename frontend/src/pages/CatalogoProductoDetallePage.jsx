@@ -13,6 +13,7 @@ import {
   listarImagenesProducto,
   eliminarImagenCatalogo,
   listarCatalogoPOS,
+  listarRubros,
 } from "../services/catalogoService";
 import { listarProveedores } from "../services/proveedoresService";
 import { obtenerAnalisisDemanda } from "../services/stockService";
@@ -31,7 +32,7 @@ const TAB_VARIANTES = "variantes";
 const TAB_FICHA = "ficha";
 const TAB_ANALISIS = "analisis";
 const MOBILE_BREAKPOINT = 760;
-const RUBROS_PRODUCTO = ["BICICLETAS", "REPUESTOS", "ACCESORIOS", "INDUMENTARIA", "HERRAMIENTAS", "CUBIERTAS AUTO", "SERVICIOS"];
+const RUBROS_PRODUCTO = ["BICICLETAS", "TRICICLOS", "CUATRICICLOS", "REPUESTOS", "ACCESORIOS", "INDUMENTARIA", "HERRAMIENTAS", "CUBIERTAS AUTO", "SERVICIOS"];
 
 function useIsMobile(breakpoint = MOBILE_BREAKPOINT) {
   const [isMobile, setIsMobile] = useState(() => {
@@ -93,6 +94,7 @@ export default function CatalogoProductoDetallePage() {
   const [fichaTecnica, setFichaTecnica] = useState([]);
   const [productoImagenes, setProductoImagenes] = useState([]);
   const [categorias, setCategorias] = useState([]);
+  const [rubros, setRubros] = useState([]);
   const [marcas, setMarcas] = useState([]);
   const [proveedores, setProveedores] = useState([]);
   const [tabActiva, setTabActiva] = useState(TAB_OPERATIVO);
@@ -142,10 +144,11 @@ export default function CatalogoProductoDetallePage() {
       setLoading(true);
       setError("");
 
-      const [productoData, fichaData, categoriasData, marcasData, imagenesProductoData] = await Promise.all([
+      const [productoData, fichaData, categoriasData, rubrosData, marcasData, imagenesProductoData] = await Promise.all([
         obtenerProducto(productoId),
         obtenerFichaTecnicaProducto(productoId),
         listarCategorias(),
+        listarRubros(),
         listarMarcas(),
         listarImagenesProducto(productoId),
       ]);
@@ -182,6 +185,7 @@ export default function CatalogoProductoDetallePage() {
       setFichaTecnica(fichaData || []);
       setProductoImagenes(imagenesProductoData || []);
       setCategorias(categoriasData || []);
+      setRubros(rubrosData || []);
       setMarcas(marcasData || []);
       setProveedores(proveedoresData || []);
       setProductoForm({
@@ -488,6 +492,11 @@ export default function CatalogoProductoDetallePage() {
     return base;
   }, [itemsPOS, variantes]);
 
+  const rubrosProducto = useMemo(() => {
+    const dinamicos = (rubros || []).map((item) => item.nombre).filter(Boolean);
+    return dinamicos.length ? dinamicos : RUBROS_PRODUCTO;
+  }, [rubros]);
+
   const estadoOperativo = useMemo(() => {
     if (!producto?.activo) return { label: "Producto inactivo", tone: "danger" };
     if (resumenOperativo.sinPrecio > 0) return { label: "Revisar precio", tone: "warning" };
@@ -625,7 +634,7 @@ export default function CatalogoProductoDetallePage() {
                   }))
                 }
               >
-                {RUBROS_PRODUCTO.map((rubro) => <option key={rubro} value={rubro}>{rubro}</option>)}
+                {rubrosProducto.map((rubro) => <option key={rubro} value={rubro}>{rubro}</option>)}
               </select>
             </label>
             <label style={styles.field}>

@@ -36,22 +36,28 @@ export function normalizarTexto(valor) {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
+export function codigoVarianteSistema(item) {
+  const rawId = item?.id ?? item?.id_variante ?? item?.variante_id;
+  if (rawId === undefined || rawId === null || rawId === "") return "";
+
+  const numericId = Number(rawId);
+  if (!Number.isFinite(numericId)) return "";
+
+  return `VAR-${String(Math.trunc(numericId)).padStart(8, "0")}`;
+}
+
 export function esBicicletaCatalogo(item) {
-  const texto = normalizarTexto(
-    [
-      item?.producto_nombre,
-      item?.nombre_variante,
-      item?.categoria_nombre,
-      item?.tipo_bicicleta,
-    ]
-      .filter(Boolean)
-      .join(" ")
-  );
+  const categoria = normalizarTexto(item?.categoria_nombre);
+  const rubro = normalizarTexto(item?.rubro || item?.producto_rubro);
+  const tipoBicicleta = normalizarTexto(item?.tipo_bicicleta);
 
   return (
     Boolean(item?.serializable) ||
-    texto.includes("bicicleta") ||
-    texto.includes("bici ")
+    categoria === "bicicleta" ||
+    categoria === "bicicletas" ||
+    rubro === "bicicleta" ||
+    rubro === "bicicletas" ||
+    Boolean(tipoBicicleta)
   );
 }
 

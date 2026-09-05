@@ -7,7 +7,7 @@ def _dec(v):
     return Decimal(str(v))
 
 
-def test_no_permite_revertir_pago_de_venta_entregada(
+def test_revertir_pago_de_venta_entregada_genera_deuda(
     client,
     db_conn,
     seed_venta_basica,
@@ -71,20 +71,39 @@ def test_no_permite_revertir_pago_de_venta_entregada(
     revertir = client.post(
         f"/pagos/{pago_id}/revertir",
         json={
-            "motivo": "intento incorrecto luego de entrega",
+            "motivo": "correccion de pago luego de entrega",
             "id_usuario": usuario_id,
         },
     )
 
-    assert revertir.status_code == 400
+    assert revertir.status_code == 200, revertir.text
+    deuda_id = revertir.json()["deuda_generada_id"]
+    assert deuda_id
 
     venta_final = get_venta(db_conn, venta_id)
     assert venta_final["estado"] == "entregada"
-    assert _dec(venta_final["saldo_pendiente"]) == Decimal("0")
+    assert _dec(venta_final["saldo_pendiente"]) > Decimal("0")
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT *
+            FROM deudas_cliente
+            WHERE id = %s
+              AND origen_tipo = 'venta'
+              AND origen_id = %s
+            """,
+            (deuda_id, venta_id),
+        )
+        deuda = cur.fetchone()
+
+    assert deuda is not None
+    assert deuda["estado"] == "abierta"
+    assert _dec(deuda["saldo_actual"]) == _dec(venta_final["saldo_pendiente"])
 
     movimientos = get_caja_movimientos(db_conn, caja_id)
     ingresos = [m for m in movimientos if m["tipo_movimiento"] == "ingreso"]
     egresos = [m for m in movimientos if m["tipo_movimiento"] == "egreso"]
 
     assert len(ingresos) == 1
-    assert egresos == []
+    assert len(egresos) == 1

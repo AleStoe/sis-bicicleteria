@@ -24,6 +24,9 @@ import { Boxes, PackagePlus, RefreshCw, Tags } from "lucide-react";
 import { colors, controls, radius, shadows, spacing, typography } from "../theme";
 
 const stockPageRequestsEnVuelo = new Map();
+const STOCK_LIMIT_NORMAL = 160;
+const STOCK_LIMIT_BUSQUEDA = 80;
+const STOCK_MIN_CHARS_BUSQUEDA = 2;
 
 function requestStockPageUnaVez(clave, requester) {
   if (stockPageRequestsEnVuelo.has(clave)) {
@@ -148,9 +151,21 @@ export default function StockPage() {
       return;
     }
 
+    const texto = query.trim();
+
+    if (texto.length > 0 && texto.length < STOCK_MIN_CHARS_BUSQUEDA) {
+      return undefined;
+    }
+
     const handle = setTimeout(() => {
-      cargarStock({ silencioso: true });
-    }, 260);
+      cargarStock({
+        paramsExtra: {
+          limit: texto ? STOCK_LIMIT_BUSQUEDA : STOCK_LIMIT_NORMAL,
+        },
+        silencioso: true,
+        actualizarResumen: !texto,
+      });
+    }, 420);
 
     return () => clearTimeout(handle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -202,7 +217,7 @@ export default function StockPage() {
       stock_bajo_umbral: stockBajoUmbral,
       ordenar_por: ordenarPor,
       orden,
-      limit: 500,
+      limit: query.trim() || idVarianteFiltro ? STOCK_LIMIT_BUSQUEDA : STOCK_LIMIT_NORMAL,
       ...extra,
     };
   }
@@ -223,6 +238,7 @@ export default function StockPage() {
     paramsExtra = {},
     autoSeleccionarUnico = false,
     silencioso = false,
+    actualizarResumen = true,
   } = {}) {
     try {
       const esCargaInicial = stock.length === 0 && !resumenServer && !silencioso;
@@ -236,13 +252,16 @@ export default function StockPage() {
       setError("");
       const params = stockParams(paramsExtra);
       const claveParams = JSON.stringify(params);
-      const [data, resumen] = await Promise.all([
-        requestStockPageUnaVez(`stock:${claveParams}`, () => listarStock(params)),
-        requestStockPageUnaVez(`stock-resumen:${claveParams}`, () => obtenerResumenStock(params)),
-      ]);
+      const dataPromise = requestStockPageUnaVez(`stock:${claveParams}`, () => listarStock(params));
+      const resumenPromise = actualizarResumen
+        ? requestStockPageUnaVez(`stock-resumen:${claveParams}`, () => obtenerResumenStock(params))
+        : Promise.resolve(null);
+      const [data, resumen] = await Promise.all([dataPromise, resumenPromise]);
       const items = data || [];
       setStock(items);
-      setResumenServer(resumen || null);
+      if (actualizarResumen) {
+        setResumenServer(resumen || null);
+      }
 
       if (idVarianteFiltro && items.length > 0) {
         seleccionarItem(items[0], "detalle");
@@ -260,9 +279,10 @@ export default function StockPage() {
   async function buscarAhora({ autoSeleccionarUnico = false } = {}) {
     setIdVarianteFiltro("");
     await cargarStock({
-      paramsExtra: { q: query.trim(), id_variante: "" },
+      paramsExtra: { q: query.trim(), id_variante: "", limit: STOCK_LIMIT_BUSQUEDA },
       autoSeleccionarUnico,
       silencioso: true,
+      actualizarResumen: false,
     });
 
     setTimeout(() => searchInputRef.current?.select(), 0);

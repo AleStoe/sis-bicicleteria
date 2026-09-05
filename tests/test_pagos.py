@@ -1372,7 +1372,9 @@ def test_flujo_pago_reversion_nuevo_pago_y_entrega(client, db_conn, seed_venta_b
     assert venta["estado"] == "entregada"
     assert Decimal(str(venta["saldo_pendiente"])) == Decimal("0.00")
 
-def test_no_permite_revertir_pago_de_venta_entregada(client, db_conn, seed_venta_basica):
+def test_revertir_pago_de_venta_entregada_genera_deuda(
+    client, db_conn, seed_venta_basica
+):
     venta_id = crear_venta_base(client, seed_venta_basica)
 
     abrir_caja = _abrir_caja(
@@ -1409,24 +1411,33 @@ def test_no_permite_revertir_pago_de_venta_entregada(client, db_conn, seed_venta
     reversion = client.post(
         f"/pagos/{pago_id}/revertir",
         json={
-            "motivo": "Intento de revertir venta entregada",
+            "motivo": "Corrección de pago inexistente en venta entregada",
             "id_usuario": seed_venta_basica["usuario_id"],
         },
     )
 
-    assert reversion.status_code == 400
-    assert "venta ya entregada" in reversion.json()["detail"]
+    assert reversion.status_code == 200, reversion.text
 
     venta_despues = get_venta(db_conn, venta_id)
     movimientos_caja_despues = get_caja_movimientos(db_conn, caja_id)
     auditoria_despues = get_auditoria_by_entidad(db_conn, "pago", pago_id)
+    deudas = get_deudas_by_cliente(db_conn, seed_venta_basica["cliente_id"])
 
-    assert venta_despues["estado"] == venta_antes["estado"]
-    assert venta_despues["saldo_pendiente"] == venta_antes["saldo_pendiente"]
+    assert venta_antes["estado"] == "entregada"
+    assert venta_despues["estado"] == "entregada"
+    assert Decimal(str(venta_despues["saldo_pendiente"])) == Decimal("24440.00")
 
-    assert len(movimientos_caja_despues) == len(movimientos_caja_antes)
+    assert len(movimientos_caja_despues) == len(movimientos_caja_antes) + 1
+    assert movimientos_caja_despues[-1]["tipo_movimiento"] == "egreso"
+    assert Decimal(str(movimientos_caja_despues[-1]["monto"])) > Decimal("0")
 
-    assert auditoria_despues == auditoria_antes
+    assert len(auditoria_despues) == len(auditoria_antes) + 1
+    assert auditoria_despues[-1]["accion"] == "revertir_pago"
+
+    deuda_venta = [deuda for deuda in deudas if deuda["origen_id"] == venta_id]
+    assert len(deuda_venta) == 1
+    assert Decimal(str(deuda_venta[0]["saldo_actual"])) == Decimal("24440.00")
+    assert reversion.json()["deuda_generada_id"] == deuda_venta[0]["id"]
 
 def test_pago_y_caja_siempre_consistentes(client, db_conn, seed_venta_basica):
     venta_id = crear_venta_base(client, seed_venta_basica)

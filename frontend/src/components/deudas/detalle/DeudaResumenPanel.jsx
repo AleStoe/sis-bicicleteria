@@ -3,18 +3,21 @@ import { Card, MetricCard } from "../../ui";
 import { EstadoDeudaBadge } from "../../../pages/DeudasListPage";
 
 export default function DeudaResumenPanel({ deuda }) {
+  const saldoPendiente = Number(deuda.saldo_actual || 0);
+  const estadoVisual = saldoPendiente > 0 ? deuda.estado : "cerrada";
+
   return (
     <Card title="Resumen" subtitle="Estado general de la cuenta corriente">
       <div style={infoGridStyle}>
         <MetricCard
           label="Estado"
-          value={<EstadoDeudaBadge estado={deuda.estado} />}
+          value={<EstadoDeudaBadge estado={estadoVisual} />}
         />
 
         <MetricCard
-          label="Saldo actual"
+          label="Saldo pendiente"
           value={formatMoney(deuda.saldo_actual)}
-          tone={Number(deuda.saldo_actual || 0) > 0 ? "danger" : "success"}
+          tone={saldoPendiente > 0 ? "danger" : "success"}
           emphasize
         />
 

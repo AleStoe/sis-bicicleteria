@@ -530,6 +530,41 @@ def test_listar_deudas_por_estado(client, db_conn, seed_venta_basica):
     data = response.json()
     assert len(data) >= 1
     assert all(d["estado"] == "abierta" for d in data)
+    assert all(_to_decimal(d["saldo_actual"]) > Decimal("0") for d in data)
+
+
+def test_listar_deudas_abiertas_no_incluye_saldo_operativo_cero(client, db_conn, seed_venta_basica):
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO deudas_cliente (
+                id_cliente,
+                origen_tipo,
+                origen_id,
+                saldo_actual,
+                genera_recargo,
+                estado,
+                observacion
+            )
+            VALUES (%s, 'venta', 999999, 0.40, FALSE, 'abierta', 'Deuda vieja saldada')
+            RETURNING id
+            """,
+            (seed_venta_basica["cliente_id"],),
+        )
+        deuda_id = cur.fetchone()["id"]
+    db_conn.commit()
+
+    response = client.get("/deudas?estado=abierta")
+
+    assert response.status_code == 200
+    ids = {item["id"] for item in response.json()}
+    assert deuda_id not in ids
+
+    detalle = client.get(f"/deudas/{deuda_id}")
+    assert detalle.status_code == 200
+    deuda = detalle.json()["deuda"]
+    assert deuda["estado"] == "cerrada"
+    assert _to_decimal(deuda["saldo_actual"]) == Decimal("0")
 
 
 def test_listar_deudas_por_origen_venta(client, db_conn, seed_venta_basica):

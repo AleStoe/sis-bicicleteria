@@ -9,6 +9,7 @@ export default function VentaResumenCards({
   totalNetoLiquidado,
   totalCostoFinanciero,
   cubiertoNoPago,
+  creditoAplicadoReal,
   saldoPendiente,
   formatMoney,
 }) {
@@ -16,6 +17,7 @@ export default function VentaResumenCards({
   const resumen = situacionFinanciera?.resumen || {};
   const pagosDeudaCobrado = Number(resumen.pagos_deuda_cobrado || 0);
   const tieneCobroPorDeuda = pagosDeudaCobrado > 0;
+  const tieneCreditoAplicado = Number(creditoAplicadoReal || 0) > 0;
 
   return (
     <section
@@ -30,8 +32,18 @@ export default function VentaResumenCards({
       <MetricCard
         label={tieneCobroPorDeuda ? "Cobrado al cliente total" : "Cobrado al cliente"}
         value={formatMoney(totalPagadoReal)}
+        footer={tieneCreditoAplicado ? "Dinero real ingresado, sin contar crédito." : undefined}
         tone="success"
       />
+
+      {tieneCreditoAplicado && (
+        <MetricCard
+          label="Crédito usado"
+          value={formatMoney(creditoAplicadoReal)}
+          footer="Saldo a favor aplicado. No ingresó plata nueva."
+          tone="primary"
+        />
+      )}
 
       <MetricCard
         label="Neto liquidado"

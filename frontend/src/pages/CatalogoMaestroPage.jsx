@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Eye, RefreshCw, Search, Tags } from "lucide-react";
-import { listarProductos, listarVariantes } from "../services/catalogoService";
+import { listarProductos, listarRubros, listarVariantes } from "../services/catalogoService";
 import { Button, EmptyState, MetricCard, PageHeader, ResponsiveMetricsGrid } from "../components/ui";
 import { formatMoney } from "../utils/formatters";
 import { colors, controls, radius, shadows, spacing, typography } from "../theme";
@@ -9,6 +9,8 @@ import { colors, controls, radius, shadows, spacing, typography } from "../theme
 const RUBROS = [
   { value: "todos", label: "Todos los rubros" },
   { value: "BICICLETAS", label: "Bicicletas" },
+  { value: "TRICICLOS", label: "Triciclos" },
+  { value: "CUATRICICLOS", label: "Cuatriciclos" },
   { value: "REPUESTOS", label: "Repuestos" },
   { value: "ACCESORIOS", label: "Accesorios" },
   { value: "INDUMENTARIA", label: "Indumentaria" },
@@ -53,6 +55,7 @@ export default function CatalogoMaestroPage() {
   const navigate = useNavigate();
   const [productos, setProductos] = useState([]);
   const [variantes, setVariantes] = useState([]);
+  const [rubros, setRubros] = useState([]);
   const [query, setQuery] = useState("");
   const [rubro, setRubro] = useState("todos");
   const [estado, setEstado] = useState("todos");
@@ -63,12 +66,14 @@ export default function CatalogoMaestroPage() {
     try {
       setLoading(true);
       setError("");
-      const [productosData, variantesData] = await Promise.all([
+      const [productosData, variantesData, rubrosData] = await Promise.all([
         listarProductos(),
         listarVariantes(),
+        listarRubros(),
       ]);
       setProductos(productosData || []);
       setVariantes(variantesData || []);
+      setRubros(rubrosData || []);
     } catch (err) {
       setError(err.message || "No se pudo cargar el maestro de productos");
     } finally {
@@ -79,6 +84,14 @@ export default function CatalogoMaestroPage() {
   useEffect(() => {
     cargar();
   }, []);
+
+  const rubrosOpciones = useMemo(() => {
+    if (!rubros.length) return RUBROS;
+    return [
+      { value: "todos", label: "Todos los rubros" },
+      ...rubros.map((item) => ({ value: item.nombre, label: item.label || item.nombre })),
+    ];
+  }, [rubros]);
 
   const resumenPorProducto = useMemo(() => {
     const mapa = new Map();
@@ -185,7 +198,7 @@ export default function CatalogoMaestroPage() {
           />
         </label>
         <select value={rubro} onChange={(event) => setRubro(event.target.value)} style={styles.input}>
-          {RUBROS.map((opcion) => (
+          {rubrosOpciones.map((opcion) => (
             <option key={opcion.value} value={opcion.value}>{opcion.label}</option>
           ))}
         </select>

@@ -24,6 +24,8 @@ export default function DeudaPagoPanel({
   const montoCliente = Number(pagoForm.monto_cliente || 0);
   const puedePrevisualizar = deudaAbierta && !guardando && !simulando && montoCliente > 0;
   const puedeRegistrar = deudaAbierta && !guardando && !simulando && previewPago;
+  const saldoRestanteEstimado = Number(previewPago?.saldo_restante_estimado || 0);
+  const cierraDeuda = Boolean(previewPago) && Math.abs(saldoRestanteEstimado) <= 0.01;
   const labelMonto =
     pagoForm.medio_pago === "tarjeta" ? "Monto final en tarjeta" : "Cliente paga";
 
@@ -52,14 +54,9 @@ export default function DeudaPagoPanel({
             }
           />
 
-          <Button
-            type="button"
-            variant="outline"
-            disabled={guardando || simulando}
-            onClick={completarSaldo}
-          >
-            Completar saldo
-          </Button>
+          <div style={fieldHelpStyle}>
+            Escribí la plata que entra ahora. Si paga una parte, calculá y registrá ese pago parcial.
+          </div>
 
           <Select
             label="Medio de pago"
@@ -125,24 +122,40 @@ export default function DeudaPagoPanel({
             />
           </label>
 
-          <Button
-            type="button"
-            variant="outline"
-            fullWidth
-            disabled={!puedePrevisualizar}
-            onClick={previsualizarPago}
-          >
-            {simulando ? "Calculando..." : "Ver preview"}
-          </Button>
+          <div style={actionsGridStyle}>
+            <Button
+              type="button"
+              variant="outline"
+              fullWidth
+              disabled={!puedePrevisualizar}
+              onClick={previsualizarPago}
+            >
+              {simulando ? "Calculando..." : "Calcular este pago"}
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              fullWidth
+              disabled={guardando || simulando}
+              onClick={completarSaldo}
+            >
+              Calcular saldo completo
+            </Button>
+          </div>
 
           {previewPago && <PreviewPagoDeuda preview={previewPago} />}
 
           <Button type="submit" fullWidth disabled={!puedeRegistrar}>
-            {guardando ? "Registrando..." : "Confirmar pago"}
+            {guardando
+              ? "Registrando..."
+              : cierraDeuda
+                ? "Confirmar cancelación total"
+                : "Registrar pago parcial"}
           </Button>
 
           <div style={noteStyle}>
-            Al confirmar, se registra el cobro con el descuento o la financiacion que corresponda.
+            Usá saldo completo solo cuando el cliente cancela toda la deuda. Para entregas chicas, cargá el importe real y registralo como pago parcial.
           </div>
         </form>
       )}
@@ -163,6 +176,11 @@ function PreviewPagoDeuda({ preview }) {
 
       <PreviewRow label="Saldo actual" value={formatMoney(preview.saldo_actual)} />
       <PreviewRow
+        label={preview.medio_pago === "tarjeta" ? "Cliente paga en tarjeta" : "Cliente entrega"}
+        value={formatMoney(preview.monto_total_cobrado)}
+        strong
+      />
+      <PreviewRow
         label="Cubre de la deuda"
         value={formatMoney(preview.monto_base_aplicado)}
       />
@@ -180,12 +198,6 @@ function PreviewPagoDeuda({ preview }) {
           value={`+ ${formatMoney(preview.recargo_aplicado)}`}
         />
       )}
-
-      <PreviewRow
-        label={preview.medio_pago === "tarjeta" ? "Total en tarjeta" : "Cliente paga"}
-        value={formatMoney(preview.monto_total_cobrado)}
-        strong
-      />
 
       <PreviewRow
         label="Saldo estimado"
@@ -236,6 +248,19 @@ const textareaStyle = {
   outline: "none",
   resize: "vertical",
   fontSize: 14,
+};
+
+const fieldHelpStyle = {
+  marginTop: -8,
+  color: "#667085",
+  fontSize: 13,
+  lineHeight: 1.35,
+};
+
+const actionsGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+  gap: 10,
 };
 
 const previewStyle = {

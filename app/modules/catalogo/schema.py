@@ -148,7 +148,33 @@ class CatalogoPOSItemOut(BaseModel):
     oferta_fecha_hasta: object | None = None
 
 TipoItemCatalogo = Literal["producto", "servicio"]
-RubroProducto = Literal["BICICLETAS", "REPUESTOS", "ACCESORIOS", "INDUMENTARIA", "HERRAMIENTAS", "CUBIERTAS AUTO", "SERVICIOS"]
+
+
+class RubroCatalogoOut(BaseModel):
+    id: int
+    nombre: str
+    label: str
+    descripcion: str | None = None
+    activo: bool
+    orden: int = 100
+
+
+class RubroCatalogoCreate(BaseModel):
+    nombre: str = Field(min_length=2, max_length=60)
+    label: str | None = Field(default=None, max_length=80)
+    descripcion: str | None = Field(default=None, max_length=500)
+    orden: int = Field(default=100, ge=0, le=999)
+
+
+class RubroCatalogoUpdate(BaseModel):
+    nombre: str = Field(min_length=2, max_length=60)
+    label: str | None = Field(default=None, max_length=80)
+    descripcion: str | None = Field(default=None, max_length=500)
+    orden: int = Field(default=100, ge=0, le=999)
+
+
+class RubroCatalogoEstadoUpdate(BaseModel):
+    activo: bool
 
 class CatalogoPOSPaginatedOut(BaseModel):
     total: int
@@ -171,7 +197,7 @@ class ProductoCreate(BaseModel):
     id_categoria: int = Field(gt=0)
     id_marca: int | None = Field(default=None, gt=0)
     nombre: str = Field(min_length=2, max_length=150)
-    rubro: RubroProducto = "REPUESTOS"
+    rubro: str = Field(default="REPUESTOS", min_length=2, max_length=60)
     subtipo_catalogo: str | None = Field(default=None, max_length=80)
     tipo_item: TipoItemCatalogo = "producto"
     stockeable: bool = True
@@ -260,7 +286,7 @@ class ProductoUpdate(BaseModel):
     id_categoria: int | None = Field(default=None, gt=0)
     id_marca: int | None = Field(default=None, gt=0)
     nombre: str | None = Field(default=None, min_length=2, max_length=150)
-    rubro: RubroProducto | None = None
+    rubro: str | None = Field(default=None, min_length=2, max_length=60)
     subtipo_catalogo: str | None = Field(default=None, max_length=80)
     tipo_item: TipoItemCatalogo | None = None
     stockeable: bool | None = None

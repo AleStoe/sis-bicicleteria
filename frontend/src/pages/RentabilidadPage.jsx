@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { CalendarDays, FileDown } from "lucide-react";
 import {
+  anularCierreRentabilidad,
   crearCierreRentabilidad,
   descargarResultadoDistribuiblePdf,
   getBonificacionesGarantias,
@@ -17,6 +18,28 @@ const SUCURSAL_ID = 1;
 function mesActual() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+}
+
+function periodoLabel(periodo) {
+  const [year, month] = String(periodo || "").split("-").map(Number);
+  if (!year || !month) return "mes seleccionado";
+  const fecha = new Date(year, month - 1, 1);
+  return new Intl.DateTimeFormat("es-AR", {
+    month: "long",
+    year: "numeric",
+  }).format(fecha);
+}
+
+function periodoTerminado(periodo) {
+  const [year, month] = String(periodo || "").split("-").map(Number);
+  if (!year || !month) return false;
+  const hoy = new Date();
+  const primerDiaSiguienteMes = new Date(year, month, 1);
+  return primerDiaSiguienteMes <= new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+}
+
+function confirmacionPeriodo(periodo) {
+  return periodoLabel(periodo).toUpperCase();
 }
 
 
@@ -59,6 +82,33 @@ const secondaryButton = {
   color: "#101828",
   fontWeight: 800,
   cursor: "pointer",
+};
+
+const dangerButton = {
+  border: "1px solid #fecaca",
+  borderRadius: 10,
+  padding: "8px 10px",
+  background: "#fff1f2",
+  color: "#b91c1c",
+  fontWeight: 900,
+  cursor: "pointer",
+};
+
+const badgeSuccess = {
+  display: "inline-flex",
+  alignItems: "center",
+  borderRadius: 999,
+  padding: "4px 9px",
+  background: "#dcfce7",
+  color: "#166534",
+  fontWeight: 900,
+  fontSize: 12,
+};
+
+const badgeNeutral = {
+  ...badgeSuccess,
+  background: "#f1f5f9",
+  color: "#475569",
 };
 
 const metricHelp = {
@@ -171,7 +221,19 @@ export default function RentabilidadPage() {
       return;
     }
 
-    if (!window.confirm("¿Cerrar este mes? El cierre guarda una foto histórica.")) return;
+    if (!periodoTerminado(periodoMes)) {
+      setError(`Todavía no se puede cerrar ${periodoLabel(periodoMes)}. El cierre sólo se habilita cuando el mes terminó.`);
+      return;
+    }
+
+    const textoConfirmacion = confirmacionPeriodo(periodoMes);
+    const respuesta = window.prompt(
+      `Vas a cerrar ${periodoLabel(periodoMes)}.\n\nEl cierre guarda una foto histórica y distribuye el resultado.\n\nPara confirmar, escribí: ${textoConfirmacion}`,
+    );
+    if (respuesta?.trim().toUpperCase() !== textoConfirmacion) {
+      setError("Cierre cancelado: el texto de confirmación no coincidió con el mes.");
+      return;
+    }
 
     setError("");
     setOk("");
@@ -187,6 +249,30 @@ export default function RentabilidadPage() {
       await cargarBase();
     } catch (err) {
       setError(err.message || "No se pudo cerrar el mes");
+    }
+  }
+
+  async function anularCierre(cierre) {
+    const textoConfirmacion = `ANULAR ${confirmacionPeriodo(cierre.periodo_mes)}`;
+    const respuesta = window.prompt(
+      `Vas a anular el cierre de ${periodoLabel(cierre.periodo_mes)}.\n\nEsto permite volver a cerrarlo después, pero deja auditoría.\n\nPara confirmar, escribí: ${textoConfirmacion}`,
+    );
+    if (respuesta?.trim().toUpperCase() !== textoConfirmacion) {
+      setError("Anulación cancelada: el texto de confirmación no coincidió.");
+      return;
+    }
+
+    setError("");
+    setOk("");
+    try {
+      await anularCierreRentabilidad(cierre.id, {
+        id_usuario: usuarioId,
+        motivo: "Cierre anulado desde Rentabilidad por corrección operativa",
+      });
+      setOk(`Cierre de ${periodoLabel(cierre.periodo_mes)} anulado correctamente`);
+      await cargarBase();
+    } catch (err) {
+      setError(err.message || "No se pudo anular el cierre");
     }
   }
 
@@ -609,18 +695,34 @@ export default function RentabilidadPage() {
                     <th style={{ padding: 10 }}>Resultado</th>
                     <th style={{ padding: 10 }}>Regla</th>
                     <th style={{ padding: 10 }}>Estado</th>
+                    <th style={{ padding: 10, textAlign: "right" }}>Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
                   {cierres.length === 0 ? (
-                    <tr><td colSpan="5" style={{ padding: 18, color: "#667085" }}>Sin cierres todavía</td></tr>
+                    <tr><td colSpan="6" style={{ padding: 18, color: "#667085" }}>Sin cierres todavía</td></tr>
                   ) : cierres.map((c) => (
                     <tr key={c.id} style={{ borderBottom: "1px solid #f2f4f7" }}>
-                      <td style={{ padding: 10 }}>{c.periodo_mes}</td>
+                      <td style={{ padding: 10 }}>{periodoLabel(c.periodo_mes)}</td>
                       <td style={{ padding: 10, fontWeight: 900 }}>{money(c.margen_real)}</td>
                       <td style={{ padding: 10, fontWeight: 900 }}>{money(c.resultado_distribuible)}</td>
                       <td style={{ padding: 10 }}>{c.regla_nombre_snapshot || "-"}</td>
-                      <td style={{ padding: 10 }}>{c.estado}</td>
+                      <td style={{ padding: 10 }}>
+                        <span style={c.estado === "anulado" ? badgeNeutral : badgeSuccess}>
+                          {c.estado === "anulado" ? "Anulado" : "Cerrado"}
+                        </span>
+                      </td>
+                      <td style={{ padding: 10, textAlign: "right" }}>
+                        {c.estado === "cerrado" ? (
+                          <button
+                            type="button"
+                            style={dangerButton}
+                            onClick={() => anularCierre(c)}
+                          >
+                            Anular
+                          </button>
+                        ) : "-"}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

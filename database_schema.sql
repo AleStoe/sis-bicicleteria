@@ -4369,14 +4369,6 @@ ALTER TABLE ONLY public.categorias
 
 
 --
--- Name: cierres_rentabilidad uq_cierres_rentabilidad_periodo_sucursal; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.cierres_rentabilidad
-    ADD CONSTRAINT uq_cierres_rentabilidad_periodo_sucursal UNIQUE (periodo_mes, id_sucursal);
-
-
---
 -- Name: inventario_fisico_items uq_inventario_fisico_item; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -4860,6 +4852,13 @@ CREATE INDEX idx_cierres_rentabilidad_periodo ON public.cierres_rentabilidad USI
 --
 
 CREATE INDEX idx_cierres_rentabilidad_sucursal ON public.cierres_rentabilidad USING btree (id_sucursal);
+
+
+--
+-- Name: uq_cierres_rentabilidad_periodo_sucursal_cerrado; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_cierres_rentabilidad_periodo_sucursal_cerrado ON public.cierres_rentabilidad USING btree (periodo_mes, COALESCE(id_sucursal, (0)::bigint)) WHERE ((estado)::text = 'cerrado'::text);
 
 
 --

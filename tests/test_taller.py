@@ -65,6 +65,168 @@ def test_flujo_base_taller_crear_obtener_y_cambiar_estado(client, seed_taller_ba
     assert detalle_actualizado["eventos"][1]["tipo_evento"] == ORDEN_TALLER_EVENTO_CAMBIO_ESTADO
 
 
+def test_rendimiento_taller_calcula_mano_obra_repuestos_y_ganancia(
+    client,
+    db_conn,
+    seed_taller_basico,
+    seed_venta_basica,
+):
+    orden = _crear_orden_taller_test(client, seed_taller_basico, "Service con repuestos")
+    orden_id = orden["id"]
+    servicio = _crear_servicio_taller_test(client, precio=15000)
+
+    repuesto = client.post(
+        f"/ordenes_taller/{orden_id}/items",
+        json={
+            "tipo_item": "repuesto",
+            "id_variante": seed_venta_basica["variante_id"],
+            "cantidad": 2,
+            "precio_unitario": 10000,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert repuesto.status_code == 201, repuesto.text
+
+    servicio_item = client.post(
+        f"/ordenes_taller/{orden_id}/items",
+        json={
+            "tipo_item": "servicio",
+            "id_servicio_taller": servicio["id"],
+            "cantidad": 1,
+            "precio_unitario": 15000,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert servicio_item.status_code == 201, servicio_item.text
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE ordenes_taller_items
+            SET costo_unitario_aplicado = 4000
+            WHERE id = %s
+            """,
+            (repuesto.json()["id"],),
+        )
+    db_conn.commit()
+
+    response = client.get("/ordenes_taller/rendimiento")
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    fila = next(item for item in payload["ordenes"] if item["id"] == orden_id)
+
+    assert _to_decimal(fila["mano_obra"]) == Decimal("15000.00")
+    assert _to_decimal(fila["repuestos_venta"]) == Decimal("20000.00")
+    assert _to_decimal(fila["costo_repuestos"]) == Decimal("8000.00")
+    assert _to_decimal(fila["margen_repuestos"]) == Decimal("12000.00")
+    assert _to_decimal(fila["total_cliente"]) == Decimal("35000.00")
+    assert _to_decimal(fila["ganancia_estimada"]) == Decimal("27000.00")
+
+
+def test_rendimiento_taller_usa_costo_vigente_si_item_no_esta_ejecutado(
+    client,
+    db_conn,
+    seed_taller_basico,
+    seed_venta_basica,
+):
+    orden = _crear_orden_taller_test(client, seed_taller_basico, "Repuesto pendiente")
+    orden_id = orden["id"]
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE variantes
+            SET costo_promedio_vigente = 4000
+            WHERE id = %s
+            """,
+            (seed_venta_basica["variante_id"],),
+        )
+    db_conn.commit()
+
+    repuesto = client.post(
+        f"/ordenes_taller/{orden_id}/items",
+        json={
+            "tipo_item": "repuesto",
+            "id_variante": seed_venta_basica["variante_id"],
+            "cantidad": 2,
+            "precio_unitario": 10000,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert repuesto.status_code == 201, repuesto.text
+
+    response = client.get("/ordenes_taller/rendimiento")
+
+    assert response.status_code == 200, response.text
+    fila = next(item for item in response.json()["ordenes"] if item["id"] == orden_id)
+
+    assert fila["items_sin_costo"] == 0
+    assert _to_decimal(fila["repuestos_venta"]) == Decimal("20000.00")
+    assert _to_decimal(fila["repuestos_sin_costo_venta"]) == Decimal("0.00")
+    assert _to_decimal(fila["costo_repuestos"]) == Decimal("8000.00")
+    assert _to_decimal(fila["margen_repuestos"]) == Decimal("12000.00")
+    assert _to_decimal(fila["ganancia_estimada"]) == Decimal("12000.00")
+
+
+def test_rendimiento_taller_no_infla_ganancia_con_repuestos_sin_costo(
+    client,
+    db_conn,
+    seed_taller_basico,
+    seed_venta_basica,
+):
+    orden = _crear_orden_taller_test(client, seed_taller_basico, "Repuesto sin costo")
+    orden_id = orden["id"]
+    servicio = _crear_servicio_taller_test(client, precio=12000)
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE variantes
+            SET costo_promedio_vigente = NULL
+            WHERE id = %s
+            """,
+            (seed_venta_basica["variante_id"],),
+        )
+    db_conn.commit()
+
+    repuesto = client.post(
+        f"/ordenes_taller/{orden_id}/items",
+        json={
+            "tipo_item": "repuesto",
+            "id_variante": seed_venta_basica["variante_id"],
+            "cantidad": 2,
+            "precio_unitario": 10000,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert repuesto.status_code == 201, repuesto.text
+
+    servicio_item = client.post(
+        f"/ordenes_taller/{orden_id}/items",
+        json={
+            "tipo_item": "servicio",
+            "id_servicio_taller": servicio["id"],
+            "cantidad": 1,
+            "precio_unitario": 12000,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert servicio_item.status_code == 201, servicio_item.text
+
+    response = client.get("/ordenes_taller/rendimiento")
+
+    assert response.status_code == 200, response.text
+    fila = next(item for item in response.json()["ordenes"] if item["id"] == orden_id)
+
+    assert fila["items_sin_costo"] == 1
+    assert _to_decimal(fila["repuestos_venta"]) == Decimal("20000.00")
+    assert _to_decimal(fila["repuestos_sin_costo_venta"]) == Decimal("20000.00")
+    assert _to_decimal(fila["costo_repuestos"]) == Decimal("0.00")
+    assert _to_decimal(fila["margen_repuestos"]) == Decimal("0.00")
+    assert _to_decimal(fila["ganancia_estimada"]) == Decimal("12000.00")
+
+
 def test_notas_tecnicas_ot_visibilidad_y_trazabilidad(
     client,
     db_conn,
@@ -2548,6 +2710,33 @@ def test_generar_venta_desde_ot_no_duplica_por_doble_request(
 
     assert segunda.status_code == 400, segunda.text
     assert f"#{venta_id}" in segunda.json()["detail"]
+
+
+def test_no_permite_agregar_item_a_ot_con_venta_generada(
+    client,
+    seed_taller_basico,
+):
+    orden_id, venta_id = _crear_ot_facturada_con_venta(client, seed_taller_basico)
+    servicio = _crear_servicio_taller_test(
+        client,
+        nombre="Adicional posterior a venta",
+        precio=2500,
+    )
+
+    response = client.post(
+        f"/ordenes_taller/{orden_id}/items",
+        json={
+            "tipo_item": "servicio",
+            "id_servicio_taller": servicio["id"],
+            "cantidad": 1,
+            "precio_unitario": 2500,
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+
+    assert response.status_code == 400, response.text
+    assert f"#{venta_id}" in response.json()["detail"]
+    assert "nueva venta" in response.json()["detail"]
 
 
 def test_generar_venta_desde_ot_recupera_venta_huerfana_y_bloquea_duplicado(

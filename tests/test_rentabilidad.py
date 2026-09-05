@@ -1,4 +1,5 @@
 from decimal import Decimal
+from datetime import date
 from uuid import uuid4
 
 
@@ -91,6 +92,10 @@ def test_rentabilidad_mensual_devuelve_estructura(client, seed_venta_basica):
     assert "margen_bruto" in data
     assert "gastos_operativos" in data
     assert "resultado_distribuible" in data
+    assert "top_clientes" in data
+    assert "productos_estrella_por_rubro" in data
+    assert isinstance(data["top_clientes"], list)
+    assert isinstance(data["productos_estrella_por_rubro"], list)
     assert len(data["distribuciones_sugeridas"]) == 3
 
 
@@ -1299,3 +1304,51 @@ def test_cierre_rentabilidad_guarda_snapshot_y_no_permite_duplicado(client, seed
     )
     assert duplicado.status_code == 400
     assert "ya existe" in duplicado.json()["detail"].lower()
+
+
+def test_cierre_rentabilidad_no_permite_cerrar_mes_actual(client, seed_venta_basica):
+    ale = _crear_participante(client, "Ale cierre actual")
+    angel = _crear_participante(client, "Ángel cierre actual")
+    fondo = _crear_participante(client, "Fondo cierre actual", "fondo")
+    regla = _crear_regla(client, ale["id"], angel["id"], fondo["id"], "Regla cierre actual")
+    hoy = date.today()
+
+    response = client.post(
+        "/rentabilidad/cierres",
+        json={
+            "periodo_mes": f"{hoy.year}-{hoy.month:02d}-01",
+            "id_regla_distribucion": regla["id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+
+    assert response.status_code == 400
+    assert "meses ya terminados" in response.json()["detail"]
+
+
+def test_anular_cierre_rentabilidad_permite_rehacer_periodo(client, seed_venta_basica):
+    ale = _crear_participante(client, "Ale cierre anular")
+    angel = _crear_participante(client, "Ángel cierre anular")
+    fondo = _crear_participante(client, "Fondo cierre anular", "fondo")
+    regla = _crear_regla(client, ale["id"], angel["id"], fondo["id"], "Regla cierre anular")
+
+    payload = {
+        "periodo_mes": "2026-06-01",
+        "id_regla_distribucion": regla["id"],
+        "id_usuario": seed_venta_basica["usuario_id"],
+    }
+    crear = client.post("/rentabilidad/cierres", json=payload)
+    assert crear.status_code == 200, crear.text
+
+    anular = client.post(
+        f"/rentabilidad/cierres/{crear.json()['cierre_id']}/anular",
+        json={
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "motivo": "Cierre cargado por error",
+        },
+    )
+    assert anular.status_code == 200, anular.text
+    assert anular.json()["estado"] == "anulado"
+
+    recrear = client.post("/rentabilidad/cierres", json=payload)
+    assert recrear.status_code == 200, recrear.text

@@ -26,6 +26,7 @@ from .schemas import (
     OrdenTallerAvisoRetiroInput,
     OrdenTallerMensajeRetiroOutput,
     OrdenTallerDashboardOutput,
+    OrdenTallerRendimientoOutput,
     OrdenTallerNotaCreate,
     OrdenTallerNotaUpdate,
     OrdenTallerNotaResponse,
@@ -47,6 +48,7 @@ from .service import (
     generar_mensaje_lista_retiro_orden_taller,
     registrar_aviso_retiro_orden_taller,
     obtener_dashboard_taller,
+    obtener_rendimiento_taller,
     crear_nota_orden_taller,
     actualizar_nota_orden_taller,
 )
@@ -93,6 +95,19 @@ def listar_ordenes(
 @router.get("/dashboard/resumen", response_model=OrdenTallerDashboardOutput)
 def dashboard_resumen():
     return obtener_dashboard_taller()
+
+
+@router.get("/rendimiento", response_model=OrdenTallerRendimientoOutput)
+def rendimiento_taller(
+    estado: str | None = None,
+    solo_pendientes: bool = True,
+    id_sucursal: int | None = None,
+):
+    return obtener_rendimiento_taller(
+        estado=estado,
+        solo_pendientes=solo_pendientes,
+        id_sucursal=id_sucursal,
+    )
 
 
 @router.get("/{orden_id}", response_model=OrdenTallerDetalleResponse)

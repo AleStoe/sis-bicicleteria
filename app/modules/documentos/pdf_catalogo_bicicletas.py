@@ -2,13 +2,13 @@ from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
 from io import BytesIO
 
-from PIL import Image
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
 from .pdf import _money, _resolver_imagen_local, _text
+from .pdf_images import imagen_pdf_liviana_limpia
 from .pdf_layout import wrap_text
 from .pdf_metadata import set_pdf_metadata
 from .brand import (
@@ -85,26 +85,7 @@ def _monto_con_recargo(precio, porcentaje_recargo):
 
 
 def _imagen_pdf_liviana(path, cache, max_px=760, quality=72):
-    if not path:
-        return None
-
-    cache_key = str(path)
-    if cache_key in cache:
-        return cache[cache_key]
-
-    try:
-        buffer = BytesIO()
-        img = Image.open(path)
-        img = img.convert("RGB")
-        img.thumbnail((max_px, max_px))
-        img.save(buffer, format="JPEG", quality=quality, optimize=True)
-        buffer.seek(0)
-
-        reader = ImageReader(buffer)
-        cache[cache_key] = reader
-        return reader
-    except Exception:
-        return path
+    return imagen_pdf_liviana_limpia(path, cache, max_px=max_px, quality=quality)
 
 
 def _draw_image_fit_catalogo(c, image, x, y, max_w, max_h):
@@ -285,7 +266,24 @@ def _draw_card(c, item, opciones_pago, x, y, w, h, image_cache):
     image_path = _resolver_imagen_local(item.get("imagen_principal"))
     image_path = _imagen_pdf_liviana(image_path, image_cache)
     if image_path:
-        _draw_image_fit_catalogo(c, image_path, x + 4 * mm, y + h - image_box_h - 4 * mm, w - 8 * mm, image_box_h)
+        c.setFillColorRGB(1, 1, 1)
+        c.roundRect(
+            x + 4 * mm,
+            y + h - image_box_h - 4 * mm,
+            w - 8 * mm,
+            image_box_h,
+            3 * mm,
+            fill=1,
+            stroke=0,
+        )
+        _draw_image_fit_catalogo(
+            c,
+            image_path,
+            x + 4 * mm,
+            y + h - image_box_h - 4 * mm,
+            w - 8 * mm,
+            image_box_h,
+        )
     else:
         c.setFillColorRGB(*ORANGE_SOFT)
         c.roundRect(x + 4 * mm, y + h - image_box_h - 4 * mm, w - 8 * mm, image_box_h, 3 * mm, fill=1, stroke=0)

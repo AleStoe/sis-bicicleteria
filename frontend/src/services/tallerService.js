@@ -1,5 +1,8 @@
 import { apiRequest } from "./api";
-import { getPresupuestoTallerUrl as buildPresupuestoTallerUrl } from "./documentosService";
+import {
+  getHojaReparacionTallerUrl as buildHojaReparacionTallerUrl,
+  getPresupuestoTallerUrl as buildPresupuestoTallerUrl,
+} from "./documentosService";
 
 export function listarOrdenesTaller(params = {}) {
   const query = new URLSearchParams();
@@ -16,6 +19,19 @@ export function listarOrdenesTaller(params = {}) {
 
 export function obtenerDashboardTaller() {
   return apiRequest("/ordenes_taller/dashboard/resumen");
+}
+
+export function obtenerRendimientoTaller(params = {}) {
+  const query = new URLSearchParams();
+
+  if (params.estado) query.set("estado", params.estado);
+  if (params.solo_pendientes !== undefined) {
+    query.set("solo_pendientes", String(params.solo_pendientes));
+  }
+  if (params.id_sucursal) query.set("id_sucursal", String(params.id_sucursal));
+
+  const qs = query.toString();
+  return apiRequest(`/ordenes_taller/rendimiento${qs ? `?${qs}` : ""}`);
 }
 
 export function obtenerOrdenTaller(ordenId) {
@@ -101,6 +117,10 @@ export function generarVentaDesdeOrdenTaller(ordenId, data) {
 
 export function getPresupuestoTallerUrl(ordenId) {
   return buildPresupuestoTallerUrl(ordenId);
+}
+
+export function getHojaReparacionTallerUrl(ordenId) {
+  return buildHojaReparacionTallerUrl(ordenId);
 }
 
 export function actualizarOperativoOrdenTaller(ordenId, data) {

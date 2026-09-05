@@ -318,11 +318,11 @@ export default function useCheckoutVenta({
     ]
   );
 
-  const agregarPago = useCallback(async () => {
+  const prepararPagoActual = useCallback(async () => {
     const errorMonto = validarMontoPago(monto);
     if (errorMonto) {
       setErrorLocal(errorMonto);
-      return;
+      return null;
     }
 
     const errorPlan = validarPlanTarjeta({
@@ -333,7 +333,7 @@ export default function useCheckoutVenta({
 
     if (errorPlan) {
       setErrorLocal(errorPlan);
-      return;
+      return null;
     }
 
     const montoCobradoInput = normalizarMontoPago(monto);
@@ -341,7 +341,7 @@ export default function useCheckoutVenta({
 
     if (!montoBaseInput || montoBaseInput <= 0) {
       setErrorLocal("No se pudo calcular cuanto saldo cubre este cobro");
-      return;
+      return null;
     }
 
     const datosFinancieros = getDatosFinancierosPago();
@@ -358,7 +358,7 @@ export default function useCheckoutVenta({
     const nuevosPagos = [...pagosDraft, pagoDraft];
     const nuevaSimulacion = await simularPagos(nuevosPagos);
 
-    if (!nuevaSimulacion) return;
+    if (!nuevaSimulacion) return null;
 
     const tramoNuevo = nuevaSimulacion.tramos_pago?.[nuevaSimulacion.tramos_pago.length - 1];
 
@@ -373,6 +373,28 @@ export default function useCheckoutVenta({
       };
     });
 
+    return {
+      pagos: pagosConTramo,
+      simulacion: nuevaSimulacion,
+    };
+  }, [
+    calcularBaseParaMontoCobrado,
+    getDatosFinancierosPago,
+    medioPago,
+    monto,
+    pagosDraft,
+    planTarjetaId,
+    planesMedioPago,
+    simularPagos,
+  ]);
+
+  const agregarPago = useCallback(async () => {
+    const preparado = await prepararPagoActual();
+
+    if (!preparado) return false;
+
+    const pagosConTramo = preparado.pagos;
+    const nuevaSimulacion = preparado.simulacion;
     const saldoPendienteLuego = getSaldoPendienteSimulacion(nuevaSimulacion);
 
     setPagosDraft(pagosConTramo);
@@ -391,16 +413,8 @@ export default function useCheckoutVenta({
     }
 
     setErrorLocal("");
-  }, [
-    calcularBaseParaMontoCobrado,
-    getDatosFinancierosPago,
-    medioPago,
-    monto,
-    pagosDraft,
-    planTarjetaId,
-    planesMedioPago,
-    simularPagos,
-  ]);
+    return true;
+  }, [prepararPagoActual]);
 
   const quitarPago = useCallback(
     async (tempId) => {
@@ -413,7 +427,7 @@ export default function useCheckoutVenta({
     [pagosDraft, recalcularSimulacion]
   );
 
-  const finalizarCheckout = useCallback(() => {
+  const finalizarCheckout = useCallback(async () => {
     const errorCheckout = validarCheckoutAntesDeFinalizar({ items, simulando });
 
     if (errorCheckout) {
@@ -421,10 +435,29 @@ export default function useCheckoutVenta({
       return null;
     }
 
-    const creditoAplicadoActual = Number(simulacionActiva?.credito_aplicado ?? 0);
+    let pagosFinales = pagosDraft;
+    let simulacionFinal = simulacionActiva;
+    const montoActual = normalizarMontoPago(monto);
+
+    if (pagosFinales.length === 0 && montoActual > 0) {
+      const preparado = await prepararPagoActual();
+      if (!preparado) return null;
+
+      pagosFinales = preparado.pagos;
+      simulacionFinal = preparado.simulacion;
+      setPagosDraft(pagosFinales);
+      setSimulacion(simulacionFinal);
+      setPreviewSaldar(null);
+      setPreviewMontoActual(null);
+      montoEditadoManualRef.current = false;
+      setMontoState("");
+      setErrorLocal("");
+    }
+
+    const creditoAplicadoActual = Number(simulacionFinal?.credito_aplicado ?? 0);
 
     return {
-      pagos: pagosDraft.map(buildPagoVentaPayload),
+      pagos: pagosFinales.map(buildPagoVentaPayload),
       entregar_ahora: entregarAhora,
       usar_credito: usarCredito && creditoAplicadoActual > 0,
       monto_credito_a_aplicar:
@@ -437,12 +470,13 @@ export default function useCheckoutVenta({
   }, [
     entregarAhora,
     items,
+    monto,
     pagosDraft,
+    prepararPagoActual,
     simulando,
     usarCredito,
     montoCreditoAAplicar,
     simulacionActiva,
-    pendiente,
   ]);
 
   useEffect(() => {
@@ -543,6 +577,7 @@ export default function useCheckoutVenta({
       if (cancelado || !data) return;
 
       const saldoPendientePreview = getSaldoPendienteSimulacion(data);
+      setSimulacion(data);
 
       if (saldoPendientePreview <= 0) {
         setPreviewSaldar(null);

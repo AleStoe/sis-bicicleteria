@@ -25,8 +25,26 @@ export function getPresupuestoTallerUrl(ordenId) {
   return withAccessToken(`${API_BASE_URL}/documentos/taller/${ordenId}/presupuesto`);
 }
 
+export function getHojaReparacionTallerUrl(ordenId) {
+  return withAccessToken(`${API_BASE_URL}/documentos/taller/${ordenId}/hoja-reparacion`);
+}
+
+export function getPaqueteTrabajoTallerUrl(ordenIds = []) {
+  const query = new URLSearchParams();
+  ordenIds.forEach((ordenId) => query.append("orden_ids", String(ordenId)));
+  return withAccessToken(`${API_BASE_URL}/documentos/taller/paquete-trabajo?${query.toString()}`);
+}
+
 export function getCotizacionPdfUrl(cotizacionId) {
   return withAccessToken(`${API_BASE_URL}/documentos/cotizaciones/${cotizacionId}/pdf`);
+}
+
+export function getPedidoClienteBorradorPdfUrl(pedidoId) {
+  return withAccessToken(`${API_BASE_URL}/documentos/pedidos-cliente/${pedidoId}/borrador`);
+}
+
+export function getEstadoDeudaClientePdfUrl(clienteId) {
+  return withAccessToken(`${API_BASE_URL}/documentos/clientes/${clienteId}/estado-deuda`);
 }
 
 export function getEtiquetaDepositoVarianteUrl(varianteId, copias = 1) {

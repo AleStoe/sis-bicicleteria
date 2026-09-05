@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   cambiarEstadoCategoria,
+  cambiarEstadoRubro,
   crearCategoria,
+  crearRubro,
   editarCategoria,
+  editarRubro,
   listarCategorias,
+  listarRubros,
 } from "../services/catalogoService";
 
 const CATEGORIAS_SUGERIDAS = [
@@ -27,16 +31,6 @@ const CATEGORIAS_SUGERIDAS = [
   "Indumentaria",
 ];
 
-const RUBROS_DISPONIBLES = [
-  { nombre: "BICICLETAS", descripcion: "Bicicletas completas y variantes serializables." },
-  { nombre: "REPUESTOS", descripcion: "Piezas, cubiertas, camaras y componentes stockeables." },
-  { nombre: "ACCESORIOS", descripcion: "Accesorios de venta directa para bici o local." },
-  { nombre: "INDUMENTARIA", descripcion: "Ropa, protecciones y articulos personales." },
-  { nombre: "HERRAMIENTAS", descripcion: "Herramientas, extractores, llaves y kits de trabajo." },
-  { nombre: "CUBIERTAS AUTO", descripcion: "Cubiertas de auto separadas del catalogo de bicicletas." },
-  { nombre: "SERVICIOS", descripcion: "Mano de obra y servicios de taller." },
-];
-
 function normalizarTexto(valor) {
   return String(valor || "")
     .trim()
@@ -47,9 +41,13 @@ function normalizarTexto(valor) {
 
 export default function CategoriasCatalogoPage() {
   const [categorias, setCategorias] = useState([]);
+  const [rubros, setRubros] = useState([]);
   const [nombreNuevo, setNombreNuevo] = useState("");
+  const [rubroNuevo, setRubroNuevo] = useState({ nombre: "", label: "", descripcion: "", orden: 100 });
   const [editandoId, setEditandoId] = useState(null);
+  const [editandoRubroId, setEditandoRubroId] = useState(null);
   const [nombreEditado, setNombreEditado] = useState("");
+  const [rubroEditado, setRubroEditado] = useState({ nombre: "", label: "", descripcion: "", orden: 100 });
   const [loading, setLoading] = useState(true);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
@@ -57,6 +55,7 @@ export default function CategoriasCatalogoPage() {
 
   useEffect(() => {
     cargarCategorias();
+    cargarRubros();
   }, []);
 
   const sugeridasPendientes = useMemo(() => {
@@ -74,6 +73,38 @@ export default function CategoriasCatalogoPage() {
       setError(err.message || "No se pudieron cargar las categorías");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function cargarRubros() {
+    try {
+      setError("");
+      const data = await listarRubros({ incluir_inactivos: true });
+      setRubros(data || []);
+    } catch (err) {
+      setError(err.message || "No se pudieron cargar los rubros");
+    }
+  }
+
+  async function crearNuevoRubro(e) {
+    e.preventDefault();
+    if (!rubroNuevo.nombre.trim()) {
+      setError("El nombre del rubro es obligatorio");
+      return;
+    }
+
+    try {
+      setGuardando(true);
+      setError("");
+      setMensaje("");
+      await crearRubro(rubroNuevo);
+      setRubroNuevo({ nombre: "", label: "", descripcion: "", orden: 100 });
+      setMensaje("Rubro creado.");
+      await cargarRubros();
+    } catch (err) {
+      setError(err.message || "No se pudo crear el rubro");
+    } finally {
+      setGuardando(false);
     }
   }
 
@@ -108,6 +139,18 @@ export default function CategoriasCatalogoPage() {
     setMensaje("");
   }
 
+  function iniciarEdicionRubro(rubro) {
+    setEditandoRubroId(rubro.id);
+    setRubroEditado({
+      nombre: rubro.nombre || "",
+      label: rubro.label || "",
+      descripcion: rubro.descripcion || "",
+      orden: rubro.orden ?? 100,
+    });
+    setError("");
+    setMensaje("");
+  }
+
   async function guardarEdicion(categoria) {
     if (!nombreEditado.trim()) {
       setError("El nombre de la categoría es obligatorio");
@@ -131,6 +174,28 @@ export default function CategoriasCatalogoPage() {
     }
   }
 
+  async function guardarEdicionRubro(rubro) {
+    if (!rubroEditado.nombre.trim()) {
+      setError("El nombre del rubro es obligatorio");
+      return;
+    }
+
+    try {
+      setGuardando(true);
+      setError("");
+      setMensaje("");
+      await editarRubro(rubro.id, rubroEditado);
+      setEditandoRubroId(null);
+      setRubroEditado({ nombre: "", label: "", descripcion: "", orden: 100 });
+      setMensaje("Rubro actualizado.");
+      await cargarRubros();
+    } catch (err) {
+      setError(err.message || "No se pudo actualizar el rubro");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
   async function cambiarEstado(categoria) {
     const activar = !categoria.activo;
 
@@ -144,6 +209,23 @@ export default function CategoriasCatalogoPage() {
       await cargarCategorias();
     } catch (err) {
       setError(err.message || "No se pudo cambiar el estado de la categoría");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  async function cambiarEstadoRubroItem(rubro) {
+    const activar = !rubro.activo;
+
+    try {
+      setGuardando(true);
+      setError("");
+      setMensaje("");
+      await cambiarEstadoRubro(rubro.id, { activo: activar });
+      setMensaje(activar ? "Rubro activado." : "Rubro desactivado.");
+      await cargarRubros();
+    } catch (err) {
+      setError(err.message || "No se pudo cambiar el estado del rubro");
     } finally {
       setGuardando(false);
     }
@@ -173,6 +255,7 @@ export default function CategoriasCatalogoPage() {
 
   const activas = categorias.filter((categoria) => categoria.activo).length;
   const inactivas = categorias.length - activas;
+  const rubrosActivos = rubros.filter((rubro) => rubro.activo).length;
 
   return (
     <div style={styles.page}>
@@ -201,25 +284,122 @@ export default function CategoriasCatalogoPage() {
         <Metric label="Total" value={categorias.length} />
         <Metric label="Activas" value={activas} tone="ok" />
         <Metric label="Inactivas" value={inactivas} tone={inactivas > 0 ? "warning" : "muted"} />
-        <Metric label="Rubros" value={RUBROS_DISPONIBLES.length} tone="muted" />
+        <Metric label="Rubros activos" value={rubrosActivos} tone="muted" />
       </section>
 
       <section style={styles.card}>
         <div style={styles.sectionHeader}>
           <div>
-            <h2 style={styles.sectionTitle}>Rubros disponibles</h2>
+            <h2 style={styles.sectionTitle}>Rubros</h2>
             <p style={styles.muted}>
-              Se eligen al cargar o editar productos. No se crean desde esta pantalla para mantener reportes consistentes.
+              Son la clasificación grande del catálogo. Usalos con cuidado porque afectan filtros y reportes.
             </p>
           </div>
+          <button type="button" onClick={cargarRubros} disabled={guardando} style={styles.lightButton}>
+            Refrescar
+          </button>
         </div>
+
+        <form onSubmit={crearNuevoRubro} style={styles.rubroForm}>
+          <input
+            value={rubroNuevo.nombre}
+            onChange={(e) => setRubroNuevo((prev) => ({ ...prev, nombre: e.target.value.toUpperCase() }))}
+            placeholder="Rubro. Ej: RODADOS"
+            style={styles.input}
+          />
+          <input
+            value={rubroNuevo.label}
+            onChange={(e) => setRubroNuevo((prev) => ({ ...prev, label: e.target.value }))}
+            placeholder="Nombre visible. Ej: Rodados"
+            style={styles.input}
+          />
+          <input
+            type="number"
+            min="0"
+            max="999"
+            value={rubroNuevo.orden}
+            onChange={(e) => setRubroNuevo((prev) => ({ ...prev, orden: Number(e.target.value || 100) }))}
+            placeholder="Orden"
+            style={styles.input}
+          />
+          <input
+            value={rubroNuevo.descripcion}
+            onChange={(e) => setRubroNuevo((prev) => ({ ...prev, descripcion: e.target.value }))}
+            placeholder="Descripción corta"
+            style={styles.input}
+          />
+          <button type="submit" disabled={guardando} style={styles.primaryButton}>
+            Crear rubro
+          </button>
+        </form>
+
         <div style={styles.rubroGrid}>
-          {RUBROS_DISPONIBLES.map((rubro) => (
-            <div key={rubro.nombre} style={styles.rubroCard}>
-              <strong>{rubro.nombre}</strong>
-              <span>{rubro.descripcion}</span>
-            </div>
-          ))}
+          {rubros.map((rubro) => {
+            const editando = editandoRubroId === rubro.id;
+            return (
+              <div key={rubro.id} style={styles.rubroCard}>
+                {editando ? (
+                  <>
+                    <input
+                      value={rubroEditado.nombre}
+                      onChange={(e) => setRubroEditado((prev) => ({ ...prev, nombre: e.target.value.toUpperCase() }))}
+                      style={styles.input}
+                    />
+                    <input
+                      value={rubroEditado.label}
+                      onChange={(e) => setRubroEditado((prev) => ({ ...prev, label: e.target.value }))}
+                      style={styles.input}
+                    />
+                    <input
+                      value={rubroEditado.descripcion}
+                      onChange={(e) => setRubroEditado((prev) => ({ ...prev, descripcion: e.target.value }))}
+                      style={styles.input}
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      max="999"
+                      value={rubroEditado.orden}
+                      onChange={(e) => setRubroEditado((prev) => ({ ...prev, orden: Number(e.target.value || 100) }))}
+                      style={styles.input}
+                    />
+                    <div style={styles.actions}>
+                      <button type="button" onClick={() => guardarEdicionRubro(rubro)} disabled={guardando} style={styles.primarySmallButton}>
+                        Guardar
+                      </button>
+                      <button type="button" onClick={() => setEditandoRubroId(null)} disabled={guardando} style={styles.lightButton}>
+                        Cancelar
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div style={styles.rubroTitleRow}>
+                      <strong>{rubro.nombre}</strong>
+                      <span style={rubro.activo ? styles.statusOk : styles.statusMuted}>
+                        {rubro.activo ? "Activo" : "Inactivo"}
+                      </span>
+                    </div>
+                    <span>{rubro.label}</span>
+                    <small>{rubro.descripcion || "Sin descripción"}</small>
+                    <div style={styles.actions}>
+                      <button type="button" onClick={() => iniciarEdicionRubro(rubro)} disabled={guardando} style={styles.lightButton}>
+                        Editar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => cambiarEstadoRubroItem(rubro)}
+                        disabled={guardando}
+                        style={rubro.activo ? styles.warningButton : styles.successButton}
+                      >
+                        {rubro.activo ? "Desactivar" : "Activar"}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
         </div>
       </section>
 
@@ -441,6 +621,13 @@ const styles = {
     gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
     gap: 10,
   },
+  rubroForm: {
+    display: "grid",
+    gridTemplateColumns: "1.1fr 1fr .45fr 1.4fr auto",
+    gap: 10,
+    marginBottom: 14,
+    alignItems: "center",
+  },
   rubroCard: {
     display: "grid",
     gap: 5,
@@ -449,6 +636,12 @@ const styles = {
     padding: 12,
     background: "#fff7ed",
     color: "#0f172a",
+  },
+  rubroTitleRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
   },
   sectionHeader: {
     display: "flex",

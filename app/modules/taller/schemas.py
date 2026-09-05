@@ -69,6 +69,54 @@ class OrdenTallerDashboardOutput(BaseModel):
     total_importe_pendiente: Decimal = Decimal("0")
 
 
+class OrdenTallerRendimientoResumenOutput(BaseModel):
+    ordenes: int = 0
+    items: int = 0
+    servicios: int = 0
+    repuestos: int = 0
+    items_sin_costo: int = 0
+    mano_obra: Decimal = Decimal("0")
+    repuestos_venta: Decimal = Decimal("0")
+    repuestos_sin_costo_venta: Decimal = Decimal("0")
+    costo_repuestos: Decimal = Decimal("0")
+    margen_repuestos: Decimal = Decimal("0")
+    total_cliente: Decimal = Decimal("0")
+    ganancia_estimada: Decimal = Decimal("0")
+
+
+class OrdenTallerRendimientoItemOutput(BaseModel):
+    id: int
+    fecha_ingreso: datetime
+    id_cliente: int
+    cliente_nombre: str | None = None
+    id_bicicleta_cliente: int
+    bicicleta_descripcion: str | None = None
+    bicicleta_numero_cuadro: str | None = None
+    estado: str
+    prioridad: str = "normal"
+    problema_reportado: str
+    fecha_prometida: datetime | None = None
+    dias_en_taller: int | None = None
+    dias_demorados: int | None = None
+    id_venta_generada: int | None = None
+    items: int = 0
+    servicios: int = 0
+    repuestos: int = 0
+    items_sin_costo: int = 0
+    mano_obra: Decimal = Decimal("0")
+    repuestos_venta: Decimal = Decimal("0")
+    repuestos_sin_costo_venta: Decimal = Decimal("0")
+    costo_repuestos: Decimal = Decimal("0")
+    margen_repuestos: Decimal = Decimal("0")
+    total_cliente: Decimal = Decimal("0")
+    ganancia_estimada: Decimal = Decimal("0")
+
+
+class OrdenTallerRendimientoOutput(BaseModel):
+    resumen: OrdenTallerRendimientoResumenOutput
+    ordenes: list[OrdenTallerRendimientoItemOutput] = Field(default_factory=list)
+
+
 class OrdenTallerItemCreate(BaseModel):
     tipo_item: Literal["repuesto", "servicio"] = "repuesto"
     id_variante: int | None = Field(default=None, gt=0)

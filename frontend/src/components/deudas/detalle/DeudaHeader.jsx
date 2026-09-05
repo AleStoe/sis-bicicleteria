@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { Button, PageHeader } from "../../ui";
 import { EstadoDeudaBadge } from "../../../pages/DeudasListPage";
 
-export default function DeudaHeader({ deuda, onRefresh, onCopy }) {
+export default function DeudaHeader({ deuda, onRefresh, onCopy, deudaPdfUrl }) {
   return (
     <PageHeader
       title={
@@ -27,6 +27,17 @@ export default function DeudaHeader({ deuda, onRefresh, onCopy }) {
             <Button variant="outline" onClick={onCopy}>
               Copiar deuda
             </Button>
+          )}
+
+          {deudaPdfUrl && (
+            <a
+              href={deudaPdfUrl}
+              target="_blank"
+              rel="noreferrer"
+              style={{ textDecoration: "none" }}
+            >
+              <Button variant="outline">PDF deuda</Button>
+            </a>
           )}
 
           <Button variant="outline" onClick={onRefresh}>

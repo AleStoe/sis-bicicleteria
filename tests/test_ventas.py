@@ -554,6 +554,17 @@ def test_crear_venta_con_credito_total_la_deja_pagada_total_y_no_toca_caja(
     assert venta["estado"] == "pagada_total"
     assert _to_decimal(venta["saldo_pendiente"]) == Decimal("0")
 
+    pagos = get_pagos_by_venta(db_conn, data["venta_id"])
+    assert pagos == []
+
+    detalle = client.get(f"/ventas/{data['venta_id']}")
+    assert detalle.status_code == 200, detalle.text
+    situacion = detalle.json()["situacion_financiera"]
+    assert _to_decimal(situacion["total_pagado_confirmado"]) == Decimal("0")
+    assert _to_decimal(situacion["resumen"]["credito_aplicado_real"]) == _to_decimal(
+        data["credito_aplicado"]
+    )
+
     creditos = get_creditos_by_cliente(db_conn, seed_venta_basica["cliente_id"])
     assert len(creditos) == 1
     assert _to_decimal(creditos[0]["saldo_actual"]) == (
@@ -1966,6 +1977,119 @@ def test_simular_venta_cliente_con_credito_menor_al_total(
         - _to_decimal(data["credito_base_cubierta"])
     )
     assert _to_decimal(data["saldo_credito_restante"]) == Decimal("0")
+
+
+def test_simular_venta_con_credito_parcial_sugiere_saldar_solo_restante(
+    client, db_conn, seed_venta_basica
+):
+    _crear_credito_por_anulacion(
+        client,
+        db_conn,
+        seed_venta_basica,
+        Decimal("10000"),
+    )
+
+    response = client.post(
+        "/ventas/simular",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "tipo_precio": "minorista",
+            "usar_credito": True,
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 1,
+                }
+            ],
+            "sugerir_saldo_con_medio_pago": {
+                "medio_pago": "efectivo",
+            },
+        },
+    )
+
+    assert response.status_code == 200, response.text
+
+    data = response.json()
+
+    assert _to_decimal(data["credito_aplicado"]) == Decimal("10000")
+    assert _to_decimal(data["monto_base_sugerido_para_saldar"]) == _to_decimal(
+        data["total_a_cobrar"]
+    )
+    assert _to_decimal(data["monto_base_sugerido_para_saldar"]) < _to_decimal(
+        seed_venta_basica["precio_venta"]
+    )
+    assert _to_decimal(data["monto_sugerido_para_saldar"]) < _to_decimal(
+        seed_venta_basica["precio_venta"]
+    )
+
+
+def test_crear_venta_con_credito_parcial_y_pago_embebido_restante(
+    client, db_conn, seed_venta_basica
+):
+    _crear_credito_por_anulacion(
+        client,
+        db_conn,
+        seed_venta_basica,
+        Decimal("10000"),
+    )
+
+    simulacion = client.post(
+        "/ventas/simular",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "tipo_precio": "minorista",
+            "usar_credito": True,
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 1,
+                }
+            ],
+            "sugerir_saldo_con_medio_pago": {
+                "medio_pago": "efectivo",
+            },
+        },
+    )
+    assert simulacion.status_code == 200, simulacion.text
+    sim_data = simulacion.json()
+
+    response = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "usar_credito": True,
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 1,
+                }
+            ],
+            "pagos": [
+                {
+                    "medio_pago": "efectivo",
+                    "monto_base": str(sim_data["monto_base_sugerido_para_saldar"]),
+                }
+            ],
+        },
+    )
+    assert response.status_code == 200, response.text
+
+    data = response.json()
+    assert data["estado"] == "pagada_total"
+    assert _to_decimal(data["credito_aplicado"]) == Decimal("10000")
+    assert _to_decimal(data["saldo_pendiente"]) == Decimal("0")
+
+    venta = get_venta(db_conn, data["venta_id"])
+    assert venta["estado"] == "pagada_total"
+    assert _to_decimal(venta["saldo_pendiente"]) == Decimal("0")
+
+    pagos = get_pagos_by_venta(db_conn, data["venta_id"])
+    assert len(pagos) == 1
+    assert _to_decimal(pagos[0]["monto_base_aplicado"]) == _to_decimal(
+        sim_data["monto_base_sugerido_para_saldar"]
+    )
 
 
 def test_simular_venta_cliente_con_credito_mayor_al_total(
