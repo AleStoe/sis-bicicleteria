@@ -169,6 +169,27 @@ def _get_bicicletas_cliente_por_serializada(conn, bicicleta_id: int):
         return cur.fetchall()
 
 
+def _forzar_descripcion_larga_venta(conn, venta_id: int):
+    descripcion_larga = (
+        "BICICLETA MTB TOPMEGA SUNSHINE R29 ALUMINIO 21V SHIMANO TOURNEY "
+        "FRENO A DISCO MECANICO - TALLE L - NEGRO/ROJO/BLANCO CON DETALLE "
+        "ESPECIAL DE FABRICA"
+    )
+
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE venta_items
+            SET descripcion_snapshot = %s
+            WHERE id_venta = %s
+            """,
+            (descripcion_larga, venta_id),
+        )
+
+    conn.commit()
+    return descripcion_larga
+
+
 def _get_movimientos_serializacion(conn, bicicleta_id: int):
     with conn.cursor() as cur:
         cur.execute(
@@ -863,6 +884,7 @@ def test_asignar_numero_cuadro_a_venta_en_caja_entregada_sin_mover_stock(
     detalle = client.get(f"/ventas/{venta_id}")
     assert detalle.status_code == 200, detalle.text
     item_id = detalle.json()["items"][0]["id"]
+    descripcion_larga = _forzar_descripcion_larga_venta(db_conn, venta_id)
 
     asignar = client.post(
         f"/ventas/{venta_id}/asignar-bicicleta-serializada",
@@ -905,7 +927,12 @@ def test_asignar_numero_cuadro_a_venta_en_caja_entregada_sin_mover_stock(
     with db_conn.cursor() as cur:
         cur.execute(
             """
-            SELECT id_cliente, id_bicicleta_serializada, id_venta_origen, numero_cuadro
+            SELECT
+                id_cliente,
+                id_bicicleta_serializada,
+                id_venta_origen,
+                modelo,
+                numero_cuadro
             FROM bicicletas_clientes
             WHERE id_venta_origen = %s
             """,
@@ -916,6 +943,9 @@ def test_asignar_numero_cuadro_a_venta_en_caja_entregada_sin_mover_stock(
     assert ficha["id_cliente"] == seed_serializacion["cliente_id"]
     assert ficha["id_bicicleta_serializada"] == bicicleta_id
     assert ficha["numero_cuadro"] == "CUADRO-POST-VENTA-001"
+    assert len(ficha["modelo"]) <= 100
+    assert ficha["modelo"].endswith("...")
+    assert descripcion_larga.startswith(ficha["modelo"].removesuffix("..."))
 
     eventos = get_auditoria_by_entidad(db_conn, "venta", venta_id)
     assert any(
@@ -1221,6 +1251,7 @@ def test_entregar_venta_serializada_la_pasa_a_entregada_y_crea_bicicleta_cliente
     crear_venta = _crear_venta_serializada(client, seed_serializacion, bicicleta_id)
     assert crear_venta.status_code == 200, crear_venta.text
     venta_id = crear_venta.json()["venta_id"]
+    descripcion_larga = _forzar_descripcion_larga_venta(db_conn, venta_id)
 
     abrir = _abrir_caja(
         client,
@@ -1261,6 +1292,11 @@ def test_entregar_venta_serializada_la_pasa_a_entregada_y_crea_bicicleta_cliente
     assert len(bicis_cliente) == 1
     assert bicis_cliente[0]["id_cliente"] == seed_serializacion["cliente_id"]
     assert bicis_cliente[0]["id_bicicleta_serializada"] == bicicleta_id
+    assert len(bicis_cliente[0]["modelo"]) <= 100
+    assert bicis_cliente[0]["modelo"].endswith("...")
+    assert descripcion_larga.startswith(
+        bicis_cliente[0]["modelo"].removesuffix("...")
+    )
 
 
 def test_anular_venta_serializada_devuelve_bici_a_disponible(client, db_conn, seed_serializacion):

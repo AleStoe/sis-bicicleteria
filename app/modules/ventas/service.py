@@ -570,6 +570,20 @@ def _validar_venta_anulable(venta, venta_id: int):
         )
 
 
+BICICLETA_CLIENTE_MODELO_MAX_LENGTH = 100
+
+
+def _modelo_bicicleta_cliente(value) -> str | None:
+    texto = str(value or "").strip()
+    if not texto:
+        return None
+
+    if len(texto) <= BICICLETA_CLIENTE_MODELO_MAX_LENGTH:
+        return texto
+
+    return texto[: BICICLETA_CLIENTE_MODELO_MAX_LENGTH - 3].rstrip() + "..."
+
+
 def _validar_y_bloquear_bicicleta_serializada_para_venta(
     conn,
     *,
@@ -1655,7 +1669,9 @@ def asignar_bicicleta_serializada_a_venta(venta_id: int, data):
                         "id_bicicleta_serializada": bicicleta_id,
                         "id_venta_origen": venta_id,
                         "marca": "Bicicleta",
-                        "modelo": item["descripcion_snapshot"],
+                        "modelo": _modelo_bicicleta_cliente(
+                            item["descripcion_snapshot"]
+                        ),
                         "rodado": None,
                         "color": None,
                         "numero_cuadro": numero_cuadro,
@@ -1850,7 +1866,9 @@ def entregar_venta(venta_id: int, data):
                             "id_bicicleta_serializada": bicicleta["id"],
                             "id_venta_origen": venta_id,
                             "marca": "Bicicleta",
-                            "modelo": item["descripcion_snapshot"],
+                            "modelo": _modelo_bicicleta_cliente(
+                                item["descripcion_snapshot"]
+                            ),
                             "rodado": None,
                             "color": None,
                             "numero_cuadro": bicicleta["numero_cuadro"],
