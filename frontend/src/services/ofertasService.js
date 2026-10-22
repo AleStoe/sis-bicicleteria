@@ -35,3 +35,11 @@ export function cambiarEstadoOferta(ofertaId, data) {
     body: JSON.stringify(data),
   });
 }
+
+
+export function cerrarOfertasVencidas(data) {
+  return apiRequest("/ofertas/vencidas/desactivar", {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}

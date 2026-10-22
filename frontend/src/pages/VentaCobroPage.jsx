@@ -1,16 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import PagoVentaPanel from "../components/pagos/PagoVentaPanel";
-import EstadoVentaBadge from "../components/ventas/EstadoVentaBadge";
 import { obtenerVenta } from "../services/ventasService";
-import { listarPagosDeVenta } from "../services/pagosService";
-import { formatDateTime, formatMoney } from "../utils/formatters";
+import { formatDateTime } from "../utils/formatters";
 import {
   Button,
   Card,
   EmptyState,
-  MetricCard,
   PageHeader,
 } from "../components/ui";
 import { puedeCobrarVenta } from "../rules/ventaDetalleActionRules";
@@ -19,7 +16,6 @@ export default function VentaCobroPage() {
   const { ventaId } = useParams();
 
   const [data, setData] = useState(null);
-  const [pagos, setPagos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -32,25 +28,14 @@ export default function VentaCobroPage() {
       setLoading(true);
       setError("");
 
-      const [ventaData, pagosData] = await Promise.all([
-        obtenerVenta(ventaId),
-        listarPagosDeVenta(ventaId),
-      ]);
-
+      const ventaData = await obtenerVenta(ventaId);
       setData(ventaData);
-      setPagos(pagosData || []);
     } catch (err) {
       setError(err.message || "No se pudo cargar el cobro");
     } finally {
       setLoading(false);
     }
   }
-
-  const totalPagadoReal = useMemo(() => {
-    return pagos
-      .filter((pago) => pago.estado === "confirmado")
-      .reduce((acc, pago) => acc + Number(pago.monto_total_cobrado || 0), 0);
-  }, [pagos]);
 
   if (loading) {
     return <EmptyState title="Cargando cobro..." description="Actualizando pagos y saldo de la venta." />;
@@ -64,7 +49,6 @@ export default function VentaCobroPage() {
 
   const tieneDeuda = situacion_financiera?.tiene_deuda;
   const deuda = situacion_financiera?.deuda_abierta;
-  const saldoPendiente = Number(venta.saldo_pendiente || 0);
 
   const cobroDirectoBloqueadoPorDeuda = Boolean(tieneDeuda && deuda);
   const puedeCobrarDirecto = puedeCobrarVenta(venta, situacion_financiera);
@@ -90,27 +74,6 @@ export default function VentaCobroPage() {
       />
 
       {error && <div style={alertStyle}>Error: {error}</div>}
-
-      <section style={heroStyle}>
-        <MetricCard label="Total venta" value={formatMoney(venta.total_final)} />
-
-        <MetricCard
-          label="Pagado real"
-          value={formatMoney(totalPagadoReal)}
-          tone="success"
-        />
-
-        <MetricCard
-          label="Saldo pendiente"
-          value={formatMoney(venta.saldo_pendiente)}
-          tone={saldoPendiente > 0 ? "danger" : "success"}
-        />
-
-        <MetricCard
-          label="Estado"
-          value={<EstadoVentaBadge estado={venta.estado} />}
-        />
-      </section>
 
       {cobroDirectoBloqueadoPorDeuda ? (
         <Card
@@ -139,6 +102,7 @@ export default function VentaCobroPage() {
         <PagoVentaPanel
           ventaId={venta.id}
           venta={venta}
+          situacionFinanciera={situacion_financiera}
           saldoPendiente={venta.saldo_pendiente}
           estadoVenta={venta.estado}
           autoFocusPago
@@ -161,12 +125,6 @@ export default function VentaCobroPage() {
 const pageStyle = {
   display: "grid",
   gap: "16px",
-};
-
-const heroStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
-  gap: "12px",
 };
 
 const alertStyle = {

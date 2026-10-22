@@ -1434,10 +1434,13 @@ def insert_bicicleta_serializada_desde_armado(conn, data: dict):
                 observaciones,
                 id_orden_armado_origen,
                 costo_fabricacion_final,
+                costo_base_unitario,
+                costo_base_origen,
+                costo_total_unitario,
                 fecha_fabricacion,
                 id_usuario_fabricacion
             )
-            VALUES (%s, %s, %s, 'disponible', %s, %s, %s, NOW(), %s)
+            VALUES (%s, %s, %s, 'disponible', %s, %s, %s, %s, 'fabricacion_propia', %s, NOW(), %s)
             RETURNING id
             """,
             (
@@ -1446,6 +1449,8 @@ def insert_bicicleta_serializada_desde_armado(conn, data: dict):
                 data["numero_cuadro"],
                 data.get("observaciones"),
                 data["id_orden_armado_origen"],
+                data["costo_fabricacion_final"],
+                data["costo_fabricacion_final"],
                 data["costo_fabricacion_final"],
                 data["id_usuario_fabricacion"],
             ),

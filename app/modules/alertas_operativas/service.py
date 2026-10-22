@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from fastapi import HTTPException
 
 from app.db.connection import get_connection
@@ -23,15 +25,50 @@ from .repository import (
 )
 
 
+def _separar_alertas_stock(items):
+    reponer_ahora = []
+    stock_bajo = []
+    for row in items:
+        item = dict(row)
+        unidades = Decimal(str(item["unidades_90d"]))
+        disponible = Decimal(str(item["stock_disponible"]))
+        ventas = int(item["ventas_90d"])
+        demanda_mensual = unidades / Decimal(3)
+        es_recurrente = unidades >= 3 and ventas >= 2
+        if not item["es_bicicleta"] and es_recurrente and disponible < demanda_mensual:
+            item["motivo_reposicion"] = "Demanda repetida; menos de un mes de cobertura"
+            reponer_ahora.append(item)
+        else:
+            item["motivo_reposicion"] = (
+                "Bicicleta: revisar reposicion manualmente"
+                if item["es_bicicleta"] else "Sin demanda recurrente o con cobertura suficiente"
+            )
+            stock_bajo.append(item)
+    reponer_ahora.sort(key=lambda item: (
+        Decimal(str(item["stock_disponible"])) > 0,
+        -Decimal(str(item["unidades_90d"])),
+        item["producto_nombre"],
+    ))
+    stock_bajo.sort(key=lambda item: (
+        Decimal(str(item["stock_disponible"])),
+        item["producto_nombre"],
+    ))
+    return reponer_ahora, stock_bajo
+
+
 def obtener_alertas_operativas(dias_lista_retiro: int = 7, stock_umbral: int = 2):
     conn = get_connection()
     try:
+        stock_critico = get_stock_critico(conn, umbral=stock_umbral)
+        reponer_ahora, stock_bajo = _separar_alertas_stock(stock_critico)
         data = {
             "bicis_listas": get_bicis_listas_hace_dias(conn, dias=dias_lista_retiro),
             "reservas_vencidas": get_reservas_vencidas(conn),
             "deudas_vencidas": get_deudas_vencidas(conn),
             "taller_atrasado": get_taller_atrasado(conn),
-            "stock_critico": get_stock_critico(conn, umbral=stock_umbral),
+            "reponer_ahora": reponer_ahora,
+            "stock_bajo": stock_bajo,
+            "stock_critico": stock_critico,
             "ventas_cobradas_no_entregadas": get_ventas_cobradas_no_entregadas(conn),
             "ventas_saldo_sin_deuda": get_ventas_saldo_sin_deuda_formal(conn),
             "ventas_saldo_desincronizado": get_ventas_saldo_desincronizado_con_deuda(conn),

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CalendarDays, FileDown } from "lucide-react";
+import { BarChart3, CalendarDays, ClipboardCheck, FileDown, Layers3, WalletCards } from "lucide-react";
 import {
   anularCierreRentabilidad,
   crearCierreRentabilidad,
@@ -7,7 +7,7 @@ import {
   getBonificacionesGarantias,
   getCierresRentabilidad,
   getReglasRentabilidad,
-  getRentabilidadMensual,
+  getRentabilidadComparacion,
 } from "../services/rentabilidadService";
 import { formatMoney, formatPercent } from "../utils/formatters";
 import { useSession } from "../context/SessionContext";
@@ -142,6 +142,9 @@ export default function RentabilidadPage() {
   const [periodoMes, setPeriodoMes] = useState(mesActual());
   const [idRegla, setIdRegla] = useState("");
   const [rentabilidad, setRentabilidad] = useState(null);
+  const [comparacion, setComparacion] = useState(null);
+  const [vista, setVista] = useState("resumen");
+  const [modoRubros, setModoRubros] = useState("actual");
   const [bonificaciones, setBonificaciones] = useState(null);
   const [bonificacionesError, setBonificacionesError] = useState("");
   const [mostrarDetalleBonificaciones, setMostrarDetalleBonificaciones] = useState(false);
@@ -149,6 +152,7 @@ export default function RentabilidadPage() {
   const [cierres, setCierres] = useState([]);
   const [loading, setLoading] = useState(false);
   const [descargandoPdf, setDescargandoPdf] = useState(false);
+  const [procesandoCierreId, setProcesandoCierreId] = useState(null);
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
 
@@ -183,7 +187,7 @@ export default function RentabilidadPage() {
         id_sucursal: SUCURSAL_ID,
       };
       const [data, bonificacionesResultado] = await Promise.all([
-        getRentabilidadMensual({
+        getRentabilidadComparacion({
           ...params,
           id_regla_distribucion: idRegla,
         }),
@@ -194,7 +198,8 @@ export default function RentabilidadPage() {
             error: err.message || "No se pudo cargar el informe de bonificaciones",
           })),
       ]);
-      setRentabilidad(data);
+      setComparacion(data);
+      setRentabilidad(data?.actual || null);
       setBonificaciones(bonificacionesResultado.data);
       setBonificacionesError(bonificacionesResultado.error);
     } catch (err) {
@@ -247,32 +252,43 @@ export default function RentabilidadPage() {
       });
       setOk("Mes cerrado correctamente");
       await cargarBase();
+      await cargarRentabilidad();
     } catch (err) {
       setError(err.message || "No se pudo cerrar el mes");
     }
   }
 
   async function anularCierre(cierre) {
-    const textoConfirmacion = `ANULAR ${confirmacionPeriodo(cierre.periodo_mes)}`;
-    const respuesta = window.prompt(
-      `Vas a anular el cierre de ${periodoLabel(cierre.periodo_mes)}.\n\nEsto permite volver a cerrarlo después, pero deja auditoría.\n\nPara confirmar, escribí: ${textoConfirmacion}`,
+    if (procesandoCierreId) return;
+
+    const confirmado = window.confirm(
+      `Vas a anular el cierre #${cierre.id} de ${periodoLabel(cierre.periodo_mes)}.\n\n` +
+      "Va a quedar como ANULADO en el historial y vas a poder volver a cerrar ese mes correctamente.\n\n" +
+      "¿Confirmás la anulación?",
     );
-    if (respuesta?.trim().toUpperCase() !== textoConfirmacion) {
-      setError("Anulación cancelada: el texto de confirmación no coincidió.");
+    if (!confirmado) {
+      setError("Anulación cancelada.");
       return;
     }
 
     setError("");
     setOk("");
+    setProcesandoCierreId(cierre.id);
     try {
-      await anularCierreRentabilidad(cierre.id, {
+      const cierreAnulado = await anularCierreRentabilidad(cierre.id, {
         id_usuario: usuarioId,
         motivo: "Cierre anulado desde Rentabilidad por corrección operativa",
       });
+      setCierres((prev) =>
+        prev.map((item) => (item.id === cierre.id ? { ...item, ...cierreAnulado } : item))
+      );
       setOk(`Cierre de ${periodoLabel(cierre.periodo_mes)} anulado correctamente`);
       await cargarBase();
+      await cargarRentabilidad();
     } catch (err) {
       setError(err.message || "No se pudo anular el cierre");
+    } finally {
+      setProcesandoCierreId(null);
     }
   }
 
@@ -299,6 +315,13 @@ export default function RentabilidadPage() {
     ? bonificacionesItems
     : bonificacionesItems.slice(0, 5);
   const hayMasBonificaciones = bonificacionesItems.length > bonificacionesVisibles.length;
+  const rubrosPeriodo = [...(rentabilidad?.resumen_por_rubro || [])].sort(
+    (a, b) => Number(b.margen_esperado || 0) - Number(a.margen_esperado || 0)
+  );
+  const unidadesVendidasPeriodo = rubrosPeriodo.reduce(
+    (total, rubro) => total + Number(rubro.cantidad_unidades || 0),
+    0
+  );
 
   return (
     <div style={{ padding: isMobile ? 12 : 24, display: "grid", gap: isMobile ? 12 : 18, minWidth: 0 }}>
@@ -339,91 +362,318 @@ export default function RentabilidadPage() {
         </label>
       </section>
 
-      <section style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(5, minmax(0, 1fr))", gap: isMobile ? 8 : 12, minWidth: 0 }}>
+      <nav
+        aria-label="Vistas de rentabilidad"
+        style={{
+          ...card,
+          padding: 6,
+          display: "grid",
+          gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))",
+          gap: 6,
+          position: "sticky",
+          top: 8,
+          zIndex: 5,
+        }}
+      >
+        {[
+          { id: "resumen", label: "Resumen", Icon: BarChart3 },
+          { id: "rubros", label: "Rubros", Icon: Layers3 },
+          { id: "cobranza", label: "Cobranza", Icon: WalletCards },
+          { id: "control", label: "Control", Icon: ClipboardCheck },
+        ].map(({ id, label, Icon }) => {
+          const activa = vista === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              aria-current={activa ? "page" : undefined}
+              onClick={() => setVista(id)}
+              style={{
+                border: activa ? "1px solid #f97316" : "1px solid transparent",
+                borderRadius: 8,
+                minHeight: 42,
+                padding: "8px 10px",
+                background: activa ? "#fff7ed" : "transparent",
+                color: activa ? "#c2410c" : "#475467",
+                fontWeight: 900,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 7,
+              }}
+            >
+              <Icon size={17} />
+              {label}
+            </button>
+          );
+        })}
+      </nav>
+
+      <section style={{ display: vista === "resumen" ? "grid" : "none", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(5, minmax(0, 1fr))", gap: isMobile ? 8 : 12, minWidth: 0 }}>
         <Metric title="Venta comercial" value={money(rentabilidad?.venta_comercial ?? rentabilidad?.ventas_netas)} help={metricHelp.ventaComercial} />
-        <Metric title="CMV comercial" value={money(rentabilidad?.cmv_comercial ?? rentabilidad?.cmv_neto)} help={metricHelp.cmvComercial} />
         <Metric title="Margen esperado" value={money(rentabilidad?.margen_esperado ?? rentabilidad?.margen_bruto)} help={metricHelp.margenEsperado} />
-        <Metric title="Cobrado comercial" value={money(rentabilidad?.cobrado_comercial_reconocido)} help={metricHelp.cobradoComercial} />
-        <Metric title="Saldo por cobrar" value={money(rentabilidad?.saldo_pendiente_por_cobrar)} help={metricHelp.saldoPorCobrar} />
-        <Metric title="Financiación cobrada" value={money(rentabilidad?.financiacion_cobrada)} help={metricHelp.financiacionCobrada} />
-        <Metric title="Costos financieros" value={money(rentabilidad?.costos_financieros)} help={metricHelp.costosFinancieros} />
-        <Metric title="Capital recuperado" value={money(rentabilidad?.capital_recuperado)} help={metricHelp.capitalRecuperado} />
-        <Metric title="Capital inmovilizado" value={money(rentabilidad?.capital_inmovilizado)} help={metricHelp.capitalInmovilizado} />
         <Metric title="Utilidad liberada" value={money(rentabilidad?.utilidad_liberada)} help={metricHelp.utilidadLiberada} strong />
-        <Metric title="Utilidad pendiente" value={money(rentabilidad?.utilidad_pendiente)} help={metricHelp.utilidadPendiente} />
-        <Metric title="Resultado financiero" value={money(rentabilidad?.resultado_financiero)} help={metricHelp.resultadoFinanciero} />
+        <Metric title="Gastos operativos" value={money(rentabilidad?.gastos_operativos)} help={metricHelp.gastos} />
         <Metric title="Resultado distribuible" value={money(rentabilidad?.resultado_distribuible)} help={metricHelp.resultadoDistribuible} strong />
-        <Metric title="Gastos" value={money(rentabilidad?.gastos_operativos)} help={metricHelp.gastos} />
       </section>
 
-      <section style={{ ...card, padding: isMobile ? 12 : 18, display: "grid", gap: 14, minWidth: 0 }}>
+      <section style={{ ...card, padding: isMobile ? 12 : 18, display: vista === "resumen" ? "grid" : "none", gap: 16, minWidth: 0 }}>
         <div>
           <p style={{ margin: 0, color: "#f97316", fontSize: 12, fontWeight: 950, textTransform: "uppercase" }}>
-            Origen de ingresos
+            Comparacion mensual
           </p>
-          <h2 style={{ margin: "4px 0 0", color: "#101828" }}>Resumen mensual por rubro</h2>
+          <h2 style={{ margin: "4px 0 0", color: "#101828" }}>
+            {periodoLabel(comparacion?.periodo_anterior)} vs. {periodoLabel(comparacion?.periodo_actual)}
+          </h2>
           <p style={{ margin: "5px 0 0", color: "#667085", lineHeight: 1.45 }}>
-            Lectura rápida para ver si el mes vino de taller, bicicletas, accesorios, repuestos o mayorista.
+            Ventas y costos corresponden al mes de la venta. La utilidad liberada corresponde al mes en que se cobro.
           </p>
         </div>
 
-        <div style={{ overflowX: "auto", border: "1px solid #eaecf0", borderRadius: 14 }}>
-          <table style={{ width: "100%", minWidth: 980, borderCollapse: "collapse", fontSize: 13 }}>
+        <div style={{ overflowX: "auto", border: "1px solid #eaecf0", borderRadius: 10 }}>
+          <table style={{ width: "100%", minWidth: 760, borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: "#f8fafc", color: "#475467", textAlign: "left" }}>
+                <th style={tableTh}>Indicador</th>
+                <th style={{ ...tableTh, textAlign: "right" }}>Mes anterior</th>
+                <th style={{ ...tableTh, textAlign: "right" }}>Mes actual</th>
+                <th style={{ ...tableTh, textAlign: "right" }}>Diferencia</th>
+                <th style={{ ...tableTh, textAlign: "right" }}>Variacion</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(comparacion?.metricas || []).map((item) => {
+                const esMargen = item.clave === "margen";
+                const variacion = esMargen ? item.diferencia_puntos_porcentuales : item.variacion_porcentual;
+                const valor = (numero) => esMargen ? formatPercent(numero) : money(numero);
+                return (
+                  <tr key={item.clave} style={{ borderTop: "1px solid #f2f4f7" }}>
+                    <td style={{ ...tableTd, fontWeight: 850 }}>{item.nombre}</td>
+                    <td style={{ ...tableTd, textAlign: "right" }}>{valor(item.anterior)}</td>
+                    <td style={{ ...tableTd, textAlign: "right", fontWeight: 900 }}>{valor(item.actual)}</td>
+                    <td style={{ ...tableTd, textAlign: "right", color: Number(item.diferencia) < 0 ? "#b42318" : "#067647", fontWeight: 900 }}>
+                      {esMargen ? `${Number(item.diferencia).toFixed(2)} pp` : money(item.diferencia)}
+                    </td>
+                    <td style={{ ...tableTd, textAlign: "right" }}>
+                      {variacion === null || variacion === undefined
+                        ? <span style={{ color: "#98a2b3" }}>Sin base anterior</span>
+                        : `${Number(variacion).toFixed(2)}${esMargen ? " pp" : "%"}`}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: isNarrow ? "1fr" : "1.05fr .95fr", gap: 12 }}>
+          <div style={{ border: "1px solid #d0d5dd", borderRadius: 10, padding: 14 }}>
+            <h3 style={{ margin: "0 0 10px", fontSize: 16 }}>De donde sale la diferencia</h3>
+            {(comparacion?.conciliacion_resultado || []).map((item, index, lista) => (
+              <div key={item.clave} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "8px 0", borderTop: index ? "1px solid #f2f4f7" : "none", fontWeight: index === 0 || index === lista.length - 1 ? 950 : 750 }}>
+                <span>{item.nombre}</span>
+                <span style={{ whiteSpace: "nowrap", color: Number(item.importe) < 0 ? "#b42318" : "#067647" }}>{money(item.importe)}</span>
+              </div>
+            ))}
+            <div style={{ marginTop: 10, padding: 10, background: "#f8fafc", borderRadius: 8, color: "#475467", lineHeight: 1.45 }}>
+              Cambio comercial: {money(comparacion?.efecto_ventas)} por vender mas o menos y {money(comparacion?.efecto_margen)} por cambio de margen. Ambos suman la variacion comercial sin duplicarla.
+            </div>
+          </div>
+
+          <div style={{ border: "1px solid #d0d5dd", borderRadius: 10, padding: 14 }}>
+            <h3 style={{ margin: "0 0 10px", fontSize: 16 }}>Lectura automatica</h3>
+            {(comparacion?.explicaciones || []).map((texto) => (
+              <p key={texto} style={{ margin: "0 0 9px", color: "#344054", lineHeight: 1.5 }}>{texto}</p>
+            ))}
+            <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: comparacion?.validacion_actual?.valida ? "#ecfdf3" : "#fff7ed", color: comparacion?.validacion_actual?.valida ? "#067647" : "#b54708", fontWeight: 850 }}>
+              {comparacion?.validacion_actual?.valida ? "Totales por rubro conciliados con el resumen general." : "Hay diferencias entre rubros y resumen general. Revisar ajustes."}
+            </div>
+            {(comparacion?.validacion_actual?.notas || []).map((nota) => (
+              <p key={nota} style={{ margin: "8px 0 0", color: "#667085", fontSize: 13 }}>{nota}</p>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section style={{ ...card, padding: isMobile ? 12 : 18, display: vista === "rubros" ? "grid" : "none", gap: 14, minWidth: 0 }}>
+        <div style={{ display: isMobile ? "grid" : "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+          <div>
+            <p style={{ margin: 0, color: "#f97316", fontSize: 12, fontWeight: 950, textTransform: "uppercase" }}>
+              Origen de ingresos
+            </p>
+            <h2 style={{ margin: "4px 0 0", color: "#101828" }}>Ganancia comercial por rubro</h2>
+            <p style={{ margin: "5px 0 0", color: "#667085", lineHeight: 1.45 }}>
+              {modoRubros === "actual"
+                ? `Lectura operativa de ${periodoLabel(periodoMes)}.`
+                : "Análisis mensual para entender qué rubros explican el cambio de ganancia."}
+            </p>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, padding: 4, border: "1px solid #d0d5dd", borderRadius: 10, background: "#f8fafc", width: isMobile ? "100%" : 330 }}>
+            {[
+              ["actual", "Período actual"],
+              ["comparacion", "Comparar meses"],
+            ].map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setModoRubros(id)}
+                style={{
+                  border: modoRubros === id ? "1px solid #fdba74" : "1px solid transparent",
+                  borderRadius: 7,
+                  padding: "8px 10px",
+                  background: modoRubros === id ? "#fff7ed" : "transparent",
+                  color: modoRubros === id ? "#c2410c" : "#475467",
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {modoRubros === "actual" && (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))", gap: 10 }}>
+              <Metric title="Unidades vendidas" value={String(unidadesVendidasPeriodo)} />
+              <Metric title="Ventas realizadas" value={String(rentabilidad?.cantidad_ventas || 0)} />
+              <Metric title="Venta comercial" value={money(rentabilidad?.venta_comercial)} />
+              <Metric title="Ganancia comercial" value={money(rentabilidad?.margen_esperado)} strong />
+            </div>
+
+            <div style={{ overflowX: "auto", border: "1px solid #eaecf0", borderRadius: 14 }}>
+              <table style={{ width: "100%", minWidth: 880, borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ color: "#475467", textAlign: "left", borderBottom: "1px solid #eaecf0", background: "#f8fafc" }}>
+                    <th style={tableTh}>Rubro</th>
+                    <th style={{ ...tableTh, textAlign: "right" }}>Unidades</th>
+                    <th style={{ ...tableTh, textAlign: "right" }}>Ventas</th>
+                    <th style={{ ...tableTh, textAlign: "right" }}>Venta neta</th>
+                    <th style={{ ...tableTh, textAlign: "right" }}>Costo</th>
+                    <th style={{ ...tableTh, textAlign: "right" }}>Ganancia</th>
+                    <th style={{ ...tableTh, textAlign: "right" }}>Margen</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr><td colSpan="7" style={emptyTd}>Calculando rubros...</td></tr>
+                  ) : rubrosPeriodo.length === 0 ? (
+                    <tr><td colSpan="7" style={emptyTd}>Sin ventas para agrupar en este período.</td></tr>
+                  ) : (
+                    rubrosPeriodo.map((grupo) => {
+                      const margen = Number(grupo.venta_comercial || 0) > 0
+                        ? Number(grupo.margen_esperado || 0) / Number(grupo.venta_comercial) * 100
+                        : null;
+                      return (
+                        <tr key={grupo.clave} style={{ borderBottom: "1px solid #f2f4f7" }}>
+                          <td style={{ ...tableTd, minWidth: 220 }}>
+                            <strong style={{ color: "#101828" }}>{grupo.nombre}</strong>
+                            <div style={{ marginTop: 3, color: "#667085", fontSize: 12 }}>{grupo.detalle}</div>
+                          </td>
+                          <td style={{ ...tableTd, textAlign: "right", fontWeight: 900 }}>{Number(grupo.cantidad_unidades || 0)}</td>
+                          <td style={{ ...tableTd, textAlign: "right" }}>{grupo.cantidad_ventas || 0}</td>
+                          <td style={{ ...tableTd, textAlign: "right" }}>{money(grupo.venta_comercial)}</td>
+                          <td style={{ ...tableTd, textAlign: "right" }}>{money(grupo.cmv_comercial)}</td>
+                          <td style={{ ...tableTd, textAlign: "right", fontWeight: 950, color: Number(grupo.margen_esperado) < 0 ? "#b42318" : "#067647" }}>{money(grupo.margen_esperado)}</td>
+                          <td style={{ ...tableTd, textAlign: "right" }}>{margen === null ? "-" : formatPercent(margen)}</td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        {modoRubros === "comparacion" && (
+          <div style={{ overflowX: "auto", border: "1px solid #eaecf0", borderRadius: 14 }}>
+            <table style={{ width: "100%", minWidth: 1050, borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ color: "#475467", textAlign: "left", borderBottom: "1px solid #eaecf0", background: "#f8fafc" }}>
                 <th style={tableTh}>Rubro</th>
-                <th style={{ ...tableTh, textAlign: "right" }}>Ventas</th>
-                <th style={{ ...tableTh, textAlign: "right" }}>Vendido</th>
-                <th style={{ ...tableTh, textAlign: "right" }}>Costo</th>
-                <th style={{ ...tableTh, textAlign: "right" }}>Margen esperado</th>
-                <th style={{ ...tableTh, textAlign: "right" }}>Cobrado</th>
-                <th style={{ ...tableTh, textAlign: "right" }}>Capital</th>
-                <th style={{ ...tableTh, textAlign: "right" }}>Utilidad</th>
+                <th style={{ ...tableTh, textAlign: "right" }}>Ventas anterior</th>
+                <th style={{ ...tableTh, textAlign: "right" }}>Ventas actual</th>
+                <th style={{ ...tableTh, textAlign: "right" }}>Costos anterior</th>
+                <th style={{ ...tableTh, textAlign: "right" }}>Costos actual</th>
+                <th style={{ ...tableTh, textAlign: "right" }}>Ganancia anterior</th>
+                <th style={{ ...tableTh, textAlign: "right" }}>Ganancia actual</th>
+                <th style={{ ...tableTh, textAlign: "right" }}>Margen ant./act.</th>
+                <th style={{ ...tableTh, textAlign: "right" }}>Impacto</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="8" style={emptyTd}>Calculando rubros...</td>
+                  <td colSpan="9" style={emptyTd}>Calculando rubros...</td>
                 </tr>
-              ) : (rentabilidad?.resumen_por_rubro || []).length === 0 ? (
+              ) : (comparacion?.rubros || []).length === 0 ? (
                 <tr>
-                  <td colSpan="8" style={emptyTd}>Sin ventas para agrupar en este mes.</td>
+                  <td colSpan="9" style={emptyTd}>Sin ventas para agrupar en estos meses.</td>
                 </tr>
               ) : (
-                (rentabilidad?.resumen_por_rubro || []).map((grupo) => (
+                (comparacion?.rubros || []).map((grupo) => (
                   <tr key={grupo.clave} style={{ borderBottom: "1px solid #f2f4f7" }}>
                     <td style={{ ...tableTd, minWidth: 220 }}>
                       <strong style={{ color: "#101828" }}>{grupo.nombre}</strong>
-                      <div style={{ color: "#667085", marginTop: 2, lineHeight: 1.35 }}>{grupo.detalle}</div>
                     </td>
+                    <td style={{ ...tableTd, textAlign: "right" }}>{money(grupo.ventas_anterior)}</td>
+                    <td style={{ ...tableTd, textAlign: "right", fontWeight: 900 }}>{money(grupo.ventas_actual)}</td>
+                    <td style={{ ...tableTd, textAlign: "right" }}>{money(grupo.costos_anterior)}</td>
+                    <td style={{ ...tableTd, textAlign: "right" }}>{money(grupo.costos_actual)}</td>
+                    <td style={{ ...tableTd, textAlign: "right" }}>{money(grupo.ganancia_anterior)}</td>
+                    <td style={{ ...tableTd, textAlign: "right", fontWeight: 900 }}>{money(grupo.ganancia_actual)}</td>
                     <td style={{ ...tableTd, textAlign: "right", whiteSpace: "nowrap" }}>
-                      <strong>{grupo.cantidad_ventas}</strong>
-                      <div style={{ color: "#667085", marginTop: 2 }}>{grupo.cantidad_items} ítem(s)</div>
+                      {grupo.margen_anterior === null ? "-" : formatPercent(grupo.margen_anterior)} / {grupo.margen_actual === null ? "-" : formatPercent(grupo.margen_actual)}
                     </td>
-                    <td style={{ ...tableTd, textAlign: "right", fontWeight: 900 }}>{money(grupo.venta_comercial)}</td>
-                    <td style={{ ...tableTd, textAlign: "right" }}>{money(grupo.cmv_comercial)}</td>
-                    <td style={{ ...tableTd, textAlign: "right", fontWeight: 900 }}>{money(grupo.margen_esperado)}</td>
-                    <td style={{ ...tableTd, textAlign: "right", color: "#2563eb", fontWeight: 900 }}>
-                      {money(grupo.cobrado_comercial_reconocido)}
-                    </td>
-                    <td style={{ ...tableTd, textAlign: "right" }}>
-                      <MiniMoneyLine label="Recuperado" value={grupo.capital_recuperado} />
-                      <MiniMoneyLine label="Inmov." value={grupo.capital_inmovilizado} color="#b42318" />
-                    </td>
-                    <td style={{ ...tableTd, textAlign: "right" }}>
-                      <MiniMoneyLine label="Liberada" value={grupo.utilidad_liberada} strong color="#067647" />
-                      <MiniMoneyLine label="Pendiente" value={grupo.utilidad_pendiente} color="#b54708" />
-                    </td>
+                    <td style={{ ...tableTd, textAlign: "right", fontWeight: 950, color: Number(grupo.variacion_ganancia) < 0 ? "#b42318" : "#067647" }}>{money(grupo.variacion_ganancia)}</td>
                   </tr>
                 ))
               )}
             </tbody>
-          </table>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section style={{ ...card, padding: isMobile ? 12 : 18, display: vista === "cobranza" ? "grid" : "none", gap: 14, minWidth: 0 }}>
+        <div>
+          <p style={{ margin: 0, color: "#2563eb", fontSize: 12, fontWeight: 950, textTransform: "uppercase" }}>Ventas y cobranza</p>
+          <h2 style={{ margin: "4px 0 0", color: "#101828" }}>Que se vendio y que dinero entro</h2>
+          <p style={{ margin: "5px 0 0", color: "#667085", lineHeight: 1.45 }}>
+            Cobrado comercial incluye credito a favor aplicado. Efectivamente cobrado muestra dinero nuevo neto que ingreso por pagos.
+          </p>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: isNarrow ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 12 }}>
+          <div style={{ border: "1px solid #dbeafe", borderRadius: 10, padding: 14, background: "#eff6ff" }}>
+            <strong>Origen de lo cobrado comercial</strong>
+            <MiniMoneyLine label="Ventas de este mes" value={rentabilidad?.cobrado_ventas_periodo} />
+            <MiniMoneyLine label="Ventas anteriores" value={rentabilidad?.cobrado_ventas_anteriores} />
+            <MiniMoneyLine label="Total comercial" value={rentabilidad?.cobrado_comercial_reconocido} strong color="#1d4ed8" />
+          </div>
+          <div style={{ border: "1px solid #bbf7d0", borderRadius: 10, padding: 14, background: "#f0fdf4" }}>
+            <strong>Que libero la cobranza</strong>
+            <MiniMoneyLine label="Capital recuperado" value={rentabilidad?.capital_recuperado} />
+            <MiniMoneyLine label="Utilidad de ventas del mes" value={rentabilidad?.utilidad_liberada_ventas_periodo} />
+            <MiniMoneyLine label="Utilidad de ventas anteriores" value={rentabilidad?.utilidad_liberada_ventas_anteriores} strong color="#067647" />
+          </div>
+          <div style={{ border: "1px solid #fed7aa", borderRadius: 10, padding: 14, background: "#fff7ed" }}>
+            <strong>Conciliacion con dinero ingresado</strong>
+            <MiniMoneyLine label="Cobrado comercial" value={rentabilidad?.cobrado_comercial_reconocido} />
+            <MiniMoneyLine label="Credito aplicado" value={-Number(rentabilidad?.credito_aplicado || 0)} />
+            <MiniMoneyLine label="Resultado financiero" value={rentabilidad?.resultado_financiero} />
+            {Number(rentabilidad?.conciliacion_cobranza_ajuste || 0) !== 0 && <MiniMoneyLine label="Otros ajustes" value={rentabilidad?.conciliacion_cobranza_ajuste} />}
+            <MiniMoneyLine label="Efectivamente cobrado" value={rentabilidad?.ingreso_real_neto} strong color="#c2410c" />
+          </div>
+        </div>
+        <div style={{ color: "#667085", fontSize: 13, lineHeight: 1.45 }}>
+          Los servicios con costo directo cero muestran margen antes de gastos operativos. La mercaderia sin costo cargado se marca como advertencia. El resultado distribuible es contable y no confirma por si solo caja disponible ni obligaciones pendientes.
         </div>
       </section>
 
-      <section style={{ ...card, padding: isMobile ? 12 : 16, display: "grid", gap: 12, minWidth: 0 }}>
+      <section style={{ ...card, padding: isMobile ? 12 : 16, display: vista === "control" ? "grid" : "none", gap: 12, minWidth: 0 }}>
         <div>
           <p style={{ margin: 0, color: "#667085", fontSize: 12, fontWeight: 950, textTransform: "uppercase" }}>
             Auditoría técnica
@@ -440,7 +690,7 @@ export default function RentabilidadPage() {
         </div>
       </section>
 
-      <section style={{ ...card, padding: isMobile ? 12 : 18, display: isMobile ? "grid" : "flex", justifyContent: "space-between", alignItems: "center", gap: 14, minWidth: 0 }}>
+      <section style={{ ...card, padding: isMobile ? 12 : 18, display: vista === "control" ? (isMobile ? "grid" : "flex") : "none", justifyContent: "space-between", alignItems: "center", gap: 14, minWidth: 0 }}>
         <div style={{ minWidth: 0 }}>
           <p style={{ margin: 0, color: "#2563eb", fontSize: 12, fontWeight: 950, textTransform: "uppercase" }}>
             Lectura por día
@@ -467,7 +717,7 @@ export default function RentabilidadPage() {
         </a>
       </section>
 
-      <section style={{ ...card, padding: isMobile ? 12 : 18, display: "grid", gap: 14, minWidth: 0 }}>
+      <section style={{ ...card, padding: isMobile ? 12 : 18, display: vista === "control" ? "grid" : "none", gap: 14, minWidth: 0 }}>
         <div style={{ display: isMobile ? "grid" : "flex", justifyContent: "space-between", gap: 12 }}>
           <div>
             <p style={{ margin: 0, color: "#f97316", fontSize: 12, fontWeight: 950, textTransform: "uppercase" }}>
@@ -648,7 +898,7 @@ export default function RentabilidadPage() {
         </div>
       </section>
 
-      <section style={{ display: "grid", gridTemplateColumns: isNarrow ? "1fr" : "minmax(0, 1.2fr) minmax(360px, .8fr)", gap: isMobile ? 12 : 18, alignItems: "start", minWidth: 0 }}>
+      <section style={{ display: vista === "control" ? "grid" : "none", gridTemplateColumns: isNarrow ? "1fr" : "minmax(0, 1.2fr) minmax(360px, .8fr)", gap: isMobile ? 12 : 18, alignItems: "start", minWidth: 0 }}>
         <div style={{ display: "grid", gap: 18 }}>
           <div style={{ ...card, padding: 16 }}>
             <h2 style={{ margin: "0 0 12px" }}>Resultado distribuible</h2>
@@ -718,8 +968,9 @@ export default function RentabilidadPage() {
                             type="button"
                             style={dangerButton}
                             onClick={() => anularCierre(c)}
+                            disabled={procesandoCierreId === c.id}
                           >
-                            Anular
+                            {procesandoCierreId === c.id ? "Anulando..." : "Anular"}
                           </button>
                         ) : "-"}
                       </td>

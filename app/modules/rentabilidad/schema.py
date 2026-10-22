@@ -78,6 +78,68 @@ class RentabilidadRubroOutput(BaseModel):
     utilidad_pendiente: Decimal = Decimal("0")
 
 
+class RentabilidadComparacionMetricaOutput(BaseModel):
+    clave: str
+    nombre: str
+    anterior: Decimal = Decimal("0")
+    actual: Decimal = Decimal("0")
+    diferencia: Decimal = Decimal("0")
+    variacion_porcentual: Optional[Decimal] = None
+    diferencia_puntos_porcentuales: Optional[Decimal] = None
+
+
+class RentabilidadComparacionRubroOutput(BaseModel):
+    clave: str
+    nombre: str
+    ventas_anterior: Decimal = Decimal("0")
+    ventas_actual: Decimal = Decimal("0")
+    costos_anterior: Decimal = Decimal("0")
+    costos_actual: Decimal = Decimal("0")
+    ganancia_anterior: Decimal = Decimal("0")
+    ganancia_actual: Decimal = Decimal("0")
+    margen_anterior: Optional[Decimal] = None
+    margen_actual: Optional[Decimal] = None
+    variacion_ganancia: Decimal = Decimal("0")
+
+
+class RentabilidadConciliacionItemOutput(BaseModel):
+    clave: str
+    nombre: str
+    importe: Decimal = Decimal("0")
+    detalle: Optional[str] = None
+
+
+class RentabilidadValidacionOutput(BaseModel):
+    valida: bool
+    ventas_rubros: Decimal = Decimal("0")
+    ventas_general: Decimal = Decimal("0")
+    diferencia_ventas: Decimal = Decimal("0")
+    costos_rubros: Decimal = Decimal("0")
+    costos_general: Decimal = Decimal("0")
+    diferencia_costos: Decimal = Decimal("0")
+    ganancia_rubros: Decimal = Decimal("0")
+    ganancia_general: Decimal = Decimal("0")
+    diferencia_ganancia: Decimal = Decimal("0")
+    servicios_costo_cero: int = 0
+    mercaderia_sin_costo: int = 0
+    notas: List[str] = []
+
+
+class RentabilidadComparacionOutput(BaseModel):
+    periodo_actual: date
+    periodo_anterior: date
+    actual: "RentabilidadMensualOutput"
+    anterior: "RentabilidadMensualOutput"
+    metricas: List[RentabilidadComparacionMetricaOutput] = []
+    rubros: List[RentabilidadComparacionRubroOutput] = []
+    conciliacion_resultado: List[RentabilidadConciliacionItemOutput] = []
+    efecto_ventas: Decimal = Decimal("0")
+    efecto_margen: Decimal = Decimal("0")
+    explicaciones: List[str] = []
+    validacion_actual: RentabilidadValidacionOutput
+    validacion_anterior: RentabilidadValidacionOutput
+
+
 class RentabilidadTopClienteOutput(BaseModel):
     cliente_nombre: str
     cantidad_ventas: int = 0
@@ -117,6 +179,14 @@ class RentabilidadMensualOutput(BaseModel):
     financiacion_cobrada: Decimal = Decimal("0")
     costos_financieros: Decimal = Decimal("0")
     ingreso_real_neto: Decimal = Decimal("0")
+    credito_aplicado: Decimal = Decimal("0")
+    conciliacion_cobranza_ajuste: Decimal = Decimal("0")
+    cobrado_ventas_periodo: Decimal = Decimal("0")
+    cobrado_ventas_anteriores: Decimal = Decimal("0")
+    capital_recuperado_ventas_periodo: Decimal = Decimal("0")
+    capital_recuperado_ventas_anteriores: Decimal = Decimal("0")
+    utilidad_liberada_ventas_periodo: Decimal = Decimal("0")
+    utilidad_liberada_ventas_anteriores: Decimal = Decimal("0")
     resultado_financiero: Decimal = Decimal("0")
 
     cmv_bruto: Decimal

@@ -58,3 +58,29 @@ def test_frontend_prorated_margin_stays_in_technical_audit_section():
     assert rentabilidad_page.index("Auditoría técnica") < rentabilidad_page.index("Margen prorrateado")
     assert 'AuditSection title="Auditoría técnica" rows={ajusteRows}' in diaria_page
     assert 'Metric title="Margen prorrateado"' not in diaria_page
+
+
+def test_frontend_rentabilidad_separa_el_informe_en_vistas_operativas():
+    page = (ROOT / "frontend" / "src" / "pages" / "RentabilidadPage.jsx").read_text(
+        encoding="utf-8"
+    )
+
+    for vista in ("resumen", "rubros", "cobranza", "control"):
+        assert f'id: "{vista}"' in page
+        assert f'vista === "{vista}"' in page
+
+    bloque_resumen = page[page.index('display: vista === "resumen"'):page.index('display: vista === "resumen"', page.index('display: vista === "resumen"') + 1)]
+    assert bloque_resumen.count("<Metric ") == 5
+
+
+def test_frontend_rubros_prioriza_el_periodo_actual_y_conserva_comparacion():
+    page = (ROOT / "frontend" / "src" / "pages" / "RentabilidadPage.jsx").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'useState("actual")' in page
+    assert '"Período actual"' in page
+    assert '"Comparar meses"' in page
+    assert 'title="Unidades vendidas"' in page
+    assert '>Unidades</th>' in page
+    assert '>Ganancia</th>' in page

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Eye, RefreshCw, Search, Tags } from "lucide-react";
+import { Eye, RefreshCw, Tags } from "lucide-react";
 import { listarProductos, listarRubros, listarVariantes } from "../services/catalogoService";
 import { Button, EmptyState, MetricCard, PageHeader, ResponsiveMetricsGrid } from "../components/ui";
+import SearchField from "../components/ui/SearchField";
 import { formatMoney } from "../utils/formatters";
 import { colors, controls, radius, shadows, spacing, typography } from "../theme";
 
@@ -188,15 +189,13 @@ export default function CatalogoMaestroPage() {
       </ResponsiveMetricsGrid>
 
       <section style={styles.filters}>
-        <label style={styles.searchBox}>
-          <Search size={18} />
-          <input
+        <SearchField
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={setQuery}
             placeholder="Buscar por producto, marca, categoria, rodado o rubro..."
-            style={styles.searchInput}
-          />
-        </label>
+            style={styles.searchBox}
+            inputStyle={styles.searchInput}
+        />
         <select value={rubro} onChange={(event) => setRubro(event.target.value)} style={styles.input}>
           {rubrosOpciones.map((opcion) => (
             <option key={opcion.value} value={opcion.value}>{opcion.label}</option>

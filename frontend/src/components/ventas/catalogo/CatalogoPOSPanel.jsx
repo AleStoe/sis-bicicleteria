@@ -1,4 +1,5 @@
 import ProductoPOSCard from "./ProductoPOSCard";
+import SearchField from "../../ui/SearchField";
 
 export default function CatalogoPOSPanel({
   query,
@@ -8,7 +9,7 @@ export default function CatalogoPOSPanel({
   buscando,
   tipoPrecio,
   onQueryChange,
-  onBuscarEnter,
+  onBuscar,
   onRecargarCatalogo,
   onCategoriaChange,
   onAgregarItem,
@@ -37,15 +38,16 @@ export default function CatalogoPOSPanel({
   return (
     <section style={{ ...leftPanelStyle, ...(isMobile ? mobileLeftPanelStyle : {}) }}>
       <div style={{ ...searchRowStyle, ...(isMobile ? mobileSearchRowStyle : {}) }}>
-        <input
-          ref={searchInputRef}
+        <SearchField
+          inputRef={searchInputRef}
           value={query}
-          onChange={(e) => onQueryChange(e.target.value)}
-          onKeyDown={onBuscarEnter}
+          onChange={onQueryChange}
+          onSearch={onBuscar}
           placeholder="Producto, talle, SKU o código de barras"
-          style={{ ...searchStyle, ...(isMobile ? mobileSearchStyle : {}) }}
+          style={searchFieldStyle}
+          inputStyle={{ ...searchStyle, ...(isMobile ? mobileSearchStyle : {}) }}
         />
-        <button onClick={onRecargarCatalogo} style={iconButtonStyle} disabled={buscando}>
+        <button type="button" onClick={onRecargarCatalogo} style={iconButtonStyle} disabled={buscando} title="Actualizar catálogo">
           {buscando ? "..." : "↻"}
         </button>
       </div>
@@ -96,6 +98,7 @@ const leftPanelStyle = {
 };
 
 const searchRowStyle = { display: "flex", gap: "8px", marginBottom: "12px" };
+const searchFieldStyle = { flex: 1, minWidth: 0 };
 
 const searchStyle = {
   flex: 1,

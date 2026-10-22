@@ -63,12 +63,11 @@ def _detalle_pago_financiero(pago: dict) -> str:
     if medio == "credito":
         base = _decimal(pago.get("monto_base_aplicado"))
         descuento = _decimal(pago.get("monto_descuento_aplicado"))
-        partes = [f"Saldo a favor usado: {monto}"]
+        partes = [f"Saldo a favor aplicado: {monto}"]
         if base > 0:
-            partes.append(f"Cubre venta: {_money(base)}")
+            partes.append(f"Cubre del total: {_money(base)}")
         if descuento > 0:
-            partes.append(f"Beneficio contado: {_money(descuento)}")
-        partes.append("No es ingreso nuevo de caja")
+            partes.append(f"Beneficio aplicado: {_money(descuento)}")
         return " - ".join(partes)
 
     if medio == "efectivo":
@@ -660,16 +659,17 @@ def generar_comprobante_x_pdf(data: dict, incluir_marca_agua: bool = True) -> by
     c.drawRightString(
         width - margin_x - 35 * mm,
         y,
-        "TOTAL FINAL" if creditos_aplicados else "TOTAL COBRADO",
+        "TOTAL FINAL",
     )
     c.drawRightString(width - margin_x, y, _money(venta.get("total_final")))
 
-    if creditos_aplicados:
+    if pagos_reales or creditos_aplicados:
         y -= 6 * mm
         c.setFont("Helvetica", 9)
         c.drawRightString(width - margin_x - 35 * mm, y, "Cobros reales")
         c.drawRightString(width - margin_x, y, _money(total_cobros_reales))
 
+    if creditos_aplicados:
         y -= 6 * mm
         c.drawRightString(width - margin_x - 35 * mm, y, "Crédito aplicado")
         c.drawRightString(width - margin_x, y, _money(total_credito_usado))

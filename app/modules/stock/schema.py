@@ -36,6 +36,8 @@ class StockSucursalOut(BaseModel):
     dias_sin_movimiento: int | None = None
     unidades_vendidas_total: Decimal = Decimal("0")
     ventas_distintas_total: int = 0
+    unidades_vendidas_90d: Decimal = Decimal("0")
+    ventas_distintas_90d: int = 0
     primer_movimiento_stock: datetime | None = None
 
 
@@ -121,6 +123,11 @@ class PedidoCompraSugeridoItemOut(BaseModel):
     cantidad_sugerida: Decimal
     unidades_vendidas_total: Decimal = Decimal("0")
     ventas_distintas_total: int = 0
+    unidades_vendidas_90d: Decimal = Decimal("0")
+    ventas_distintas_90d: int = 0
+    demanda_mensual: Decimal = Decimal("0")
+    cobertura_dias: Decimal | None = None
+    prioridad_reposicion: str = "revisar"
     ultima_venta: datetime | None = None
     primer_movimiento_stock: datetime | None = None
     motivo: str

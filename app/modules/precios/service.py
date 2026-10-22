@@ -13,6 +13,7 @@ from .repository import (
     get_historial_precios_by_variante,
     get_categoria_by_id,
     get_marca_by_id,
+    get_rubro_by_name,
     insert_regla_precio,
     get_reglas_precio,
     get_regla_precio_by_id,
@@ -272,6 +273,12 @@ def crear_regla_precio(data):
             _validar_marca(conn, data.id_marca)
             _validar_familia_precio(conn, data.id_familia_precio)
             _validar_proveedor(conn, data.id_proveedor)
+            rubro = None
+            if data.rubro:
+                rubro_db = get_rubro_by_name(conn, data.rubro)
+                if rubro_db is None or not rubro_db["activo"]:
+                    raise HTTPException(status_code=400, detail="El rubro no existe o está inactivo")
+                rubro = rubro_db["nombre"]
 
             regla_id = insert_regla_precio(
                 conn,
@@ -281,6 +288,7 @@ def crear_regla_precio(data):
                     "id_marca": data.id_marca,
                     "id_familia_precio": data.id_familia_precio,
                     "id_proveedor": data.id_proveedor,
+                    "rubro": rubro,
                     "tipo_cliente": data.tipo_cliente,
                     "margen_porcentaje": data.margen_porcentaje,
                     "redondeo_base": data.redondeo_base,
@@ -358,6 +366,7 @@ def sugerir_precio_variante(id_variante: int, data):
                 "id_marca": variante["id_marca"],
                 "id_familia_precio": variante["id_familia_precio"],
                 "id_proveedor": variante["proveedor_preferido_id"],
+                "rubro": variante.get("rubro"),
                 "tipo_cliente": data.tipo_cliente,
             },
         )
@@ -430,6 +439,7 @@ def listar_precios_desfasados(
                     "id_marca": variante["id_marca"],
                     "id_familia_precio": variante["id_familia_precio"],
                     "id_proveedor": variante["proveedor_preferido_id"],
+                    "rubro": variante.get("rubro"),
                     "tipo_cliente": tipo_cliente,
                 },
             )
@@ -529,6 +539,7 @@ def recalcular_precios_por_proveedor(data):
                         "id_marca": variante["id_marca"],
                         "id_familia_precio": variante["id_familia_precio"],
                         "id_proveedor": variante["proveedor_preferido_id"],
+                        "rubro": variante.get("rubro"),
                         "tipo_cliente": data.tipo_cliente,
                     },
                 )

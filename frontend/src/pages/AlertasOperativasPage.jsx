@@ -20,7 +20,7 @@ const ALERTA_KEYS = [
   "reservas_vencidas",
   "deudas_vencidas",
   "taller_atrasado",
-  "stock_critico",
+  "reponer_ahora",
   "productos_maestros_incompletos",
   "maestros_inactivos_en_uso",
 ];
@@ -87,7 +87,7 @@ export default function AlertasOperativasPage() {
   async function marcarNoReponer(item) {
     const nombre = formatProductoVariante(item.producto_nombre || "Producto", item.nombre_variante);
     const confirmar = window.confirm(
-      `¿Marcar como "No reponer"?\n\n${nombre}\n\nVa a salir de Stock crítico, pedidos sugeridos y alertas de reposición. No cambia stock, ventas ni visibilidad en catálogo.`
+      `¿Marcar como "No reponer"?\n\n${nombre}\n\nVa a salir de las alertas de stock y pedidos sugeridos. No cambia stock, ventas ni visibilidad en catálogo.`
     );
     if (!confirmar) return;
 
@@ -99,7 +99,7 @@ export default function AlertasOperativasPage() {
         reponer_stock: false,
         id_usuario: usuarioId,
       });
-      setMensaje(`${nombre} marcado como no reponer. Ya no va a ensuciar stock crítico.`);
+      setMensaje(`${nombre} marcado como no reponer. Ya no aparecerá en alertas de reposición.`);
       await cargar();
     } catch (err) {
       setError(err.message || "No se pudo actualizar la reposición");
@@ -307,14 +307,35 @@ export default function AlertasOperativasPage() {
 
           <Seccion titulo="Stock y maestros">
             <AlertaCard
-              title="Stock critico"
-              items={data.stock_critico}
+              title="Reponer ahora"
+              tone="danger"
+              description="Venta repetida en 90 días y menos de un mes de cobertura. No incluye bicicletas."
+              headerLink={{ to: "/stock/pedido-compra?prioridad=reponer_ahora", label: "Ver listado completo" }}
+              items={data.reponer_ahora}
               to={(item) => `/stock?id_variante=${item.id_variante}`}
               render={(item) =>
                 `${formatProductoVariante(
                   item.producto_nombre || "Producto",
                   item.nombre_variante
-                )} · disp. ${item.stock_disponible}`
+                )} · disp. ${item.stock_disponible} · ${item.unidades_90d} vendidas en ${item.ventas_90d} ventas (90 días) · ${item.motivo_reposicion}`
+              }
+              action={(item) => ({
+                label: actualizandoReposicionId === item.id_variante ? "Guardando..." : "No reponer",
+                disabled: actualizandoReposicionId === item.id_variante,
+                onClick: () => marcarNoReponer(item),
+              })}
+            />
+            <AlertaCard
+              title="Stock bajo para revisar"
+              description="Bajo stock sin demanda repetida, o bicicletas que requieren decisión manual."
+              headerLink={{ to: "/stock/pedido-compra?prioridad=revisar", label: "Ver listado completo" }}
+              items={data.stock_bajo}
+              to={(item) => `/stock?id_variante=${item.id_variante}`}
+              render={(item) =>
+                `${formatProductoVariante(
+                  item.producto_nombre || "Producto",
+                  item.nombre_variante
+                )} · disp. ${item.stock_disponible} · ${item.unidades_90d} vendidas en ${item.ventas_90d} ventas (90 días) · ${item.motivo_reposicion}`
               }
               action={(item) => ({
                 label: actualizandoReposicionId === item.id_variante ? "Guardando..." : "No reponer",
@@ -352,7 +373,7 @@ function Seccion({ titulo, children }) {
   );
 }
 
-function AlertaCard({ title, items = [], to, render, tone = "default", description = "", action = null }) {
+function AlertaCard({ title, items = [], to, render, tone = "default", description = "", action = null, headerLink = null }) {
   const countStyle = items.length ? (tone === "danger" ? styles.countDanger : styles.countHot) : styles.count;
   const cardStyle = {
     ...styles.card,
@@ -363,7 +384,10 @@ function AlertaCard({ title, items = [], to, render, tone = "default", descripti
     <article style={cardStyle}>
       <div style={styles.cardHeader}>
         <h3 style={styles.cardTitle}>{title}</h3>
-        <strong style={countStyle}>{items.length}</strong>
+        <div style={styles.cardHeaderActions}>
+          {headerLink && <Link to={headerLink.to} style={styles.cardHeaderLink}>{headerLink.label}</Link>}
+          <strong style={countStyle}>{items.length}</strong>
+        </div>
       </div>
       {description && <p style={styles.cardDescription}>{description}</p>}
       {items.length === 0 ? (
@@ -429,7 +453,7 @@ function crearInformeOperativo(data, totalPendientes) {
     count("pagos_revertidos_hoy") +
     count("cajas_abiertas_anteriores");
   const tallerClientes = count("bicis_listas") + count("reservas_vencidas") + count("deudas_vencidas") + count("taller_atrasado");
-  const stockMaestros = count("stock_critico") + count("productos_maestros_incompletos") + count("maestros_inactivos_en_uso");
+  const stockMaestros = count("reponer_ahora") + count("productos_maestros_incompletos") + count("maestros_inactivos_en_uso");
 
   if (totalPendientes === 0) {
     return [
@@ -619,6 +643,8 @@ const styles = {
   cardDanger: { borderColor: "#fecaca", background: "#fffafa" },
   cardWarning: { borderColor: "#fed7aa", background: "#fffaf2" },
   cardHeader: { display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 10 },
+  cardHeaderActions: { display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" },
+  cardHeaderLink: { color: "#1d4ed8", fontSize: 12, fontWeight: 900, textDecoration: "none" },
   cardTitle: { margin: 0, fontSize: 18 },
   cardDescription: { margin: "-3px 0 10px", color: "#64748b", fontSize: 13, fontWeight: 750, lineHeight: 1.35 },
   count: { background: "#ecfdf5", color: "#047857", borderRadius: 999, padding: "5px 9px" },

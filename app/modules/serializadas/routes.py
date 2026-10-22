@@ -13,6 +13,7 @@ from .schema import (
     BicicletaSerializadaCreateInput,
     BicicletaSerializadaCreateOutput,
     BicicletaSerializadaDetalleOutput,
+    BicicletaSerializadaFichaUpdateInput,
 )
 from .service import (
     armar_bicicleta_serializada,
@@ -20,6 +21,7 @@ from .service import (
     listar_bicicletas_serializadas,
     listar_bicicletas_serializadas_disponibles,
     listar_correcciones_numero_cuadro,
+    actualizar_ficha_bicicleta_serializada,
 )
 
 router = APIRouter()
@@ -31,11 +33,25 @@ def listar_serializadas(
     id_variante: int | None = Query(default=None, gt=0),
     id_sucursal: int | None = Query(default=None, gt=0),
     estado: str | None = Query(default=None),
+    estado_tecnico: str | None = Query(
+        default=None,
+        pattern="^(pendiente_revision|en_acondicionamiento|lista|bloqueada)$",
+    ),
+    condicion_comercial: str | None = Query(
+        default=None,
+        pattern="^(normal|reacondicionada|oferta)$",
+    ),
+    ubicacion_fisica: str | None = Query(default=None, max_length=120),
+    query: str | None = Query(default=None, max_length=120),
 ):
     return listar_bicicletas_serializadas(
         id_variante=id_variante,
         id_sucursal=id_sucursal,
         estado=estado,
+        estado_tecnico=estado_tecnico,
+        condicion_comercial=condicion_comercial,
+        ubicacion_fisica=ubicacion_fisica,
+        query=query,
     )
 
 
@@ -43,10 +59,12 @@ def listar_serializadas(
 def listar_serializadas_disponibles(
     id_variante: int | None = Query(default=None, gt=0),
     id_sucursal: int | None = Query(default=None, gt=0),
+    query: str | None = Query(default=None, max_length=120),
 ):
     return listar_bicicletas_serializadas_disponibles(
         id_variante=id_variante,
         id_sucursal=id_sucursal,
+        query=query,
     )
 
 
@@ -57,6 +75,19 @@ def armar_bicicleta_serializada_route(
 ):
     aplicar_actor_actual(data, usuario)
     return armar_bicicleta_serializada(data)
+
+
+@router.patch(
+    "/{bicicleta_id}/ficha",
+    response_model=BicicletaSerializadaDetalleOutput,
+)
+def actualizar_ficha_serializada_route(
+    bicicleta_id: int,
+    data: BicicletaSerializadaFichaUpdateInput,
+    usuario: CurrentUser = Depends(puede_gestionar_catalogo),
+):
+    aplicar_actor_actual(data, usuario)
+    return actualizar_ficha_bicicleta_serializada(bicicleta_id, data)
 
 
 @router.patch(

@@ -117,6 +117,42 @@ def test_resultado_distribuible_pdf(client, seed_venta_basica):
     assert response.content.startswith(b"%PDF")
 
 
+def test_comparacion_mensual_concilia_resultado_y_rubros(client, seed_venta_basica):
+    response = client.get(
+        "/rentabilidad/mensual/comparacion",
+        params={"periodo_mes": "2026-06-01"},
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["periodo_actual"] == "2026-06-01"
+    assert data["periodo_anterior"] == "2026-05-01"
+
+    pasos = data["conciliacion_resultado"]
+    resultado_anterior = _dec(pasos[0]["importe"])
+    movimientos = sum((_dec(item["importe"]) for item in pasos[1:-1]), Decimal("0"))
+    resultado_actual = _dec(pasos[-1]["importe"])
+    assert resultado_anterior + movimientos == resultado_actual
+
+    cambio_comercial = next(item for item in pasos if item["clave"] == "ganancia_comercial")
+    assert _dec(data["efecto_ventas"]) + _dec(data["efecto_margen"]) == _dec(cambio_comercial["importe"])
+    assert data["validacion_actual"]["valida"] is True
+    assert _dec(data["validacion_actual"]["ventas_rubros"]) == _dec(data["actual"]["venta_comercial"])
+    assert _dec(data["validacion_actual"]["costos_rubros"]) == _dec(data["actual"]["cmv_comercial"])
+    assert _dec(data["validacion_actual"]["ganancia_rubros"]) == _dec(data["actual"]["margen_esperado"])
+
+
+def test_comparacion_no_inventa_porcentaje_si_anterior_es_cero(client, seed_venta_basica):
+    response = client.get(
+        "/rentabilidad/mensual/comparacion",
+        params={"periodo_mes": "2026-06-01"},
+    )
+    assert response.status_code == 200, response.text
+    ventas = next(item for item in response.json()["metricas"] if item["clave"] == "ventas")
+    if _dec(ventas["anterior"]) == 0:
+        assert ventas["variacion_porcentual"] is None
+
+
 def test_rentabilidad_mensual_usa_total_final_de_ventas(client, db_conn, seed_venta_basica):
     crear = client.post(
         "/ventas/",
@@ -1352,3 +1388,139 @@ def test_anular_cierre_rentabilidad_permite_rehacer_periodo(client, seed_venta_b
 
     recrear = client.post("/rentabilidad/cierres", json=payload)
     assert recrear.status_code == 200, recrear.text
+
+
+def test_cobro_deuda_con_credito_libera_ganancia_y_descuenta_beneficio(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    crear = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 1,
+                    "precio_unitario_manual": 650000,
+                    "motivo_precio_manual": "Caso credito y deuda rentabilidad",
+                }
+            ],
+        },
+    )
+    assert crear.status_code == 200, crear.text
+    venta_id = crear.json()["venta_id"]
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE venta_items
+            SET precio_lista = 650000,
+                precio_final = 650000,
+                subtotal = 650000,
+                costo_unitario_aplicado = 420000
+            WHERE id_venta = %s
+            """,
+            (venta_id,),
+        )
+        cur.execute(
+            """
+            UPDATE ventas
+            SET fecha = '2026-07-31 17:00:00-03',
+                estado = 'entregada',
+                subtotal_base = 650000,
+                descuento_total = 25000,
+                recargo_total = 0,
+                total_final = 625000,
+                saldo_pendiente = 0
+            WHERE id = %s
+            """,
+            (venta_id,),
+        )
+        cur.execute(
+            """
+            INSERT INTO creditos_cliente (
+                id_cliente, origen_tipo, origen_id, fecha_origen,
+                saldo_actual, estado, observacion
+            )
+            VALUES (%s, 'ajuste_manual', %s, '2026-07-30 10:00:00-03',
+                    0, 'aplicado_total', 'Credito test rentabilidad')
+            RETURNING id
+            """,
+            (seed_venta_basica["cliente_id"], venta_id),
+        )
+        credito_id = cur.fetchone()["id"]
+        cur.execute(
+            """
+            INSERT INTO credito_movimientos (
+                id_credito, fecha, tipo_movimiento, monto,
+                origen_tipo, origen_id, nota, id_usuario,
+                monto_base_aplicado, monto_descuento_aplicado
+            )
+            VALUES (
+                %s, '2026-07-31 17:00:00-03', 'aplicacion_a_venta', 225000,
+                'venta', %s, 'Credito aplicado a venta test', %s,
+                250000, 25000
+            )
+            """,
+            (credito_id, venta_id, seed_venta_basica["usuario_id"]),
+        )
+        cur.execute(
+            """
+            INSERT INTO deudas_cliente (
+                id_cliente, origen_tipo, origen_id, fecha_origen,
+                saldo_actual, estado, observacion
+            )
+            VALUES (%s, 'venta', %s, '2026-07-31 17:00:00-03',
+                    0, 'cerrada', 'Deuda test cancelada')
+            RETURNING id
+            """,
+            (seed_venta_basica["cliente_id"], venta_id),
+        )
+        deuda_id = cur.fetchone()["id"]
+        cur.execute(
+            """
+            INSERT INTO pagos (
+                fecha, id_cliente, origen_tipo, origen_id, medio_pago,
+                monto_total_cobrado, estado, id_usuario,
+                monto_base_aplicado, monto_descuento_aplicado,
+                monto_recargo_aplicado, monto_costo_financiero,
+                monto_neto_liquidado
+            )
+            VALUES (
+                '2026-08-04 10:00:00-03', %s, 'deuda_cliente', %s,
+                'transferencia', 360000, 'confirmado', %s,
+                400000, 40000, 0, 0, 360000
+            )
+            """,
+            (
+                seed_venta_basica["cliente_id"],
+                deuda_id,
+                seed_venta_basica["usuario_id"],
+            ),
+        )
+    db_conn.commit()
+
+    response = client.get(
+        "/rentabilidad/diaria",
+        params={
+            "fecha": "2026-08-04",
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+        },
+    )
+    assert response.status_code == 200, response.text
+    cobro = next(
+        item for item in response.json()["cobros_ventas"]
+        if item["id_venta"] == venta_id
+    )
+
+    assert _dec(cobro["venta_comercial"]) == Decimal("585000.00")
+    assert _dec(cobro["cmv_comercial"]) == Decimal("420000.00")
+    assert _dec(cobro["margen_esperado"]) == Decimal("165000.00")
+    assert _dec(cobro["capital_recuperado"]) == Decimal("195000.00")
+    assert _dec(cobro["capital_inmovilizado"]) == Decimal("0.00")
+    assert _dec(cobro["utilidad_liberada"]) == Decimal("165000.00")
+    assert _dec(cobro["utilidad_pendiente"]) == Decimal("0.00")

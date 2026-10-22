@@ -29,6 +29,7 @@ from app.modules.documentos.service import (
     obtener_datos_hoja_reparacion_taller,
     obtener_datos_paquete_trabajo_taller,
     obtener_datos_presupuesto_taller,
+    obtener_datos_resumen_cobros_venta,
 )
 from app.modules.documentos.pdf_layout import (
     collapse_repeated_words,
@@ -487,10 +488,10 @@ def test_detalle_pago_financiero_credito_aclara_que_no_es_caja():
         }
     )
 
-    assert "Saldo a favor usado" in detalle
-    assert "Cubre venta" in detalle
-    assert "Beneficio contado" in detalle
-    assert "No es ingreso nuevo de caja" in detalle
+    assert "Saldo a favor aplicado" in detalle
+    assert "Cubre del total" in detalle
+    assert "Beneficio aplicado" in detalle
+    assert "No es ingreso nuevo de caja" not in detalle
 
 
 def test_comprobante_x_incluye_cuadros_de_varias_bicicletas_serializadas(
@@ -860,6 +861,66 @@ def test_resumen_cobros_venta_devuelve_pdf(client, seed_venta_basica):
         f'filename="COB-{str(venta_id).zfill(6)}-{compact_date()}.pdf"'
         in response.headers["content-disposition"]
     )
+    assert response.content.startswith(b"%PDF")
+
+
+def test_resumen_cobros_venta_incluye_credito_aplicado(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    crear = _crear_venta_basica(client, seed_venta_basica)
+    assert crear.status_code == 200
+    venta_id = crear.json()["venta_id"]
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO creditos_cliente (
+                id_cliente,
+                origen_tipo,
+                origen_id,
+                saldo_actual,
+                estado,
+                observacion
+            )
+            VALUES (%s, 'venta', 998, 0, 'aplicado_total', 'Credito resumen')
+            RETURNING id
+            """,
+            (seed_venta_basica["cliente_id"],),
+        )
+        credito_id = cur.fetchone()["id"]
+
+        cur.execute(
+            """
+            INSERT INTO credito_movimientos (
+                id_credito,
+                tipo_movimiento,
+                monto,
+                monto_base_aplicado,
+                monto_descuento_aplicado,
+                origen_tipo,
+                origen_id,
+                nota,
+                id_usuario
+            )
+            VALUES (%s, 'aplicacion_a_venta', 7600, 8444, 844, 'venta', %s, 'Credito aplicado al resumen', %s)
+            """,
+            (credito_id, venta_id, seed_venta_basica["usuario_id"]),
+        )
+    db_conn.commit()
+
+    data = obtener_datos_resumen_cobros_venta(venta_id)
+    credito = next(
+        pago for pago in data["pagos"] if pago["medio_pago"] == "credito"
+    )
+    assert Decimal(str(credito["monto_total_cobrado"])) == Decimal("7600")
+    assert Decimal(str(credito["monto_base_aplicado"])) == Decimal("8444")
+
+    response = client.get(f"/documentos/ventas/{venta_id}/resumen-cobros")
+
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"] == "application/pdf"
     assert response.content.startswith(b"%PDF")
 
 

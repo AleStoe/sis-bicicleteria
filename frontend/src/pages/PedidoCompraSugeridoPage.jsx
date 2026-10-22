@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { ClipboardCopy, RefreshCw } from "lucide-react";
+import { ClipboardCopy, Download, RefreshCw } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import { obtenerPedidoCompraSugerido } from "../services/stockService";
 import { cambiarReponerStockVariante } from "../services/catalogoService";
 import {
@@ -18,6 +19,7 @@ import { useSession } from "../context/SessionContext";
 
 export default function PedidoCompraSugeridoPage() {
   const { usuarioId } = useSession();
+  const [searchParams] = useSearchParams();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -33,6 +35,10 @@ export default function PedidoCompraSugeridoPage() {
   const [recepcionPedido, setRecepcionPedido] = useState(null);
   const [recepcionItems, setRecepcionItems] = useState({});
   const [recepcionObservaciones, setRecepcionObservaciones] = useState("");
+  const [prioridad, setPrioridad] = useState(() => {
+    const value = searchParams.get("prioridad");
+    return ["reponer_ahora", "revisar"].includes(value) ? value : "todos";
+  });
 
   async function cargar() {
     setLoading(true);
@@ -86,10 +92,21 @@ export default function PedidoCompraSugeridoPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const proveedoresVisibles = useMemo(() => {
+    return (data?.proveedores || [])
+      .map((proveedor) => ({
+        ...proveedor,
+        items: (proveedor.items || []).filter(
+          (item) => prioridad === "todos" || item.prioridad_reposicion === prioridad,
+        ),
+      }))
+      .filter((proveedor) => proveedor.items.length > 0);
+  }, [data, prioridad]);
+
   const resumenVisible = useMemo(() => {
     let items = 0;
     let cantidad = 0;
-    for (const proveedor of data?.proveedores || []) {
+    for (const proveedor of proveedoresVisibles) {
       for (const item of proveedor.items || []) {
         if (omitidos.has(String(item.variante_id))) continue;
         items += 1;
@@ -97,7 +114,7 @@ export default function PedidoCompraSugeridoPage() {
       }
     }
     return { items, cantidad };
-  }, [data, cantidades, omitidos]);
+  }, [proveedoresVisibles, cantidades, omitidos]);
 
   function actualizarCantidad(varianteId, value) {
     const limpio = String(value).replace(",", ".").replace(/[^0-9.]/g, "");
@@ -142,6 +159,61 @@ export default function PedidoCompraSugeridoPage() {
     await navigator.clipboard.writeText(texto);
     setCopiado(proveedor.proveedor_nombre);
     window.setTimeout(() => setCopiado(""), 1800);
+  }
+
+  function descargarListado() {
+    const filas = [[
+      "Prioridad",
+      "Proveedor",
+      "Código proveedor",
+      "SKU",
+      "Producto",
+      "Marca",
+      "Categoría",
+      "Stock físico",
+      "Stock disponible",
+      "Unidades vendidas 90 días",
+      "Ventas 90 días",
+      "Demanda mensual",
+      "Cobertura días",
+      "Última venta",
+      "Cantidad a pedir",
+      "Estado",
+    ]];
+
+    for (const proveedor of proveedoresVisibles) {
+      for (const item of proveedor.items || []) {
+        const omitido = omitidos.has(String(item.variante_id));
+        filas.push([
+          item.prioridad_reposicion === "reponer_ahora" ? "Reponer ahora" : "Revisar",
+          proveedor.proveedor_nombre,
+          item.codigo_proveedor || "",
+          item.sku || "",
+          nombreItem(item),
+          item.marca_nombre || "",
+          item.categoria_nombre || "",
+          item.stock_fisico,
+          item.stock_disponible,
+          item.unidades_vendidas_90d || 0,
+          item.ventas_distintas_90d || 0,
+          item.demanda_mensual || 0,
+          item.cobertura_dias ?? "",
+          item.ultima_venta ? formatDate(item.ultima_venta) : "",
+          cantidades[item.variante_id] ?? item.cantidad_sugerida ?? 0,
+          omitido ? "Omitido" : "Incluido",
+        ]);
+      }
+    }
+
+    if (filas.length === 1) return;
+    const csv = filas.map((fila) => fila.map(valorCsv).join(";")).join("\r\n");
+    const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `reposicion-stock-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   async function guardarBorradorProveedor(proveedor) {
@@ -305,6 +377,9 @@ export default function PedidoCompraSugeridoPage() {
         subtitle="Agrupado por proveedor. No afecta stock: sirve para armar, ajustar y copiar el pedido."
         actions={
           <>
+            <Button type="button" variant="outline" onClick={descargarListado} disabled={resumenVisible.items === 0}>
+              <Download size={16} /> Descargar listado
+            </Button>
             <Button type="button" variant="outline" onClick={cargar} disabled={loading}>
               <RefreshCw size={16} /> Actualizar
             </Button>
@@ -338,6 +413,26 @@ export default function PedidoCompraSugeridoPage() {
               style={styles.input}
             />
           </label>
+          <div style={styles.priorityField}>
+            <span>Mostrar</span>
+            <div style={styles.segmented}>
+              {[
+                ["todos", "Todos"],
+                ["reponer_ahora", "Reponer ahora"],
+                ["revisar", "Revisar"],
+              ].map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={prioridad === value}
+                  onClick={() => setPrioridad(value)}
+                  style={prioridad === value ? styles.segmentActive : styles.segment}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
           <Button type="button" onClick={cargar} disabled={loading}>
             Buscar sugeridos
           </Button>
@@ -345,8 +440,8 @@ export default function PedidoCompraSugeridoPage() {
       </Card>
 
       <section style={styles.metrics} data-pedido-metrics="true">
-        <Metric label="Proveedores" value={data?.total_proveedores || 0} />
-        <Metric label="Ítems sugeridos" value={data?.total_items || 0} />
+        <Metric label="Proveedores visibles" value={proveedoresVisibles.length} />
+        <Metric label="Ítems visibles" value={resumenVisible.items} />
         <Metric label="Ítems a pedir" value={resumenVisible.items} />
         <Metric label="Unidades editadas" value={formatNumber(resumenVisible.cantidad)} />
       </section>
@@ -355,9 +450,9 @@ export default function PedidoCompraSugeridoPage() {
         <Card>
           <div style={styles.empty}>Armando pedido sugerido...</div>
         </Card>
-      ) : data?.proveedores?.length ? (
+      ) : proveedoresVisibles.length ? (
         <div style={styles.providers}>
-          {data.proveedores.map((proveedor) => (
+          {proveedoresVisibles.map((proveedor) => (
             <ProveedorPedido
               key={proveedor.id_proveedor ?? "sin-proveedor"}
               proveedor={proveedor}
@@ -667,15 +762,21 @@ function ProveedorPedido({
                   }}
                 >
                   <div style={styles.itemMain}>
-                    <strong style={styles.itemName}>{nombreItem(item)}</strong>
+                    <div style={styles.itemTitleRow}>
+                      <strong style={styles.itemName}>{nombreItem(item)}</strong>
+                      <span style={item.prioridad_reposicion === "reponer_ahora" ? styles.priorityNow : styles.priorityReview}>
+                        {item.prioridad_reposicion === "reponer_ahora" ? "Reponer ahora" : "Revisar"}
+                      </span>
+                    </div>
                     <div style={styles.itemMeta}>
                       {item.marca_nombre || "Sin marca"} · {item.categoria_nombre || "Sin categoría"} · SKU {item.sku || "-"} · Prov {item.codigo_proveedor || "-"}
                     </div>
-                    <div style={styles.itemReason}>{item.motivo}</div>
+                    <div style={item.prioridad_reposicion === "reponer_ahora" ? styles.itemReasonUrgent : styles.itemReason}>{item.motivo}</div>
                   </div>
 
-                  <Mini label="Disponible" value={formatNumber(item.stock_disponible)} />
-                  <Mini label="Vendidas" value={formatNumber(item.unidades_vendidas_total || 0)} />
+                  <Mini label="Stock" value={`${formatNumber(item.stock_disponible)} disp. / ${formatNumber(item.stock_fisico)} fís.`} />
+                  <Mini label="Demanda 90 días" value={`${formatNumber(item.unidades_vendidas_90d || 0)} u. / ${item.ventas_distintas_90d || 0} ventas`} />
+                  <Mini label="Cobertura" value={item.cobertura_dias === null ? "Sin demanda" : `${formatNumber(item.cobertura_dias)} días`} />
                   <Mini label="Última venta" value={formatDate(item.ultima_venta)} />
 
                   <label style={styles.qtyField}>
@@ -761,6 +862,11 @@ function textoPedidoProveedor(proveedor, cantidades, omitidos) {
   return lineas.join("\n");
 }
 
+function valorCsv(value) {
+  const text = String(value ?? "");
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
 function agruparItemsPedido(items = []) {
   const comunes = [];
   const bicicletas = [];
@@ -818,9 +924,43 @@ const styles = {
   },
   filtersBody: {
     display: "grid",
-    gridTemplateColumns: "minmax(240px, 1fr) 180px auto",
+    gridTemplateColumns: "minmax(240px, 1fr) 160px auto auto",
     gap: spacing.md,
     alignItems: "end",
+  },
+  priorityField: {
+    display: "grid",
+    gap: 6,
+    color: colors.textMuted,
+    fontSize: typography.small.fontSize,
+    fontWeight: 850,
+  },
+  segmented: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, auto)",
+    minHeight: 42,
+    border: `1px solid ${colors.border}`,
+    borderRadius: radius.md,
+    overflow: "hidden",
+    background: colors.surface,
+  },
+  segment: {
+    border: 0,
+    borderRight: `1px solid ${colors.borderSoft}`,
+    padding: "0 11px",
+    background: colors.surface,
+    color: colors.textMuted,
+    fontWeight: 850,
+    cursor: "pointer",
+  },
+  segmentActive: {
+    border: 0,
+    borderRight: `1px solid ${colors.borderSoft}`,
+    padding: "0 11px",
+    background: "#eff6ff",
+    color: "#1d4ed8",
+    fontWeight: 950,
+    cursor: "pointer",
   },
   field: {
     display: "grid",
@@ -930,7 +1070,7 @@ const styles = {
   },
   itemRow: {
     display: "grid",
-    gridTemplateColumns: "minmax(260px, 1fr) 100px 100px 120px 110px 190px",
+    gridTemplateColumns: "minmax(260px, 1fr) 115px 130px 100px 110px 100px 175px",
     gap: spacing.md,
     alignItems: "center",
     padding: spacing.md,
@@ -951,6 +1091,32 @@ const styles = {
     fontSize: 15,
     lineHeight: 1.25,
   },
+  itemTitleRow: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  priorityNow: {
+    flexShrink: 0,
+    padding: "3px 7px",
+    borderRadius: radius.full,
+    border: "1px solid #fecaca",
+    background: "#fef2f2",
+    color: "#b91c1c",
+    fontSize: 11,
+    fontWeight: 950,
+  },
+  priorityReview: {
+    flexShrink: 0,
+    padding: "3px 7px",
+    borderRadius: radius.full,
+    border: "1px solid #fde68a",
+    background: "#fffbeb",
+    color: "#92400e",
+    fontSize: 11,
+    fontWeight: 950,
+  },
   itemMeta: {
     color: colors.textMuted,
     fontSize: 12,
@@ -959,6 +1125,12 @@ const styles = {
   itemReason: {
     color: "#9a3412",
     fontSize: 12,
+    lineHeight: 1.35,
+  },
+  itemReasonUrgent: {
+    color: "#b91c1c",
+    fontSize: 12,
+    fontWeight: 850,
     lineHeight: 1.35,
   },
   mini: {

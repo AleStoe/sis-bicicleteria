@@ -26,6 +26,8 @@ import { buildImageUrl } from "../utils/images";
 import { formatMoney, formatNumber } from "../utils/formatters";
 import { Button, Card, PageHeader } from "../components/ui";
 import { colors, radius, shadows, spacing, typography } from "../theme";
+import { listarSerializadasDisponibles } from "../services/serializadasService";
+import VentaItemSerializadaPanel from "../components/ventas/item/VentaItemSerializadaPanel";
 
 const DEFAULT_LIMIT = 50;
 
@@ -44,7 +46,11 @@ function cantidadNumber(value) {
   return Number(value || 0);
 }
 
-function crearItemVentaDesdePedido(item, tipoPrecio) {
+function crearItemVentaDesdePedido(item, tipoPrecio, bicicleta = null) {
+  const oferta = tipoPrecio !== "mayorista" && bicicleta?.oferta_id;
+  const precioResuelto = oferta
+    ? Number(bicicleta.precio_oferta || 0)
+    : getPrecioItemCatalogo(item, tipoPrecio);
   return {
     line_id: crearLineId(),
     id_variante: item.id_variante,
@@ -58,29 +64,34 @@ function crearItemVentaDesdePedido(item, tipoPrecio) {
     stock_disponible: Number(item.stock_disponible || 0),
     precio_minorista: Number(item.precio_minorista || 0),
     precio_mayorista: Number(item.precio_mayorista || 0),
-    precio_lista: getPrecioItemCatalogo(item, tipoPrecio),
-    en_oferta: tipoPrecio !== "mayorista" && Boolean(item.en_oferta),
-    oferta_id: tipoPrecio !== "mayorista" ? item.oferta_id : null,
-    oferta_nombre: tipoPrecio !== "mayorista" ? item.oferta_nombre : null,
+    precio_lista: precioResuelto,
+    en_oferta: Boolean(oferta || (tipoPrecio !== "mayorista" && item.en_oferta)),
+    oferta_id: oferta ? bicicleta.oferta_id : (tipoPrecio !== "mayorista" ? item.oferta_id : null),
+    oferta_nombre: oferta ? bicicleta.oferta_nombre : (tipoPrecio !== "mayorista" ? item.oferta_nombre : null),
     precio_catalogo_original: Number(item.precio_minorista || 0),
-    precio_oferta: tipoPrecio !== "mayorista" ? Number(item.precio_oferta || 0) : null,
+    precio_oferta: oferta ? Number(bicicleta.precio_oferta || 0) : (tipoPrecio !== "mayorista" ? Number(item.precio_oferta || 0) : null),
+    oferta_alcance: oferta ? bicicleta.oferta_alcance : (item.en_oferta ? "variante" : null),
+    oferta_politica_contado: oferta ? bicicleta.oferta_politica_contado : item.oferta_politica_contado,
     tipo_precio_aplicado: tipoPrecio,
     cantidad: item.serializable ? 1 : cantidadNumber(item.cantidad),
     imagen_principal: item.imagen_principal,
-    id_bicicleta_serializada: null,
-    numero_cuadro: "",
-    modo_venta_serializada: item.serializable ? "caja" : undefined,
+    id_bicicleta_serializada: bicicleta?.id || null,
+    numero_cuadro: bicicleta?.numero_cuadro || "",
+    modo_venta_serializada: item.serializable ? "serializada" : undefined,
   };
 }
 
-function expandirItemsParaCheckout(items, tipoPrecio) {
+function expandirItemsParaCheckout(items, tipoPrecio, selecciones, disponiblesPorVariante) {
   const resultado = [];
 
   items.forEach((item) => {
     if (item.serializable) {
       const cantidad = Math.max(1, Math.floor(cantidadNumber(item.cantidad)));
       for (let i = 0; i < cantidad; i += 1) {
-        resultado.push(crearItemVentaDesdePedido(item, tipoPrecio));
+        const bicicletaId = selecciones[`${item.id}-${i}`];
+        const bicicleta = (disponiblesPorVariante[String(item.id_variante)] || [])
+          .find((unidad) => Number(unidad.id) === Number(bicicletaId));
+        resultado.push(crearItemVentaDesdePedido(item, tipoPrecio, bicicleta));
       }
       return;
     }
@@ -105,6 +116,8 @@ export default function PedidoClienteDetallePage() {
   const [loading, setLoading] = useState(false);
   const [productoSeleccionadoId, setProductoSeleccionadoId] = useState(null);
   const [procesando, setProcesando] = useState(false);
+  const [serializadasPorVariante, setSerializadasPorVariante] = useState({});
+  const [seleccionesSerializadas, setSeleccionesSerializadas] = useState({});
 
   const editable = pedido?.estado === "borrador";
   const items = pedido?.items || [];
@@ -121,6 +134,21 @@ export default function PedidoClienteDetallePage() {
     const handle = setTimeout(() => cargarCatalogo(), 250);
     return () => clearTimeout(handle);
   }, [query, categoriaId, pedido?.id_sucursal]);
+
+  useEffect(() => {
+    const serializables = items.filter((item) => item.serializable);
+    if (!pedido?.id_sucursal || serializables.length === 0) return;
+    Promise.all(
+      [...new Set(serializables.map((item) => Number(item.id_variante)))].map(async (idVariante) => {
+        const unidades = await listarSerializadasDisponibles({
+          id_variante: idVariante,
+          id_sucursal: pedido.id_sucursal,
+        });
+        return [String(idVariante), unidades || []];
+      })
+    ).then((pares) => setSerializadasPorVariante(Object.fromEntries(pares)))
+      .catch((err) => toast.error(err.message || "No se pudieron cargar los cuadros disponibles"));
+  }, [pedido?.id_sucursal, pedido?.items]);
 
   async function cargarInicial() {
     try {
@@ -237,7 +265,28 @@ export default function PedidoClienteDetallePage() {
       return;
     }
 
-    const checkoutItems = expandirItemsParaCheckout(items, pedido.tipo_precio);
+    const faltantes = items
+      .filter((item) => item.serializable)
+      .some((item) => Array.from(
+        { length: Math.max(1, Math.floor(cantidadNumber(item.cantidad))) },
+        (_, index) => seleccionesSerializadas[`${item.id}-${index}`]
+      ).some((id) => !id));
+    if (faltantes) {
+      toast.error("Elegí el número de cuadro de cada bicicleta antes de pasar a checkout");
+      return;
+    }
+    const elegidas = Object.values(seleccionesSerializadas).filter(Boolean);
+    if (new Set(elegidas.map(Number)).size !== elegidas.length) {
+      toast.error("El mismo número de cuadro no puede usarse dos veces");
+      return;
+    }
+
+    const checkoutItems = expandirItemsParaCheckout(
+      items,
+      pedido.tipo_precio,
+      seleccionesSerializadas,
+      serializadasPorVariante
+    );
     const total = checkoutItems.reduce(
       (acc, item) => acc + Number(item.precio_lista || 0) * Number(item.cantidad || 0),
       0
@@ -310,7 +359,7 @@ export default function PedidoClienteDetallePage() {
           <CatalogoPOSPanel
             query={query}
             onQueryChange={setQuery}
-            onBuscarEnter={() => {}}
+            onBuscar={() => cargarCatalogo()}
             categoriaId={categoriaId}
             onCategoriaChange={setCategoriaId}
             categorias={categorias}
@@ -406,6 +455,37 @@ export default function PedidoClienteDetallePage() {
                       >
                         <Trash2 size={15} />
                       </button>
+                    )}
+                    {item.serializable && Array.from(
+                      { length: Math.max(1, Math.floor(cantidadNumber(item.cantidad))) },
+                      (_, unidadIndex) => {
+                        const key = `${item.id}-${unidadIndex}`;
+                        const bicicletaId = seleccionesSerializadas[key] || null;
+                        const disponibles = serializadasPorVariante[String(item.id_variante)] || [];
+                        const bici = disponibles.find((unidad) => Number(unidad.id) === Number(bicicletaId));
+                        return (
+                          <div key={key} style={styles.serialSelector}>
+                            <VentaItemSerializadaPanel
+                              titulo={`Unidad ${unidadIndex + 1} de ${Math.max(1, Math.floor(cantidadNumber(item.cantidad)))}`}
+                              item={{
+                                ...item,
+                                id_bicicleta_serializada: bicicletaId,
+                                numero_cuadro: bici?.numero_cuadro || "",
+                                en_oferta: Boolean(bici?.oferta_id || item.en_oferta),
+                                oferta_id: bici?.oferta_id || item.oferta_id,
+                                oferta_nombre: bici?.oferta_nombre || item.oferta_nombre,
+                                precio_oferta: bici?.precio_oferta || item.precio_oferta,
+                                oferta_alcance: bici?.oferta_alcance || (item.en_oferta ? "variante" : null),
+                                oferta_politica_contado: bici?.oferta_politica_contado || item.oferta_politica_contado,
+                                precio_lista: bici?.precio_oferta || getPrecioItemCatalogo(item, pedido.tipo_precio),
+                              }}
+                              bicicletasDisponibles={disponibles}
+                              seleccionarSerializada={(id) => setSeleccionesSerializadas((actual) => ({ ...actual, [key]: id }))}
+                              limpiarSerializada={() => setSeleccionesSerializadas((actual) => ({ ...actual, [key]: null }))}
+                            />
+                          </div>
+                        );
+                      }
                     )}
                   </div>
                 ))
@@ -537,6 +617,7 @@ const styles = {
     padding: 10,
     background: "white",
   },
+  serialSelector: { flex: "1 0 100%", marginTop: 2 },
   itemImageBox: {
     width: 52,
     height: 46,

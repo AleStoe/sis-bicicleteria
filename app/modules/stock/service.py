@@ -5,6 +5,7 @@ from app.modules.authz.service import exigir_permiso_ajustar_stock
 from app.shared.money import to_decimal
 from calendar import monthrange
 from datetime import date
+from decimal import Decimal, ROUND_CEILING
 # =========================================================
 # HELPERS
 # =========================================================
@@ -48,7 +49,7 @@ def obtener_pedido_compra_sugerido(filtros: dict | None = None):
         "id_marca": filtros.get("id_marca"),
         "id_proveedor": filtros.get("id_proveedor"),
         "tipo_operativo": filtros.get("tipo_operativo"),
-        "estado_stock": "stock_bajo",
+        "estado_stock": "reponer",
         "reponer_stock": True,
         "stock_bajo_umbral": stock_bajo_umbral,
         "ordenar_por": "proveedor",
@@ -72,13 +73,35 @@ def obtener_pedido_compra_sugerido(filtros: dict | None = None):
         proveedor_id = item.get("id_proveedor")
         proveedor_nombre = item.get("proveedor_nombre") or "Sin proveedor asignado"
         clave = proveedor_id if proveedor_id is not None else "sin_proveedor"
-        vendidas = to_decimal(item.get("unidades_vendidas_total") or 0)
-        ventas = int(item.get("ventas_distintas_total") or 0)
+        vendidas = to_decimal(item.get("unidades_vendidas_90d") or 0)
+        ventas = int(item.get("ventas_distintas_90d") or 0)
+        demanda_mensual = vendidas / Decimal("3")
+        es_bicicleta = item.get("tipo_operativo") == "bicicleta" or item.get("serializable") is True
+        es_recurrente = vendidas >= Decimal("3") and ventas >= 2
+        reponer_ahora = not es_bicicleta and es_recurrente and disponible < demanda_mensual
+        cobertura_dias = (
+            (disponible * Decimal("90") / vendidas).quantize(Decimal("0.1"))
+            if vendidas > 0 and disponible >= 0
+            else None
+        )
+        if reponer_ahora:
+            objetivo_demanda = demanda_mensual * Decimal("2")
+            sugerida = max(
+                (objetivo_demanda - disponible).to_integral_value(rounding=ROUND_CEILING),
+                to_decimal(1),
+            )
+        else:
+            sugerida = max(to_decimal(objetivo_stock) - disponible, to_decimal(1))
+        sugerida = sugerida.quantize(Decimal("0.001"))
 
-        if vendidas > 0:
+        if reponer_ahora:
+            motivo = "Demanda repetida; menos de un mes de cobertura."
+        elif es_bicicleta:
+            motivo = "Bicicleta: revisar reposición manualmente."
+        elif vendidas > 0:
             motivo = (
                 f"Disponible {disponible:g} <= umbral {stock_bajo_umbral}. "
-                f"Vendidas {vendidas:g} en {ventas} venta(s)."
+                f"Vendidas {vendidas:g} en {ventas} venta(s) durante 90 días."
             )
         else:
             motivo = (
@@ -119,7 +142,12 @@ def obtener_pedido_compra_sugerido(filtros: dict | None = None):
                 "stock_bajo_umbral": stock_bajo_umbral,
                 "cantidad_sugerida": sugerida,
                 "unidades_vendidas_total": item.get("unidades_vendidas_total") or to_decimal(0),
-                "ventas_distintas_total": ventas,
+                "ventas_distintas_total": item.get("ventas_distintas_total") or 0,
+                "unidades_vendidas_90d": vendidas,
+                "ventas_distintas_90d": ventas,
+                "demanda_mensual": demanda_mensual.quantize(Decimal("0.001")),
+                "cobertura_dias": cobertura_dias,
+                "prioridad_reposicion": "reponer_ahora" if reponer_ahora else "revisar",
                 "ultima_venta": item.get("ultima_venta"),
                 "primer_movimiento_stock": item.get("primer_movimiento_stock"),
                 "motivo": motivo,

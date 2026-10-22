@@ -48,6 +48,7 @@ function getSaldoPendienteSimulacion(data) {
 
 export default function useCheckoutVenta({
   clienteId,
+  sucursalId,
   total,
   tipoPrecio,
   items,
@@ -157,6 +158,7 @@ export default function useCheckoutVenta({
         const data = await simularVenta(
           buildVentaSimulacionPayload({
             clienteId,
+            sucursalId,
             tipoPrecio,
             items,
             pagos,
@@ -182,6 +184,7 @@ export default function useCheckoutVenta({
     },
     [
       clienteId,
+      sucursalId,
       items,
       pagosDraft,
       tipoPrecio,

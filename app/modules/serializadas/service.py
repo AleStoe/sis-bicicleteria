@@ -5,12 +5,16 @@ from app.db.connection import get_connection
 from app.modules.auditoria import service as auditoria_service
 from app.modules.stock import service as stock_service
 from app.modules.ventas.repository import get_variantes_by_ids, get_sucursal_by_id
+from app.shared.money import to_decimal
 from .repository import (
     get_bicicleta_serializada_for_update,
     insert_bicicleta_serializada,
     get_bicicletas_serializadas,
     get_correcciones_numero_cuadro,
     get_primer_usuario_activo_id,
+    tiene_acondicionamiento_confirmado,
+    update_bicicleta_serializada_ficha,
+    update_bicicleta_serializada_precio,
     update_bicicleta_serializada_numero_cuadro,
     update_bicicletas_cliente_numero_cuadro_by_serializada,
 )
@@ -77,7 +81,7 @@ def armar_bicicleta_serializada(data):
 
     try:
         with conn.transaction():
-            _validar_variante(conn, data.id_variante)
+            variante = _validar_variante(conn, data.id_variante)
             _validar_sucursal(conn, data.id_sucursal_actual)
 
             numero_cuadro = normalize_text_upper(data.numero_cuadro)
@@ -90,6 +94,8 @@ def armar_bicicleta_serializada(data):
                     "numero_cuadro": numero_cuadro,
                     "estado": "disponible",
                     "observaciones": data.observaciones,
+                    "costo_base_unitario": variante["costo_promedio_vigente"] or 0,
+                    "costo_base_origen": "costo_promedio_serializacion",
                 },
             )
 
@@ -277,12 +283,112 @@ def listar_correcciones_numero_cuadro(bicicleta_id: int):
         return correcciones
     finally:
         conn.close()
+
+
+def actualizar_ficha_bicicleta_serializada(bicicleta_id: int, data):
+    conn = get_connection()
+    try:
+        with conn.transaction():
+            bicicleta = get_bicicleta_serializada_for_update(conn, bicicleta_id)
+            if bicicleta is None:
+                raise HTTPException(status_code=404, detail="No existe la bicicleta serializada")
+
+            if (
+                bicicleta["estado_tecnico"] == "en_acondicionamiento"
+                and data.estado_tecnico != "en_acondicionamiento"
+                and tiene_acondicionamiento_confirmado(conn, bicicleta_id)
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "La bicicleta tiene un acondicionamiento confirmado. "
+                        "Revertí o completá esa orden antes de cambiar el estado técnico."
+                    ),
+                )
+
+            anterior = {
+                "estado_tecnico": bicicleta["estado_tecnico"],
+                "condicion_comercial": bicicleta["condicion_comercial"],
+                "ubicacion_fisica": bicicleta["ubicacion_fisica"],
+                "observaciones": bicicleta["observaciones"],
+                "texto_comercial": bicicleta["texto_comercial"],
+                "precio_venta_personalizado": (
+                    str(bicicleta["precio_venta_personalizado"])
+                    if bicicleta.get("precio_venta_personalizado") is not None
+                    else None
+                ),
+            }
+            payload = {
+                "estado_tecnico": data.estado_tecnico,
+                "condicion_comercial": data.condicion_comercial,
+                "ubicacion_fisica": (data.ubicacion_fisica or "").strip() or None,
+                "observaciones": (data.observaciones or "").strip() or None,
+                "texto_comercial": (data.texto_comercial or "").strip() or None,
+                "id_usuario": data.id_usuario,
+            }
+            update_bicicleta_serializada_ficha(conn, bicicleta_id, payload)
+            precio_nuevo = bicicleta.get("precio_venta_personalizado")
+            if data.usar_precio_personalizado is not None:
+                if data.usar_precio_personalizado and data.precio_venta_personalizado is None:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Indicá el precio propio de esta bicicleta",
+                    )
+                precio_nuevo = (
+                    to_decimal(data.precio_venta_personalizado)
+                    if data.usar_precio_personalizado
+                    else None
+                )
+                if precio_nuevo is not None and precio_nuevo < to_decimal(
+                    bicicleta["costo_total_unitario"] or 0
+                ):
+                    raise HTTPException(
+                        status_code=400,
+                        detail="El precio propio no puede quedar debajo del costo total de la bicicleta",
+                    )
+                update_bicicleta_serializada_precio(
+                    conn,
+                    bicicleta_id,
+                    {
+                        "precio": precio_nuevo,
+                        "motivo": data.motivo.strip(),
+                        "id_usuario": data.id_usuario,
+                    },
+                )
+            auditoria_service.registrar_evento(
+                conn,
+                id_usuario=data.id_usuario,
+                id_sucursal=bicicleta["id_sucursal_actual"],
+                entidad="bicicleta_serializada",
+                entidad_id=bicicleta_id,
+                accion="ficha_operativa_actualizada",
+                detalle=f"Ficha operativa actualizada. Motivo: {data.motivo.strip()}",
+                metadata={
+                    "anterior": anterior,
+                    "nuevo": {
+                        **{key: payload[key] for key in anterior if key in payload},
+                        "precio_venta_personalizado": (
+                            str(precio_nuevo) if precio_nuevo is not None else None
+                        ),
+                    },
+                    "motivo": data.motivo.strip(),
+                },
+                origen_tipo="bicicleta_serializada",
+                origen_id=bicicleta_id,
+            )
+            return get_bicicletas_serializadas(conn, bicicleta_id=bicicleta_id)[0]
+    finally:
+        conn.close()
     
 def listar_bicicletas_serializadas(
     *,
     id_variante: int | None = None,
     id_sucursal: int | None = None,
     estado: str | None = None,
+    estado_tecnico: str | None = None,
+    condicion_comercial: str | None = None,
+    ubicacion_fisica: str | None = None,
+    query: str | None = None,
 ):
     conn = get_connection()
 
@@ -292,6 +398,10 @@ def listar_bicicletas_serializadas(
             id_variante=id_variante,
             id_sucursal=id_sucursal,
             estado=estado,
+            estado_tecnico=estado_tecnico,
+            condicion_comercial=condicion_comercial,
+            ubicacion_fisica=ubicacion_fisica,
+            query=query,
         )
     finally:
         conn.close()
@@ -301,9 +411,12 @@ def listar_bicicletas_serializadas_disponibles(
     *,
     id_variante: int | None = None,
     id_sucursal: int | None = None,
+    query: str | None = None,
 ):
     return listar_bicicletas_serializadas(
         id_variante=id_variante,
         id_sucursal=id_sucursal,
         estado="disponible",
+        estado_tecnico="lista",
+        query=query,
     )

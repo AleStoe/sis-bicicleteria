@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  actualizarFichaSerializada,
   crearSerializada,
+  getEtiquetaQrBicicletaUrl,
   listarSerializadas,
 } from "../services/serializadasService";
 import { listarCatalogoPOS } from "../services/catalogoService";
@@ -10,6 +12,9 @@ import useMediaQuery from "../hooks/useMediaQuery";
 import { normalizeTextUpper } from "../utils/textNormalization";
 import { formatProductoVariante } from "../utils/productPresentation";
 import CorregirNumeroCuadroModal from "../components/serializadas/CorregirNumeroCuadroModal";
+import AcondicionamientoModal from "../components/serializadas/AcondicionamientoModal";
+import SearchField from "../components/ui/SearchField";
+import { QrCode } from "lucide-react";
 const ESTADOS = [
   { value: "disponible", label: "Disponibles", emoji: "✅" },
   { value: "reservada", label: "Reservadas", emoji: "🟡" },
@@ -18,6 +23,39 @@ const ESTADOS = [
   { value: "fuera_de_stock", label: "Stock bicis", emoji: "📦" },
   { value: "", label: "Todos", emoji: "📋" },
 ];
+
+const ESTADOS_TECNICOS = [
+  { value: "pendiente_revision", label: "Pendiente de revisión" },
+  { value: "en_acondicionamiento", label: "En acondicionamiento" },
+  { value: "lista", label: "Lista para vender" },
+  { value: "bloqueada", label: "Bloqueada" },
+];
+
+const CONDICIONES_COMERCIALES = [
+  { value: "normal", label: "Venta normal" },
+  { value: "reacondicionada", label: "Reacondicionada" },
+  { value: "oferta", label: "Oferta" },
+];
+
+function formatCurrency(value) {
+  return new Intl.NumberFormat("es-AR", {
+    style: "currency",
+    currency: "ARS",
+    maximumFractionDigits: 2,
+  }).format(Number(value || 0));
+}
+
+function sugerirPrecioPorCosto(precioActual, costoBase, costoTotal) {
+  const precio = Number(precioActual || 0);
+  const costoInicial = Number(costoBase || 0);
+  const costoFinal = Number(costoTotal || 0);
+  if (precio <= 0 || costoInicial <= 0 || costoFinal <= 0) return precio;
+  return Math.ceil((precio * costoFinal / costoInicial) / 1000) * 1000;
+}
+
+function labelFrom(options, value) {
+  return options.find((item) => item.value === value)?.label || value || "-";
+}
 
 function normalizarEstado(estado) {
   const found = ESTADOS.find((e) => e.value === estado);
@@ -103,6 +141,9 @@ export default function BicicletasSerializadasPage() {
   const [stockBicis, setStockBicis] = useState([]);
   const [estado, setEstado] = useState("disponible");
   const [query, setQuery] = useState("");
+  const [estadoTecnicoFiltro, setEstadoTecnicoFiltro] = useState("");
+  const [condicionFiltro, setCondicionFiltro] = useState("");
+  const [ubicacionFiltro, setUbicacionFiltro] = useState("");
   const [loading, setLoading] = useState(true);
   const [procesando, setProcesando] = useState(false);
   const [error, setError] = useState("");
@@ -116,6 +157,8 @@ export default function BicicletasSerializadasPage() {
   const [buscandoVariantes, setBuscandoVariantes] = useState(false);
   const [varianteSeleccionada, setVarianteSeleccionada] = useState(null);
   const [corrigiendoCuadro, setCorrigiendoCuadro] = useState(null);
+  const [editandoFicha, setEditandoFicha] = useState(null);
+  const [acondicionando, setAcondicionando] = useState(null);
 
   const esVistaStockBicis = estado === "fuera_de_stock";
 
@@ -239,7 +282,7 @@ export default function BicicletasSerializadasPage() {
       setError("");
 
       const data = await listarSerializadas({
-        estado: estado || undefined,
+        id_sucursal: sucursalId || undefined,
       });
 
       setBicis(data || []);
@@ -310,14 +353,45 @@ export default function BicicletasSerializadasPage() {
     }
   }
 
+  async function guardarFicha(payload) {
+    try {
+      setProcesando(true);
+      setError("");
+      setMensaje("");
+      const actualizada = await actualizarFichaSerializada(editandoFicha.id, {
+        ...payload,
+        id_usuario: usuarioId,
+      });
+      setMensaje(`Ficha del cuadro ${actualizada.numero_cuadro} actualizada.`);
+      setEditandoFicha(null);
+      await cargarSerializadas();
+      setSeleccionadaId(actualizada.id);
+    } catch (err) {
+      setError(err.message || "No se pudo actualizar la ficha operativa");
+    } finally {
+      setProcesando(false);
+    }
+  }
+
   const filtradas = useMemo(() => {
     const q = query.trim().toLowerCase();
 
     const source = esVistaStockBicis ? stockBicis : bicis;
 
-    if (!q) return source;
-
     return source.filter((bici) => {
+      if (!esVistaStockBicis) {
+        if (estado && bici.estado !== estado) return false;
+        if (estadoTecnicoFiltro && bici.estado_tecnico !== estadoTecnicoFiltro) return false;
+        if (condicionFiltro && bici.condicion_comercial !== condicionFiltro) return false;
+        if (
+          ubicacionFiltro.trim() &&
+          !String(bici.ubicacion_fisica || "")
+            .toLowerCase()
+            .includes(ubicacionFiltro.trim().toLowerCase())
+        ) return false;
+      }
+
+      if (!q) return true;
       const texto = [
         bici.id,
         bici.id_producto,
@@ -346,7 +420,16 @@ export default function BicicletasSerializadasPage() {
 
       return texto.includes(q);
     });
-  }, [bicis, stockBicis, query, esVistaStockBicis]);
+  }, [
+    bicis,
+    stockBicis,
+    query,
+    esVistaStockBicis,
+    estado,
+    estadoTecnicoFiltro,
+    condicionFiltro,
+    ubicacionFiltro,
+  ]);
 
   const resumen = useMemo(() => {
     if (esVistaStockBicis) {
@@ -377,6 +460,10 @@ export default function BicicletasSerializadasPage() {
       (acc, bici) => {
         acc.total += 1;
         acc[bici.estado] = (acc[bici.estado] || 0) + 1;
+        if (bici.estado_tecnico === "lista") acc.listas += 1;
+        if (bici.estado_tecnico === "pendiente_revision") acc.pendientes_revision += 1;
+        if (bici.condicion_comercial === "normal") acc.normales += 1;
+        if (bici.oferta_id) acc.en_oferta += 1;
         return acc;
       },
       {
@@ -386,9 +473,27 @@ export default function BicicletasSerializadasPage() {
         vendida_pendiente_entrega: 0,
         entregada: 0,
         fuera_de_stock: 0,
+        listas: 0,
+        pendientes_revision: 0,
+        normales: 0,
+        en_oferta: 0,
       }
     );
   }, [bicis, stockBicis, esVistaStockBicis]);
+
+  const resultadoOfertasIndividuales = useMemo(
+    () => bicis.reduce(
+      (acc, bici) => {
+        if (bici.venta_oferta_alcance !== "unidades") return acc;
+        acc.unidades += 1;
+        acc.ventas += Number(bici.venta_precio_final || 0);
+        acc.ganancia += Number(bici.venta_ganancia || 0);
+        return acc;
+      },
+      { unidades: 0, ventas: 0, ganancia: 0 }
+    ),
+    [bicis]
+  );
 
   const seleccionada = useMemo(() => {
     if (esVistaStockBicis) {
@@ -452,14 +557,22 @@ export default function BicicletasSerializadasPage() {
           </>
         ) : (
           <>
-            <Metric label="Vista actual" value={resumen.total} tone="dark" />
-            <Metric label="Disponibles" value={resumen.disponible} tone="ok" />
-            <Metric label="Reservadas" value={resumen.reservada} tone="warning" />
-            <Metric label="Pendientes" value={resumen.vendida_pendiente_entrega} tone="info" />
-            <Metric label="Entregadas" value={resumen.entregada} tone="muted" />
+            <Metric label="Unidades" value={resumen.total} tone="dark" />
+            <Metric label="Listas" value={resumen.listas} tone="ok" />
+            <Metric label="Pendientes revisión" value={resumen.pendientes_revision} tone="warning" />
+            <Metric label="Venta normal" value={resumen.normales} tone="muted" />
+            <Metric label="En oferta" value={resumen.en_oferta} tone="info" />
           </>
         )}
       </section>
+
+      {!esVistaStockBicis && resultadoOfertasIndividuales.unidades > 0 && (
+        <section style={offerResultStyle}>
+          <div><span>Ofertas individuales vendidas</span><strong>{resultadoOfertasIndividuales.unidades}</strong></div>
+          <div><span>Venta acumulada</span><strong>{formatCurrency(resultadoOfertasIndividuales.ventas)}</strong></div>
+          <div><span>Ganancia comercial</span><strong>{formatCurrency(resultadoOfertasIndividuales.ganancia)}</strong></div>
+        </section>
+      )}
 
       {panelAyudaAbierto && (
         <section style={helpPanelStyle}>
@@ -474,19 +587,17 @@ export default function BicicletasSerializadasPage() {
       <div style={isNarrow ? gridMobileStyle : gridStyle}>
         <section style={listPanelStyle}>
           <div style={toolbarStyle}>
-            <div style={searchBoxStyle}>
-              <span>🔎</span>
-              <input
+            <SearchField
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={setQuery}
                 placeholder={
                   esVistaStockBicis
                     ? "Buscar bicicleta por producto, variante, SKU o código"
                     : "Buscar por cuadro, producto, variante, SKU, cliente o venta"
                 }
-                style={searchInputStyle}
-              />
-            </div>
+                style={searchBoxStyle}
+                inputStyle={searchInputStyle}
+            />
 
             <div style={filterPillsStyle}>
               {ESTADOS.map((e) => (
@@ -501,6 +612,39 @@ export default function BicicletasSerializadasPage() {
                 </button>
               ))}
             </div>
+
+            {!esVistaStockBicis && (
+              <div style={isMobile ? filterControlsMobileStyle : filterControlsStyle}>
+                <select
+                  value={estadoTecnicoFiltro}
+                  onChange={(event) => setEstadoTecnicoFiltro(event.target.value)}
+                  style={filterControlStyle}
+                  aria-label="Filtrar por estado técnico"
+                >
+                  <option value="">Todos los estados técnicos</option>
+                  {ESTADOS_TECNICOS.map((item) => (
+                    <option key={item.value} value={item.value}>{item.label}</option>
+                  ))}
+                </select>
+                <select
+                  value={condicionFiltro}
+                  onChange={(event) => setCondicionFiltro(event.target.value)}
+                  style={filterControlStyle}
+                  aria-label="Filtrar por condición comercial"
+                >
+                  <option value="">Todas las condiciones</option>
+                  {CONDICIONES_COMERCIALES.map((item) => (
+                    <option key={item.value} value={item.value}>{item.label}</option>
+                  ))}
+                </select>
+                <input
+                  value={ubicacionFiltro}
+                  onChange={(event) => setUbicacionFiltro(event.target.value)}
+                  placeholder="Ubicación física"
+                  style={filterControlStyle}
+                />
+              </div>
+            )}
           </div>
 
           {filtradas.length === 0 ? (
@@ -540,6 +684,8 @@ export default function BicicletasSerializadasPage() {
               <BiciDetalle
                 bici={seleccionada}
                 onCorregirNumeroCuadro={() => setCorrigiendoCuadro(seleccionada)}
+                onEditarFicha={() => setEditandoFicha(seleccionada)}
+                onAcondicionar={() => setAcondicionando(seleccionada)}
               />
             ) : (
               <p style={mutedStyle}>
@@ -570,16 +716,16 @@ export default function BicicletasSerializadasPage() {
 
             <form onSubmit={handleCrear} style={modalFormStyle}>
               <div style={variantSearchPanelStyle}>
-                <label style={fieldStyle}>
+                <div style={fieldStyle}>
                   <span style={labelStyle}>Buscar modelo para serializar</span>
-                  <input
-                    type="text"
+                  <SearchField
                     value={queryVariante}
-                    onChange={(e) => setQueryVariante(e.target.value)}
-                    style={inputStyle}
+                    onChange={setQueryVariante}
+                    style={variantSearchInputWrapStyle}
+                    inputStyle={inputStyle}
                     placeholder="Nombre, código, SKU o variante..."
                   />
-                </label>
+                </div>
 
                 <div style={variantResultsStyle}>
                   {buscandoVariantes ? (
@@ -710,6 +856,27 @@ export default function BicicletasSerializadasPage() {
         />
       )}
 
+      {editandoFicha && (
+        <FichaOperativaModal
+          bici={editandoFicha}
+          procesando={procesando}
+          onClose={() => setEditandoFicha(null)}
+          onGuardar={guardarFicha}
+        />
+      )}
+
+      {acondicionando && (
+        <AcondicionamientoModal
+          bici={acondicionando}
+          usuarioId={usuarioId}
+          onClose={() => setAcondicionando(null)}
+          onChanged={async () => {
+            await cargarSerializadas();
+            setSeleccionadaId(acondicionando.id);
+          }}
+        />
+      )}
+
     </div>
   );
 }
@@ -748,6 +915,7 @@ function BiciCard({ bici, selected, onClick }) {
         <div style={metaRowStyle}>
           <span>#{bici.id}</span>
           <span>Variante #{bici.id_variante}</span>
+          <span>{labelFrom(ESTADOS_TECNICOS, bici.estado_tecnico)}</span>
           <span>{bici.sucursal_nombre || "Sin sucursal"}</span>
         </div>
       </div>
@@ -794,7 +962,7 @@ function StockBiciCard({ item, selected, onClick }) {
   );
 }
 
-function BiciDetalle({ bici, onCorregirNumeroCuadro }) {
+function BiciDetalle({ bici, onCorregirNumeroCuadro, onEditarFicha, onAcondicionar }) {
   const imagen = getImagenBici(bici);
 
   return (
@@ -825,7 +993,56 @@ function BiciDetalle({ bici, onCorregirNumeroCuadro }) {
         <Info label="Variante" value={`#${bici.id_variante}`} />
         <Info label="Sucursal" value={bici.sucursal_nombre || "-"} />
         <Info label="Estado" value={normalizarEstado(bici.estado)} />
+        <Info label="Estado técnico" value={labelFrom(ESTADOS_TECNICOS, bici.estado_tecnico)} />
+        <Info label="Condición" value={labelFrom(CONDICIONES_COMERCIALES, bici.condicion_comercial)} />
+        <Info label="Ubicación" value={bici.ubicacion_fisica || "Sin definir"} />
+        <Info label="Costo base" value={formatCurrency(bici.costo_base_unitario)} />
+        <Info label="Costo agregado" value={formatCurrency(bici.costo_acondicionamiento)} />
+        <Info label="Costo total" value={formatCurrency(bici.costo_total_unitario)} />
+        {bici.precio_venta_personalizado != null && (
+          <Info label="Precio general del modelo" value={formatCurrency(bici.precio_minorista)} />
+        )}
+        <Info
+          label={bici.precio_venta_personalizado != null ? "Precio propio de esta unidad" : "Precio vigente"}
+          value={formatCurrency(bici.precio_venta_actual)}
+        />
+        <Info label="Ganancia estimada" value={formatCurrency(bici.ganancia_estimada)} />
+        <Info
+          label="Margen estimado"
+          value={bici.margen_estimado == null ? "-" : `${Number(bici.margen_estimado).toFixed(1)}%`}
+        />
       </div>
+
+      {bici.venta_precio_final != null && (
+        <div style={saleResultStyle}>
+          <strong>Resultado de la venta</strong>
+          <span>Vendido: {formatCurrency(bici.venta_precio_final)}</span>
+          <span>Costo congelado: {formatCurrency(bici.venta_costo_aplicado)}</span>
+          <span>Ganancia comercial: {formatCurrency(bici.venta_ganancia)}</span>
+          {bici.venta_oferta_alcance === "unidades" && (
+            <small>Oferta individual: {bici.venta_oferta_nombre || `#${bici.venta_oferta_id}`}</small>
+          )}
+        </div>
+      )}
+
+      <button
+        type="button"
+        style={qrButtonStyle}
+        onClick={() => window.open(getEtiquetaQrBicicletaUrl(bici.id), "_blank", "noopener,noreferrer")}
+      >
+        <QrCode size={18} />
+        Imprimir etiqueta QR
+      </button>
+
+      <button type="button" style={primaryButtonStyle} onClick={onEditarFicha}>
+        Editar ficha operativa
+      </button>
+
+      {bici.estado === "disponible" && (
+        <button type="button" style={secondaryButtonStyle} onClick={onAcondicionar}>
+          Acondicionar esta unidad
+        </button>
+      )}
 
       {bici.cliente_actual_nombre && (
         <div style={ownerDetailStyle}>
@@ -840,7 +1057,169 @@ function BiciDetalle({ bici, onCorregirNumeroCuadro }) {
         <p>{bici.observaciones || "Sin observaciones"}</p>
       </div>
 
+      {bici.texto_comercial && (
+        <div style={obsBoxStyle}>
+          <span>Información comercial</span>
+          <p>{bici.texto_comercial}</p>
+        </div>
+      )}
 
+
+    </div>
+  );
+}
+
+function FichaOperativaModal({ bici, procesando, onClose, onGuardar }) {
+  const precioSugerido = sugerirPrecioPorCosto(
+    bici.precio_minorista,
+    bici.costo_base_unitario,
+    bici.costo_total_unitario
+  );
+  const [form, setForm] = useState({
+    estado_tecnico: bici.estado_tecnico || "lista",
+    condicion_comercial: bici.condicion_comercial || "normal",
+    ubicacion_fisica: bici.ubicacion_fisica || "",
+    observaciones: bici.observaciones || "",
+    texto_comercial: bici.texto_comercial || "",
+    usar_precio_personalizado: bici.precio_venta_personalizado != null,
+    precio_venta_personalizado: String(
+      (bici.precio_venta_personalizado ?? precioSugerido) || bici.precio_venta_actual || ""
+    ),
+    motivo: "",
+  });
+
+  const precioPersonalizado = Number(form.precio_venta_personalizado || 0);
+  const costoTotal = Number(bici.costo_total_unitario || 0);
+  const precioPersonalizadoValido =
+    !form.usar_precio_personalizado ||
+    (precioPersonalizado > 0 && precioPersonalizado >= costoTotal);
+
+  function update(campo, value) {
+    setForm((actual) => ({ ...actual, [campo]: value }));
+  }
+
+  function submit(event) {
+    event.preventDefault();
+    onGuardar({
+      ...form,
+      ubicacion_fisica: form.ubicacion_fisica.trim() || null,
+      observaciones: form.observaciones.trim() || null,
+      texto_comercial: form.texto_comercial.trim() || null,
+      usar_precio_personalizado: form.usar_precio_personalizado,
+      precio_venta_personalizado: form.usar_precio_personalizado
+        ? precioPersonalizado
+        : null,
+      motivo: form.motivo.trim(),
+    });
+  }
+
+  return (
+    <div style={modalOverlayStyle} onClick={onClose}>
+      <section style={modalCardStyle} onClick={(event) => event.stopPropagation()}>
+        <div style={modalHeaderStyle}>
+          <div>
+            <span style={kickerStyle}>Unidad #{bici.id}</span>
+            <h2 style={modalTitleStyle}>Ficha del cuadro {bici.numero_cuadro}</h2>
+            <p style={modalSubtitleStyle}>El estado técnico controla si puede venderse o reservarse.</p>
+          </div>
+          <button type="button" onClick={onClose} style={closeButtonStyle}>✕</button>
+        </div>
+
+        <form onSubmit={submit} style={modalFormStyle}>
+          <div style={modalGridStyle}>
+            <label style={fieldStyle}>
+              <span style={labelStyle}>Estado técnico</span>
+              <select style={inputStyle} value={form.estado_tecnico} onChange={(e) => update("estado_tecnico", e.target.value)}>
+                {ESTADOS_TECNICOS.map((estado) => <option key={estado.value} value={estado.value}>{estado.label}</option>)}
+              </select>
+            </label>
+            <label style={fieldStyle}>
+              <span style={labelStyle}>Condición comercial</span>
+              <select style={inputStyle} value={form.condicion_comercial} onChange={(e) => update("condicion_comercial", e.target.value)}>
+                {CONDICIONES_COMERCIALES.map((condicion) => <option key={condicion.value} value={condicion.value}>{condicion.label}</option>)}
+              </select>
+            </label>
+          </div>
+
+          <TextInput label="Ubicación física" value={form.ubicacion_fisica} onChange={(value) => update("ubicacion_fisica", value)} type="text" placeholder="Ej: salón, depósito, mesa de armado" />
+
+          <section style={unitPriceBoxStyle}>
+            <label style={unitPriceToggleStyle}>
+              <input
+                type="checkbox"
+                checked={form.usar_precio_personalizado}
+                onChange={(event) => update("usar_precio_personalizado", event.target.checked)}
+              />
+              <span style={{ display: "grid", gap: 3 }}>
+                <strong>Usar un precio propio para este cuadro</strong>
+                <small>Solo cambia esta bicicleta. Las demás unidades del modelo conservan su precio.</small>
+              </span>
+            </label>
+
+            <div style={unitPriceSummaryStyle}>
+              <span>Precio del modelo <strong>{formatCurrency(bici.precio_minorista)}</strong></span>
+              <span>Costo total de esta unidad <strong>{formatCurrency(bici.costo_total_unitario)}</strong></span>
+              {precioSugerido > 0 && (
+                <span>Precio sugerido <strong>{formatCurrency(precioSugerido)}</strong></span>
+              )}
+            </div>
+
+            {precioSugerido > 0 && (
+              <button
+                type="button"
+                style={secondaryButtonStyle}
+                onClick={() => setForm((actual) => ({
+                  ...actual,
+                  usar_precio_personalizado: true,
+                  precio_venta_personalizado: String(precioSugerido),
+                }))}
+              >
+                Usar precio sugerido
+              </button>
+            )}
+
+            {form.usar_precio_personalizado && (
+              <label style={fieldStyle}>
+                <span style={labelStyle}>Precio de venta de esta unidad</span>
+                <input
+                  type="number"
+                  min={Math.ceil(costoTotal)}
+                  step="1"
+                  value={form.precio_venta_personalizado}
+                  onChange={(event) => update("precio_venta_personalizado", event.target.value)}
+                  style={{ ...inputStyle, borderColor: precioPersonalizadoValido ? "#cbd5e1" : "#ef4444" }}
+                />
+                {!precioPersonalizadoValido && (
+                  <small style={fieldErrorStyle}>
+                    El precio no puede ser menor al costo total de {formatCurrency(costoTotal)}.
+                  </small>
+                )}
+              </label>
+            )}
+          </section>
+
+          <label style={fieldStyle}>
+            <span style={labelStyle}>Observación interna</span>
+            <textarea style={textareaStyle} value={form.observaciones} onChange={(e) => update("observaciones", e.target.value)} />
+          </label>
+          <label style={fieldStyle}>
+            <span style={labelStyle}>Información comercial visible</span>
+            <textarea style={textareaStyle} value={form.texto_comercial} onChange={(e) => update("texto_comercial", e.target.value)} placeholder="Solo información que puede ver el cliente" />
+          </label>
+          <TextInput label="Motivo del cambio" value={form.motivo} onChange={(value) => update("motivo", value)} type="text" placeholder="Ej: revisión inicial del lote" />
+
+          <div style={modalActionsStyle}>
+            <button type="button" style={secondaryButtonStyle} onClick={onClose}>Cancelar</button>
+            <button
+              type="submit"
+              style={primaryButtonStyle}
+              disabled={procesando || form.motivo.trim().length < 3 || !precioPersonalizadoValido}
+            >
+              {procesando ? "Guardando..." : "Guardar ficha"}
+            </button>
+          </div>
+        </form>
+      </section>
     </div>
   );
 }
@@ -962,6 +1341,7 @@ const successStyle = { background: "#ecfdf5", color: "#047857", padding: 12, bor
 
 const metricGridStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))", gap: 12, marginBottom: 16 };
 const metricGridMobileStyle = { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, marginBottom: 14 };
+const offerResultStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, marginBottom: 16, padding: 14, border: "1px solid #bbf7d0", borderRadius: 8, background: "#f0fdf4", color: "#166534" };
 const metricStyle = { background: "white", borderRadius: 16, border: "1px solid #e2e8f0", padding: 14, display: "grid", gap: 5, boxShadow: "0 10px 22px rgba(15, 23, 42, 0.06)" };
 const metricToneStyles = {
   dark: { color: "#0f172a" },
@@ -979,6 +1359,9 @@ const toolbarStyle = { display: "grid", gap: 12, padding: 16, borderBottom: "1px
 const searchBoxStyle = { display: "flex", alignItems: "center", gap: 10, border: "1px solid #cbd5e1", borderRadius: 14, padding: "0 12px", background: "#f8fafc" };
 const searchInputStyle = { flex: 1, border: "none", background: "transparent", outline: "none", padding: "13px 0", fontSize: 15, fontWeight: 700 };
 const filterPillsStyle = { display: "flex", gap: 8, overflowX: "auto", paddingBottom: 2 };
+const filterControlsStyle = { display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 };
+const filterControlsMobileStyle = { display: "grid", gridTemplateColumns: "1fr", gap: 8 };
+const filterControlStyle = { width: "100%", minWidth: 0, padding: "10px 11px", border: "1px solid #cbd5e1", borderRadius: 7, background: "white", color: "#0f172a", fontWeight: 700, boxSizing: "border-box" };
 const pillStyle = { border: "1px solid #cbd5e1", background: "white", color: "#0f172a", borderRadius: 999, padding: "9px 12px", fontWeight: 900, cursor: "pointer", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 };
 const pillActiveStyle = { ...pillStyle, background: "#f97316", borderColor: "#f97316", color: "white", boxShadow: "0 10px 18px rgba(249, 115, 22, 0.25)" };
 const cardsGridStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))", gap: 12, padding: 16 };
@@ -1006,9 +1389,14 @@ const formStyle = { display: "grid", gap: 10 };
 const fieldStyle = { display: "flex", flexDirection: "column", gap: 7 };
 const labelStyle = { fontWeight: 900, fontSize: 14, color: "#334155" };
 const inputStyle = { width: "100%", padding: "11px 12px", borderRadius: 12, border: "1px solid #cbd5e1", fontSize: 15, boxSizing: "border-box", fontWeight: 700 };
+const variantSearchInputWrapStyle = { width: "100%", minWidth: 0 };
 const readOnlyFieldStyle = { border: "1px solid #dbeafe", background: "#eff6ff", color: "#1d4ed8", borderRadius: 14, padding: "11px 12px", display: "grid", gap: 4 };
 const readOnlyLabelStyle = { color: "#64748b", fontSize: 12, fontWeight: 1000, textTransform: "uppercase", letterSpacing: "0.04em" };
 const textareaStyle = { ...inputStyle, minHeight: 74, resize: "vertical", fontFamily: "inherit" };
+const unitPriceBoxStyle = { display: "grid", gap: 12, padding: 14, border: "1px solid #bfdbfe", borderRadius: 14, background: "#f8fbff" };
+const unitPriceToggleStyle = { display: "flex", alignItems: "flex-start", gap: 10, color: "#0f172a", cursor: "pointer" };
+const unitPriceSummaryStyle = { display: "flex", flexWrap: "wrap", gap: "8px 18px", color: "#475569", fontSize: 13 };
+const fieldErrorStyle = { color: "#b91c1c", fontWeight: 700 };
 const noteStyle = { background: "#f8fafc", borderLeft: "4px solid #f97316", padding: 10, borderRadius: 10, color: "#334155", marginTop: 12, fontWeight: 700 };
 const primaryButtonStyle = { border: "none", background: "#16a34a", color: "white", borderRadius: 12, padding: 13, fontWeight: 1000, cursor: "pointer", boxShadow: "0 12px 24px rgba(22, 163, 74, 0.25)" };
 const secondaryButtonStyle = { border: "1px solid #cbd5e1", background: "white", color: "#0f172a", borderRadius: 12, padding: 13, fontWeight: 1000, cursor: "pointer" };
@@ -1050,6 +1438,8 @@ const detalleGridStyle = { display: "grid", gridTemplateColumns: "1fr 1fr", gap:
 const infoBoxStyle = { background: "#1e293b", borderRadius: 14, padding: 10, display: "grid", gap: 4, color: "#cbd5e1" };
 const ownerDetailStyle = { background: "rgba(249, 115, 22, 0.14)", border: "1px solid rgba(251, 146, 60, 0.32)", color: "#fed7aa", borderRadius: 14, padding: 12, display: "grid", gap: 4 };
 const obsBoxStyle = { background: "#1e293b", borderRadius: 14, padding: 12, color: "#cbd5e1" };
+const saleResultStyle = { display: "grid", gap: 4, padding: 12, border: "1px solid rgba(34, 197, 94, .4)", borderRadius: 8, background: "rgba(22, 163, 74, .14)", color: "#dcfce7" };
+const qrButtonStyle = { display: "flex", alignItems: "center", justifyContent: "center", gap: 8, border: "1px solid rgba(147, 197, 253, .45)", background: "rgba(37, 99, 235, .18)", color: "#dbeafe", borderRadius: 8, padding: 12, fontWeight: 1000, cursor: "pointer" };
 
 const basePillStyle = { borderRadius: 999, padding: "5px 9px", fontWeight: 1000, fontSize: 12, whiteSpace: "nowrap" };
 const okPillStyle = { ...basePillStyle, background: "#dcfce7", color: "#047857" };

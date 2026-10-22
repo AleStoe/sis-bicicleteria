@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+from decimal import Decimal
 from threading import Barrier
 
 import pytest
@@ -326,6 +327,504 @@ def test_crear_bicicleta_serializada_ok(client, db_conn, seed_serializacion):
     assert bicicleta["numero_cuadro"] == "CUADRO-OK-001"
     assert bicicleta["estado"] == "disponible"
 
+
+def test_ficha_operativa_congela_costo_y_bloquea_venta_reserva(
+    client,
+    db_conn,
+    seed_serializacion,
+):
+    creada = _crear_bici_serializada(client, seed_serializacion, "CUADRO-FICHA-001")
+    assert creada.status_code == 200, creada.text
+    bicicleta_id = creada.json()["bicicleta_id"]
+
+    bicicleta = _get_bicicleta_serializada(db_conn, bicicleta_id)
+    assert bicicleta["estado_tecnico"] == "lista"
+    assert bicicleta["condicion_comercial"] == "normal"
+    assert bicicleta["costo_base_unitario"] == 700000
+    assert bicicleta["costo_total_unitario"] == 700000
+    assert bicicleta["costo_base_origen"] == "costo_promedio_serializacion"
+
+    actualizada = client.patch(
+        f"/bicicletas_serializadas/{bicicleta_id}/ficha",
+        json={
+            "estado_tecnico": "pendiente_revision",
+            "condicion_comercial": "oferta",
+            "ubicacion_fisica": "MESA DE ARMADO",
+            "observaciones": "Revisar cubiertas",
+            "texto_comercial": None,
+            "motivo": "Revision inicial del lote",
+            "id_usuario": seed_serializacion["usuario_id"],
+        },
+    )
+    assert actualizada.status_code == 200, actualizada.text
+    assert actualizada.json()["estado_tecnico"] == "pendiente_revision"
+    assert actualizada.json()["ubicacion_fisica"] == "MESA DE ARMADO"
+
+    disponibles = client.get(
+        "/bicicletas_serializadas/disponibles",
+        params={
+            "id_variante": seed_serializacion["variante_id"],
+            "id_sucursal": seed_serializacion["sucursal_id"],
+        },
+    )
+    assert disponibles.status_code == 200, disponibles.text
+    assert disponibles.json() == []
+
+    venta = _crear_venta_serializada(client, seed_serializacion, bicicleta_id)
+    assert venta.status_code == 400
+    assert "no esta lista para vender" in venta.json()["detail"]
+
+    reserva = _crear_reserva_serializada(client, seed_serializacion, bicicleta_id)
+    assert reserva.status_code == 400
+    assert "no esta lista para reservar" in reserva.json()["detail"]
+
+    eventos = get_auditoria_by_entidad(db_conn, "bicicleta_serializada", bicicleta_id)
+    assert any(evento["accion"] == "ficha_operativa_actualizada" for evento in eventos)
+
+
+def test_ficha_operativa_permite_definir_y_quitar_precio_propio(
+    client,
+    db_conn,
+    seed_serializacion,
+):
+    creada = _crear_bici_serializada(client, seed_serializacion, "CUADRO-PRECIO-FICHA")
+    assert creada.status_code == 200, creada.text
+    bicicleta_id = creada.json()["bicicleta_id"]
+
+    actualizado = client.patch(
+        f"/bicicletas_serializadas/{bicicleta_id}/ficha",
+        json={
+            "estado_tecnico": "lista",
+            "condicion_comercial": "reacondicionada",
+            "ubicacion_fisica": "SALON",
+            "observaciones": None,
+            "texto_comercial": "Unidad acondicionada",
+            "usar_precio_personalizado": True,
+            "precio_venta_personalizado": 1035000,
+            "motivo": "Ajuste de precio por acondicionamiento",
+            "id_usuario": seed_serializacion["usuario_id"],
+        },
+    )
+    assert actualizado.status_code == 200, actualizado.text
+    assert actualizado.json()["precio_venta_personalizado"] == "1035000.00"
+    assert actualizado.json()["precio_venta_actual"] == "1035000.00"
+
+    quitado = client.patch(
+        f"/bicicletas_serializadas/{bicicleta_id}/ficha",
+        json={
+            "estado_tecnico": "lista",
+            "condicion_comercial": "reacondicionada",
+            "ubicacion_fisica": "SALON",
+            "observaciones": None,
+            "texto_comercial": "Unidad acondicionada",
+            "usar_precio_personalizado": False,
+            "precio_venta_personalizado": None,
+            "motivo": "Volver al precio general del modelo",
+            "id_usuario": seed_serializacion["usuario_id"],
+        },
+    )
+    assert quitado.status_code == 200, quitado.text
+    assert quitado.json()["precio_venta_personalizado"] is None
+    assert quitado.json()["precio_venta_actual"] == quitado.json()["precio_minorista"]
+
+
+def test_acondicionamiento_aplica_stock_costos_recupero_y_revierte(
+    client,
+    db_conn,
+    seed_serializacion,
+):
+    creada = _crear_bici_serializada(client, seed_serializacion, "ZOOM-FASE-2")
+    assert creada.status_code == 200, creada.text
+    bicicleta_id = creada.json()["bicicleta_id"]
+
+    pendiente = client.patch(
+        f"/bicicletas_serializadas/{bicicleta_id}/ficha",
+        json={
+            "estado_tecnico": "pendiente_revision",
+            "condicion_comercial": "normal",
+            "ubicacion_fisica": "DEPOSITO",
+            "observaciones": "Cubiertas a reemplazar",
+            "texto_comercial": None,
+            "motivo": "Revision del lote Zoom",
+            "id_usuario": seed_serializacion["usuario_id"],
+        },
+    )
+    assert pendiente.status_code == 200, pendiente.text
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO productos (
+                id_categoria, nombre, tipo_item, stockeable, serializable, activo
+            )
+            VALUES (
+                (SELECT id FROM categorias LIMIT 1),
+                'Cubierta reemplazo', 'producto', TRUE, FALSE, TRUE
+            )
+            RETURNING id
+            """
+        )
+        producto_componente_id = cur.fetchone()["id"]
+        cur.execute(
+            """
+            INSERT INTO variantes (
+                id_producto, nombre_variante, sku, precio_minorista,
+                precio_mayorista, costo_promedio_vigente, activo
+            )
+            VALUES (%s, 'R29', 'CUB-REEMPLAZO-R29', 50000, 40000, 18000, TRUE)
+            RETURNING id
+            """,
+            (producto_componente_id,),
+        )
+        componente_id = cur.fetchone()["id"]
+        cur.execute(
+            """
+            INSERT INTO stock_sucursal (
+                id_sucursal, id_variante, stock_fisico, stock_reservado,
+                stock_vendido_pendiente_entrega
+            )
+            VALUES (%s, %s, 5, 0, 0)
+            """,
+            (seed_serializacion["sucursal_id"], componente_id),
+        )
+    db_conn.commit()
+
+    orden = client.post(
+        "/acondicionamientos/",
+        json={
+            "id_bicicleta_serializada": bicicleta_id,
+            "motivo": "Cambiar cubiertas defectuosas",
+            "observaciones": "Plan de prueba",
+            "id_usuario": seed_serializacion["usuario_id"],
+        },
+    )
+    assert orden.status_code == 201, orden.text
+    orden_id = orden.json()["id"]
+    assert orden.json()["codigo"] == "ACOND-000001"
+
+    componente = client.post(
+        f"/acondicionamientos/{orden_id}/items",
+        json={
+            "tipo_intervencion": "reemplazo",
+            "id_variante": componente_id,
+            "cantidad": 2,
+            "detalle_pieza_retirada": "Dos cubiertas originales defectuosas",
+            "destino_pieza_retirada": "garantia",
+            "observaciones": None,
+            "id_usuario": seed_serializacion["usuario_id"],
+        },
+    )
+    assert componente.status_code == 200, componente.text
+    assert componente.json()["items"][0]["cantidad"] == "2.000"
+    assert componente.json()["items"][0]["stock_disponible_actual"] == "5.000"
+    assert componente.json()["items"][0]["disponibilidad_suficiente"] is True
+    assert componente.json()["items"][0]["destino_pieza_retirada"] == "garantia"
+    assert componente.json()["items"][0]["estado_pieza_retirada"] == "en_garantia"
+    assert componente.json()["total_componentes_estimado"] == "36000.00"
+
+    faltante = client.post(
+        f"/acondicionamientos/{orden_id}/items",
+        json={
+            "tipo_intervencion": "mejora",
+            "id_variante": componente_id,
+            "cantidad": 10,
+            "detalle_pieza_retirada": None,
+            "destino_pieza_retirada": None,
+            "observaciones": "Valida stock insuficiente",
+            "id_usuario": seed_serializacion["usuario_id"],
+        },
+    )
+    assert faltante.status_code == 200, faltante.text
+    item_faltante_id = faltante.json()["items"][1]["id"]
+    confirmar_sin_stock = client.post(
+        f"/acondicionamientos/{orden_id}/confirmar",
+        json={"id_usuario": seed_serializacion["usuario_id"]},
+    )
+    assert confirmar_sin_stock.status_code == 400
+    quitar_faltante = client.delete(
+        f"/acondicionamientos/{orden_id}/items/{item_faltante_id}",
+        params={"id_usuario": seed_serializacion["usuario_id"]},
+    )
+    assert quitar_faltante.status_code == 200, quitar_faltante.text
+    assert len(quitar_faltante.json()["items"]) == 1
+
+    costo = client.post(
+        f"/acondicionamientos/{orden_id}/costos",
+        json={
+            "tipo": "mano_obra",
+            "descripcion": "Cambio de cubiertas",
+            "cantidad": 1,
+            "costo_unitario": 5000,
+            "observaciones": None,
+            "id_usuario": seed_serializacion["usuario_id"],
+        },
+    )
+    assert costo.status_code == 200, costo.text
+    assert costo.json()["total_estimado"] == "41000.00"
+    assert costo.json()["puede_confirmar"] is True
+
+    recupero = client.post(
+        f"/acondicionamientos/{orden_id}/recuperos",
+        json={
+            "tipo": "nota_credito",
+            "descripcion": "Reconocimiento por cubiertas falladas",
+            "monto": 1000,
+            "referencia": "NC-PRUEBA-001",
+            "observaciones": None,
+            "id_usuario": seed_serializacion["usuario_id"],
+        },
+    )
+    assert recupero.status_code == 200, recupero.text
+    assert recupero.json()["total_recuperos_estimado"] == "1000.00"
+    assert recupero.json()["total_estimado"] == "40000.00"
+
+    confirmar = client.post(
+        f"/acondicionamientos/{orden_id}/confirmar",
+        json={"id_usuario": seed_serializacion["usuario_id"]},
+    )
+    assert confirmar.status_code == 200, confirmar.text
+    assert confirmar.json()["estado"] == "confirmado"
+
+    habilitar_manualmente = client.patch(
+        f"/bicicletas_serializadas/{bicicleta_id}/ficha",
+        json={
+            "estado_tecnico": "lista",
+            "condicion_comercial": "normal",
+            "ubicacion_fisica": "SALON",
+            "observaciones": None,
+            "texto_comercial": None,
+            "motivo": "Intento de habilitacion manual",
+            "id_usuario": seed_serializacion["usuario_id"],
+        },
+    )
+    assert habilitar_manualmente.status_code == 400
+    assert "acondicionamiento confirmado" in habilitar_manualmente.json()["detail"]
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT estado_tecnico, costo_base_unitario, costo_total_unitario
+            FROM bicicletas_serializadas
+            WHERE id = %s
+            """,
+            (bicicleta_id,),
+        )
+        bici_antes = cur.fetchone()
+        assert bici_antes["estado_tecnico"] == "en_acondicionamiento"
+        cur.execute(
+            "SELECT stock_fisico FROM stock_sucursal WHERE id_variante = %s",
+            (componente_id,),
+        )
+        assert cur.fetchone()["stock_fisico"] == 5
+
+    aplicar = client.post(
+        f"/acondicionamientos/{orden_id}/aplicar",
+        json={
+            "id_usuario": seed_serializacion["usuario_id"],
+            "actualizar_precio_venta": True,
+            "precio_venta_nuevo": 1060000,
+        },
+    )
+    assert aplicar.status_code == 200, aplicar.text
+    aplicado = aplicar.json()
+    assert aplicado["estado"] == "aplicado"
+    assert aplicado["costo_componentes_real"] == "36000.00"
+    assert aplicado["costo_adicional_real"] == "5000.00"
+    assert aplicado["recuperos_total"] == "1000.00"
+    assert aplicado["costo_acondicionamiento_aplicado"] == "40000.00"
+    assert aplicado["precio_venta_actualizado"] is True
+    assert aplicado["precio_venta_actual"] == "1060000.00"
+    assert aplicado["items"][0]["estado"] == "consumido"
+    assert aplicado["items"][0]["cantidad_consumida"] == "2.000"
+    assert aplicado["items"][0]["costo_unitario_real"] == "18000.00"
+    assert aplicado["items"][0]["id_movimiento_consumo"] is not None
+
+    compensar = client.patch(
+        f"/acondicionamientos/{orden_id}/items/{aplicado['items'][0]['id']}/pieza-retirada",
+        json={
+            "estado": "compensada",
+            "resolucion": "Proveedor reconoció NC-PRUEBA-001",
+            "id_usuario": seed_serializacion["usuario_id"],
+        },
+    )
+    assert compensar.status_code == 200, compensar.text
+    pieza_retirada = compensar.json()["items"][0]
+    assert pieza_retirada["estado_pieza_retirada"] == "compensada"
+    assert pieza_retirada["resolucion_pieza_retirada"] == "Proveedor reconoció NC-PRUEBA-001"
+
+    aplicar_dos_veces = client.post(
+        f"/acondicionamientos/{orden_id}/aplicar",
+        json={"id_usuario": seed_serializacion["usuario_id"]},
+    )
+    assert aplicar_dos_veces.status_code == 400
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT estado_tecnico, costo_acondicionamiento, costo_total_unitario,
+                   precio_venta_personalizado
+            FROM bicicletas_serializadas
+            WHERE id = %s
+            """,
+            (bicicleta_id,),
+        )
+        bici_aplicada = cur.fetchone()
+        assert bici_aplicada["estado_tecnico"] == "lista"
+        assert bici_aplicada["costo_acondicionamiento"] == Decimal("40000.00")
+        assert bici_aplicada["costo_total_unitario"] == (
+            bici_antes["costo_base_unitario"] + Decimal("40000.00")
+        )
+        assert bici_aplicada["precio_venta_personalizado"] == Decimal("1060000.00")
+        cur.execute(
+            "SELECT stock_fisico FROM stock_sucursal WHERE id_variante = %s",
+            (componente_id,),
+        )
+        assert cur.fetchone()["stock_fisico"] == 3
+        cur.execute(
+            """
+            SELECT tipo_movimiento, origen_tipo, origen_id,
+                   id_bicicleta_serializada, cantidad, costo_unitario_aplicado
+            FROM movimientos_stock
+            WHERE tipo_movimiento = 'uso_acondicionamiento'
+              AND origen_id = %s
+            """,
+            (orden_id,),
+        )
+        movimiento = cur.fetchone()
+        assert movimiento["origen_tipo"] == "bicicleta_acondicionamiento"
+        assert movimiento["id_bicicleta_serializada"] == bicicleta_id
+        assert movimiento["cantidad"] == Decimal("2.000")
+        assert movimiento["costo_unitario_aplicado"] == Decimal("18000.00")
+
+    revertir = client.post(
+        f"/acondicionamientos/{orden_id}/revertir",
+        json={
+            "motivo": "Se revierte el trabajo aplicado para validar trazabilidad",
+            "id_usuario": seed_serializacion["usuario_id"],
+        },
+    )
+    assert revertir.status_code == 200, revertir.text
+    assert revertir.json()["estado"] == "revertido"
+    assert revertir.json()["items"][0]["estado"] == "revertido"
+    assert revertir.json()["items"][0]["estado_pieza_retirada"] == "revertida"
+    assert revertir.json()["items"][0]["id_movimiento_reversion"] is not None
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT estado_tecnico, costo_acondicionamiento, costo_total_unitario,
+                   precio_venta_personalizado
+            FROM bicicletas_serializadas
+            WHERE id = %s
+            """,
+            (bicicleta_id,),
+        )
+        bici_revertida = cur.fetchone()
+        assert bici_revertida["estado_tecnico"] == "pendiente_revision"
+        assert bici_revertida["costo_acondicionamiento"] == Decimal("0.00")
+        assert bici_revertida["costo_total_unitario"] == bici_antes["costo_total_unitario"]
+        assert bici_revertida["precio_venta_personalizado"] is None
+        cur.execute(
+            "SELECT stock_fisico FROM stock_sucursal WHERE id_variante = %s",
+            (componente_id,),
+        )
+        assert cur.fetchone()["stock_fisico"] == 5
+        cur.execute(
+            """
+            SELECT COUNT(*) AS cantidad
+            FROM movimientos_stock
+            WHERE tipo_movimiento = 'reversion_uso_acondicionamiento'
+              AND origen_id = %s
+            """,
+            (orden_id,),
+        )
+        assert cur.fetchone()["cantidad"] == 1
+
+
+def test_venta_serializada_usa_precio_personalizado_de_la_unidad(
+    client,
+    db_conn,
+    seed_serializacion,
+):
+    creada = _crear_bici_serializada(client, seed_serializacion, "CUADRO-PRECIO-PROPIO")
+    assert creada.status_code == 200, creada.text
+    bicicleta_id = creada.json()["bicicleta_id"]
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE bicicletas_serializadas
+            SET precio_venta_personalizado = 1123000
+            WHERE id = %s
+            """,
+            (bicicleta_id,),
+        )
+    db_conn.commit()
+
+    simulacion = client.post(
+        "/ventas/simular",
+        json={
+            "id_cliente": seed_serializacion["cliente_id"],
+            "id_sucursal": seed_serializacion["sucursal_id"],
+            "tipo_precio": "minorista",
+            "items": [
+                {
+                    "id_variante": seed_serializacion["variante_id"],
+                    "cantidad": 1,
+                    "id_bicicleta_serializada": bicicleta_id,
+                }
+            ],
+            "pagos": [],
+        },
+    )
+    assert simulacion.status_code == 200, simulacion.text
+    assert simulacion.json()["subtotal_base"] == "1123000.00"
+    assert simulacion.json()["total_final"] == "1123000.00"
+
+    venta = _crear_venta_serializada(client, seed_serializacion, bicicleta_id)
+    assert venta.status_code == 200, venta.text
+    venta_id = venta.json()["venta_id"]
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "SELECT precio_lista, precio_final FROM venta_items WHERE id_venta = %s",
+            (venta_id,),
+        )
+        item = cur.fetchone()
+    assert item["precio_lista"] == Decimal("1123000.00")
+    assert item["precio_final"] == Decimal("1123000.00")
+
+
+def test_reserva_serializada_usa_precio_personalizado_de_la_unidad(
+    client,
+    db_conn,
+    seed_serializacion,
+):
+    creada = _crear_bici_serializada(client, seed_serializacion, "CUADRO-RES-PRECIO-PROPIO")
+    assert creada.status_code == 200, creada.text
+    bicicleta_id = creada.json()["bicicleta_id"]
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE bicicletas_serializadas
+            SET precio_venta_personalizado = 1099000
+            WHERE id = %s
+            """,
+            (bicicleta_id,),
+        )
+    db_conn.commit()
+
+    reserva = _crear_reserva_serializada(client, seed_serializacion, bicicleta_id)
+    assert reserva.status_code == 200, reserva.text
+    reserva_id = reserva.json()["reserva_id"]
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "SELECT precio_estimado FROM reserva_items WHERE id_reserva = %s",
+            (reserva_id,),
+        )
+        item = cur.fetchone()
+    assert item["precio_estimado"] == Decimal("1099000.00")
 
 def test_crear_bicicleta_serializada_normaliza_numero_cuadro(
     client,

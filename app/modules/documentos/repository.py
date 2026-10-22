@@ -330,6 +330,35 @@ def get_resumen_cobros_pagos_by_venta_id(conn, venta_id: int):
         return cur.fetchall()
 
 
+def get_resumen_cobros_creditos_by_venta_id(conn, venta_id: int):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT
+                cm.id,
+                cm.created_at AS fecha,
+                'credito' AS medio_pago,
+                cm.monto_base_aplicado,
+                cm.monto_descuento_aplicado,
+                0::numeric AS monto_recargo_aplicado,
+                cm.monto AS monto_total_cobrado,
+                'confirmado' AS estado,
+                cm.nota,
+                NULL::int AS cuotas,
+                NULL::text AS entidad,
+                NULL::text AS tarjeta_plan_nombre,
+                NULL::numeric AS porcentaje_recargo_aplicado
+            FROM credito_movimientos cm
+            WHERE cm.origen_tipo = 'venta'
+              AND cm.origen_id = %s
+              AND cm.tipo_movimiento = 'aplicacion_a_venta'
+            ORDER BY cm.created_at, cm.id
+            """,
+            (venta_id,),
+        )
+        return cur.fetchall()
+
+
 def get_resumen_cobros_items_preview_by_venta_id(conn, venta_id: int):
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(

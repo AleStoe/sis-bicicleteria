@@ -125,6 +125,47 @@ def get_stock_critico(conn, umbral: int = 2):
     with conn.cursor() as cur:
         cur.execute(
             """
+            WITH candidatos AS (
+                SELECT
+                    ss.id_sucursal,
+                    ss.id_variante,
+                    (p.serializable = TRUE OR p.rodado IS NOT NULL
+                     OR p.tipo_bicicleta IS NOT NULL
+                     OR c.nombre ILIKE '%%bicicleta%%') AS es_bicicleta
+                FROM stock_sucursal ss
+                JOIN variantes v ON v.id = ss.id_variante
+                JOIN productos p ON p.id = v.id_producto
+                JOIN categorias c ON c.id = p.id_categoria
+                WHERE p.stockeable = TRUE
+                  AND p.activo = TRUE
+                  AND v.activo = TRUE
+                  AND v.reponer_stock = TRUE
+                  AND (ss.stock_fisico - ss.stock_reservado
+                       - ss.stock_vendido_pendiente_entrega) <= %s
+            ),
+            devoluciones AS (
+                SELECT id_venta_item, SUM(cantidad_devuelta) AS cantidad
+                FROM venta_item_devoluciones
+                GROUP BY id_venta_item
+            ),
+            demanda AS (
+                SELECT
+                    ca.id_sucursal,
+                    ca.id_variante,
+                    COALESCE(SUM(GREATEST(vi.cantidad - COALESCE(d.cantidad, 0), 0)), 0) AS unidades_90d,
+                    COUNT(DISTINCT ve.id) FILTER (
+                        WHERE vi.cantidad > COALESCE(d.cantidad, 0)
+                    ) AS ventas_90d
+                FROM candidatos ca
+                JOIN venta_items vi ON vi.id_variante = ca.id_variante
+                JOIN ventas ve ON ve.id = vi.id_venta
+                    AND ve.id_sucursal = ca.id_sucursal
+                    AND ve.fecha >= CURRENT_DATE - INTERVAL '90 days'
+                    AND ve.estado IN ('pagada_parcial', 'pagada_total', 'entregada', 'devuelta_parcial', 'devuelta')
+                LEFT JOIN devoluciones d ON d.id_venta_item = vi.id
+                WHERE vi.tipo_item = 'producto'
+                GROUP BY ca.id_sucursal, ca.id_variante
+            )
             SELECT
                 ss.id_sucursal,
                 s.nombre AS sucursal_nombre,
@@ -135,18 +176,19 @@ def get_stock_critico(conn, umbral: int = 2):
                 v.codigo_proveedor,
                 v.reponer_stock,
                 ss.stock_fisico,
-                (ss.stock_fisico - ss.stock_reservado - ss.stock_vendido_pendiente_entrega) AS stock_disponible
-            FROM stock_sucursal ss
+                (ss.stock_fisico - ss.stock_reservado - ss.stock_vendido_pendiente_entrega) AS stock_disponible,
+                ca.es_bicicleta,
+                COALESCE(demanda.unidades_90d, 0) AS unidades_90d,
+                COALESCE(demanda.ventas_90d, 0) AS ventas_90d
+            FROM candidatos ca
+            JOIN stock_sucursal ss ON ss.id_sucursal = ca.id_sucursal
+                AND ss.id_variante = ca.id_variante
             JOIN sucursales s ON s.id = ss.id_sucursal
             JOIN variantes v ON v.id = ss.id_variante
             JOIN productos p ON p.id = v.id_producto
-            WHERE p.stockeable = TRUE
-              AND p.activo = TRUE
-              AND v.activo = TRUE
-              AND v.reponer_stock = TRUE
-              AND (ss.stock_fisico - ss.stock_reservado - ss.stock_vendido_pendiente_entrega) <= %s
-            ORDER BY stock_disponible ASC, p.nombre ASC
-            LIMIT 80
+            LEFT JOIN demanda ON demanda.id_sucursal = ca.id_sucursal
+                AND demanda.id_variante = ca.id_variante
+            ORDER BY ss.id_sucursal, p.nombre ASC
             """,
             (umbral,),
         )

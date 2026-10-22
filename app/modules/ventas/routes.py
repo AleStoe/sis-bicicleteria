@@ -16,6 +16,8 @@ from app.shared.constants import (
 from .schema import (
     VentaCreateInput,
     VentaCreateOutput,
+    VentaAplicarCreditoInput,
+    VentaAplicarCreditoOutput,
     VentaResumenOutput,
     VentaDetalleOutput,
     VentaEntregaInput,
@@ -46,12 +48,14 @@ from .service import (
     devolver_item_serializado_entregado,
     devolver_venta,
     devolver_items,
+    aplicar_credito_a_venta_existente,
     simular_venta
 )
 
 router = APIRouter()
 puede_crear_venta = requerir_permiso(PERMISO_CREAR_VENTA)
 puede_anular_venta = requerir_permiso(PERMISO_ANULAR_VENTA)
+puede_aplicar_credito_venta = requerir_permiso(PERMISO_APLICAR_CREDITO_VENTA)
 puede_gestionar_devoluciones = requerir_permiso(PERMISO_GESTIONAR_DEVOLUCIONES)
 puede_gestionar_correcciones = requerir_permiso(PERMISO_GESTIONAR_CORRECCIONES)
 
@@ -108,6 +112,16 @@ def venta_detalle(
             item["codigo_orden_armado"] = None
 
     return detalle
+
+
+@router.post("/{venta_id}/aplicar-credito", response_model=VentaAplicarCreditoOutput)
+def aplicar_credito_venta_route(
+    venta_id: int,
+    data: VentaAplicarCreditoInput,
+    usuario: CurrentUser = Depends(puede_aplicar_credito_venta),
+):
+    aplicar_actor_actual(data, usuario)
+    return aplicar_credito_a_venta_existente(venta_id, data)
 
 
 @router.post("/{venta_id}/entregar", response_model=VentaEstadoOutput)

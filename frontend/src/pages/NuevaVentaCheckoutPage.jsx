@@ -276,6 +276,7 @@ export default function NuevaVentaCheckoutPage() {
 
           <CheckoutVentaPanel
             clienteId={draft.clienteId}
+            sucursalId={draft.idSucursal ?? sucursalId}
             cliente={draft.cliente}
             deudaCliente={deudaCliente}
             total={draft.total}

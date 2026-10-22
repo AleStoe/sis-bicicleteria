@@ -110,9 +110,15 @@ def insert_reserva_item(conn, data: dict):
                 id_bicicleta_serializada,
                 cantidad,
                 precio_estimado,
-                subtotal_estimado
+                subtotal_estimado,
+                id_oferta,
+                precio_catalogo_original,
+                descuento_oferta_unitario,
+                oferta_nombre_snapshot,
+                oferta_alcance_snapshot,
+                oferta_politica_contado_snapshot
             )
-            VALUES (%s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
             (
@@ -122,6 +128,12 @@ def insert_reserva_item(conn, data: dict):
                 data["cantidad"],
                 data["precio_estimado"],
                 data["subtotal_estimado"],
+                data.get("id_oferta"),
+                data.get("precio_catalogo_original"),
+                data.get("descuento_oferta_unitario", 0),
+                data.get("oferta_nombre_snapshot"),
+                data.get("oferta_alcance_snapshot"),
+                data.get("oferta_politica_contado_snapshot"),
             ),
         )
         return cur.fetchone()["id"]
@@ -232,6 +244,7 @@ def get_reserva_by_id_for_update(conn, reserva_id: int):
                 r.fecha_vencimiento,
                 r.sena_total,
                 r.saldo_estimado,
+                r.base_sin_descuento_contado,
                 r.sena_perdida,
                 r.nota,
                 r.id_usuario
@@ -262,6 +275,7 @@ def get_reserva_by_id(conn, reserva_id: int):
                 r.fecha_vencimiento,
                 r.sena_total,
                 r.saldo_estimado,
+                r.base_sin_descuento_contado,
                 r.sena_perdida,
                 r.nota,
                 r.id_usuario
@@ -293,6 +307,12 @@ def get_reserva_items(conn, reserva_id: int):
                 ri.cantidad,
                 ri.precio_estimado,
                 ri.subtotal_estimado,
+                ri.id_oferta,
+                ri.precio_catalogo_original,
+                ri.descuento_oferta_unitario,
+                ri.oferta_nombre_snapshot,
+                ri.oferta_alcance_snapshot,
+                ri.oferta_politica_contado_snapshot,
                 v.costo_promedio_vigente,
                 r.id_sucursal
             FROM reserva_items ri
@@ -425,6 +445,7 @@ def actualizar_totales_reserva(
     total_estimado: Decimal,
     sena_total: Decimal,
     saldo_estimado: Decimal,
+    base_sin_descuento_contado: Decimal = Decimal("0"),
 ):
     with conn.cursor() as cur:
         cur.execute(
@@ -433,12 +454,14 @@ def actualizar_totales_reserva(
             SET
                 sena_total = %s,
                 saldo_estimado = %s,
+                base_sin_descuento_contado = %s,
                 updated_at = NOW()
             WHERE id = %s
             """,
             (
                 sena_total,
                 saldo_estimado,
+                base_sin_descuento_contado,
                 reserva_id,
             ),
         )

@@ -254,3 +254,43 @@ def test_no_permite_crear_regla_con_categoria_inexistente(
 
     assert response.status_code == 400
     assert "no existe la categoría" in response.json()["detail"].lower()
+
+
+def test_prioriza_regla_por_rubro(client, db_conn, seed_venta_basica):
+    variante_id = seed_venta_basica["variante_id"]
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "UPDATE productos SET rubro = 'REPUESTOS' WHERE id = %s",
+            (seed_venta_basica["producto_id"],),
+        )
+    db_conn.commit()
+
+    global_rule = client.post(
+        "/precios/reglas",
+        json={
+            "nombre": "Global para prueba rubro",
+            "tipo_cliente": "minorista",
+            "margen_porcentaje": "50",
+            "redondeo_base": "100",
+        },
+    )
+    assert global_rule.status_code == 200, global_rule.text
+    rubro_rule = client.post(
+        "/precios/reglas",
+        json={
+            "nombre": "Repuestos por rubro",
+            "rubro": "repuestos",
+            "tipo_cliente": "minorista",
+            "margen_porcentaje": "125",
+            "redondeo_base": "100",
+        },
+    )
+    assert rubro_rule.status_code == 200, rubro_rule.text
+    assert rubro_rule.json()["rubro"] == "REPUESTOS"
+
+    sugerencia = client.post(
+        f"/precios/variantes/{variante_id}/sugerir",
+        json={"tipo_cliente": "minorista"},
+    )
+    assert sugerencia.status_code == 200, sugerencia.text
+    assert sugerencia.json()["regla_nombre"] == "Repuestos por rubro"

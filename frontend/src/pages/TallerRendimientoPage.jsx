@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, ArrowLeft, Clipboard, RefreshCw, Search, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Clipboard, RefreshCw, X } from "lucide-react";
 import { obtenerRendimientoTaller } from "../services/tallerService";
 import { getPaqueteTrabajoTallerUrl } from "../services/documentosService";
 import { formatDate, formatMoney } from "../utils/formatters";
 import { copyTextToClipboard } from "../utils/clipboard";
 import { EstadoBadge } from "./TallerListPage";
+import SearchField from "../components/ui/SearchField";
 
 const ESTADOS = [
   { value: "", label: "Todos los estados" },
@@ -227,15 +228,13 @@ export default function TallerRendimientoPage() {
       </section>
 
       <section style={styles.controls}>
-        <label style={styles.searchBox}>
-          <Search size={18} />
-          <input
+        <SearchField
             value={busqueda}
-            onChange={(event) => setBusqueda(event.target.value)}
+            onChange={setBusqueda}
             placeholder="Buscar OT, cliente, bici, cuadro o problema..."
-            style={styles.searchInput}
-          />
-        </label>
+            style={styles.searchBox}
+            inputStyle={styles.searchInput}
+        />
         <select value={estado} onChange={(event) => setEstado(event.target.value)} style={styles.select}>
           {ESTADOS.map((item) => (
             <option key={item.value || "todos"} value={item.value}>

@@ -10,6 +10,7 @@ from app.shared.money import redondear_monto
 
 ORIGEN_COSTO_FABRICACION_PROPIA = "fabricacion_propia"
 ORIGEN_COSTO_PROMEDIO_VARIANTE = "costo_promedio_variante"
+ORIGEN_COSTO_UNIDAD_SERIALIZADA = "costo_unidad_serializada"
 
 
 def resolver_costo_unitario_venta_serializada(
@@ -44,6 +45,13 @@ def resolver_costo_unitario_venta_serializada(
         )
 
     if bicicleta["id_orden_armado_origen"] is None:
+        costo_individual = redondear_monto(bicicleta["costo_total_unitario"] or 0)
+        if costo_individual > Decimal("0"):
+            return {
+                "costo_unitario_aplicado": costo_individual,
+                "origen_costo": ORIGEN_COSTO_UNIDAD_SERIALIZADA,
+                "id_orden_armado_origen": None,
+            }
         return {
             "costo_unitario_aplicado": costo_variante,
             "origen_costo": ORIGEN_COSTO_PROMEDIO_VARIANTE,
@@ -93,6 +101,17 @@ def resolver_costo_unitario_venta_serializada(
                 "bici con numero de cuadro."
             ),
         )
+
+    costo_acondicionamiento = redondear_monto(
+        bicicleta["costo_acondicionamiento"] or 0
+    )
+    costo_individual = redondear_monto(bicicleta["costo_total_unitario"] or 0)
+    if costo_acondicionamiento > Decimal("0") and costo_individual > Decimal("0"):
+        return {
+            "costo_unitario_aplicado": costo_individual,
+            "origen_costo": ORIGEN_COSTO_UNIDAD_SERIALIZADA,
+            "id_orden_armado_origen": bicicleta["id_orden_armado_origen"],
+        }
 
     return {
         "costo_unitario_aplicado": redondear_monto(costo_fabricacion),

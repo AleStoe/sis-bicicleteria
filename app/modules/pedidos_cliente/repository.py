@@ -343,6 +343,8 @@ def list_items(conn, pedido_id: int, sucursal_id: int):
                 oferta.id AS oferta_id,
                 oferta.nombre AS oferta_nombre,
                 oferta.precio_oferta,
+                oferta.alcance AS oferta_alcance,
+                oferta.politica_contado AS oferta_politica_contado,
                 oferta.fecha_desde AS oferta_fecha_desde,
                 oferta.fecha_hasta AS oferta_fecha_hasta,
                 i.cantidad,
@@ -361,11 +363,14 @@ def list_items(conn, pedido_id: int, sucursal_id: int):
                 WHERE bs.id_variante = v.id
                   AND bs.id_sucursal_actual = %s
                   AND bs.estado = 'disponible'
+                  AND bs.estado_tecnico = 'lista'
             ) serializadas ON TRUE
             LEFT JOIN LATERAL (
-                SELECT o.id, o.nombre, o.precio_oferta, o.fecha_desde, o.fecha_hasta
+                SELECT o.id, o.nombre, o.precio_oferta, o.fecha_desde, o.fecha_hasta,
+                       o.alcance, o.politica_contado
                 FROM ofertas o
                 WHERE o.id_variante = v.id
+                  AND o.alcance = 'variante'
                   AND o.activa = TRUE
                   AND CURRENT_DATE BETWEEN o.fecha_desde AND o.fecha_hasta
                 ORDER BY o.fecha_desde DESC, o.id DESC

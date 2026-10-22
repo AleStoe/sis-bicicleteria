@@ -113,7 +113,7 @@ export default function StockPage() {
 
   useEffect(() => {
     cargarTodo();
-    setTimeout(() => searchInputRef.current?.focus(), 100);
+    if (!isMobile) setTimeout(() => searchInputRef.current?.focus(), 100);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -277,6 +277,7 @@ export default function StockPage() {
   }
 
   async function buscarAhora({ autoSeleccionarUnico = false } = {}) {
+    if (isMobile) searchInputRef.current?.blur();
     setIdVarianteFiltro("");
     await cargarStock({
       paramsExtra: { q: query.trim(), id_variante: "", limit: STOCK_LIMIT_BUSQUEDA },
@@ -285,7 +286,7 @@ export default function StockPage() {
       actualizarResumen: false,
     });
 
-    setTimeout(() => searchInputRef.current?.select(), 0);
+    if (!isMobile) setTimeout(() => searchInputRef.current?.select(), 0);
   }
 
   function limpiarBusqueda() {
@@ -294,7 +295,7 @@ export default function StockPage() {
     setFiltroEstado("todos");
     setFiltroReponerStock("todos");
     setSubtipoCatalogo("");
-    setTimeout(() => searchInputRef.current?.focus(), 0);
+    if (!isMobile) setTimeout(() => searchInputRef.current?.focus(), 0);
   }
 
   async function cargarProveedores() {
@@ -704,6 +705,7 @@ export default function StockPage() {
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
+                if (isMobile) e.currentTarget.blur();
                 buscarAhora({ autoSeleccionarUnico: true });
               }
               if (e.key === "Escape") {

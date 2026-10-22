@@ -1,5 +1,5 @@
 from calendar import monthrange
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 import unicodedata
 
@@ -65,12 +65,6 @@ def _clasificar_rubro_detalle(detalle):
         f"{detalle.get('producto') or ''} {detalle.get('descripcion_snapshot') or ''}"
     )
 
-    if tipo_precio == "mayorista":
-        return {
-            "clave": "mayorista",
-            "nombre": "Mayorista",
-            "detalle": "Ventas con lista mayorista",
-        }
     if tipo_item == "servicio_taller" or detalle.get("id_servicio_taller"):
         return {
             "clave": "taller",
@@ -107,6 +101,12 @@ def _clasificar_rubro_detalle(detalle):
             "nombre": "Repuestos",
             "detalle": "Repuestos y componentes",
         }
+    if "indumentaria" in rubro or "indumentaria" in categoria:
+        return {"clave": "indumentaria", "nombre": "Indumentaria", "detalle": "Indumentaria y proteccion"}
+    if "herramienta" in rubro or "herramienta" in categoria:
+        return {"clave": "herramientas", "nombre": "Herramientas", "detalle": "Herramientas y equipamiento"}
+    if "cubiertas auto" in rubro or "cubierta auto" in categoria:
+        return {"clave": "cubiertas_auto", "nombre": "Cubiertas de auto", "detalle": "Cubiertas para automotor"}
     return {
         "clave": "otros",
         "nombre": "Otros",
@@ -151,10 +151,11 @@ def _resumen_por_rubro(detalles):
         grupo["utilidad_liberada"] += Decimal(str(detalle["utilidad_liberada"] or 0))
         grupo["utilidad_pendiente"] += Decimal(str(detalle["utilidad_pendiente"] or 0))
 
-    orden = ["taller", "bicicletas", "triciclos", "cuatriciclos", "accesorios", "repuestos", "mayorista", "otros"]
+    orden = ["taller", "bicicletas", "triciclos", "cuatriciclos", "accesorios", "repuestos", "indumentaria", "herramientas", "cubiertas_auto", "otros"]
     salida = []
     for grupo in grupos.values():
         grupo["cantidad_ventas"] = len(grupo.pop("_ventas"))
+        grupo["margen_esperado"] = grupo["venta_comercial"] - grupo["cmv_comercial"]
         salida.append(grupo)
     salida.sort(
         key=lambda item: (
@@ -163,6 +164,176 @@ def _resumen_por_rubro(detalles):
         )
     )
     return salida
+
+
+def _conciliar_resumen_rubros(resumen, ventas_general, costos_general):
+    ventas_rubros = sum((_decimal(item["venta_comercial"]) for item in resumen), Decimal("0"))
+    costos_rubros = sum((_decimal(item["cmv_comercial"]) for item in resumen), Decimal("0"))
+    ajuste_ventas = _decimal(ventas_general) - ventas_rubros
+    ajuste_costos = _decimal(costos_general) - costos_rubros
+    if ajuste_ventas == 0 and ajuste_costos == 0:
+        return resumen
+    return [
+        *resumen,
+        {
+            "clave": "ajustes_redondeo",
+            "nombre": "Ajustes y redondeo",
+            "detalle": "Diferencias de asignacion expuestas para conciliar con el resumen general",
+            "cantidad_ventas": 0,
+            "cantidad_items": 0,
+            "cantidad_unidades": Decimal("0"),
+            "venta_comercial": ajuste_ventas,
+            "cmv_comercial": ajuste_costos,
+            "margen_esperado": ajuste_ventas - ajuste_costos,
+            "cobrado_comercial_reconocido": Decimal("0"),
+            "capital_recuperado": Decimal("0"),
+            "capital_inmovilizado": Decimal("0"),
+            "utilidad_liberada": Decimal("0"),
+            "utilidad_pendiente": Decimal("0"),
+        },
+    ]
+
+
+def _decimal(valor) -> Decimal:
+    return Decimal(str(valor or 0))
+
+
+def _porcentaje(numerador, denominador):
+    base = _decimal(denominador)
+    if base == 0:
+        return None
+    return (_decimal(numerador) / base * Decimal("100")).quantize(Decimal("0.01"))
+
+
+def _importe_texto(valor):
+    numero = _decimal(valor).quantize(Decimal("0.01"))
+    texto = f"{abs(numero):,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
+    return f"{'-' if numero < 0 else ''}$ {texto}"
+
+
+def _validar_resumen(data, detalles):
+    rubros = data.get("resumen_por_rubro") or []
+    ventas_rubros = sum((_decimal(item["venta_comercial"]) for item in rubros), Decimal("0"))
+    costos_rubros = sum((_decimal(item["cmv_comercial"]) for item in rubros), Decimal("0"))
+    ganancia_rubros = sum((_decimal(item["margen_esperado"]) for item in rubros), Decimal("0"))
+    ventas_general = _decimal(data.get("venta_comercial"))
+    costos_general = _decimal(data.get("cmv_comercial"))
+    ganancia_general = _decimal(data.get("margen_esperado"))
+    diferencia_ventas = ventas_general - ventas_rubros
+    diferencia_costos = costos_general - costos_rubros
+    diferencia_ganancia = ganancia_general - ganancia_rubros
+    servicios_costo_cero = sum(
+        1 for item in detalles
+        if (item.get("tipo_item") == "servicio_taller" or item.get("id_servicio_taller"))
+        and _decimal(item.get("costo_total")) == 0
+        and _decimal(item.get("cantidad_neta")) > 0
+    )
+    mercaderia_sin_costo = sum(
+        1 for item in detalles
+        if not (item.get("tipo_item") == "servicio_taller" or item.get("id_servicio_taller"))
+        and _decimal(item.get("costo_total")) == 0
+        and _decimal(item.get("cantidad_neta")) > 0
+    )
+    notas = []
+    if servicios_costo_cero:
+        notas.append(
+            f"{servicios_costo_cero} servicio(s) tienen costo directo cero; su margen se muestra antes de gastos operativos."
+        )
+    if mercaderia_sin_costo:
+        nombres_sin_costo = []
+        for item in detalles:
+            if (item.get("tipo_item") == "servicio_taller" or item.get("id_servicio_taller")):
+                continue
+            if _decimal(item.get("costo_total")) != 0 or _decimal(item.get("cantidad_neta")) <= 0:
+                continue
+            nombre = str(item.get("producto") or item.get("descripcion_snapshot") or "Item sin nombre")
+            if nombre not in nombres_sin_costo:
+                nombres_sin_costo.append(nombre)
+        notas.append(
+            f"Advertencia: {mercaderia_sin_costo} item(s) de mercaderia no tienen costo cargado: "
+            + "; ".join(nombres_sin_costo[:5])
+            + ("; ..." if len(nombres_sin_costo) > 5 else "")
+        )
+    if any(valor != 0 for valor in (diferencia_ventas, diferencia_costos, diferencia_ganancia)):
+        notas.append("Hay diferencias de redondeo o asignacion entre el detalle por rubro y el resumen general.")
+    return {
+        "valida": diferencia_ventas == 0 and diferencia_costos == 0 and diferencia_ganancia == 0,
+        "ventas_rubros": ventas_rubros,
+        "ventas_general": ventas_general,
+        "diferencia_ventas": diferencia_ventas,
+        "costos_rubros": costos_rubros,
+        "costos_general": costos_general,
+        "diferencia_costos": diferencia_costos,
+        "ganancia_rubros": ganancia_rubros,
+        "ganancia_general": ganancia_general,
+        "diferencia_ganancia": diferencia_ganancia,
+        "servicios_costo_cero": servicios_costo_cero,
+        "mercaderia_sin_costo": mercaderia_sin_costo,
+        "notas": notas,
+    }
+
+
+def _metrica_comparada(clave, nombre, actual, anterior, *, margen=False):
+    actual = _decimal(actual)
+    anterior = _decimal(anterior)
+    return {
+        "clave": clave,
+        "nombre": nombre,
+        "anterior": anterior,
+        "actual": actual,
+        "diferencia": actual - anterior,
+        "variacion_porcentual": None if anterior == 0 else ((actual - anterior) / abs(anterior) * Decimal("100")).quantize(Decimal("0.01")),
+        "diferencia_puntos_porcentuales": (actual - anterior) if margen else None,
+    }
+
+
+def _comparar_rubros(actual, anterior):
+    actuales = {item["clave"]: item for item in actual.get("resumen_por_rubro") or []}
+    anteriores = {item["clave"]: item for item in anterior.get("resumen_por_rubro") or []}
+    salida = []
+    for clave in set(actuales) | set(anteriores):
+        ahora = actuales.get(clave, {})
+        antes = anteriores.get(clave, {})
+        ventas_actual = _decimal(ahora.get("venta_comercial"))
+        ventas_anterior = _decimal(antes.get("venta_comercial"))
+        ganancia_actual = _decimal(ahora.get("margen_esperado"))
+        ganancia_anterior = _decimal(antes.get("margen_esperado"))
+        salida.append({
+            "clave": clave,
+            "nombre": ahora.get("nombre") or antes.get("nombre") or clave.title(),
+            "ventas_anterior": ventas_anterior,
+            "ventas_actual": ventas_actual,
+            "costos_anterior": _decimal(antes.get("cmv_comercial")),
+            "costos_actual": _decimal(ahora.get("cmv_comercial")),
+            "ganancia_anterior": ganancia_anterior,
+            "ganancia_actual": ganancia_actual,
+            "margen_anterior": _porcentaje(ganancia_anterior, ventas_anterior),
+            "margen_actual": _porcentaje(ganancia_actual, ventas_actual),
+            "variacion_ganancia": ganancia_actual - ganancia_anterior,
+        })
+    salida.sort(key=lambda item: abs(item["variacion_ganancia"]), reverse=True)
+    return salida
+
+
+def _explicar_rubros(rubros):
+    positivos = [item for item in rubros if item["variacion_ganancia"] > 0]
+    negativos = [item for item in rubros if item["variacion_ganancia"] < 0]
+    textos = []
+    if negativos:
+        principal = negativos[0]
+        textos.append(
+            f"La ganancia comercial de {principal['nombre']} bajo {_importe_texto(abs(principal['variacion_ganancia']))}."
+        )
+    if positivos:
+        principal = positivos[0]
+        compensacion = sum((item["variacion_ganancia"] for item in positivos), Decimal("0"))
+        cierre = " y compensaron parte de las caidas" if negativos else ""
+        textos.append(
+            f"{principal['nombre']} fue el mayor aporte positivo; los rubros que crecieron sumaron {_importe_texto(compensacion)}{cierre}."
+        )
+    if not textos:
+        textos.append("La ganancia comercial por rubro no cambio respecto del mes anterior.")
+    return textos
 
 
 def _nombre_producto_detalle(detalle) -> str:
@@ -389,6 +560,7 @@ def calcular_rentabilidad_mensual(periodo_mes: date, id_sucursal: int | None = N
         ingreso_real_neto = Decimal(
             str(ventas["ingreso_real_neto"] or 0)
         )
+        credito_aplicado = Decimal(str(ventas.get("credito_aplicado") or 0))
         resultado_financiero = financiacion_cobrada - costos_financieros
         cmv_bruto = Decimal(str(ventas["cmv_bruto"] or 0))
         cmv_devoluciones = Decimal(str(ventas["cmv_devoluciones"] or 0))
@@ -396,6 +568,12 @@ def calcular_rentabilidad_mensual(periodo_mes: date, id_sucursal: int | None = N
         cmv_cobrado = Decimal(str(ventas["cmv_cobrado"] or 0))
         cobrado_comercial_reconocido = Decimal(
             str(ventas["cobrado_comercial_reconocido"] or 0)
+        )
+        conciliacion_cobranza_ajuste = ingreso_real_neto - (
+            cobrado_comercial_reconocido
+            - credito_aplicado
+            + financiacion_cobrada
+            - costos_financieros
         )
         capital_recuperado = Decimal(str(ventas["capital_recuperado"] or 0))
         capital_inmovilizado = Decimal(str(ventas["capital_inmovilizado"] or 0))
@@ -412,6 +590,12 @@ def calcular_rentabilidad_mensual(periodo_mes: date, id_sucursal: int | None = N
 
         regla, items = _obtener_regla_para_calculo(conn, id_regla_distribucion)
         distribuciones = distribuir_monto(resultado_distribuible, items) if regla else []
+
+        resumen_por_rubro = _conciliar_resumen_rubros(
+            _resumen_por_rubro(detalles_periodo),
+            ventas_netas,
+            cmv_neto,
+        )
 
         return {
             "periodo_mes": fecha_desde,
@@ -430,6 +614,14 @@ def calcular_rentabilidad_mensual(periodo_mes: date, id_sucursal: int | None = N
             "financiacion_cobrada": financiacion_cobrada,
             "costos_financieros": costos_financieros,
             "ingreso_real_neto": ingreso_real_neto,
+            "credito_aplicado": credito_aplicado,
+            "conciliacion_cobranza_ajuste": conciliacion_cobranza_ajuste,
+            "cobrado_ventas_periodo": Decimal(str(ventas.get("cobrado_ventas_periodo") or 0)),
+            "cobrado_ventas_anteriores": Decimal(str(ventas.get("cobrado_ventas_anteriores") or 0)),
+            "capital_recuperado_ventas_periodo": Decimal(str(ventas.get("capital_recuperado_ventas_periodo") or 0)),
+            "capital_recuperado_ventas_anteriores": Decimal(str(ventas.get("capital_recuperado_ventas_anteriores") or 0)),
+            "utilidad_liberada_ventas_periodo": Decimal(str(ventas.get("utilidad_liberada_ventas_periodo") or 0)),
+            "utilidad_liberada_ventas_anteriores": Decimal(str(ventas.get("utilidad_liberada_ventas_anteriores") or 0)),
             "resultado_financiero": resultado_financiero,
             "cmv_bruto": cmv_bruto,
             "cmv_devoluciones": cmv_devoluciones,
@@ -449,12 +641,82 @@ def calcular_rentabilidad_mensual(periodo_mes: date, id_sucursal: int | None = N
             "resultado_distribuible": resultado_distribuible,
             "regla_distribucion": _armar_regla(regla, items) if regla else None,
             "distribuciones_sugeridas": distribuciones,
-            "resumen_por_rubro": _resumen_por_rubro(detalles_periodo),
+            "resumen_por_rubro": resumen_por_rubro,
             "top_clientes": _top_clientes(detalles_periodo),
             "productos_estrella_por_rubro": _productos_estrella_por_rubro(detalles_periodo),
         }
     finally:
         conn.close()
+
+
+def calcular_comparacion_rentabilidad(
+    periodo_mes: date,
+    id_sucursal: int | None = None,
+    id_regla_distribucion: int | None = None,
+):
+    actual = calcular_rentabilidad_mensual(periodo_mes, id_sucursal, id_regla_distribucion)
+    fin_anterior = date(periodo_mes.year, periodo_mes.month, 1) - timedelta(days=1)
+    periodo_anterior = date(fin_anterior.year, fin_anterior.month, 1)
+    anterior = calcular_rentabilidad_mensual(periodo_anterior, id_sucursal, id_regla_distribucion)
+
+    venta_actual = _decimal(actual["venta_comercial"])
+    venta_anterior = _decimal(anterior["venta_comercial"])
+    ganancia_actual = _decimal(actual["margen_esperado"])
+    ganancia_anterior = _decimal(anterior["margen_esperado"])
+    margen_actual = _porcentaje(ganancia_actual, venta_actual) or Decimal("0")
+    margen_anterior = _porcentaje(ganancia_anterior, venta_anterior) or Decimal("0")
+
+    if venta_anterior != 0:
+        efecto_ventas = ((venta_actual - venta_anterior) * margen_anterior / Decimal("100")).quantize(Decimal("0.01"))
+        efecto_margen = ganancia_actual - ganancia_anterior - efecto_ventas
+    else:
+        efecto_ventas = ganancia_actual - ganancia_anterior
+        efecto_margen = Decimal("0")
+
+    brecha_actual = _decimal(actual["utilidad_liberada"]) - ganancia_actual
+    brecha_anterior = _decimal(anterior["utilidad_liberada"]) - ganancia_anterior
+    conciliacion = [
+        {"clave": "resultado_anterior", "nombre": "Resultado distribuible anterior", "importe": _decimal(anterior["resultado_distribuible"])},
+        {"clave": "ganancia_comercial", "nombre": "Cambio en ganancia comercial esperada", "importe": ganancia_actual - ganancia_anterior, "detalle": f"Efecto ventas {efecto_ventas}; efecto margen {efecto_margen}"},
+        {"clave": "liberacion_vs_esperada", "nombre": "Cambio en utilidad liberada vs. esperada", "importe": brecha_actual - brecha_anterior},
+        {"clave": "financiero", "nombre": "Cambio en resultado financiero", "importe": _decimal(actual["resultado_financiero"]) - _decimal(anterior["resultado_financiero"])},
+        {"clave": "gastos", "nombre": "Cambio en gastos operativos", "importe": -(_decimal(actual["gastos_operativos"]) - _decimal(anterior["gastos_operativos"]))},
+        {"clave": "resultado_actual", "nombre": "Resultado distribuible actual", "importe": _decimal(actual["resultado_distribuible"])},
+    ]
+
+    rubros = _comparar_rubros(actual, anterior)
+    metricas = [
+        _metrica_comparada("ventas", "Ventas comerciales netas", venta_actual, venta_anterior),
+        _metrica_comparada("cmv", "Costo de mercaderia vendida", actual["cmv_comercial"], anterior["cmv_comercial"]),
+        _metrica_comparada("ganancia", "Ganancia comercial esperada", ganancia_actual, ganancia_anterior),
+        _metrica_comparada("margen", "Margen sobre ventas", margen_actual, margen_anterior, margen=True),
+        _metrica_comparada("utilidad", "Utilidad liberada por cobros", actual["utilidad_liberada"], anterior["utilidad_liberada"]),
+        _metrica_comparada("financiero", "Resultado financiero", actual["resultado_financiero"], anterior["resultado_financiero"]),
+        _metrica_comparada("gastos", "Gastos operativos", actual["gastos_operativos"], anterior["gastos_operativos"]),
+        _metrica_comparada("distribuible", "Resultado distribuible", actual["resultado_distribuible"], anterior["resultado_distribuible"]),
+    ]
+
+    conn = get_connection()
+    try:
+        detalles_actual = get_detalle_rentabilidad_diaria(conn, actual["fecha_desde"], fecha_hasta=actual["fecha_hasta"], id_sucursal=id_sucursal)
+        detalles_anterior = get_detalle_rentabilidad_diaria(conn, anterior["fecha_desde"], fecha_hasta=anterior["fecha_hasta"], id_sucursal=id_sucursal)
+    finally:
+        conn.close()
+
+    return {
+        "periodo_actual": actual["periodo_mes"],
+        "periodo_anterior": anterior["periodo_mes"],
+        "actual": actual,
+        "anterior": anterior,
+        "metricas": metricas,
+        "rubros": rubros,
+        "conciliacion_resultado": conciliacion,
+        "efecto_ventas": efecto_ventas,
+        "efecto_margen": efecto_margen,
+        "explicaciones": _explicar_rubros(rubros),
+        "validacion_actual": _validar_resumen(actual, detalles_actual),
+        "validacion_anterior": _validar_resumen(anterior, detalles_anterior),
+    }
 
 
 def calcular_bonificaciones_garantias(

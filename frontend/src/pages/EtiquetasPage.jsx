@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Barcode, FileText, ImageDown, Printer, Search, Tags } from "lucide-react";
+import { Barcode, FileText, ImageDown, Printer, Tags } from "lucide-react";
 import { listarVariantes } from "../services/catalogoService";
 import { listarSerializadas } from "../services/serializadasService";
 import {
@@ -12,6 +12,7 @@ import {
 } from "../services/documentosService";
 import { formatMoney } from "../utils/formatters";
 import { formatProductoVariante } from "../utils/productPresentation";
+import SearchField from "../components/ui/SearchField";
 
 const MOBILE_BREAKPOINT = 760;
 
@@ -184,15 +185,13 @@ export default function EtiquetasPage() {
           </button>
         </div>
 
-        <label style={styles.searchBox}>
-          <Search size={18} />
-          <input
+        <SearchField
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={setQuery}
             placeholder="Buscar por nombre, codigo, sku o cuadro"
-            style={styles.searchInput}
-          />
-        </label>
+            style={styles.searchBox}
+            inputStyle={styles.searchInput}
+        />
 
         <label style={styles.copyBox}>
           Copias

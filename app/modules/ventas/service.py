@@ -1,4 +1,5 @@
 from decimal import Decimal
+from types import SimpleNamespace
 from datetime import date, timedelta
 from app.modules.pagos import service as pagos_service
 from app.core.text_normalization import normalize_text_upper
@@ -26,6 +27,7 @@ from app.modules.pagos.repository import (
     update_pago_estado,
 )
 from app.modules.serializadas.repository import (
+    get_bicicleta_serializada,
     get_bicicleta_serializada_for_update,
     insert_bicicleta_serializada,
     update_bicicleta_serializada_estado,
@@ -419,9 +421,10 @@ def _resolver_valor_devolucion(
         Decimal("0"),
     )
     monto_credito = min(restante, contado_disponible)
+    credito_generado = None
 
     if monto_credito > Decimal("0"):
-        creditos_service.crear_credito_por_devolucion_venta(
+        credito_generado = creditos_service.crear_credito_por_devolucion_venta(
             conn,
             id_cliente=venta["id_cliente"],
             id_venta=venta_id,
@@ -466,6 +469,7 @@ def _resolver_valor_devolucion(
         "saldo_deuda_restante": resultado_deuda["saldo_restante"],
         "monto_credito_restaurado": resultado_restauracion["monto_restaurado"],
         "monto_credito_generado": monto_credito,
+        "credito_generado_id": credito_generado["id"] if credito_generado else None,
         "monto_externo_devuelto": monto_externo,
     }
 
@@ -623,6 +627,60 @@ def _validar_y_bloquear_bicicleta_serializada_para_venta(
             detail=(
                 f"La bici con numero de cuadro #{id_bicicleta_serializada} "
                 f"no esta disponible"
+            ),
+        )
+
+    if bicicleta["estado_tecnico"] != "lista":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"La bici con numero de cuadro #{bicicleta['numero_cuadro']} "
+                f"no esta lista para vender (estado tecnico: {bicicleta['estado_tecnico']})"
+            ),
+        )
+
+    return bicicleta
+
+
+def _validar_bicicleta_serializada_para_simulacion(
+    conn,
+    *,
+    id_bicicleta_serializada: int,
+    id_variante: int,
+    id_sucursal: int | None = None,
+):
+    bicicleta = get_bicicleta_serializada(conn, id_bicicleta_serializada)
+
+    if bicicleta is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No existe la bici con numero de cuadro #{id_bicicleta_serializada}",
+        )
+
+    if bicicleta["id_variante"] != id_variante:
+        raise HTTPException(
+            status_code=400,
+            detail="El numero de cuadro elegido no corresponde a esta bici",
+        )
+
+    if id_sucursal is not None and bicicleta["id_sucursal_actual"] != id_sucursal:
+        raise HTTPException(
+            status_code=400,
+            detail="La bici con numero de cuadro no pertenece a la sucursal de la venta",
+        )
+
+    if bicicleta["estado"] != "disponible":
+        raise HTTPException(
+            status_code=400,
+            detail=f"La bici con numero de cuadro #{id_bicicleta_serializada} no esta disponible",
+        )
+
+    if bicicleta["estado_tecnico"] != "lista":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"La bici con numero de cuadro #{bicicleta['numero_cuadro']} "
+                f"no esta lista para vender (estado tecnico: {bicicleta['estado_tecnico']})"
             ),
         )
 
@@ -855,6 +913,14 @@ def crear_venta(data, *, conn=None):
                     continue
 
                 variante = variantes_map[item["id_variante"]]
+                bicicleta_serializada = None
+                if item["id_bicicleta_serializada"] is not None:
+                    bicicleta_serializada = _validar_y_bloquear_bicicleta_serializada_para_venta(
+                        conn,
+                        id_bicicleta_serializada=item["id_bicicleta_serializada"],
+                        id_variante=item["id_variante"],
+                        id_sucursal=data.id_sucursal,
+                    )
                 campo_precio = (
                     "precio_mayorista"
                     if data.tipo_precio == "mayorista"
@@ -862,6 +928,14 @@ def crear_venta(data, *, conn=None):
                 )
 
                 precio_lista = redondear_monto(variante[campo_precio])
+                if (
+                    data.tipo_precio == "minorista"
+                    and bicicleta_serializada is not None
+                    and bicicleta_serializada.get("precio_venta_personalizado") is not None
+                ):
+                    precio_lista = redondear_monto(
+                        bicicleta_serializada["precio_venta_personalizado"]
+                    )
                 precio_catalogo_original = precio_lista
                 oferta = None
 
@@ -874,6 +948,7 @@ def crear_venta(data, *, conn=None):
                     oferta_candidata = get_oferta_vigente_variante(
                         conn,
                         variante["id"],
+                        id_bicicleta_serializada=item["id_bicicleta_serializada"],
                         for_update=True,
                     )
                     if oferta_candidata is not None:
@@ -905,14 +980,6 @@ def crear_venta(data, *, conn=None):
                 subtotal = redondear_monto(precio_final * cantidad)
                 subtotal_total = redondear_monto(subtotal_total + subtotal)
 
-                if item["id_bicicleta_serializada"] is not None:
-                    _validar_y_bloquear_bicicleta_serializada_para_venta(
-                        conn,
-                        id_bicicleta_serializada=item["id_bicicleta_serializada"],
-                        id_variante=item["id_variante"],
-                        id_sucursal=data.id_sucursal,
-                    )
-
                 venta_items.append(
                     {
                         "tipo_item": "producto",
@@ -931,6 +998,18 @@ def crear_venta(data, *, conn=None):
                     }
                 )
             pagos = getattr(data, "pagos", []) or []
+            base_sin_descuento_contado = redondear_monto(
+                sum(
+                    (
+                        fila["subtotal"]
+                        for fila in venta_items
+                        if fila.get("oferta")
+                        and fila["oferta"].get("politica_contado")
+                        == "precio_final_contado"
+                    ),
+                    Decimal("0"),
+                )
+            )
             resultado_reglas = simular_reglas_comerciales(
                 type(
                     "TmpSimulacion",
@@ -958,6 +1037,50 @@ def crear_venta(data, *, conn=None):
             reglas_aplicadas = resultado_reglas["reglas_aplicadas"]
             tramos_pago = resultado_reglas.get("tramos_pago", [])
 
+            if base_sin_descuento_contado > 0 and pagos:
+                tramos_pago = []
+                base_protegida_pendiente = base_sin_descuento_contado
+                for pago in pagos:
+                    tramo = pagos_service.calcular_tramo_financiero_pago(
+                        conn,
+                        {
+                            "medio_pago": pago.medio_pago,
+                            "monto_base": pago.monto_base,
+                            "monto": pago.monto,
+                            "cuotas": pago.cuotas,
+                            "entidad": pago.entidad,
+                            "nota": pago.nota,
+                        },
+                        base_sin_descuento_pendiente=base_protegida_pendiente,
+                    )
+                    tramos_pago.append(tramo)
+                    base_protegida_pendiente = max(
+                        redondear_monto(
+                            base_protegida_pendiente
+                            - redondear_monto(tramo["monto_base_aplicado"])
+                        ),
+                        Decimal("0"),
+                    )
+
+                descuento_total = redondear_monto(
+                    sum(
+                        (tramo["descuento_aplicado"] for tramo in tramos_pago),
+                        Decimal("0"),
+                    )
+                )
+                recargo_total = redondear_monto(
+                    sum(
+                        (tramo["recargo_aplicado"] for tramo in tramos_pago),
+                        Decimal("0"),
+                    )
+                )
+                total_final = redondear_monto(
+                    subtotal_total - descuento_total + recargo_total
+                )
+                # La trazabilidad financiera exacta queda en cada pago.
+                # Evitamos congelar una regla global calculada sobre base protegida.
+                reglas_aplicadas = []
+
             if len(tramos_pago) != len(pagos):
                 raise HTTPException(
                     status_code=500,
@@ -976,6 +1099,7 @@ def crear_venta(data, *, conn=None):
                     "estado": "creada",
                     "tipo_precio": data.tipo_precio,
                     "subtotal_base": subtotal_total,
+                    "base_sin_descuento_contado": base_sin_descuento_contado,
                     "descuento_total": descuento_total,
                     "recargo_total": recargo_total,
                     "total_final": total_final,
@@ -1077,6 +1201,10 @@ def crear_venta(data, *, conn=None):
                         "costo_unitario_aplicado": costo_resuelto[
                             "costo_unitario_aplicado"
                         ],
+                        "origen_costo_snapshot": costo_resuelto["origen_costo"],
+                        "id_orden_armado_origen_snapshot": costo_resuelto[
+                            "id_orden_armado_origen"
+                        ],
                         "subtotal": subtotal,
                         "id_oferta": (
                             fila["oferta"]["id"] if fila.get("oferta") else None
@@ -1096,6 +1224,14 @@ def crear_venta(data, *, conn=None):
                         ),
                         "oferta_nombre_snapshot": (
                             fila["oferta"]["nombre"]
+                            if fila.get("oferta")
+                            else None
+                        ),
+                        "oferta_alcance_snapshot": (
+                            fila["oferta"]["alcance"] if fila.get("oferta") else None
+                        ),
+                        "oferta_politica_contado_snapshot": (
+                            fila["oferta"]["politica_contado"]
                             if fila.get("oferta")
                             else None
                         ),
@@ -1294,6 +1430,118 @@ def listar_ventas():
         return get_ventas(conn)
     finally:
         conn.close()
+
+
+def aplicar_credito_a_venta_existente(venta_id: int, data):
+    conn = get_connection()
+    try:
+        with conn.transaction():
+            venta = get_venta_for_update(conn, venta_id)
+            if not venta:
+                raise HTTPException(status_code=404, detail="Venta no encontrada")
+
+            if venta["estado"] in (
+                VENTA_ESTADO_ANULADA,
+                VENTA_ESTADO_DEVUELTA,
+                VENTA_ESTADO_DEVUELTA_PARCIAL,
+                VENTA_ESTADO_ENTREGADA,
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Esta venta no puede recibir saldo a favor directo. "
+                        "Si ya fue entregada con deuda, resolvela desde Deudas."
+                    ),
+                )
+
+            saldo_pendiente = redondear_monto(venta["saldo_pendiente"] or 0)
+            if saldo_pendiente <= Decimal("0"):
+                raise HTTPException(
+                    status_code=400,
+                    detail="La venta no tiene saldo pendiente",
+                )
+
+            resultado_credito = creditos_service.aplicar_credito_a_venta(
+                conn,
+                id_cliente=venta["id_cliente"],
+                id_venta=venta_id,
+                total_venta=saldo_pendiente,
+                usar_credito=True,
+                monto_credito_a_aplicar=getattr(
+                    data,
+                    "monto_credito_a_aplicar",
+                    None,
+                ),
+                id_usuario=data.id_usuario,
+            )
+
+            credito_aplicado = redondear_monto(
+                resultado_credito["credito_aplicado_total"]
+            )
+            credito_base_cubierta = redondear_monto(
+                resultado_credito["monto_base_cubierto"]
+            )
+            credito_descuento_aplicado = redondear_monto(
+                resultado_credito["descuento_aplicado"]
+            )
+
+            if credito_aplicado <= Decimal("0"):
+                raise HTTPException(
+                    status_code=400,
+                    detail="El cliente no tiene saldo a favor disponible",
+                )
+
+            venta_actualizada = sincronizar_venta_financiera_desde_pagos(
+                conn,
+                venta_id,
+            )
+
+            auditoria_service.registrar_evento(
+                conn,
+                id_usuario=data.id_usuario,
+                id_sucursal=venta["id_sucursal"],
+                entidad=AUDITORIA_ENTIDAD_VENTA,
+                entidad_id=venta_id,
+                accion="venta_credito_aplicado",
+                detalle=(
+                    f"Saldo a favor aplicado a venta. "
+                    f"credito_aplicado={credito_aplicado}, "
+                    f"base_cubierta={credito_base_cubierta}, "
+                    f"beneficio_contado={credito_descuento_aplicado}, "
+                    f"saldo_pendiente={venta_actualizada['saldo_pendiente']}"
+                ),
+                metadata={
+                    "tipo": "venta_credito_aplicado",
+                    "venta_id": venta_id,
+                    "cliente_id": venta["id_cliente"],
+                    "credito_aplicado": str(credito_aplicado),
+                    "credito_base_cubierta": str(credito_base_cubierta),
+                    "credito_descuento_aplicado": str(
+                        credito_descuento_aplicado
+                    ),
+                    "saldo_pendiente": str(
+                        venta_actualizada["saldo_pendiente"]
+                    ),
+                    "estado": venta_actualizada["estado"],
+                },
+                origen_tipo="venta",
+                origen_id=venta_id,
+            )
+
+            return {
+                "ok": True,
+                "venta_id": venta_id,
+                "estado": venta_actualizada["estado"],
+                "credito_aplicado": credito_aplicado,
+                "credito_base_cubierta": credito_base_cubierta,
+                "credito_descuento_aplicado": credito_descuento_aplicado,
+                "saldo_pendiente": redondear_monto(
+                    venta_actualizada["saldo_pendiente"]
+                ),
+            }
+    finally:
+        conn.close()
+
 
 def obtener_venta(venta_id: int):
     conn = get_connection()
@@ -2478,6 +2726,21 @@ def devolver_items(venta_id: int, data):
 
             modo_devolucion = _obtener_modo_devolucion(data)
 
+            if data.anular_credito_generado:
+                credito_previo = creditos_repository.get_credito_abierto_by_origen_for_update(
+                    conn,
+                    origen_tipo=ORIGEN_VENTA,
+                    origen_id=venta_id,
+                )
+                if credito_previo is not None:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            "La venta ya tiene crédito disponible. Revisalo antes de completar "
+                            "la devolución para no anular saldo legítimo del cliente."
+                        ),
+                    )
+
             if modo_devolucion == MODO_DEVOLUCION_REVERSION_PAGO_EXTERNO:
                 raise HTTPException(
                     status_code=400,
@@ -2637,6 +2900,24 @@ def devolver_items(venta_id: int, data):
                 modo_devolucion=modo_devolucion,
             )
 
+            monto_credito_anulado = Decimal("0")
+            if data.anular_credito_generado:
+                credito_id = resultado_financiero.get("credito_generado_id")
+                monto_credito = resultado_financiero["monto_credito_generado"]
+                if monto_credito > Decimal("0") and credito_id is not None:
+                    anulacion = creditos_service.anular_credito_administrativo(
+                        conn,
+                        credito_id,
+                        SimpleNamespace(
+                            motivo=(
+                                f"Crédito anulado al completar devolución de venta #{venta_id}. "
+                                f"Motivo: {data.motivo}"
+                            ),
+                            id_usuario=data.id_usuario,
+                        ),
+                    )
+                    monto_credito_anulado = redondear_monto(anulacion["saldo_anulado"])
+
             items_actualizados = get_venta_items_detallados_by_venta_id(conn, venta_id)
 
             venta_totalmente_devuelta = True
@@ -2701,6 +2982,8 @@ def devolver_items(venta_id: int, data):
             "credito_generado": resultado_financiero[
                 "monto_credito_generado"
             ],
+            "credito_anulado": monto_credito_anulado > Decimal("0"),
+            "monto_credito_anulado": monto_credito_anulado,
         }
 
     finally:
@@ -2786,6 +3069,14 @@ def simular_venta(data):
                 continue
 
             variante = variantes_map[item["id_variante"]]
+            bicicleta_serializada = None
+            if item.get("id_bicicleta_serializada") is not None:
+                bicicleta_serializada = _validar_bicicleta_serializada_para_simulacion(
+                    conn,
+                    id_bicicleta_serializada=item["id_bicicleta_serializada"],
+                    id_variante=item["id_variante"],
+                    id_sucursal=data.id_sucursal,
+                )
 
             campo_precio = (
                 "precio_mayorista"
@@ -2794,6 +3085,14 @@ def simular_venta(data):
             )
 
             precio_lista = redondear_monto(variante[campo_precio])
+            if (
+                data.tipo_precio == "minorista"
+                and bicicleta_serializada is not None
+                and bicicleta_serializada.get("precio_venta_personalizado") is not None
+            ):
+                precio_lista = redondear_monto(
+                    bicicleta_serializada["precio_venta_personalizado"]
+                )
 
             if (
                 data.tipo_precio == "minorista"
@@ -2801,7 +3100,11 @@ def simular_venta(data):
                 and not bonificado
                 and bonificacion_manual is None
             ):
-                oferta = get_oferta_vigente_variante(conn, variante["id"])
+                oferta = get_oferta_vigente_variante(
+                    conn,
+                    variante["id"],
+                    id_bicicleta_serializada=item.get("id_bicicleta_serializada"),
+                )
                 if oferta is not None:
                     precio_oferta = redondear_monto(oferta["precio_oferta"])
                     if Decimal("0") < precio_oferta < precio_lista:

@@ -208,6 +208,19 @@ def get_marca_by_id(conn, marca_id: int):
         )
         return cur.fetchone()
 
+
+def get_rubro_by_name(conn, rubro: str):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT id, nombre, activo
+            FROM catalogo_rubros
+            WHERE UPPER(TRIM(nombre)) = UPPER(TRIM(%s))
+            """,
+            (rubro,),
+        )
+        return cur.fetchone()
+
 def insert_regla_precio(conn, data: dict):
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
@@ -223,11 +236,12 @@ def insert_regla_precio(conn, data: dict):
                 margen_minimo_porcentaje,
                 id_familia_precio,
                 id_proveedor,
+                rubro,
                 activa
             )
             VALUES (
                 %s, %s, %s, %s, %s,
-                %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s, %s,
                 TRUE
             )
             RETURNING id
@@ -243,6 +257,7 @@ def insert_regla_precio(conn, data: dict):
                 data.get("margen_minimo_porcentaje", 0),
                 data.get("id_familia_precio"),
                 data.get("id_proveedor"),
+                data.get("rubro"),
             ),
         )
 
@@ -275,6 +290,7 @@ def get_reglas_precio(conn, solo_activas: bool = True):
 
                 rp.id_proveedor,
                 pr.nombre AS proveedor_nombre,
+                rp.rubro,
 
                 rp.tipo_cliente,
                 rp.margen_porcentaje,
@@ -328,6 +344,7 @@ def get_regla_precio_by_id(conn, regla_id: int):
 
                 rp.id_proveedor,
                 pr.nombre AS proveedor_nombre,
+                rp.rubro,
 
                 rp.tipo_cliente,
                 rp.margen_porcentaje,
@@ -389,6 +406,7 @@ def get_variante_contexto_precio(conn, id_variante: int):
                 p.id_categoria,
                 p.id_marca,
                 p.id_familia_precio,
+                p.rubro,
 
                 v.proveedor_preferido_id
 
@@ -404,14 +422,8 @@ def get_variante_contexto_precio(conn, id_variante: int):
 
 def buscar_regla_precio_aplicable(conn, data: dict):
     """
-    Prioridad:
-
-    6. proveedor + familia
-    5. familia
-    4. categoria + marca
-    3. marca
-    2. categoria
-    1. global
+    La regla mas especifica gana. Cada dimension informada por la regla
+    debe coincidir con el producto; una regla sin dimensiones es global.
     """
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
@@ -423,6 +435,7 @@ def buscar_regla_precio_aplicable(conn, data: dict):
                 id_marca,
                 id_familia_precio,
                 id_proveedor,
+                rubro,
                 tipo_cliente,
                 margen_porcentaje,
                 redondeo_base,
@@ -430,74 +443,27 @@ def buscar_regla_precio_aplicable(conn, data: dict):
                 margen_minimo_porcentaje,
                 activa,
 
-                CASE
-                    WHEN id_proveedor = %(id_proveedor)s
-                    AND id_familia_precio = %(id_familia_precio)s
-                    THEN 6
-
-                    WHEN id_familia_precio = %(id_familia_precio)s
-                    AND id_proveedor IS NULL
-                    THEN 5
-
-                    WHEN id_categoria = %(id_categoria)s
-                    AND id_marca = %(id_marca)s
-                    THEN 4
-
-                    WHEN id_categoria IS NULL
-                    AND id_marca = %(id_marca)s
-                    THEN 3
-
-                    WHEN id_categoria = %(id_categoria)s
-                    AND id_marca IS NULL
-                    THEN 2
-
-                    WHEN id_categoria IS NULL
-                    AND id_marca IS NULL
-                    AND id_familia_precio IS NULL
-                    AND id_proveedor IS NULL
-                    THEN 1
-
-                    ELSE 0
-                END AS prioridad
+                (((id_proveedor IS NOT NULL)::int
+                  + (id_familia_precio IS NOT NULL)::int
+                  + (id_categoria IS NOT NULL)::int
+                  + (id_marca IS NOT NULL)::int
+                  + (rubro IS NOT NULL)::int) * 100
+                 + (id_proveedor IS NOT NULL)::int * 16
+                 + (id_familia_precio IS NOT NULL)::int * 8
+                 + (id_categoria IS NOT NULL)::int * 4
+                 + (id_marca IS NOT NULL)::int * 2
+                 + (rubro IS NOT NULL)::int) AS prioridad
 
             FROM reglas_precio
 
             WHERE activa = TRUE
               AND tipo_cliente = %(tipo_cliente)s
 
-              AND (
-                    (
-                        id_proveedor = %(id_proveedor)s
-                        AND id_familia_precio = %(id_familia_precio)s
-                    )
-
-                 OR (
-                        id_familia_precio = %(id_familia_precio)s
-                        AND id_proveedor IS NULL
-                    )
-
-                 OR (
-                        id_categoria = %(id_categoria)s
-                        AND id_marca = %(id_marca)s
-                    )
-
-                 OR (
-                        id_categoria IS NULL
-                        AND id_marca = %(id_marca)s
-                    )
-
-                 OR (
-                        id_categoria = %(id_categoria)s
-                        AND id_marca IS NULL
-                    )
-
-                 OR (
-                        id_categoria IS NULL
-                        AND id_marca IS NULL
-                        AND id_familia_precio IS NULL
-                        AND id_proveedor IS NULL
-                    )
-              )
+              AND (id_proveedor IS NULL OR id_proveedor = %(id_proveedor)s)
+              AND (id_familia_precio IS NULL OR id_familia_precio = %(id_familia_precio)s)
+              AND (id_categoria IS NULL OR id_categoria = %(id_categoria)s)
+              AND (id_marca IS NULL OR id_marca = %(id_marca)s)
+              AND (rubro IS NULL OR UPPER(rubro) = UPPER(%(rubro)s))
 
             ORDER BY prioridad DESC, id DESC
             LIMIT 1
@@ -574,6 +540,7 @@ def get_variantes_contexto_precio_by_proveedor(conn, id_proveedor: int):
             p.id_categoria,
             p.id_marca,
             p.id_familia_precio,
+            p.rubro,
             p.activo AS producto_activo
 
             FROM variantes v

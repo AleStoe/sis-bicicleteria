@@ -5,6 +5,8 @@ import {
   revertirPago,
   simularTramoPagoVenta,
 } from "../../services/pagosService";
+import { aplicarCreditoVenta } from "../../services/ventasService";
+import { listarCreditosDisponiblesCliente } from "../../services/creditosService";
 import { listarTarjetaPlanes } from "../../services/reglasComercialesService";
 import { useSession } from "../../context/SessionContext";
 import PagoVentaResumen from "./PagoVentaResumen";
@@ -17,6 +19,7 @@ import { ConfirmModal } from "../ui/ConfirmModal";
 export default function PagoVentaPanel({
   ventaId,
   venta = null,
+  situacionFinanciera = null,
   saldoPendiente = 0,
   estadoVenta = "",
   autoFocusPago = false,
@@ -26,11 +29,15 @@ export default function PagoVentaPanel({
   const montoRef = useRef(null);
   const preservarPreviewSaldarRef = useRef(false);
   const autocompletarSaldoSeqRef = useRef(0);
+  const simularTramoSeqRef = useRef(0);
+  const ultimaSimulacionErrorRef = useRef("");
   const [planesTarjeta, setPlanesTarjeta] = useState([]);
   const [pagos, setPagos] = useState([]);
   const [mostrarRevertidos, setMostrarRevertidos] = useState(false);
   const [loading, setLoading] = useState(false);
   const [guardando, setGuardando] = useState(false);
+  const [aplicandoCredito, setAplicandoCredito] = useState(false);
+  const [creditosDisponibles, setCreditosDisponibles] = useState([]);
   const [simulando, setSimulando] = useState(false);
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
@@ -67,6 +74,10 @@ export default function PagoVentaPanel({
     [pagos]
   );
 
+  const creditoAplicadoReal = Number(
+    situacionFinanciera?.resumen?.credito_aplicado_real ?? 0
+  );
+
   const planesMedioPago = useMemo(
     () => planesTarjeta.filter((plan) => plan.medio_pago === form.medio_pago),
     [form.medio_pago, planesTarjeta]
@@ -79,9 +90,23 @@ export default function PagoVentaPanel({
     );
   }, [pagosConfirmados]);
 
+  const creditoDisponibleTotal = useMemo(() => {
+    return creditosDisponibles.reduce(
+      (acc, credito) => acc + Number(credito.saldo_actual || 0),
+      0
+    );
+  }, [creditosDisponibles]);
+
+  const puedeAplicarCredito =
+    puedePagar && creditoDisponibleTotal > 0 && !guardando && !aplicandoCredito;
+
   useEffect(() => {
     if (ventaId) cargarPagos();
   }, [ventaId]);
+
+  useEffect(() => {
+    cargarCreditosDisponibles();
+  }, [venta?.id_cliente]);
 
   useEffect(() => {
   async function cargarPlanes() {
@@ -129,14 +154,6 @@ export default function PagoVentaPanel({
   }, [autoFocusPago]);
 
   useEffect(() => {
-    const timeout = setTimeout(() => {
-      autocompletarSaldoSegunMedio();
-    }, 150);
-
-    return () => clearTimeout(timeout);
-  }, [form.medio_pago, form.cuotas, form.entidad, ventaId, saldoPendiente]);
-
-  useEffect(() => {
     if (
       preservarPreviewSaldarRef.current &&
       previewCoincideConFormulario(preview, form)
@@ -152,7 +169,7 @@ export default function PagoVentaPanel({
     }, 300);
 
     return () => clearTimeout(timeout);
-  }, [form.monto, ventaId, saldoPendiente]);
+  }, [form.monto, form.medio_pago, form.cuotas, form.entidad, ventaId, saldoPendiente]);
 
   async function cargarPagos() {
     try {
@@ -168,8 +185,23 @@ export default function PagoVentaPanel({
     }
   }
 
+  async function cargarCreditosDisponibles() {
+    if (!venta?.id_cliente) {
+      setCreditosDisponibles([]);
+      return;
+    }
+
+    try {
+      const data = await listarCreditosDisponiblesCliente(venta.id_cliente);
+      setCreditosDisponibles(data || []);
+    } catch (err) {
+      console.error(err);
+      setCreditosDisponibles([]);
+    }
+  }
+
   async function refrescarTodo() {
-    await cargarPagos();
+    await Promise.all([cargarPagos(), cargarCreditosDisponibles()]);
 
     if (onPagoCambiado) {
       await onPagoCambiado();
@@ -186,16 +218,16 @@ export default function PagoVentaPanel({
     setError("");
   }
 
-  function buildPayloadSimulacion({ saldar = false } = {}) {
-    const monto = Number(form.monto || 0);
+  function buildPayloadSimulacion({ saldar = false, formSnapshot = form } = {}) {
+    const monto = Number(formSnapshot.monto || 0);
 
     const base = {
       venta_id: Number(ventaId),
-      medio_pago: form.medio_pago,
-      cuotas: ["tarjeta", "mercadopago"].includes(form.medio_pago)
-        ? Number(form.cuotas || 1)
+      medio_pago: formSnapshot.medio_pago,
+      cuotas: ["tarjeta", "mercadopago"].includes(formSnapshot.medio_pago)
+        ? Number(formSnapshot.cuotas || 1)
         : null,
-      entidad: form.entidad?.trim() || null,
+      entidad: formSnapshot.entidad?.trim() || null,
     };
 
     if (saldar) {
@@ -211,26 +243,45 @@ export default function PagoVentaPanel({
     };
   }
 
-  async function simularTramoActual() {
-    const monto = Number(form.monto || 0);
+  async function simularTramoActual(formSnapshot = form, { actualizarPreview = true } = {}) {
+    const monto = Number(formSnapshot.monto || 0);
 
     if (!puedePagar || !Number.isFinite(monto) || monto <= 0) {
-      setPreview(null);
+      if (actualizarPreview) setPreview(null);
+      ultimaSimulacionErrorRef.current = "";
       return null;
     }
+
+    const seq = simularTramoSeqRef.current + 1;
+    simularTramoSeqRef.current = seq;
 
     try {
       setSimulando(true);
 
-      const data = await simularTramoPagoVenta(buildPayloadSimulacion());
-      setPreview(data);
+      const data = await simularTramoPagoVenta(
+        buildPayloadSimulacion({ formSnapshot })
+      );
 
+      if (actualizarPreview && simularTramoSeqRef.current === seq) {
+        setPreview(data);
+        setError("");
+      }
+
+      ultimaSimulacionErrorRef.current = "";
       return data;
-    } catch {
-      setPreview(null);
+    } catch (err) {
+      const mensajeError = normalizarErrorSimulacion(err, formSnapshot);
+      ultimaSimulacionErrorRef.current = mensajeError;
+
+      if (actualizarPreview && simularTramoSeqRef.current === seq) {
+        setPreview(null);
+        setError(mensajeError);
+      }
       return null;
     } finally {
-      setSimulando(false);
+      if (simularTramoSeqRef.current === seq) {
+        setSimulando(false);
+      }
     }
   }
 
@@ -307,18 +358,18 @@ export default function PagoVentaPanel({
     setTimeout(() => montoRef.current?.focus(), 50);
   }
 
-  function buildPayloadPago(simulacion) {
+  function buildPayloadPago(simulacion, formSnapshot = form) {
     return {
       origen_tipo: "venta",
       origen_id: Number(ventaId),
-      medio_pago: form.medio_pago,
+      medio_pago: formSnapshot.medio_pago,
       monto_base: String(simulacion.monto_base_aplicado),
-      cuotas: ["tarjeta", "mercadopago"].includes(form.medio_pago)
-        ? Number(form.cuotas || 1)
+      cuotas: ["tarjeta", "mercadopago"].includes(formSnapshot.medio_pago)
+        ? Number(formSnapshot.cuotas || 1)
         : null,
-      entidad: form.entidad?.trim() || null,
+      entidad: formSnapshot.entidad?.trim() || null,
       id_usuario: usuarioId,
-      nota: form.nota?.trim() || null,
+      nota: formSnapshot.nota?.trim() || null,
     };
   }
 
@@ -335,7 +386,8 @@ export default function PagoVentaPanel({
       return;
     }
 
-    const monto = Number(form.monto || 0);
+    const formSnapshot = { ...form };
+    const monto = Number(formSnapshot.monto || 0);
 
     if (!Number.isFinite(monto) || monto <= 0) {
       setError("El monto debe ser mayor a cero");
@@ -347,16 +399,19 @@ export default function PagoVentaPanel({
       setError("");
       setMensaje("");
 
-      const simulacion = previewCoincideConFormulario(preview, form)
-        ? preview
-        : await simularTramoActual();
+      const simulacion = await simularTramoActual(formSnapshot, {
+        actualizarPreview: false,
+      });
 
       if (!simulacion) {
-        setError("No se pudo simular el tramo de pago");
+        setError(
+          ultimaSimulacionErrorRef.current ||
+            "No se pudo calcular este cobro. Revisá el importe e intentá de nuevo."
+        );
         return;
       }
 
-      const payload = buildPayloadPago(simulacion);
+      const payload = buildPayloadPago(simulacion, formSnapshot);
 
       if (estadoVenta === "creada") {
         setConfirmacionCobro({ simulacion, payload });
@@ -424,6 +479,48 @@ export default function PagoVentaPanel({
     }
   }
 
+  async function aplicarSaldoAFavor() {
+    if (!puedePagar) {
+      setError("Esta venta no puede recibir saldo a favor en este estado o no tiene saldo pendiente");
+      return;
+    }
+
+    if (!usuarioId) {
+      setError("Sesión requerida. Volvé a iniciar sesión para aplicar el saldo a favor.");
+      return;
+    }
+
+    if (creditoDisponibleTotal <= 0) {
+      setError("El cliente no tiene saldo a favor disponible");
+      return;
+    }
+
+    try {
+      setAplicandoCredito(true);
+      setError("");
+      setMensaje("");
+
+      const resultado = await aplicarCreditoVenta(ventaId, {
+        id_usuario: usuarioId,
+      });
+
+      setPreview(null);
+      await refrescarTodo();
+
+      setMensaje(
+        Number(resultado?.saldo_pendiente || 0) === 0
+          ? "Saldo a favor aplicado. La venta quedó cubierta."
+          : `Saldo a favor aplicado. Saldo restante: ${formatMoney(
+              resultado?.saldo_pendiente
+            )}`
+      );
+    } catch (err) {
+      setError(err.message || "No se pudo aplicar el saldo a favor");
+    } finally {
+      setAplicandoCredito(false);
+    }
+  }
+
   async function handleRevertirPago(pago) {
     if (!puedeRevertirPago(pago, usuarioActual)) {
       setError("No tenés permiso para revertir este pago o el pago no está confirmado.");
@@ -477,9 +574,11 @@ export default function PagoVentaPanel({
       />
 
       <PagoVentaResumen
+        totalFinal={venta?.total_final}
         saldo={saldo}
         estadoVenta={estadoVenta}
         totalConfirmado={totalConfirmado}
+        creditoAplicadoReal={creditoAplicadoReal}
         pagosConfirmados={pagosConfirmados}
         pagosRevertidos={pagosRevertidos}
         loading={loading}
@@ -495,6 +594,32 @@ export default function PagoVentaPanel({
           {ventaCerradaParaPago
             ? "Esta venta no puede recibir pagos directos. Si fue entregada con deuda, cobrá desde el módulo Deudas."
             : "Esta venta no tiene saldo pendiente para cobrar."}
+        </div>
+      )}
+
+      {creditoDisponibleTotal > 0 && (
+        <div style={styles.creditBox}>
+          <div>
+            <span style={styles.creditLabel}>Saldo a favor disponible</span>
+            <strong style={styles.creditAmount}>
+              {formatMoney(creditoDisponibleTotal)}
+            </strong>
+            <small style={styles.creditHint}>
+              Se aplica a esta venta sin generar movimiento de caja.
+            </small>
+          </div>
+
+          <button
+            type="button"
+            onClick={aplicarSaldoAFavor}
+            disabled={!puedeAplicarCredito}
+            style={{
+              ...styles.creditButton,
+              ...(!puedeAplicarCredito ? styles.disabledButton : null),
+            }}
+          >
+            {aplicandoCredito ? "Aplicando..." : "Aplicar saldo a favor"}
+          </button>
         </div>
       )}
 
@@ -596,6 +721,24 @@ function formatMedioPago(value) {
   return labels[value] || value || "-";
 }
 
+function normalizarErrorSimulacion(err, formSnapshot) {
+  const mensaje = err?.message || "No se pudo calcular este cobro.";
+  const texto = String(mensaje);
+
+  if (texto.includes("cubre más que el saldo pendiente")) {
+    return [
+      `Ese importe en ${formatMedioPago(formSnapshot?.medio_pago)} cubre más que el saldo de la venta.`,
+      "Usá Saldar para que el sistema calcule el monto justo, o cargá un importe menor.",
+    ].join(" ");
+  }
+
+  if (texto.includes("Factor financiero inválido")) {
+    return "La regla de precio para este medio de pago no está bien configurada. Revisá descuentos/recargos antes de cobrar.";
+  }
+
+  return mensaje;
+}
+
 function normalizarMontoPago(value) {
   const numero = Number(value || 0);
   if (!Number.isFinite(numero)) return 0;
@@ -669,5 +812,51 @@ const styles = {
     padding: "10px 12px",
     fontWeight: 700,
     cursor: "pointer",
+  },
+  creditBox: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 14,
+    alignItems: "center",
+    background: "#eef6ff",
+    border: "1px solid #bfdbfe",
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
+  },
+  creditLabel: {
+    display: "block",
+    color: "#1e3a8a",
+    fontSize: 12,
+    fontWeight: 800,
+    textTransform: "uppercase",
+    letterSpacing: 0,
+    marginBottom: 4,
+  },
+  creditAmount: {
+    display: "block",
+    color: "#0f172a",
+    fontSize: 24,
+    lineHeight: 1,
+    marginBottom: 6,
+  },
+  creditHint: {
+    display: "block",
+    color: "#475569",
+    fontWeight: 700,
+  },
+  creditButton: {
+    border: "1px solid #86efac",
+    background: "#16a34a",
+    color: "white",
+    borderRadius: 10,
+    padding: "12px 14px",
+    fontWeight: 800,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  },
+  disabledButton: {
+    opacity: 0.55,
+    cursor: "not-allowed",
   },
 };

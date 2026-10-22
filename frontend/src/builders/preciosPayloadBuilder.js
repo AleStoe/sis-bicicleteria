@@ -34,6 +34,7 @@ export function buildReglaPrecioPayload(reglaForm) {
     id_marca: optionalNumber(reglaForm.id_marca),
     id_familia_precio: optionalNumber(reglaForm.id_familia_precio),
     id_proveedor: optionalNumber(reglaForm.id_proveedor),
+    rubro: reglaForm.rubro?.trim() || null,
     tipo_cliente: reglaForm.tipo_cliente,
     margen_porcentaje: reglaForm.margen_porcentaje,
     descuento_base_porcentaje: reglaForm.descuento_base_porcentaje || "0",

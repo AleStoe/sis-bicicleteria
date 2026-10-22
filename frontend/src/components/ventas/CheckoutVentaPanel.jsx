@@ -14,7 +14,8 @@ import {
 } from "../../helpers/ventaPreventiveWarnings";
 
 export default function CheckoutVentaPanel({
-   clienteId,
+  clienteId,
+  sucursalId,
   cliente = null,
   deudaCliente = null,
   total,
@@ -32,6 +33,7 @@ export default function CheckoutVentaPanel({
 }) {
   const checkout = useCheckoutVenta({
     clienteId,
+    sucursalId,
     total,
     tipoPrecio,
     items,

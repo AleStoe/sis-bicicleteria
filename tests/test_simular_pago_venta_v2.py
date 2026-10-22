@@ -105,3 +105,41 @@ def test_simular_tramo_efectivo_para_saldar_cobrado_objetivo(
     assert _dec(data["monto_base_aplicado"]) == Decimal("10000.00")
     assert _dec(data["descuento_aplicado"]) == Decimal("1000.00")
     assert _dec(data["monto_total_cobrado"]) == Decimal("9000.00")
+
+
+def test_simular_tramo_contado_salda_con_monto_redondeado_a_pesos(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    venta_id = _crear_venta_sin_pagos(client, seed_venta_basica)
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE ventas
+            SET subtotal_base = 29001,
+                total_final = 29001,
+                saldo_pendiente = 29001
+            WHERE id = %s
+            """,
+            (venta_id,),
+        )
+    db_conn.commit()
+
+    response = client.post(
+        "/pagos/ventas/simular-tramo",
+        json={
+            "venta_id": venta_id,
+            "medio_pago": "transferencia",
+            "monto_cobrado_objetivo": "26101",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+
+    data = response.json()
+
+    assert _dec(data["monto_base_aplicado"]) == Decimal("29001.00")
+    assert _dec(data["monto_total_cobrado"]) == Decimal("26100.90")
+    assert _dec(data["saldo_restante_estimado"]) == Decimal("0.00")

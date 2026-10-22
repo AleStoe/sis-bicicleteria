@@ -27,6 +27,7 @@ import {
   PageHeader,
   ResponsiveMetricsGrid,
 } from "../components/ui";
+import SearchField from "../components/ui/SearchField";
 import {
   Bike,
   FileDown,
@@ -34,7 +35,6 @@ import {
   ImageDown,
   PackagePlus,
   RefreshCw,
-  Search,
   Tags,
   X,
 } from "lucide-react";
@@ -412,23 +412,15 @@ export default function CatalogoPage() {
       </ResponsiveMetricsGrid>
 
       <section style={{ ...styles.filtersCard, ...(isMobile ? styles.filtersCardMobile : {}) }}>
-        <div style={styles.searchBox}>
-          <Search size={18} color={colors.textMuted} aria-hidden="true" />
-          <input
-            ref={searchRef}
+        <SearchField
+            inputRef={searchRef}
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                e.currentTarget.select();
-              }
-            }}
+            onChange={setQuery}
+            onSearch={() => cargarCatalogo({ nextOffset: 0 })}
             placeholder="Buscar por producto, variante, marca, SKU, código de barras o proveedor..."
-            style={styles.searchInput}
-          />
-          {!isMobile && <kbd style={styles.kbd}>/</kbd>}
-        </div>
+            style={styles.searchBox}
+            inputStyle={styles.searchInput}
+        />
 
         <select
           value={rubro}

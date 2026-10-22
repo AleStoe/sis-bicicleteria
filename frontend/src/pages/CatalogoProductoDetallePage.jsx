@@ -9,8 +9,10 @@ import {
   listarMarcas,
   editarProducto,
   editarVariante,
+  crearImagenCatalogo,
   subirImagenCatalogo,
   listarImagenesProducto,
+  listarImagenesVariante,
   eliminarImagenCatalogo,
   listarCatalogoPOS,
   listarRubros,
@@ -298,12 +300,23 @@ export default function CatalogoProductoDetallePage() {
       setError("");
       setMensaje("");
 
-      await subirImagenCatalogo({
+      const imagenNueva = await subirImagenCatalogo({
         archivo: productoImagenArchivo,
         id_producto: producto.id,
         es_principal: true,
         orden: 0,
       });
+
+      const varianteUnica = variantes.length === 1 ? variantes[0] : null;
+      if (varianteUnica && !esVarianteUnica(varianteUnica.nombre_variante)) {
+        await crearImagenCatalogo({
+          id_producto: null,
+          id_variante: varianteUnica.id,
+          url: imagenNueva.url,
+          es_principal: true,
+          orden: 0,
+        });
+      }
 
       setMensaje("Imagen principal actualizada.");
       await cargar();
@@ -324,6 +337,17 @@ export default function CatalogoProductoDetallePage() {
       setGuardando(true);
       setError("");
       setMensaje("");
+
+      const varianteUnica = variantes.length === 1 ? variantes[0] : null;
+      if (varianteUnica && !esVarianteUnica(varianteUnica.nombre_variante)) {
+        const imagenesVariante = await listarImagenesVariante(varianteUnica.id);
+        const imagenReplicada = (imagenesVariante || []).find(
+          (imagen) => imagen.url === imagenProductoPrincipal.url
+        );
+        if (imagenReplicada) {
+          await eliminarImagenCatalogo(imagenReplicada.id);
+        }
+      }
 
       await eliminarImagenCatalogo(imagenProductoPrincipal.id);
 
@@ -758,6 +782,9 @@ export default function CatalogoProductoDetallePage() {
             <div>
               <h3 style={styles.imageManagerTitle}>Imagen principal</h3>
               <p style={styles.muted}>Sirve para catalogo, ventas, PDFs y consulta rapida.</p>
+              {variantes.length === 1 && (
+                <p style={styles.smallText}>Alcance: producto y su única variante comercial.</p>
+              )}
             </div>
 
             <div style={{ ...styles.imageManagerGrid, ...(isMobile ? styles.imageManagerGridMobile : {}) }}>

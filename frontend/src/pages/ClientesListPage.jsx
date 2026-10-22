@@ -9,6 +9,7 @@ import {
   PageHeader,
   ResponsiveMetricsGrid,
 } from "../components/ui";
+import SearchField from "../components/ui/SearchField";
 import { RefreshCw, Search, UserPlus, Users } from "lucide-react";
 import { colors, controls, radius, shadows, spacing, typography } from "../theme";
 
@@ -97,6 +98,7 @@ export default function ClientesListPage() {
 
   async function buscar(e) {
     e.preventDefault();
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     await cargarClientes({ q: busqueda, soloActivosFiltro: soloActivos });
   }
 
@@ -137,10 +139,14 @@ export default function ClientesListPage() {
 
       <Card title="Buscar clientes" subtitle="Nombre, teléfono, documento o razón social.">
         <form onSubmit={buscar} style={{ ...filterFormStyle, ...(isMobile ? filterFormMobileStyle : {}) }}>
-          <div style={styles.searchBox}>
-            <Search size={18} color={colors.textMuted} />
-            <input type="text" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Ej: Juan, 291..., 30-..., razón social" style={styles.searchInput} />
-          </div>
+          <SearchField
+            value={busqueda}
+            onChange={setBusqueda}
+            onSearch={() => cargarClientes({ q: busqueda, soloActivosFiltro: soloActivos })}
+            placeholder="Ej: Juan, 291..., 30-..., razón social"
+            style={styles.searchBox}
+            inputStyle={styles.searchInput}
+          />
 
           <label style={checkStyle}>
             <input

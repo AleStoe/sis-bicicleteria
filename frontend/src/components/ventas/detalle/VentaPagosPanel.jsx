@@ -2,23 +2,61 @@ import { OperationalStatusBadge, useBreakpoint } from "../../ui";
 
 export default function VentaPagosPanel({
   pagos = [],
+  creditoAplicadoReal = 0,
   formatMoney,
   procesando = false,
   canRevertirPago = () => false,
   onRevertirPago,
 }) {
   const { isMobile } = useBreakpoint();
+  const tieneCreditoAplicado = Number(creditoAplicadoReal || 0) > 0;
 
-  if (!pagos.length) return null;
+  if (!pagos.length && !tieneCreditoAplicado) return null;
 
   return (
     <section style={{ ...styles.card, ...(isMobile ? styles.cardMobile : {}) }}>
       <div style={styles.header}>
-        <h3 style={styles.title}>Pagos registrados</h3>
-        <span style={styles.count}>{pagos.length}</span>
+        <div>
+          <h3 style={styles.title}>Cobertura de la venta</h3>
+          <p style={styles.subtitle}>Pagos reales y saldo a favor aplicado.</p>
+        </div>
+        <span style={styles.count}>{pagos.length + (tieneCreditoAplicado ? 1 : 0)}</span>
       </div>
 
       <div style={styles.list}>
+        {tieneCreditoAplicado && (
+          <div style={{ ...styles.paymentCard, ...styles.creditCard }}>
+            <div style={{ ...styles.paymentTop, ...(isMobile ? styles.paymentTopMobile : {}) }}>
+              <div>
+                <div style={styles.creditMethod}>Saldo a favor aplicado</div>
+                <div style={styles.meta}>
+                  <span style={styles.creditBadge}>Crédito usado</span>
+                  <span>No mueve caja</span>
+                </div>
+              </div>
+
+              <strong style={{ ...styles.creditAmount, ...(isMobile ? styles.amountMobile : {}) }}>
+                - {formatMoney(creditoAplicadoReal)}
+              </strong>
+            </div>
+
+            <div style={styles.cardDetail}>
+              <Row
+                label="Cubrió parte de esta venta"
+                value={formatMoney(creditoAplicadoReal)}
+                tone="success"
+                strong
+                isMobile={isMobile}
+              />
+              <Row
+                label="Ingreso nuevo de dinero"
+                value={formatMoney(0)}
+                isMobile={isMobile}
+              />
+            </div>
+          </div>
+        )}
+
         {pagos.map((pago) => {
           const esTarjeta = pago.medio_pago === "tarjeta";
           const detalleFinanciero = getDetalleFinanciero(pago);
@@ -209,6 +247,12 @@ const styles = {
     fontWeight: 900,
     color: "#111827",
   },
+  subtitle: {
+    margin: "3px 0 0",
+    color: "#667085",
+    fontSize: 13,
+    fontWeight: 700,
+  },
   count: {
     background: "#f2f4f7",
     color: "#344054",
@@ -254,6 +298,26 @@ const styles = {
   },
   amount: {
     color: "#111827",
+    fontSize: 17,
+    whiteSpace: "nowrap",
+  },
+  creditCard: {
+    background: "#eff6ff",
+    borderColor: "#bfdbfe",
+  },
+  creditMethod: {
+    fontWeight: 900,
+    color: "#1e3a8a",
+  },
+  creditBadge: {
+    background: "#dbeafe",
+    color: "#1d4ed8",
+    borderRadius: 999,
+    padding: "2px 8px",
+    fontWeight: 900,
+  },
+  creditAmount: {
+    color: "#1d4ed8",
     fontSize: 17,
     whiteSpace: "nowrap",
   },

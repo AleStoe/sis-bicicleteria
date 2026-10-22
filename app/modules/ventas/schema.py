@@ -161,6 +161,21 @@ class VentaCreateOutput(BaseModel):
     saldo_pendiente: Decimal
 
 
+class VentaAplicarCreditoInput(BaseModel):
+    id_usuario: int = Field(gt=0)
+    monto_credito_a_aplicar: Optional[Decimal] = Field(default=None, gt=0)
+
+
+class VentaAplicarCreditoOutput(BaseModel):
+    ok: bool
+    venta_id: int
+    estado: str
+    credito_aplicado: Decimal
+    credito_base_cubierta: Decimal = Decimal("0")
+    credito_descuento_aplicado: Decimal = Decimal("0")
+    saldo_pendiente: Decimal
+
+
 class VentaEstadoOutput(BaseModel):
     ok: bool
     venta_id: int
@@ -267,6 +282,9 @@ class VentaDetalleItemOutput(BaseModel):
     precio_catalogo_original: Decimal | None = None
     descuento_oferta_unitario: Decimal = Decimal("0")
     oferta_nombre_snapshot: str | None = None
+    oferta_alcance_snapshot: str | None = None
+    oferta_politica_contado_snapshot: str | None = None
+    componentes_incluidos: list[dict] = Field(default_factory=list)
     origen_costo: Optional[str] = None
     id_orden_armado_origen: Optional[int] = None
     codigo_orden_armado: Optional[str] = None
@@ -337,14 +355,18 @@ class VentaDevolucionParcialInput(BaseModel):
     motivo: str
     id_usuario: int
     modo_devolucion: str = Field(default="credito_comercial")
+    anular_credito_generado: bool = False
 
 class VentaDevolucionParcialOutput(BaseModel):
     ok: bool
     venta_id: int
     credito_generado: Decimal
+    credito_anulado: bool = False
+    monto_credito_anulado: Decimal = Decimal("0")
 
 class VentaSimulacionInput(BaseModel):
     id_cliente: Optional[int] = None
+    id_sucursal: Optional[int] = Field(default=None, gt=0)
     tipo_precio: TipoPrecioVenta = "minorista"
     items: List[VentaItemCreateInput]
     pagos: List[VentaPagoCreateInput] = Field(default_factory=list)

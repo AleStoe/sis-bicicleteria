@@ -70,7 +70,12 @@ def _to_decimal(value) -> Decimal | None:
     return Decimal(str(value))
 
 
-def _calcular_tramo_pago_venta(conn, data: dict):
+def _calcular_tramo_pago_venta(
+    conn,
+    data: dict,
+    *,
+    base_sin_descuento_pendiente=Decimal("0"),
+):
     """
     V2:
     Si viene monto_base, se calcula un tramo financiero.
@@ -109,6 +114,49 @@ def _calcular_tramo_pago_venta(conn, data: dict):
         }
 
     monto_base = redondear_monto(monto_base)
+
+    base_protegida = redondear_monto(base_sin_descuento_pendiente or 0)
+    if medio_pago in {"efectivo", "transferencia"} and base_protegida > 0:
+        tramo_protegido = min(monto_base, base_protegida)
+        base_bonificable = redondear_monto(monto_base - tramo_protegido)
+        if base_bonificable > 0:
+            pago_bonificable = PagoSimulacionInput(
+                medio_pago=medio_pago,
+                monto_base=base_bonificable,
+                cuotas=data.get("cuotas"),
+                entidad=data.get("entidad"),
+                nota=data.get("nota"),
+            )
+            simulacion = _simular_con_conn(
+                conn,
+                subtotal_base=base_bonificable,
+                pagos=[pago_bonificable],
+            )
+            tramo = dict(simulacion["tramos_pago"][0])
+        else:
+            tramo = {
+                "medio_pago": medio_pago,
+                "monto_base_aplicado": Decimal("0"),
+                "descuento_aplicado": Decimal("0"),
+                "recargo_aplicado": Decimal("0"),
+                "monto_total_cobrado": Decimal("0"),
+                "cuotas": data.get("cuotas"),
+                "entidad": data.get("entidad"),
+                "id_tarjeta_plan": None,
+                "porcentaje_recargo_aplicado": None,
+                "porcentaje_costo_financiero_aplicado": Decimal("0"),
+                "costo_financiero": Decimal("0"),
+                "monto_neto_liquidado": Decimal("0"),
+            }
+        tramo["monto_base_aplicado"] = monto_base
+        tramo["monto_total_cobrado"] = redondear_monto(
+            tramo_protegido + tramo["monto_total_cobrado"]
+        )
+        tramo["monto_neto_liquidado"] = redondear_monto(
+            tramo_protegido + tramo.get("monto_neto_liquidado", 0)
+        )
+        tramo["base_sin_descuento_aplicada"] = tramo_protegido
+        return tramo
 
     pago_simulado = PagoSimulacionInput(
         medio_pago=medio_pago,
@@ -150,12 +198,27 @@ def _calcular_tramo_pago_venta(conn, data: dict):
     }
 
 
-def calcular_tramo_financiero_pago(conn, data: dict):
+def calcular_tramo_financiero_pago(
+    conn,
+    data: dict,
+    *,
+    base_sin_descuento_pendiente=Decimal("0"),
+):
     """
     Helper público para cualquier origen de pago.
     Mantiene una única fuente de verdad para descuentos/recargos.
     """
-    return _calcular_tramo_pago_venta(conn, data)
+    return _calcular_tramo_pago_venta(
+        conn,
+        data,
+        base_sin_descuento_pendiente=base_sin_descuento_pendiente,
+    )
+
+
+def _base_sin_descuento_pendiente(venta) -> Decimal:
+    protegida = redondear_monto(venta.get("base_sin_descuento_contado") or 0)
+    cubierta = redondear_monto(venta.get("base_cubierta_confirmada") or 0)
+    return max(redondear_monto(protegida - cubierta), Decimal("0"))
 
 
 def _calcular_monto_caja_para_pago(medio_pago: str, tramo: dict) -> Decimal:
@@ -196,6 +259,7 @@ def resolver_tramo_financiero_para_cobrado_objetivo(
     cuotas=None,
     entidad=None,
     nota=None,
+    base_sin_descuento_pendiente=Decimal("0"),
 ):
     objetivo = redondear_monto(_to_decimal(monto_cobrado_objetivo))
     maximo_base = redondear_monto(_to_decimal(maximo_base))
@@ -206,71 +270,63 @@ def resolver_tramo_financiero_para_cobrado_objetivo(
             detail="El cobrado objetivo debe ser mayor a 0",
         )
 
-    tramo_referencia = calcular_tramo_financiero_pago(
+    tramo_maximo = calcular_tramo_financiero_pago(
         conn,
         {
             "medio_pago": medio_pago,
-            "monto_base": objetivo,
+            "monto_base": maximo_base,
             "cuotas": cuotas,
             "entidad": entidad,
             "nota": nota,
         },
+        base_sin_descuento_pendiente=base_sin_descuento_pendiente,
     )
-
-    descuento_ref = redondear_monto(tramo_referencia["descuento_aplicado"])
-    recargo_ref = redondear_monto(tramo_referencia["recargo_aplicado"])
-
-    factor = Decimal("1")
-
-    if descuento_ref > 0:
-        factor = Decimal("1") - (descuento_ref / objetivo)
-
-    if recargo_ref > 0:
-        factor = Decimal("1") + (recargo_ref / objetivo)
-
-    if factor <= 0:
-        raise HTTPException(
-            status_code=500,
-            detail="Factor financiero inválido para simular pago",
-        )
-
-    base_calculada = redondear_monto(objetivo / factor)
-
-    if base_calculada > maximo_base:
+    cobrado_maximo = redondear_monto(tramo_maximo["monto_total_cobrado"])
+    diferencia_maxima = redondear_monto(objetivo - cobrado_maximo)
+    if abs(diferencia_maxima) <= Decimal("0.01"):
+        return tramo_maximo
+    if diferencia_maxima > Decimal("0.50"):
         raise HTTPException(
             status_code=400,
-            detail="La base necesaria para ese cobrado objetivo supera el saldo pendiente",
+            detail="El importe ingresado cubre más que el saldo pendiente",
         )
+    if diferencia_maxima > 0:
+        return tramo_maximo
 
-    tramo = calcular_tramo_financiero_pago(
-        conn,
-        {
-            "medio_pago": medio_pago,
-            "monto_base": base_calculada,
-            "cuotas": cuotas,
-            "entidad": entidad,
-            "nota": nota,
-        },
-    )
-
-    cobrado = redondear_monto(tramo["monto_total_cobrado"])
-    diferencia = redondear_monto(objetivo - cobrado)
-
-    # Ajuste de centavos: si por redondeo quedó a 0,01,
-    # corregimos la base en el sentido necesario.
-    if abs(diferencia) <= Decimal("0.01") and diferencia != 0:
+    inferior = Decimal("0.01")
+    superior = maximo_base
+    mejor = tramo_maximo
+    mejor_diferencia = abs(cobrado_maximo - objetivo)
+    for _ in range(48):
+        base = redondear_monto((inferior + superior) / Decimal("2"))
         tramo = calcular_tramo_financiero_pago(
             conn,
             {
                 "medio_pago": medio_pago,
-                "monto_base": redondear_monto(base_calculada + diferencia),
+                "monto_base": base,
                 "cuotas": cuotas,
                 "entidad": entidad,
                 "nota": nota,
             },
+            base_sin_descuento_pendiente=base_sin_descuento_pendiente,
         )
-
-    return tramo
+        cobrado = redondear_monto(tramo["monto_total_cobrado"])
+        diferencia = abs(cobrado - objetivo)
+        if diferencia < mejor_diferencia or (
+            diferencia == mejor_diferencia
+            and tramo["monto_base_aplicado"] > mejor["monto_base_aplicado"]
+        ):
+            mejor = tramo
+            mejor_diferencia = diferencia
+        if diferencia == 0:
+            return tramo
+        if cobrado < objetivo:
+            inferior = base + Decimal("0.01")
+        else:
+            superior = base - Decimal("0.01")
+        if inferior > superior:
+            break
+    return mejor
 
 
 def registrar_pago(conn, data: dict):
@@ -333,7 +389,11 @@ def registrar_pago(conn, data: dict):
                 detail=f"La venta {venta['id']} no tiene saldo pendiente",
             )
 
-        tramo = _calcular_tramo_pago_venta(conn, data)
+        tramo = _calcular_tramo_pago_venta(
+            conn,
+            data,
+            base_sin_descuento_pendiente=_base_sin_descuento_pendiente(venta),
+        )
 
         monto = redondear_monto(tramo["monto_total_cobrado"])
         monto_base_aplicado = redondear_monto(tramo["monto_base_aplicado"])
@@ -498,7 +558,14 @@ def registrar_pago(conn, data: dict):
     caja = _obtener_caja_abierta_obligatoria(conn, id_sucursal)
 
     if data.get("monto_base") is not None:
-        tramo = calcular_tramo_financiero_pago(conn, data)
+        tramo = calcular_tramo_financiero_pago(
+            conn,
+            data,
+            base_sin_descuento_pendiente=data.get(
+                "base_sin_descuento_pendiente",
+                Decimal("0"),
+            ),
+        )
 
         monto = redondear_monto(tramo["monto_total_cobrado"])
         monto_base_aplicado = redondear_monto(tramo["monto_base_aplicado"])
@@ -914,6 +981,7 @@ def simular_pago_venta(data):
                 conn,
                 data,
                 saldo_pendiente,
+                venta,
             )
         else:
             tramo = _calcular_tramo_pago_venta(
@@ -924,6 +992,7 @@ def simular_pago_venta(data):
                     "cuotas": data.cuotas,
                     "entidad": data.entidad,
                 },
+                base_sin_descuento_pendiente=_base_sin_descuento_pendiente(venta),
             )
 
         monto_total_cobrado = redondear_monto(
@@ -970,73 +1039,13 @@ def simular_pago_venta(data):
     finally:
         conn.close()
 
-def _resolver_base_para_cobrado_objetivo(conn, data, saldo_pendiente):
-    objetivo = redondear_monto(data.monto_cobrado_objetivo)
-
-    # Primero simulamos con base = objetivo solo para conocer
-    # el factor financiero del medio.
-    tramo_referencia = _calcular_tramo_pago_venta(
+def _resolver_base_para_cobrado_objetivo(conn, data, saldo_pendiente, venta):
+    return resolver_tramo_financiero_para_cobrado_objetivo(
         conn,
-        {
-            "medio_pago": data.medio_pago,
-            "monto_base": objetivo,
-            "cuotas": data.cuotas,
-            "entidad": data.entidad,
-        },
+        medio_pago=data.medio_pago,
+        monto_cobrado_objetivo=data.monto_cobrado_objetivo,
+        maximo_base=saldo_pendiente,
+        cuotas=data.cuotas,
+        entidad=data.entidad,
+        base_sin_descuento_pendiente=_base_sin_descuento_pendiente(venta),
     )
-
-    descuento_ref = redondear_monto(tramo_referencia["descuento_aplicado"])
-    recargo_ref = redondear_monto(tramo_referencia["recargo_aplicado"])
-
-    factor = Decimal("1")
-
-    if descuento_ref > 0:
-        factor = Decimal("1") - (descuento_ref / objetivo)
-
-    if recargo_ref > 0:
-        factor = Decimal("1") + (recargo_ref / objetivo)
-
-    if factor <= 0:
-        raise HTTPException(
-            status_code=500,
-            detail="Factor financiero inválido para simular pago",
-        )
-
-    base_calculada = redondear_monto(objetivo / factor)
-
-    if base_calculada > saldo_pendiente:
-        raise HTTPException(
-            status_code=400,
-            detail="El importe ingresado cubre más que el saldo pendiente",
-        )
-
-    tramo = _calcular_tramo_pago_venta(
-        conn,
-        {
-            "medio_pago": data.medio_pago,
-            "monto_base": base_calculada,
-            "cuotas": data.cuotas,
-            "entidad": data.entidad,
-        },
-    )
-
-    cobrado = redondear_monto(tramo["monto_total_cobrado"])
-
-    diferencia = redondear_monto(objetivo - cobrado)
-
-    # Ajuste de centavos: si por redondeo quedó a 0,01,
-    # corregimos la base en el sentido necesario.
-    if abs(diferencia) <= Decimal("0.01") and diferencia != 0:
-        tramo = _calcular_tramo_pago_venta(
-            conn,
-            {
-                "medio_pago": data.medio_pago,
-                "monto_base": redondear_monto(
-                    base_calculada + diferencia
-                ),
-                "cuotas": data.cuotas,
-                "entidad": data.entidad,
-            },
-        )
-
-    return tramo

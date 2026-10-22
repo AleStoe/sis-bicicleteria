@@ -30,14 +30,32 @@ END
 
 def _stock_base_select():
     return f"""
-        WITH ventas_stats AS (
+        WITH devoluciones AS (
+            SELECT
+                id_venta_item,
+                COALESCE(SUM(cantidad_devuelta), 0) AS cantidad_devuelta
+            FROM venta_item_devoluciones
+            GROUP BY id_venta_item
+        ),
+        ventas_stats AS (
             SELECT
                 vi.id_variante,
-                COALESCE(SUM(vi.cantidad), 0)::numeric(14,3) AS unidades_vendidas_total,
-                COUNT(DISTINCT v.id)::int AS ventas_distintas_total,
+                COALESCE(SUM(GREATEST(vi.cantidad - COALESCE(d.cantidad_devuelta, 0), 0)), 0)::numeric(14,3)
+                    AS unidades_vendidas_total,
+                COUNT(DISTINCT v.id) FILTER (
+                    WHERE vi.cantidad > COALESCE(d.cantidad_devuelta, 0)
+                )::int AS ventas_distintas_total,
+                COALESCE(SUM(GREATEST(vi.cantidad - COALESCE(d.cantidad_devuelta, 0), 0)) FILTER (
+                    WHERE v.fecha >= CURRENT_DATE - INTERVAL '90 days'
+                ), 0)::numeric(14,3) AS unidades_vendidas_90d,
+                COUNT(DISTINCT v.id) FILTER (
+                    WHERE v.fecha >= CURRENT_DATE - INTERVAL '90 days'
+                      AND vi.cantidad > COALESCE(d.cantidad_devuelta, 0)
+                )::int AS ventas_distintas_90d,
                 MAX(v.fecha) AS ultima_venta
             FROM venta_items vi
             INNER JOIN ventas v ON v.id = vi.id_venta
+            LEFT JOIN devoluciones d ON d.id_venta_item = vi.id
             WHERE v.estado NOT IN ('anulada', 'devuelta')
               AND vi.tipo_item = 'producto'
             GROUP BY vi.id_variante
@@ -83,6 +101,8 @@ def _stock_base_select():
             (COALESCE(ss.stock_fisico, 0) * v.costo_promedio_vigente)::numeric(14,2) AS capital_inmovilizado,
             COALESCE(vs.unidades_vendidas_total, 0)::numeric(14,3) AS unidades_vendidas_total,
             COALESCE(vs.ventas_distintas_total, 0)::int AS ventas_distintas_total,
+            COALESCE(vs.unidades_vendidas_90d, 0)::numeric(14,3) AS unidades_vendidas_90d,
+            COALESCE(vs.ventas_distintas_90d, 0)::int AS ventas_distintas_90d,
             vs.ultima_venta,
             CASE
                 WHEN vs.ultima_venta IS NULL THEN NULL
@@ -198,6 +218,9 @@ def _build_stock_filters(
             where.append(f"{disponible_sql} <= 0")
         elif estado_stock in {"stock_bajo", "bajo"}:
             where.append(f"{disponible_sql} > 0 AND {disponible_sql} <= %s AND v.reponer_stock = TRUE")
+            params.append(stock_bajo_umbral)
+        elif estado_stock == "reponer":
+            where.append(f"{disponible_sql} <= %s AND v.reponer_stock = TRUE")
             params.append(stock_bajo_umbral)
         elif estado_stock == "reservado":
             where.append("COALESCE(ss.stock_reservado, 0) > 0")
@@ -1482,6 +1505,62 @@ def registrar_reversion_salida_armado(
         delta_fisico=+cantidad,
         origen_tipo=origen_tipo,
         origen_id=origen_id,
+        nota=nota,
+        costo_unitario_aplicado=costo_unitario_aplicado,
+    )
+
+
+def registrar_salida_acondicionamiento(
+    conn,
+    *,
+    id_sucursal: int,
+    id_variante: int,
+    cantidad: Decimal,
+    id_usuario: int,
+    origen_id: int,
+    id_bicicleta_serializada: int,
+    costo_unitario_aplicado: Decimal,
+    nota: str | None = None,
+):
+    return _aplicar_operacion_stock(
+        conn,
+        id_sucursal=id_sucursal,
+        id_variante=id_variante,
+        id_usuario=id_usuario,
+        tipo_movimiento="uso_acondicionamiento",
+        cantidad=cantidad,
+        delta_fisico=-cantidad,
+        origen_tipo="bicicleta_acondicionamiento",
+        origen_id=origen_id,
+        id_bicicleta_serializada=id_bicicleta_serializada,
+        nota=nota,
+        costo_unitario_aplicado=costo_unitario_aplicado,
+    )
+
+
+def registrar_reversion_salida_acondicionamiento(
+    conn,
+    *,
+    id_sucursal: int,
+    id_variante: int,
+    cantidad: Decimal,
+    id_usuario: int,
+    origen_id: int,
+    id_bicicleta_serializada: int,
+    costo_unitario_aplicado: Decimal,
+    nota: str | None = None,
+):
+    return _aplicar_operacion_stock(
+        conn,
+        id_sucursal=id_sucursal,
+        id_variante=id_variante,
+        id_usuario=id_usuario,
+        tipo_movimiento="reversion_uso_acondicionamiento",
+        cantidad=cantidad,
+        delta_fisico=+cantidad,
+        origen_tipo="bicicleta_acondicionamiento",
+        origen_id=origen_id,
+        id_bicicleta_serializada=id_bicicleta_serializada,
         nota=nota,
         costo_unitario_aplicado=costo_unitario_aplicado,
     )

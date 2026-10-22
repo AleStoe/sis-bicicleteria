@@ -29,6 +29,13 @@ export function anularVenta(ventaId, data) {
   });
 }
 
+export function aplicarCreditoVenta(ventaId, data) {
+  return apiRequest(`/ventas/${ventaId}/aplicar-credito`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
 export function corregirClienteVenta(ventaId, data) {
   return apiRequest(`/ventas/${ventaId}/corregir-cliente`, {
     method: "POST",

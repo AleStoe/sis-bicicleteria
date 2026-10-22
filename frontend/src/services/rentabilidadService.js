@@ -19,6 +19,11 @@ export function getRentabilidadMensual(params) {
   return apiRequest(`/rentabilidad/mensual${query ? `?${query}` : ""}`);
 }
 
+export function getRentabilidadComparacion(params) {
+  const query = cleanParams(params);
+  return apiRequest(`/rentabilidad/mensual/comparacion${query ? `?${query}` : ""}`);
+}
+
 export function getRentabilidadDiaria(params) {
   const query = cleanParams(params);
   return apiRequest(`/rentabilidad/diaria${query ? `?${query}` : ""}`);

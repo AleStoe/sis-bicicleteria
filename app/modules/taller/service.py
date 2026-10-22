@@ -1466,6 +1466,18 @@ def _format_money_mensaje(value) -> str:
 
     return f"${monto:,.0f}".replace(",", ".")
 
+
+def _format_cantidad_mensaje(value) -> str:
+    try:
+        cantidad = Decimal(str(value or 0))
+    except (TypeError, ValueError):
+        cantidad = Decimal("0")
+
+    if cantidad == cantidad.to_integral_value():
+        return str(int(cantidad))
+
+    return format(cantidad.normalize(), "f").replace(".", ",")
+
 def _build_total_bloque_retiro(total) -> str:
     try:
         total_float = float(total or 0)
@@ -1510,8 +1522,9 @@ def _build_mensaje_lista_retiro(orden, conn, items, notas_cliente):
                     item.get("descripcion_snapshot")
                 )
 
+            cantidad = _format_cantidad_mensaje(item.get("cantidad"))
             subtotal = _format_money_mensaje(item.get("subtotal"))
-            trabajos_lineas.append(f"• {descripcion}: {subtotal}")
+            trabajos_lineas.append(f"• {cantidad} x {descripcion}: {subtotal}")
 
         if notas_cliente:
             trabajos_lineas.extend(["", "*Notas y recomendaciones:*", ""])

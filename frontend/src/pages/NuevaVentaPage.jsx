@@ -514,17 +514,39 @@ export default function NuevaVentaPage() {
     }
   }
 
-async function handleBuscarEnter(e) {
-  if (e.key !== "Enter") return;
-
-  e.preventDefault();
-
+async function buscarCodigoExacto() {
   const codigo = query.trim();
 
   if (!codigo) return;
 
   try {
     setError("");
+
+    const unidades = await listarSerializadasDisponibles({
+      id_sucursal: sucursalId,
+      query: codigo,
+    });
+    const cuadro = (unidades || []).find(
+      (unidad) => String(unidad.numero_cuadro || "").trim().toUpperCase() === codigo.toUpperCase()
+    );
+    if (cuadro) {
+      const catalogoCuadro = await listarCatalogoPOS({
+        id_sucursal: sucursalId,
+        query: cuadro.sku || cuadro.codigo_barras || cuadro.producto_nombre,
+        limit: 20,
+      });
+      const productoCuadro = (Array.isArray(catalogoCuadro) ? catalogoCuadro : catalogoCuadro?.items || [])
+        .find((item) => Number(item.id_variante) === Number(cuadro.id_variante));
+      if (!productoCuadro) {
+        mostrarMensajePOS("Encontramos el cuadro, pero su producto no está habilitado en Caja");
+        return;
+      }
+      const agregado = await agregarItem(productoCuadro, cuadro);
+      if (!agregado) return;
+      setQuery("");
+      mostrarMensajePOS(`Cuadro ${cuadro.numero_cuadro} agregado`);
+      return;
+    }
 
     const producto = await buscarCatalogoPOSExacto({
       id_sucursal: sucursalId,
@@ -542,9 +564,9 @@ async function handleBuscarEnter(e) {
 
     setQuery("");
     mostrarMensajePOS(`${producto.producto_nombre} agregado`);
-    setTimeout(() => {
-      searchRef.current?.focus();
-    }, 0);
+    if (!isMobile) {
+      setTimeout(() => searchRef.current?.focus(), 0);
+    }
   } catch (err) {
     mostrarMensajePOS(err.message || "No se encontró producto");
   }
@@ -608,7 +630,7 @@ async function handleBuscarEnter(e) {
 
 
 
-  async function agregarItem(producto) {
+  async function agregarItem(producto, bicicletaInicial = null) {
     if (!puedeAgregarItemCatalogo(producto, tipoPrecio)) {
       setError(`No se puede agregar: ${getMotivoBloqueoItemCatalogo(producto, tipoPrecio)}`);
       return false;
@@ -623,6 +645,25 @@ async function handleBuscarEnter(e) {
     }
 
     if (producto.serializable) {
+      if (bicicletaInicial) {
+        let disponibles = [bicicletaInicial];
+        try {
+          const response = await listarSerializadasDisponibles({
+            id_variante: producto.id_variante,
+            id_sucursal: ID_SUCURSAL,
+          });
+          if (Array.isArray(response) && response.length > 0) {
+            disponibles = response;
+          }
+        } catch {
+          // El cuadro escaneado ya fue validado; el resto puede recargarse luego.
+        }
+        setSerializadasPorVariante((actual) => ({
+          ...actual,
+          [String(producto.id_variante)]: disponibles,
+        }));
+      }
+      const ofertaInicial = tipoPrecio !== "mayorista" && bicicletaInicial?.oferta_id;
       setItems((actual) => [
         ...actual,
         {
@@ -638,19 +679,34 @@ async function handleBuscarEnter(e) {
           stock_disponible: Number(producto.stock_disponible || 0),
           precio_minorista: Number(producto.precio_minorista || 0),
           precio_mayorista: Number(producto.precio_mayorista || 0),
-          precio_lista: getPrecioItemCatalogo(producto, tipoPrecio),
-          en_oferta: tipoPrecio !== "mayorista" && Boolean(producto.en_oferta),
-          oferta_id: tipoPrecio !== "mayorista" ? producto.oferta_id : null,
-          oferta_nombre: tipoPrecio !== "mayorista" ? producto.oferta_nombre : null,
+          precio_lista: ofertaInicial
+            ? Number(bicicletaInicial.precio_oferta)
+            : tipoPrecio !== "mayorista" && Number(bicicletaInicial?.precio_venta_personalizado || 0) > 0
+              ? Number(bicicletaInicial.precio_venta_personalizado)
+              : getPrecioItemCatalogo(producto, tipoPrecio),
+          precio_venta_personalizado: Number(bicicletaInicial?.precio_venta_personalizado || 0) || null,
+          en_oferta: Boolean(ofertaInicial || (tipoPrecio !== "mayorista" && producto.en_oferta)),
+          oferta_id: ofertaInicial ? bicicletaInicial.oferta_id : (tipoPrecio !== "mayorista" ? producto.oferta_id : null),
+          oferta_nombre: ofertaInicial ? bicicletaInicial.oferta_nombre : (tipoPrecio !== "mayorista" ? producto.oferta_nombre : null),
           precio_catalogo_original: Number(producto.precio_minorista || 0),
           precio_oferta:
-            tipoPrecio !== "mayorista" ? Number(producto.precio_oferta || 0) : null,
+            ofertaInicial ? Number(bicicletaInicial.precio_oferta || 0) : (tipoPrecio !== "mayorista" ? Number(producto.precio_oferta || 0) : null),
+          oferta_alcance: ofertaInicial ? bicicletaInicial.oferta_alcance : (tipoPrecio !== "mayorista" ? producto.oferta_alcance : null),
+          oferta_politica_contado: ofertaInicial ? bicicletaInicial.oferta_politica_contado : (tipoPrecio !== "mayorista" ? producto.oferta_politica_contado : null),
+          oferta_variante: tipoPrecio !== "mayorista" ? {
+            en_oferta: Boolean(producto.en_oferta),
+            oferta_id: producto.oferta_id || null,
+            oferta_nombre: producto.oferta_nombre || null,
+            precio_oferta: Number(producto.precio_oferta || 0) || null,
+            oferta_alcance: producto.oferta_alcance || "variante",
+            oferta_politica_contado: producto.oferta_politica_contado || null,
+          } : null,
           tipo_precio_aplicado: tipoPrecio,
           cantidad: 1,
           imagen_principal: producto.imagen_principal,
-          id_bicicleta_serializada: null,
-          numero_cuadro: "",
-          modo_venta_serializada: "caja",
+          id_bicicleta_serializada: bicicletaInicial?.id || null,
+          numero_cuadro: bicicletaInicial?.numero_cuadro || "",
+          modo_venta_serializada: bicicletaInicial ? "serializada" : "caja",
         },
       ]);
 
@@ -706,6 +762,8 @@ async function handleBuscarEnter(e) {
           precio_catalogo_original: Number(producto.precio_minorista || 0),
           precio_oferta:
             tipoPrecio !== "mayorista" ? Number(producto.precio_oferta || 0) : null,
+          oferta_alcance: tipoPrecio !== "mayorista" ? producto.oferta_alcance : null,
+          oferta_politica_contado: tipoPrecio !== "mayorista" ? producto.oferta_politica_contado : null,
           tipo_precio_aplicado: tipoPrecio,
           cantidad: 1,
           imagen_principal: producto.imagen_principal,
@@ -750,11 +808,38 @@ async function handleBuscarEnter(e) {
 
         const disponibles = serializadasPorVariante[String(item.id_variante)] || [];
         const bici = disponibles.find((b) => Number(b.id) === Number(bicicletaId));
+        const ofertaUnidad = tipoPrecio !== "mayorista" && bici?.oferta_id
+          ? {
+              en_oferta: true,
+              oferta_id: bici.oferta_id,
+              oferta_nombre: bici.oferta_nombre,
+              precio_oferta: Number(bici.precio_oferta || 0),
+              oferta_alcance: bici.oferta_alcance,
+              oferta_politica_contado: bici.oferta_politica_contado,
+            }
+          : item.oferta_variante || {
+              en_oferta: false,
+              oferta_id: null,
+              oferta_nombre: null,
+              precio_oferta: null,
+            };
 
         return {
           ...item,
           id_bicicleta_serializada: bicicletaId || "",
           numero_cuadro: bici?.numero_cuadro || "",
+          en_oferta: Boolean(ofertaUnidad.en_oferta),
+          oferta_id: ofertaUnidad.oferta_id,
+          oferta_nombre: ofertaUnidad.oferta_nombre,
+          precio_oferta: ofertaUnidad.precio_oferta,
+          precio_venta_personalizado: Number(bici?.precio_venta_personalizado || 0) || null,
+          precio_lista: ofertaUnidad.en_oferta
+            ? Number(ofertaUnidad.precio_oferta)
+            : tipoPrecio !== "mayorista" && Number(bici?.precio_venta_personalizado || 0) > 0
+              ? Number(bici.precio_venta_personalizado)
+              : Number(item.precio_minorista || item.precio_lista),
+          oferta_alcance: ofertaUnidad.oferta_alcance || "variante",
+          oferta_politica_contado: ofertaUnidad.oferta_politica_contado || null,
           cantidad: 1,
         };
       })
@@ -1027,6 +1112,8 @@ async function handleBuscarEnter(e) {
             ? Number(item.precio_mayorista || item.precio_lista || 0)
             : item.en_oferta && Number(item.precio_oferta || 0) > 0
               ? Number(item.precio_oferta)
+              : Number(item.precio_venta_personalizado || 0) > 0
+                ? Number(item.precio_venta_personalizado)
               : Number(item.precio_minorista || item.precio_lista || 0);
 
         return {
@@ -1111,17 +1198,6 @@ async function handleBuscarEnter(e) {
               <div style={topSubtleStyle}>POS real: crear, cobrar y entregar desde checkout</div>
             )}
           </div>
-        </div>
-
-        <div style={{ display: "none" }}>
-          <input
-            value={codigoRapido}
-            onChange={(e) => setCodigoRapido(e.target.value)}
-            onKeyDown={handleBuscarEnter}
-            placeholder={isMobile ? "Escanear código..." : "Escanear o ingresar código rápido... (F2)"}
-            style={{ ...topSearchStyle, ...(isMobile ? posMobileStyles.topSearch : {}) }}
-          />
-          <span style={searchIconStyle}>⌕</span>
         </div>
 
         <div style={{ ...topRightStyle, ...(isMobile ? posMobileStyles.topRight : {}) }}>
@@ -1228,7 +1304,7 @@ async function handleBuscarEnter(e) {
           buscando={buscando}
           tipoPrecio={tipoPrecio}
           onQueryChange={setQuery}
-          onBuscarEnter={handleBuscarEnter}
+          onBuscar={buscarCodigoExacto}
           onRecargarCatalogo={cargarCatalogo}
           onCategoriaChange={setCategoriaId}
           onAgregarItem={handleAgregarItemCatalogo}

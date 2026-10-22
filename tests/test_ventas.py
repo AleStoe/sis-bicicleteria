@@ -803,6 +803,79 @@ def test_crear_venta_con_credito_parcial_la_deja_pagada_parcial(
 
     assert "credito_generado" in acciones
     assert "credito_aplicado" in acciones
+
+
+def test_aplicar_credito_a_venta_existente_no_crea_pago_y_actualiza_saldo(
+    client, db_conn, seed_venta_basica
+):
+    _crear_credito_por_anulacion(
+        client,
+        db_conn,
+        seed_venta_basica,
+        Decimal("10000"),
+    )
+    crear = _crear_venta_basica(client, seed_venta_basica)
+    assert crear.status_code == 200
+    venta_id = crear.json()["venta_id"]
+
+    response = client.post(
+        f"/ventas/{venta_id}/aplicar-credito",
+        json={"id_usuario": seed_venta_basica["usuario_id"]},
+    )
+    assert response.status_code == 200, response.text
+
+    data = response.json()
+    assert data["ok"] is True
+    assert data["estado"] == "pagada_parcial"
+    assert _to_decimal(data["credito_aplicado"]) == Decimal("10000")
+    assert _to_decimal(data["saldo_pendiente"]) == (
+        _to_decimal(seed_venta_basica["precio_venta"])
+        - _to_decimal(data["credito_base_cubierta"])
+    )
+
+    venta = get_venta(db_conn, venta_id)
+    assert venta["estado"] == "pagada_parcial"
+    assert _to_decimal(venta["saldo_pendiente"]) == _to_decimal(
+        data["saldo_pendiente"]
+    )
+
+    pagos = get_pagos_by_venta(db_conn, venta_id)
+    assert pagos == []
+
+    creditos = get_creditos_by_cliente(db_conn, seed_venta_basica["cliente_id"])
+    assert _to_decimal(creditos[0]["saldo_actual"]) == Decimal("0")
+    assert creditos[0]["estado"] == "aplicado_total"
+
+    movimientos_credito = get_credito_movimientos(db_conn, creditos[0]["id"])
+    assert movimientos_credito[-1]["tipo_movimiento"] == "aplicacion_a_venta"
+    assert movimientos_credito[-1]["origen_tipo"] == "venta"
+    assert movimientos_credito[-1]["origen_id"] == venta_id
+
+
+def test_aplicar_credito_a_venta_existente_rechaza_venta_sin_saldo(
+    client, db_conn, seed_venta_basica
+):
+    _crear_credito_por_anulacion(
+        client,
+        db_conn,
+        seed_venta_basica,
+        Decimal("10000"),
+    )
+    crear = _crear_venta_basica(client, seed_venta_basica)
+    assert crear.status_code == 200
+    venta_id = crear.json()["venta_id"]
+
+    pago = _pagar_venta_basica_total(client, venta_id, seed_venta_basica)
+    assert pago.status_code == 200
+
+    response = client.post(
+        f"/ventas/{venta_id}/aplicar-credito",
+        json={"id_usuario": seed_venta_basica["usuario_id"]},
+    )
+    assert response.status_code == 400
+    assert "no tiene saldo pendiente" in response.json()["detail"]
+
+
 def test_crear_venta_con_monto_manual_de_credito_menor_al_disponible(
     client, db_conn, seed_venta_basica
 ):
@@ -1634,6 +1707,98 @@ def test_devolver_item_no_permite_devolver_mas_de_lo_vendido(
 
     assert response.status_code == 400
     assert "supera lo disponible" in response.json()["detail"]
+
+
+def test_completar_devolucion_anula_solo_credito_nuevo(
+    client, db_conn, seed_venta_basica
+):
+    crear = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [{
+                "id_variante": seed_venta_basica["variante_id"],
+                "cantidad": 2,
+            }],
+        },
+    )
+    assert crear.status_code == 200, crear.text
+    venta_id = crear.json()["venta_id"]
+    _abrir_caja(client, seed_venta_basica["sucursal_id"], seed_venta_basica["usuario_id"])
+    pago = client.post(
+        "/pagos/",
+        json={
+            "origen_tipo": "venta",
+            "origen_id": venta_id,
+            "medio_pago": "efectivo",
+            "monto": str(_to_decimal(seed_venta_basica["precio_venta"]) * 2),
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert pago.status_code == 200, pago.text
+    entrega = client.post(
+        f"/ventas/{venta_id}/entregar",
+        json={"id_usuario": seed_venta_basica["usuario_id"]},
+    )
+    assert entrega.status_code == 200, entrega.text
+    item_id = db_conn.execute(
+        "SELECT id FROM venta_items WHERE id_venta = %s", (venta_id,)
+    ).fetchone()["id"]
+
+    primera = client.post(
+        f"/ventas/{venta_id}/devolver-items",
+        json={
+            "motivo": "devolucion parcial inicial",
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [{"id_venta_item": item_id, "cantidad": "1"}],
+        },
+    )
+    assert primera.status_code == 200, primera.text
+    credito_anterior = db_conn.execute(
+        """
+        SELECT id FROM creditos_cliente
+        WHERE origen_tipo = 'venta' AND origen_id = %s
+        ORDER BY id DESC LIMIT 1
+        """,
+        (venta_id,),
+    ).fetchone()
+    db_conn.execute(
+        "UPDATE creditos_cliente SET saldo_actual = 0, estado = 'aplicado_total' WHERE id = %s",
+        (credito_anterior["id"],),
+    )
+    db_conn.commit()
+
+    completar = client.post(
+        f"/ventas/{venta_id}/devolver-items",
+        json={
+            "motivo": "la devolucion debia ser total",
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "anular_credito_generado": True,
+            "items": [{"id_venta_item": item_id, "cantidad": "1"}],
+        },
+    )
+    assert completar.status_code == 200, completar.text
+    resultado = completar.json()
+    assert resultado["credito_anulado"] is True
+    assert _to_decimal(resultado["monto_credito_anulado"]) == _to_decimal(
+        seed_venta_basica["precio_venta"]
+    )
+    assert get_venta(db_conn, venta_id)["estado"] == "devuelta"
+
+    creditos = db_conn.execute(
+        """
+        SELECT id, saldo_actual, estado FROM creditos_cliente
+        WHERE origen_tipo = 'venta' AND origen_id = %s ORDER BY id
+        """,
+        (venta_id,),
+    ).fetchall()
+    assert len(creditos) == 2
+    assert creditos[0]["id"] == credito_anterior["id"]
+    assert creditos[0]["estado"] == "aplicado_total"
+    assert creditos[1]["estado"] == "anulado"
+    assert _to_decimal(creditos[1]["saldo_actual"]) == Decimal("0")
 
 
 def test_devolucion_parcial_reduce_deuda_antes_de_generar_credito(

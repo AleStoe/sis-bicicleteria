@@ -70,6 +70,7 @@ import ArmadoOrdenDetallePage from "./pages/ArmadoOrdenDetallePage";
 import CorreccionesPage from "./pages/CorreccionesPage";
 import PostventaPage from "./pages/PostventaPage";
 import PostventaDetallePage from "./pages/PostventaDetallePage";
+import RecepcionesMercaderiaPage from "./pages/RecepcionesMercaderiaPage";
 
 const ADMIN = ["administrador"];
 const OPERACION = ["administrador", "encargado", "operador"];
@@ -125,6 +126,7 @@ const TITULOS_RUTA = [
   [/^\/catalogo\/productos\/\d+$/, "Detalle de catalogo"],
   [/^\/catalogo$/, "Catalogo"],
   [/^\/mercaderia\/ingreso-lote$/, "Ingreso mercaderia"],
+  [/^\/mercaderia\/recepciones$/, "Recepciones de mercaderia"],
   [/^\/mercaderia\/alta$/, "Alta mercaderia"],
   [/^\/mercaderia\/bicicletas\/ingreso-lote$/, "Ingreso bicicletas"],
   [/^\/mercaderia\/bicicletas\/alta$/, "Alta bicicletas"],
@@ -609,6 +611,14 @@ export default function App() {
             element={
               <ProtectedRoute rolesPermitidos={ADMIN_ENCARGADO}>
                 <IngresoMercaderiaLotePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/mercaderia/recepciones"
+            element={
+              <ProtectedRoute rolesPermitidos={ADMIN_ENCARGADO}>
+                <RecepcionesMercaderiaPage />
               </ProtectedRoute>
             }
           />

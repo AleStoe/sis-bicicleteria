@@ -1,6 +1,86 @@
 from psycopg.rows import dict_row
 
 
+def get_recepcion_explicada(conn, *, recepcion_id=None, id_sucursal=None):
+    filtros = []
+    params = []
+    if recepcion_id is not None:
+        filtros.append("r.id = %s")
+        params.append(recepcion_id)
+    if id_sucursal is not None:
+        filtros.append("r.id_sucursal = %s")
+        params.append(id_sucursal)
+    where_sql = f"WHERE {' AND '.join(filtros)}" if filtros else ""
+
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            f"""
+            SELECT r.*, c.total_calculado, c.total_documental, c.conciliado,
+                   u.nombre AS usuario_confirmador_nombre,
+                   u.username AS usuario_confirmador_username,
+                   COUNT(i.id)::int AS lineas,
+                   COUNT(i.id) FILTER (WHERE i.origen_resolucion IN ('codigo_proveedor', 'ean'))::int AS automaticas,
+                   COUNT(i.id) FILTER (WHERE i.posible_duplicado)::int AS posibles_duplicados,
+                   COUNT(i.id) FILTER (WHERE i.alerta_costo IS NOT NULL)::int AS alertas_costo,
+                   COUNT(i.id) FILTER (WHERE i.precio_revisado)::int AS precios_revisados,
+                   COALESCE(SUM(i.cantidad), 0) AS unidades
+            FROM recepciones_mercaderia r
+            LEFT JOIN recepcion_mercaderia_items i ON i.id_recepcion = r.id
+            LEFT JOIN recepcion_mercaderia_costos c ON c.id_recepcion = r.id
+            LEFT JOIN usuarios u ON u.id = r.id_usuario_confirmador
+            {where_sql}
+            GROUP BY r.id, c.id, u.id
+            ORDER BY r.id DESC
+            LIMIT 1
+            """,
+            params,
+        )
+        recepcion = cur.fetchone()
+        if recepcion is None:
+            return None
+
+        cur.execute(
+            """
+            SELECT i.numero_linea, i.descripcion_original, i.codigo_proveedor,
+                   i.estado_resolucion, i.origen_resolucion,
+                   i.cantidad, i.costo_unitario_calculado, i.alerta_costo,
+                   i.precio_revisado, p.nombre AS producto_nombre
+            FROM recepcion_mercaderia_items i
+            LEFT JOIN variantes v ON v.id = COALESCE(i.id_variante_confirmada, i.id_variante)
+            LEFT JOIN productos p ON p.id = v.id_producto
+            WHERE i.id_recepcion = %s
+            ORDER BY i.numero_linea, i.id
+            LIMIT 12
+            """,
+            (recepcion["id"],),
+        )
+        items = cur.fetchall()
+        cur.execute(
+            """
+            SELECT tipo_documento, nombre_original, estado, extractor
+            FROM recepcion_documentos
+            WHERE id_recepcion = %s
+            ORDER BY id
+            """,
+            (recepcion["id"],),
+        )
+        documentos = cur.fetchall()
+        cur.execute(
+            """
+            SELECT ae.accion, ae.detalle, ae.created_at,
+                   u.nombre AS usuario_nombre, u.username AS usuario_username
+            FROM auditoria_eventos ae
+            LEFT JOIN usuarios u ON u.id = ae.id_usuario
+            WHERE ae.entidad = 'recepcion_mercaderia' AND ae.entidad_id = %s
+            ORDER BY ae.id DESC
+            LIMIT 8
+            """,
+            (recepcion["id"],),
+        )
+        eventos = cur.fetchall()
+    return {**dict(recepcion), "items": items, "documentos": documentos, "eventos": eventos}
+
+
 def get_ventas_hoy_resumen(conn, *, fecha, id_sucursal=None):
     params = [fecha]
     sucursal_sql = ""

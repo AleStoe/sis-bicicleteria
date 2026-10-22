@@ -662,7 +662,7 @@ def test_mensaje_retiro_muestra_total_contado_con_descuento(client, seed_taller_
         json={
             "tipo_item": "servicio",
             "id_servicio_taller": servicio["id"],
-            "cantidad": 1,
+            "cantidad": 2,
             "precio_unitario": 10000,
             "id_usuario": usuario_id,
         },
@@ -693,9 +693,10 @@ def test_mensaje_retiro_muestra_total_contado_con_descuento(client, seed_taller_
     assert whatsapp.status_code == 200, whatsapp.text
     mensaje = whatsapp.json()["mensaje"]
     assert "Total lista" in mensaje
-    assert "$10.000" in mensaje
+    assert "2 x" in mensaje
+    assert "$20.000" in mensaje
     assert "Efectivo / transferencia (10% OFF)" in mensaje
-    assert "$9.000" in mensaje
+    assert "$18.000" in mensaje
 
 
 def test_ot_con_servicio_bonificado_total_puede_retirar_sin_venta(
@@ -2303,6 +2304,17 @@ def test_generar_venta_desde_taller_con_servicio_taller(
     orden_actualizada = client.get(f"/ordenes_taller/{orden['id']}").json()
     assert orden_actualizada["estado"] == "facturada"
     assert orden_actualizada["id_venta_generada"] == venta_id
+
+    simular = client.post(
+        "/pagos/ventas/simular-tramo",
+        json={
+            "venta_id": venta_id,
+            "medio_pago": "efectivo",
+            "monto_cobrado_objetivo": "9000",
+        },
+    )
+    assert simular.status_code == 200, simular.text
+    assert _to_decimal(simular.json()["monto_total_cobrado"]) == Decimal("9000.00")
 
 
 def test_ot_comun_permite_bonificar_servicio_y_conserva_trazabilidad(

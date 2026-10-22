@@ -152,6 +152,7 @@ def get_cotizacion_items_disponibilidad(conn, cotizacion_id: int):
                     WHERE bs.id_variante = ci.id_variante
                       AND bs.id_sucursal_actual = c.id_sucursal
                       AND bs.estado = 'disponible'
+                      AND bs.estado_tecnico = 'lista'
                 ), 0) AS serializadas_disponibles_count
             FROM cotizacion_items ci
             INNER JOIN cotizaciones c ON c.id = ci.id_cotizacion
@@ -182,6 +183,7 @@ def get_serializadas_disponibles_cotizacion(
             WHERE id_variante = %s
               AND id_sucursal_actual = %s
               AND estado = 'disponible'
+              AND estado_tecnico = 'lista'
             ORDER BY id
             """,
             (variante_id, sucursal_id),

@@ -11,6 +11,10 @@ function labelScope(regla) {
     partes.push(`Proveedor: ${regla.proveedor_nombre}`);
   }
 
+  if (regla.rubro) {
+    partes.push(`Rubro: ${regla.rubro}`);
+  }
+
   if (regla.categoria_nombre) {
     partes.push(`Categoría: ${regla.categoria_nombre}`);
   }
@@ -28,6 +32,9 @@ export default function ReglasPrecioPanel({
   reglas,
   familias = [],
   proveedores = [],
+  rubros = [],
+  categorias = [],
+  marcas = [],
   crearRegla,
   desactivarRegla,
   cargarInicial,
@@ -111,6 +118,30 @@ export default function ReglasPrecioPanel({
                   {proveedor.nombre}
                 </option>
               ))}
+            </select>
+          </label>
+
+          <label style={styles.label}>
+            Rubro
+            <select style={styles.input} value={reglaForm.rubro} onChange={(e) => setReglaForm((p) => ({ ...p, rubro: e.target.value }))}>
+              <option value="">Todos</option>
+              {rubros.map((rubro) => <option key={rubro.id} value={rubro.nombre}>{rubro.label || rubro.nombre}</option>)}
+            </select>
+          </label>
+
+          <label style={styles.label}>
+            Categoría
+            <select style={styles.input} value={reglaForm.id_categoria} onChange={(e) => setReglaForm((p) => ({ ...p, id_categoria: e.target.value }))}>
+              <option value="">Todas</option>
+              {categorias.map((categoria) => <option key={categoria.id} value={categoria.id}>{categoria.nombre}</option>)}
+            </select>
+          </label>
+
+          <label style={styles.label}>
+            Marca
+            <select style={styles.input} value={reglaForm.id_marca} onChange={(e) => setReglaForm((p) => ({ ...p, id_marca: e.target.value }))}>
+              <option value="">Todas</option>
+              {marcas.map((marca) => <option key={marca.id} value={marca.id}>{marca.nombre}</option>)}
             </select>
           </label>
 

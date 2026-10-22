@@ -97,15 +97,15 @@ def _kpis(data: dict) -> list[tuple[str, str]]:
     venta = _dec(data.get("venta_comercial") or data.get("ventas_netas"))
     cmv = _dec(data.get("cmv_comercial") or data.get("cmv_neto"))
     margen = _dec(data.get("margen_esperado") or data.get("margen_bruto"))
-    cobrado = _dec(data.get("cobrado_comercial_reconocido"))
     utilidad = _dec(data.get("utilidad_liberada"))
     resultado = _dec(data.get("resultado_distribuible"))
 
     return [
-        ("% capital recuperado", _percent(_ratio(data.get("capital_recuperado"), cmv))),
-        ("% utilidad liberada", _percent(_ratio(utilidad, margen))),
-        ("% cobranza sobre ventas", _percent(_ratio(cobrado, venta))),
         ("Margen comercial", _percent(_ratio(margen, venta))),
+        ("Cobrado de ventas del mes / ventas del mes", _percent(_ratio(data.get("cobrado_ventas_periodo"), venta))),
+        ("Capital recuperado de ventas del mes / CMV", _percent(_ratio(data.get("capital_recuperado_ventas_periodo"), cmv))),
+        ("Utilidad liberada de ventas del mes / ganancia esperada", _percent(_ratio(data.get("utilidad_liberada_ventas_periodo"), margen))),
+        ("Utilidad de ventas anteriores / utilidad liberada", _percent(_ratio(data.get("utilidad_liberada_ventas_anteriores"), utilidad))),
         ("Rentabilidad efectiva", _percent(_ratio(resultado, venta))),
     ]
 
@@ -124,7 +124,7 @@ def _observaciones(data: dict, anterior: dict | None = None) -> list[str]:
     cmv = _dec(data.get("cmv_comercial") or data.get("cmv_neto"))
 
     obs = [
-        f"Se recupero el {_percent(_ratio(capital_recuperado, cmv))} del capital vendido.",
+        f"Se recupero el {_percent(_ratio(data.get('capital_recuperado_ventas_periodo'), cmv))} del CMV de las ventas del mes mediante cobros del mismo periodo.",
     ]
     if pendiente > 0:
         obs.append(f"Existen ventas pendientes de cobro por {_money(pendiente)}.")
@@ -146,11 +146,9 @@ def _observaciones(data: dict, anterior: dict | None = None) -> list[str]:
     if venta > 0:
         obs.append(f"Los gastos operativos representaron el {_percent(_ratio(gastos, venta))} de las ventas.")
     if utilidad > 0:
-        obs.append(f"La utilidad liberada por caja fue {_money(utilidad)}.")
+        obs.append(f"La utilidad liberada por cobros fue {_money(utilidad)}.")
     if distribuible > 0:
-        obs.append(
-            f"El resultado distribuible fue positivo y permite distribuir {_money(distribuible)} sin comprometer capital de trabajo registrado."
-        )
+        obs.append(f"El resultado distribuible contable fue positivo por {_money(distribuible)}. Antes de retirar fondos hay que verificar caja disponible y obligaciones pendientes.")
     else:
         obs.append("El resultado distribuible no arroja saldo positivo para distribuir en este periodo.")
 
@@ -185,6 +183,7 @@ def generar_resultado_distribuible_pdf(
     data: dict,
     *,
     periodo_anterior: dict | None = None,
+    comparacion: dict | None = None,
     detalle_diario: list[dict] | None = None,
     sucursal_label: str | None = None,
 ) -> bytes:
@@ -543,7 +542,146 @@ def generar_resultado_distribuible_pdf(
     )
     story.append(resultado)
 
-    story.append(_p("4. Indicadores", styles["section"]))
+    if comparacion:
+        story.append(PageBreak())
+        story.append(_p("4. Comparacion con el mes anterior", styles["section"]))
+        story.append(_p(
+            "Las ventas y su ganancia pertenecen al periodo de venta. La utilidad liberada pertenece al periodo en que se cobraron esas ventas.",
+            styles["subtitle"],
+        ))
+        rows = [[
+            _p("Indicador", styles["table_header"]),
+            _p("Anterior", styles["table_header"]),
+            _p("Actual", styles["table_header"]),
+            _p("Diferencia", styles["table_header"]),
+            _p("Variacion", styles["table_header"]),
+        ]]
+        for item in comparacion.get("metricas") or []:
+            es_margen = item.get("clave") == "margen"
+            variacion = item.get("diferencia_puntos_porcentuales") if es_margen else item.get("variacion_porcentual")
+            variacion_texto = "-" if variacion is None else (f"{_dec(variacion):+.2f} pp" if es_margen else f"{_dec(variacion):+.2f}%")
+            valor = _percent if es_margen else _money
+            rows.append([
+                _p(item.get("nombre"), styles["table_cell"]),
+                _p(valor(item.get("anterior")), styles["table_money"]),
+                _p(valor(item.get("actual")), styles["table_money"]),
+                _p((f"{_dec(item.get('diferencia')):+.2f} pp" if es_margen else _money(item.get("diferencia"))), styles["table_money"]),
+                _p(variacion_texto, styles["table_money"]),
+            ])
+        comparison_table = Table(rows, colWidths=[52 * mm, 29 * mm, 29 * mm, 30 * mm, 26 * mm], repeatRows=1)
+        comparison_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(ORANGE_SOFT_HEX)),
+            ("BOX", (0, 0), (-1, -1), 0.7, colors.HexColor(BORDER_HEX)),
+            ("INNERGRID", (0, 0), (-1, -1), 0.35, colors.HexColor(BORDER_HEX)),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 5),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ]))
+        story.append(comparison_table)
+
+        story.append(_p("5. Impacto por rubro", styles["section"]))
+        rubro_rows = [[
+            _p("Rubro", styles["table_header"]),
+            _p("Ventas ant./act.", styles["table_header"]),
+            _p("Costos ant./act.", styles["table_header"]),
+            _p("Ganancia ant./act.", styles["table_header"]),
+            _p("Margen ant./act.", styles["table_header"]),
+            _p("Impacto", styles["table_header"]),
+        ]]
+        for item in comparacion.get("rubros") or []:
+            margen_anterior = "-" if item.get("margen_anterior") is None else _percent(item.get("margen_anterior"))
+            margen_actual = "-" if item.get("margen_actual") is None else _percent(item.get("margen_actual"))
+            rubro_rows.append([
+                _p(item.get("nombre"), styles["table_cell"]),
+                _p(f"{_money(item.get('ventas_anterior'))}<br/>{_money(item.get('ventas_actual'))}", styles["table_money"]),
+                _p(f"{_money(item.get('costos_anterior'))}<br/>{_money(item.get('costos_actual'))}", styles["table_money"]),
+                _p(f"{_money(item.get('ganancia_anterior'))}<br/>{_money(item.get('ganancia_actual'))}", styles["table_money"]),
+                _p(f"{margen_anterior}<br/>{margen_actual}", styles["table_money"]),
+                _p(_money(item.get("variacion_ganancia")), styles["table_money"]),
+            ])
+        rubro_table = Table(rubro_rows, colWidths=[31 * mm, 31 * mm, 31 * mm, 34 * mm, 23 * mm, 26 * mm], repeatRows=1)
+        rubro_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(PAPER_HEX)),
+            ("BOX", (0, 0), (-1, -1), 0.7, colors.HexColor(BORDER_HEX)),
+            ("INNERGRID", (0, 0), (-1, -1), 0.35, colors.HexColor(BORDER_HEX)),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ]))
+        story.append(rubro_table)
+        for texto in comparacion.get("explicaciones") or []:
+            story.append(Spacer(1, 3))
+            story.append(_p(texto, styles["body"]))
+
+        story.append(PageBreak())
+        story.append(_p("6. Puente del resultado", styles["section"]))
+        conciliacion_rows = []
+        for item in comparacion.get("conciliacion_resultado") or []:
+            conciliacion_rows.append([
+                _p(item.get("nombre"), styles["table_cell"]),
+                _p(_money(item.get("importe")), styles["table_money"]),
+            ])
+        conciliacion_table = Table(conciliacion_rows, colWidths=[116 * mm, 50 * mm])
+        conciliacion_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(PAPER_HEX)),
+            ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor(ORANGE_SOFT_HEX)),
+            ("BOX", (0, 0), (-1, -1), 0.7, colors.HexColor(BORDER_HEX)),
+            ("INNERGRID", (0, 0), (-1, -1), 0.35, colors.HexColor(BORDER_HEX)),
+            ("LEFTPADDING", (0, 0), (-1, -1), 8),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ]))
+        story.append(conciliacion_table)
+        story.append(Spacer(1, 5))
+        story.append(_p(
+            f"Dentro del cambio comercial: efecto por nivel de ventas {_money(comparacion.get('efecto_ventas'))}; efecto por cambio de margen {_money(comparacion.get('efecto_margen'))}. No se superponen.",
+            styles["body"],
+        ))
+
+        story.append(_p("7. Ventas y cobranza", styles["section"]))
+        cobranza_rows = [
+            [_p("Cobrado comercial", styles["table_cell"]), _p(_money(data.get("cobrado_comercial_reconocido")), styles["table_money"])],
+            [_p("De ventas del mes", styles["table_cell"]), _p(_money(data.get("cobrado_ventas_periodo")), styles["table_money"])],
+            [_p("De ventas anteriores", styles["table_cell"]), _p(_money(data.get("cobrado_ventas_anteriores")), styles["table_money"])],
+            [_p("Credito a favor aplicado (no ingresa caja)", styles["table_cell"]), _p(f"- {_money(data.get('credito_aplicado'))}", styles["table_money"])],
+            [_p("Financiacion cobrada", styles["table_cell"]), _p(_money(data.get("financiacion_cobrada")), styles["table_money"])],
+            [_p("Costos financieros", styles["table_cell"]), _p(f"- {_money(data.get('costos_financieros'))}", styles["table_money"])],
+            [_p("Otros ajustes de conciliacion", styles["table_cell"]), _p(_money(data.get("conciliacion_cobranza_ajuste")), styles["table_money"])],
+            [_p("Efectivamente cobrado", styles["metric_value"]), _p(_money(data.get("ingreso_real_neto")), styles["table_money"])],
+        ]
+        cobranza_table = Table(cobranza_rows, colWidths=[116 * mm, 50 * mm])
+        cobranza_table.setStyle(TableStyle([
+            ("BOX", (0, 0), (-1, -1), 0.7, colors.HexColor(BORDER_HEX)),
+            ("INNERGRID", (0, 0), (-1, -1), 0.35, colors.HexColor(BORDER_HEX)),
+            ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor(ORANGE_SOFT_HEX)),
+            ("LEFTPADDING", (0, 0), (-1, -1), 8),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ]))
+        story.append(cobranza_table)
+        story.append(Spacer(1, 5))
+        story.append(_p(
+            f"Capital recuperado: {_money(data.get('capital_recuperado'))}. Utilidad liberada por cobros: {_money(data.get('utilidad_liberada'))}, de la cual {_money(data.get('utilidad_liberada_ventas_anteriores'))} proviene de ventas anteriores.",
+            styles["body"],
+        ))
+
+        validacion = comparacion.get("validacion_actual") or {}
+        story.append(_p("8. Validacion", styles["section"]))
+        estado_validacion = "VALIDADO" if validacion.get("valida") else "REVISAR DIFERENCIAS"
+        story.append(_p(
+            f"{estado_validacion}: ventas por rubro {_money(validacion.get('ventas_rubros'))} vs. general {_money(validacion.get('ventas_general'))}; costos por rubro {_money(validacion.get('costos_rubros'))} vs. general {_money(validacion.get('costos_general'))}; ganancia por rubro {_money(validacion.get('ganancia_rubros'))} vs. general {_money(validacion.get('ganancia_general'))}.",
+            styles["body"],
+        ))
+        for nota in validacion.get("notas") or []:
+            story.append(_p(f"- {nota}", styles["small"]))
+
+    story.append(_p("Indicadores", styles["section"]))
     kpi_rows = [[_p(k, styles["table_cell"]), _p(v, styles["table_money"])] for k, v in _kpis(data)]
     kpi_table = Table(kpi_rows, colWidths=[105 * mm, 51 * mm])
     kpi_table.setStyle(
@@ -561,7 +699,7 @@ def generar_resultado_distribuible_pdf(
     story.append(kpi_table)
 
     story.append(PageBreak())
-    story.append(_p("5. Observaciones automaticas", styles["section"]))
+    story.append(_p("9. Observaciones automaticas" if comparacion else "5. Observaciones automaticas", styles["section"]))
     obs_rows = [[_p(f"- {text}", styles["body"])] for text in _observaciones(data, periodo_anterior)]
     obs_table = Table(obs_rows, colWidths=[156 * mm])
     obs_table.setStyle(
@@ -608,7 +746,7 @@ def generar_resultado_distribuible_pdf(
     productos_estrella = data.get("productos_estrella_por_rubro") or []
     if top_clientes or productos_estrella:
         story.append(PageBreak())
-        story.append(_p("6. Anexo comercial", styles["section"]))
+        story.append(_p("10. Anexo comercial" if comparacion else "6. Anexo comercial", styles["section"]))
         story.append(_p(
             "Lecturas utiles para entender quienes impulsaron el periodo y que producto destaco en cada rubro.",
             styles["subtitle"],
@@ -682,7 +820,10 @@ def generar_resultado_distribuible_pdf(
 
     if detalle_diario:
         story.append(PageBreak())
-        numero_anexo = "7" if top_clientes or productos_estrella else "6"
+        if comparacion:
+            numero_anexo = "11" if top_clientes or productos_estrella else "10"
+        else:
+            numero_anexo = "7" if top_clientes or productos_estrella else "6"
         story.append(_p(f"{numero_anexo}. Anexo - detalle diario", styles["section"]))
         story.append(_p("Resumen por dia con ventas, cobranza, capital y utilidad liberada.", styles["subtitle"]))
         rows = [[

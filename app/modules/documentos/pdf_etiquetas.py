@@ -3,6 +3,9 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from PIL import Image, ImageChops
 from reportlab.graphics.barcode.code128 import Code128
+from reportlab.graphics.barcode.qr import QrCodeWidget
+from reportlab.graphics.shapes import Drawing
+from reportlab.graphics import renderPDF
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib.utils import ImageReader
@@ -206,6 +209,10 @@ def _titulo_etiqueta(item):
 
 
 def _draw_deposito_page(c, item: dict, tipo: str):
+    if tipo == "bicicleta":
+        _draw_deposito_bicicleta_qr(c, item)
+        return
+
     width, height = LABEL_80X40
     margin = 4 * mm
     content_width = width - margin * 2
@@ -239,6 +246,83 @@ def _draw_deposito_page(c, item: dict, tipo: str):
 
     c.setFont("Helvetica-Bold", 7.4)
     c.drawCentredString(width / 2, 4.4 * mm, value)
+
+
+def _draw_deposito_bicicleta_qr(c, item: dict):
+    width, height = LABEL_80X40
+    margin = 3.5 * mm
+    qr_size = 27 * mm
+    qr_x = width - margin - qr_size
+    qr_y = (height - qr_size) / 2
+    text_width = qr_x - margin - 2 * mm
+
+    c.setFont("Helvetica-Bold", 7.2)
+    c.drawString(margin, height - 6 * mm, f"BICI #{item.get('id_bicicleta')}")
+
+    titulo = _text(_label_title(item)).upper()
+    _draw_wrapped_text(
+        c,
+        titulo,
+        margin,
+        height - 10 * mm,
+        text_width,
+        "Helvetica-Bold",
+        7.2,
+        3.5 * mm,
+        max_lines=2,
+    )
+
+    variante = _variant_parts(item).upper()
+    if variante:
+        _draw_wrapped_text(
+            c,
+            variante,
+            margin,
+            height - 18 * mm,
+            text_width,
+            "Helvetica-Bold",
+            6.2,
+            3 * mm,
+            max_lines=2,
+        )
+
+    numero_cuadro = _text(item.get("numero_cuadro")).strip()
+    c.setFont("Helvetica", 6.2)
+    c.drawString(margin, 10.2 * mm, "NUMERO DE CUADRO")
+    frame_size = _fit_font_size(
+        c,
+        numero_cuadro,
+        "Helvetica-Bold",
+        text_width,
+        9.2,
+        6.2,
+    )
+    c.setFont("Helvetica-Bold", frame_size)
+    c.drawString(margin, 6.8 * mm, numero_cuadro)
+
+    codigo = _text(item.get("sku") or item.get("codigo_barras")).strip()
+    if codigo:
+        c.setFont("Helvetica", 5.8)
+        c.drawString(margin, 3.5 * mm, _clip(codigo, 28))
+
+    qr = QrCodeWidget(numero_cuadro or f"BICI-{item.get('id_bicicleta')}")
+    bounds = qr.getBounds()
+    qr_width = bounds[2] - bounds[0]
+    qr_height = bounds[3] - bounds[1]
+    drawing = Drawing(
+        qr_size,
+        qr_size,
+        transform=[
+            qr_size / qr_width,
+            0,
+            0,
+            qr_size / qr_height,
+            0,
+            0,
+        ],
+    )
+    drawing.add(qr)
+    renderPDF.draw(drawing, c, qr_x, qr_y)
 
 def generar_etiqueta_deposito_pdf(data: dict, copias: int = 1) -> bytes:
     item = data["item"]

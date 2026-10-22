@@ -572,6 +572,82 @@ export default function VentaDetallePage() {
       setProcesando(false);
     }
   }
+
+  async function handleCompletarDevolucionSinCredito() {
+    if (tienePagosExternosConfirmados()) {
+      setError(
+        "Esta corrección no está disponible con tarjeta o MercadoPago. Resolvé primero la devolución externa."
+      );
+      return;
+    }
+
+    const itemsPendientes = (data?.items || [])
+      .map((item) => ({
+        item,
+        cantidad: getCantidadDisponibleDevolucion(item),
+      }))
+      .filter(({ cantidad }) => cantidad > 0);
+
+    if (itemsPendientes.length === 0) {
+      setError("La venta no tiene unidades pendientes de devolución");
+      return;
+    }
+
+    const creditoEstimado = itemsPendientes.reduce(
+      (total, { item, cantidad }) => total + calcularCreditoEstimadoItem(item, cantidad),
+      0
+    );
+    const detalle = itemsPendientes
+      .map(({ item, cantidad }) => `${cantidad} x ${item.descripcion_snapshot}`)
+      .join("\n");
+
+    const motivo = await pedirPrompt({
+      title: "Completar devolución",
+      label: "Motivo de la corrección",
+      message:
+        `Se devolverá todo lo que todavía queda en la venta:\n\n${detalle}\n\n` +
+        `Crédito estimado a generar y anular: ${formatMoney(creditoEstimado)}.`,
+      required: true,
+      minLength: 3,
+      confirmText: "Revisar impacto",
+    });
+    if (!motivo || motivo.trim().length < 3) return;
+
+    const confirmar = await pedirConfirmacion({
+      title: "Confirmar corrección administrativa",
+      message:
+        "La venta quedará devuelta totalmente, el stock regresará y el crédito nuevo " +
+        "se anulará en la misma operación. No se tocarán créditos anteriores ya usados " +
+        "en otras ventas. ¿Confirmás?",
+      confirmText: "Completar y anular crédito",
+      cancelText: "Cancelar",
+      variant: "danger",
+    });
+    if (!confirmar) return;
+
+    try {
+      setProcesando(true);
+      setError("");
+      setMensaje("");
+      const result = await devolverItemsVenta(ventaId, {
+        items: itemsPendientes.map(({ item, cantidad }) => ({
+          id_venta_item: Number(item.id),
+          cantidad: String(cantidad),
+        })),
+        motivo: motivo.trim(),
+        id_usuario: usuarioId,
+        anular_credito_generado: true,
+      });
+      await cargarVenta();
+      setMensaje(
+        `Devolución completada. Crédito anulado: ${formatMoney(result.monto_credito_anulado || 0)}.`
+      );
+    } catch (err) {
+      setError(err.message || "No se pudo completar la devolución");
+    } finally {
+      setProcesando(false);
+    }
+  }
 async function handleDevolverSerializada(item) {
     if (!item.id_bicicleta_serializada) return;
 
@@ -782,10 +858,14 @@ const {
         puedeEntregar={puedeEntregar}
         puedeAnular={puedeAnular}
         puedeDevolver={puedeDevolver}
+        puedeCompletarDevolucion={
+          puedeDevolver && venta.estado === "devuelta_parcial"
+        }
         estaCerradaOperativamente={estaCerradaOperativamente}
         onEntregar={handleEntregarVenta}
         onAnular={handleAnularVenta}
         onDevolverCompleta={handleDevolverVentaCompleta}
+        onCompletarDevolucion={handleCompletarDevolucionSinCredito}
       />
 
       {puedeCorregirCliente && (
@@ -822,6 +902,7 @@ const {
 
       <VentaPagosPanel
         pagos={pagos}
+        creditoAplicadoReal={creditoAplicadoReal}
         formatMoney={formatMoney}
         procesando={procesando}
         canRevertirPago={(pago) => puedeRevertirPago(pago, usuarioActual)}

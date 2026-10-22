@@ -12,7 +12,8 @@ import {
   ResponsiveMetricsGrid,
   useBreakpoint,
 } from "../components/ui";
-import { CalendarDays, Plus, RefreshCw, Search } from "lucide-react";
+import SearchField from "../components/ui/SearchField";
+import { CalendarDays, Plus, RefreshCw } from "lucide-react";
 import { colors, controls, radius, shadows, spacing, typography } from "../theme";
 
 const ESTADOS_ACTIVOS = new Set([
@@ -22,6 +23,7 @@ const ESTADOS_ACTIVOS = new Set([
   "esperando_repuestos",
   "en_reparacion",
   "terminada",
+  "facturada",
   "lista_para_retirar",
 ]);
 
@@ -35,6 +37,7 @@ const ESTADOS = [
   { value: "esperando_repuestos", label: "Esperando repuestos" },
   { value: "en_reparacion", label: "En reparación" },
   { value: "terminada", label: "Terminadas" },
+  { value: "facturada", label: "Facturadas" },
   { value: "lista_para_retirar", label: "Listas para retirar" },
   { value: "retirada", label: "Retiradas" },
   { value: "cancelada", label: "Canceladas" },
@@ -48,6 +51,7 @@ const TABLERO_ESTADOS = [
   { value: "esperando_repuestos", label: "Repuestos" },
   { value: "en_reparacion", label: "En reparacion" },
   { value: "terminada", label: "Terminadas" },
+  { value: "facturada", label: "Facturadas" },
   { value: "lista_para_retirar", label: "Listas retiro" },
 ];
 
@@ -202,17 +206,14 @@ export default function TallerListPage() {
       </ResponsiveMetricsGrid>
 
       <Card bodyStyle={styles.filtersCard} style={{ boxShadow: shadows.sm }}>
-        <div style={{ ...styles.searchBox, ...(isMobile ? styles.searchBoxMobile : {}) }}>
-          <Search size={18} color={colors.textMuted} aria-hidden="true" />
-          <input
-            ref={searchRef}
+        <SearchField
+            inputRef={searchRef}
             value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
+            onChange={setBusqueda}
             placeholder="Buscar por orden, cliente, bici o problema..."
-            style={styles.searchInput}
-          />
-          {!isMobile && <kbd style={styles.kbd}>/</kbd>}
-        </div>
+            style={{ ...styles.searchBox, ...(isMobile ? styles.searchBoxMobile : {}) }}
+            inputStyle={styles.searchInput}
+        />
 
         <select value={estadoFiltro} onChange={(e) => setEstadoFiltro(e.target.value)} style={{ ...styles.select, ...(isMobile ? styles.selectMobile : {}) }}>
           {ESTADOS.map((estado) => (

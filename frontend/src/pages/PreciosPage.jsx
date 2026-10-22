@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { listarCatalogoPOS } from "../services/catalogoService";
+import { listarCatalogoPOS, listarCategorias, listarMarcas, listarRubros } from "../services/catalogoService";
 import { listarProveedores } from "../services/proveedoresService";
 import { obtenerConfiguracionNegocio } from "../services/configuracionNegocioService";
 import RecalculoMasivoPanel from "../components/precios/RecalculoMasivoPanel";
@@ -45,6 +45,9 @@ export default function PreciosPage() {
   const [proveedores, setProveedores] = useState([]);
   const [familias, setFamilias] = useState([]);
   const [reglas, setReglas] = useState([]);
+  const [rubros, setRubros] = useState([]);
+  const [categorias, setCategorias] = useState([]);
+  const [marcas, setMarcas] = useState([]);
   const [configuracionNegocio, setConfiguracionNegocio] = useState(DEFAULT_CONFIGURACION_NEGOCIO);
 
   const [query, setQuery] = useState("");
@@ -71,6 +74,7 @@ export default function PreciosPage() {
 
   const [ajusteProveedorForm, setAjusteProveedorForm] = useState({
     id_proveedor: "",
+    rubro: "",
     aplicar_sobre: "ambos",
     tipo_ajuste: "porcentaje",
     valor: "",
@@ -118,23 +122,29 @@ export default function PreciosPage() {
 
   useEffect(() => {
     cargarInicial();
-    setTimeout(() => buscarRef.current?.focus(), 100);
+    if (!isMobile) setTimeout(() => buscarRef.current?.focus(), 100);
   }, []);
 
   async function cargarInicial() {
     try {
       setError("");
 
-      const [provs, reglasData, familiasData, config] = await Promise.all([
+      const [provs, reglasData, familiasData, rubrosData, categoriasData, marcasData, config] = await Promise.all([
         listarProveedores({ solo_activos: true }),
         listarReglasPrecio({ solo_activas: false }),
         listarFamiliasPrecio(),
+        listarRubros({ solo_activos: true }),
+        listarCategorias({ solo_activas: true }),
+        listarMarcas({ solo_activas: true }),
         obtenerConfiguracionNegocio().catch(() => DEFAULT_CONFIGURACION_NEGOCIO),
       ]);
 
       setProveedores(provs || []);
       setReglas(reglasData || []);
       setFamilias(familiasData || []);
+      setRubros(rubrosData || []);
+      setCategorias(categoriasData || []);
+      setMarcas(marcasData || []);
       setConfiguracionNegocio({
         ...DEFAULT_CONFIGURACION_NEGOCIO,
         ...(config || {}),
@@ -740,6 +750,9 @@ export default function PreciosPage() {
           reglas={reglas}
           familias={familias}
           proveedores={proveedores}
+          rubros={rubros}
+          categorias={categorias}
+          marcas={marcas}
           crearRegla={crearRegla}
           desactivarRegla={desactivarRegla}
           cargarInicial={cargarInicial}

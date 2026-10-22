@@ -7,6 +7,8 @@ from app.modules.reservas import repository as reserva_repo
 from app.modules.pagos import service as pagos_service
 from app.modules.ventas import repository as ventas_repo
 from app.modules.ventas.costos import resolver_costo_unitario_venta_serializada
+from app.modules.ofertas.repository import get_oferta_vigente_variante
+from app.shared.money import redondear_monto
 from app.modules.authz.service import exigir_permiso_cancelar_reserva
 from app.modules.serializadas.repository import (
     get_bicicleta_serializada_for_update,
@@ -61,6 +63,15 @@ def _validar_y_bloquear_bicicleta_serializada_para_reserva(
             ),
         )
 
+    if bicicleta["estado_tecnico"] != "lista":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"La bicicleta {bicicleta['numero_cuadro']} no esta lista para reservar "
+                f"(estado tecnico: {bicicleta['estado_tecnico']})"
+            ),
+        )
+
     return bicicleta
 
 
@@ -112,12 +123,20 @@ def crear_reserva(data):
     try:
         with conn.transaction():
             total_estimado = Decimal("0")
+            base_sin_descuento_contado = Decimal("0")
 
             # =====================================================
             # 1. VALIDAR STOCK Y SERIALIZADAS
             # =====================================================
             for item in data["items"]:
                 bicicleta_id = item.get("id_bicicleta_serializada")
+                bicicleta = None
+                variante = reserva_repo.get_variante_for_reserva(
+                    conn,
+                    item["id_variante"],
+                )
+                if not variante or not variante["producto_activo"] or not variante["variante_activa"]:
+                    raise HTTPException(status_code=400, detail="El producto ya no está activo")
 
                 if bicicleta_id is not None:
                     if to_decimal(item["cantidad"]) != Decimal("1"):
@@ -126,7 +145,7 @@ def crear_reserva(data):
                             detail="Un item con bicicleta serializada debe tener cantidad = 1",
                         )
 
-                    _validar_y_bloquear_bicicleta_serializada_para_reserva(
+                    bicicleta = _validar_y_bloquear_bicicleta_serializada_para_reserva(
                         conn,
                         id_bicicleta_serializada=bicicleta_id,
                         id_variante=item["id_variante"],
@@ -145,6 +164,47 @@ def crear_reserva(data):
                             detail=f"Stock insuficiente para variante {item['id_variante']}",
                         )
 
+                precio_catalogo = redondear_monto(
+                    (
+                        bicicleta.get("precio_venta_personalizado")
+                        if bicicleta_id is not None and bicicleta is not None
+                        else None
+                    )
+                    or variante["precio_minorista"]
+                    or 0
+                )
+                if precio_catalogo <= 0:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"La variante {item['id_variante']} no tiene precio minorista",
+                    )
+                oferta = get_oferta_vigente_variante(
+                    conn,
+                    item["id_variante"],
+                    id_bicicleta_serializada=bicicleta_id,
+                )
+                precio_resuelto = precio_catalogo
+                if oferta:
+                    precio_oferta = redondear_monto(oferta["precio_oferta"])
+                    if Decimal("0") < precio_oferta < precio_catalogo:
+                        precio_resuelto = precio_oferta
+                    else:
+                        oferta = None
+
+                item["precio_estimado"] = precio_resuelto
+                item["id_oferta"] = oferta["id"] if oferta else None
+                item["precio_catalogo_original"] = precio_catalogo if oferta else None
+                item["descuento_oferta_unitario"] = (
+                    redondear_monto(precio_catalogo - precio_resuelto)
+                    if oferta
+                    else Decimal("0")
+                )
+                item["oferta_nombre_snapshot"] = oferta["nombre"] if oferta else None
+                item["oferta_alcance_snapshot"] = oferta["alcance"] if oferta else None
+                item["oferta_politica_contado_snapshot"] = (
+                    oferta["politica_contado"] if oferta else None
+                )
+
             # =====================================================
             # 2. CREAR RESERVA
             # =====================================================
@@ -156,6 +216,8 @@ def crear_reserva(data):
             for item in data["items"]:
                 subtotal = to_decimal(item["cantidad"]) * to_decimal(item["precio_estimado"])
                 total_estimado += subtotal
+                if item.get("oferta_politica_contado_snapshot") == "precio_final_contado":
+                    base_sin_descuento_contado += subtotal
 
                 reserva_repo.insert_reserva_item(
                     conn,
@@ -166,6 +228,14 @@ def crear_reserva(data):
                         "cantidad": item["cantidad"],
                         "precio_estimado": item["precio_estimado"],
                         "subtotal_estimado": subtotal,
+                        "id_oferta": item.get("id_oferta"),
+                        "precio_catalogo_original": item.get("precio_catalogo_original"),
+                        "descuento_oferta_unitario": item.get("descuento_oferta_unitario", 0),
+                        "oferta_nombre_snapshot": item.get("oferta_nombre_snapshot"),
+                        "oferta_alcance_snapshot": item.get("oferta_alcance_snapshot"),
+                        "oferta_politica_contado_snapshot": item.get(
+                            "oferta_politica_contado_snapshot"
+                        ),
                     },
                 )
 
@@ -208,6 +278,7 @@ def crear_reserva(data):
                         "origen_id": reserva_id,
                         "nota": pago.get("nota"),
                         "id_usuario": data["id_usuario"],
+                        "base_sin_descuento_pendiente": base_sin_descuento_contado,
                     },
                 )
 
@@ -221,6 +292,7 @@ def crear_reserva(data):
                 total_estimado,
                 sena,
                 saldo,
+                redondear_monto(base_sin_descuento_contado),
             )
 
             # =====================================================
@@ -507,7 +579,11 @@ def convertir_reserva_en_venta(reserva_id: int, data):
                     "id_sucursal": reserva["id_sucursal"],
                     "id_cliente": reserva["id_cliente"],
                     "estado": estado_venta,
+                    "tipo_precio": "minorista",
                     "subtotal_base": total,
+                    "base_sin_descuento_contado": reserva.get(
+                        "base_sin_descuento_contado"
+                    ) or 0,
                     "descuento_total": Decimal("0"),
                     "recargo_total": Decimal("0"),
                     "total_final": total,
@@ -556,9 +632,30 @@ def convertir_reserva_en_venta(reserva_id: int, data):
                         "bonificado": False,
                         "motivo_bonificacion": None,
                         "motivo_precio_manual": None,
+                        "id_oferta": item.get("id_oferta"),
+                        "precio_catalogo_original": item.get(
+                            "precio_catalogo_original"
+                        ),
+                        "descuento_oferta_unitario": item.get(
+                            "descuento_oferta_unitario",
+                            0,
+                        ),
+                        "oferta_nombre_snapshot": item.get(
+                            "oferta_nombre_snapshot"
+                        ),
+                        "oferta_alcance_snapshot": item.get(
+                            "oferta_alcance_snapshot"
+                        ),
+                        "oferta_politica_contado_snapshot": item.get(
+                            "oferta_politica_contado_snapshot"
+                        ),
 
                         "costo_unitario_aplicado": costo_resuelto[
                             "costo_unitario_aplicado"
+                        ],
+                        "origen_costo_snapshot": costo_resuelto["origen_costo"],
+                        "id_orden_armado_origen_snapshot": costo_resuelto[
+                            "id_orden_armado_origen"
                         ],
                         "subtotal": subtotal_estimado,
                     },

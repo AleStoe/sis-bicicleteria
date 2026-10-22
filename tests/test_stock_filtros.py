@@ -464,7 +464,7 @@ def test_pedido_sugerido_agrupa_por_proveedor_y_excluye_no_reponer(
                 stock_vendido_pendiente_entrega
             )
             VALUES
-                (%s, %s, 1, 0, 0),
+                (%s, %s, 0, 0, 0),
                 (%s, %s, 1, 0, 0)
             """,
             (
@@ -493,4 +493,9 @@ def test_pedido_sugerido_agrupa_por_proveedor_y_excluye_no_reponer(
     items_ids = [item["variante_id"] for item in data["proveedores"][0]["items"]]
     assert items_ids == [variante_incluir_id]
     assert variante_no_reponer_id not in items_ids
-    assert data["proveedores"][0]["items"][0]["cantidad_sugerida"] == "3.000"
+    item = data["proveedores"][0]["items"][0]
+    assert item["stock_disponible"] == "0.000"
+    assert item["cantidad_sugerida"] == "4.000"
+    assert float(item["unidades_vendidas_90d"]) == 0
+    assert item["ventas_distintas_90d"] == 0
+    assert item["prioridad_reposicion"] == "revisar"

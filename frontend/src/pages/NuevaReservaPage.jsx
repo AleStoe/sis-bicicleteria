@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Trash2 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { listarClientes } from "../services/clientesService";
 import { listarCatalogoPOS } from "../services/catalogoService";
@@ -10,7 +11,10 @@ import {
 import { formatMoney } from "../utils/formatters";
 import { formatProductoVariante } from "../utils/productPresentation";
 import { useSession } from "../context/SessionContext";
+import SearchField from "../components/ui/SearchField";
 import useMediaQuery from "../hooks/useMediaQuery";
+import { listarSerializadasDisponibles } from "../services/serializadasService";
+import VentaItemSerializadaPanel from "../components/ventas/item/VentaItemSerializadaPanel";
 
 const ID_SUCURSAL = 1;
 
@@ -33,6 +37,7 @@ export default function NuevaReservaPage() {
   const [clienteId, setClienteId] = useState("");
   const [query, setQuery] = useState("");
   const [items, setItems] = useState([]);
+  const [serializadasPorVariante, setSerializadasPorVariante] = useState({});
   const [fechaVencimiento, setFechaVencimiento] = useState("");
   const [nota, setNota] = useState("");
   const [registrarSena, setRegistrarSena] = useState(false);
@@ -211,7 +216,7 @@ export default function NuevaReservaPage() {
     return true;
   }
 
-  function agregarItem(producto) {
+  async function agregarItem(producto) {
     if (!puedeAgregar(producto)) {
       setError("El producto no está disponible para reservar");
       return;
@@ -219,12 +224,33 @@ export default function NuevaReservaPage() {
 
     setError("");
 
+    let disponibles = [];
+    if (producto.serializable) {
+      try {
+        disponibles = await listarSerializadasDisponibles({
+          id_variante: producto.id_variante,
+          id_sucursal: ID_SUCURSAL,
+        });
+        setSerializadasPorVariante((actual) => ({
+          ...actual,
+          [String(producto.id_variante)]: disponibles || [],
+        }));
+      } catch (err) {
+        setError(err.message || "No se pudieron cargar los números de cuadro");
+        return;
+      }
+    }
+
     setItems((actual) => {
       const existente = actual.find(
         (item) => Number(item.id_variante) === Number(producto.id_variante)
       );
 
       if (existente) {
+        if (producto.serializable) {
+          setError("Elegí el número de cuadro de la bicicleta ya agregada");
+          return actual;
+        }
         const cantidad = Number(existente.cantidad) + 1;
 
         if (producto.stockeable && cantidad > Number(producto.stock_disponible || 0)) {
@@ -247,12 +273,46 @@ export default function NuevaReservaPage() {
           codigo: producto.codigo_barras || producto.sku || `#${producto.id_variante}`,
           cantidad: 1,
           precio_estimado: Number(producto.precio_minorista || 0),
+          precio_minorista: Number(producto.precio_minorista || 0),
           stockeable: producto.stockeable,
+          serializable: Boolean(producto.serializable),
           stock_disponible: Number(producto.stock_disponible || 0),
           id_bicicleta_serializada: null,
+          numero_cuadro: "",
+          en_oferta: Boolean(producto.en_oferta),
+          oferta_id: producto.oferta_id || null,
+          oferta_nombre: producto.oferta_nombre || null,
+          precio_oferta: Number(producto.precio_oferta || 0) || null,
+          oferta_alcance: producto.en_oferta ? "variante" : null,
+          oferta_politica_contado: producto.oferta_politica_contado || null,
         },
       ];
     });
+  }
+
+  function seleccionarSerializada(idVariante, bicicletaIdRaw) {
+    const bicicletaId = bicicletaIdRaw ? Number(bicicletaIdRaw) : null;
+    setItems((actual) => actual.map((item) => {
+      if (Number(item.id_variante) !== Number(idVariante)) return item;
+      const disponibles = serializadasPorVariante[String(idVariante)] || [];
+      const bici = disponibles.find((unidad) => Number(unidad.id) === bicicletaId);
+      const usaOferta = Boolean(bici?.oferta_id);
+      return {
+        ...item,
+        id_bicicleta_serializada: bicicletaId,
+        numero_cuadro: bici?.numero_cuadro || "",
+        cantidad: 1,
+        en_oferta: usaOferta,
+        oferta_id: bici?.oferta_id || null,
+        oferta_nombre: bici?.oferta_nombre || null,
+        precio_oferta: usaOferta ? Number(bici.precio_oferta || 0) : null,
+        precio_estimado: usaOferta
+          ? Number(bici.precio_oferta || 0)
+          : Number(item.precio_minorista || 0),
+        oferta_alcance: bici?.oferta_alcance || null,
+        oferta_politica_contado: bici?.oferta_politica_contado || null,
+      };
+    }));
   }
 
   function cambiarCantidad(idVariante, value) {
@@ -306,6 +366,11 @@ export default function NuevaReservaPage() {
 
     if (items.length === 0) {
       setError("Agregá al menos un item");
+      return;
+    }
+
+    if (items.some((item) => item.serializable && !item.id_bicicleta_serializada)) {
+      setError("Elegí el número de cuadro de cada bicicleta antes de reservar");
       return;
     }
 
@@ -443,15 +508,14 @@ export default function NuevaReservaPage() {
 
           <h2 style={cardTitleStyle}>Agregar productos</h2>
           <div style={isMobile ? searchRowMobileStyle : searchRowStyle}>
-            <input
+            <SearchField
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={setQuery}
+              onSearch={() => cargarCatalogo()}
               placeholder="Buscar producto, SKU o código"
-              style={inputStyle}
+              style={reserveSearchFieldStyle}
+              inputStyle={inputStyle}
             />
-            <button type="button" onClick={cargarCatalogo}>
-              {buscando ? "..." : "Buscar"}
-            </button>
           </div>
 
           <div style={catalogListStyle}>
@@ -501,15 +565,32 @@ export default function NuevaReservaPage() {
                     value={item.cantidad}
                     onChange={(e) => cambiarCantidad(item.id_variante, e.target.value)}
                     style={qtyStyle}
+                    disabled={item.serializable}
                   />
 
                   <strong>
                     {formatMoney(Number(item.precio_estimado) * Number(item.cantidad))}
                   </strong>
 
-                  <button type="button" onClick={() => quitarItem(item.id_variante)}>
-                    🗑
+                  <button
+                    type="button"
+                    onClick={() => quitarItem(item.id_variante)}
+                    title="Quitar producto"
+                    aria-label="Quitar producto"
+                  >
+                    <Trash2 size={18} />
                   </button>
+                  {item.serializable && (
+                    <div style={{ gridColumn: "1 / -1" }}>
+                      <VentaItemSerializadaPanel
+                        item={{ ...item, precio_lista: item.precio_estimado }}
+                        bicicletasDisponibles={serializadasPorVariante[String(item.id_variante)] || []}
+                        seleccionarSerializada={(id) => seleccionarSerializada(item.id_variante, id)}
+                        limpiarSerializada={() => seleccionarSerializada(item.id_variante, null)}
+                        titulo="Cuadro que queda reservado"
+                      />
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -755,6 +836,7 @@ const textareaStyle = { ...inputStyle, minHeight: "68px", resize: "vertical" };
 const cardTitleStyle = { marginTop: 0, marginBottom: "14px", fontSize: "20px" };
 const searchRowStyle = { display: "flex", gap: "8px", marginBottom: "10px" };
 const searchRowMobileStyle = { display: "grid", gridTemplateColumns: "1fr", gap: "8px", marginBottom: "10px" };
+const reserveSearchFieldStyle = { flex: 1, minWidth: 0 };
 const catalogListStyle = { display: "grid", gap: "8px", maxHeight: "430px", overflowY: "auto" };
 const productRowStyle = {
   display: "flex",

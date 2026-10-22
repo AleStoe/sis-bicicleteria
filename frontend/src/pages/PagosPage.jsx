@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { CalendarDays, CalendarRange, RefreshCw, RotateCcw } from "lucide-react";
 import { listarPagos, revertirPago } from "../services/pagosService";
 import { formatMoney, formatDate } from "../utils/formatters";
 import { PromptModal } from "../components/ui/PromptModal";
@@ -224,6 +225,16 @@ export default function PagosPage() {
     setFechaHasta(rango.hasta);
   }
 
+  function aplicarHoy() {
+    const hoy = getFechaLocalISO();
+    setFechaDesde(hoy);
+    setFechaHasta(hoy);
+  }
+
+  const periodoHoyActivo = fechaDesde === getFechaLocalISO() && fechaHasta === getFechaLocalISO();
+  const rangoMesActual = getRangoMesActual();
+  const periodoMesActivo = fechaDesde === rangoMesActual.desde && fechaHasta === rangoMesActual.hasta;
+
   const detalle = pagoSeleccionado || pagosFiltrados[0] || null;
 
   if (loading) return <div style={styles.state}>Cargando pagos...</div>;
@@ -241,7 +252,8 @@ export default function PagosPage() {
 
         <div style={isMobile ? styles.heroActionsMobile : styles.heroActions}>
           <button type="button" onClick={cargarPagos} disabled={guardando} style={{ ...styles.secondaryHeroButton, ...(isMobile ? styles.fullWidth : {}) }}>
-            ↻ Refrescar
+            <RefreshCw size={17} aria-hidden="true" />
+            Refrescar
           </button>
         </div>
       </header>
@@ -338,12 +350,36 @@ export default function PagosPage() {
                 </select>
               </label>
 
-              <button type="button" onClick={limpiarFiltros} style={{ ...styles.secondaryButton, ...(isMobile ? styles.fullWidth : {}) }}>
-                Limpiar
-              </button>
-              <button type="button" onClick={aplicarMesActual} style={{ ...styles.secondaryButton, ...(isMobile ? styles.fullWidth : {}) }}>
-                Este mes
-              </button>
+              <div style={isMobile ? styles.filterActionsMobile : styles.filterActions}>
+                <button
+                  type="button"
+                  onClick={aplicarHoy}
+                  style={{
+                    ...styles.periodButton,
+                    ...(periodoHoyActivo ? styles.periodButtonActive : {}),
+                    ...(isMobile ? styles.fullWidth : {}),
+                  }}
+                >
+                  <CalendarDays size={17} aria-hidden="true" />
+                  Hoy
+                </button>
+                <button
+                  type="button"
+                  onClick={aplicarMesActual}
+                  style={{
+                    ...styles.periodButton,
+                    ...(periodoMesActivo && !periodoHoyActivo ? styles.periodButtonActive : {}),
+                    ...(isMobile ? styles.fullWidth : {}),
+                  }}
+                >
+                  <CalendarRange size={17} aria-hidden="true" />
+                  Este mes
+                </button>
+                <button type="button" onClick={limpiarFiltros} style={{ ...styles.secondaryButton, ...(isMobile ? styles.fullWidth : {}) }}>
+                  <RotateCcw size={17} aria-hidden="true" />
+                  Limpiar
+                </button>
+              </div>
             </div>
           </section>
 
@@ -702,9 +738,20 @@ function getRangoMesActual() {
   const year = hoy.getFullYear();
   const month = hoy.getMonth();
   return {
-    desde: new Date(year, month, 1).toISOString().slice(0, 10),
-    hasta: new Date(year, month + 1, 0).toISOString().slice(0, 10),
+    desde: formatFechaLocalISO(new Date(year, month, 1)),
+    hasta: formatFechaLocalISO(new Date(year, month + 1, 0)),
   };
+}
+
+function getFechaLocalISO() {
+  return formatFechaLocalISO(new Date());
+}
+
+function formatFechaLocalISO(fecha) {
+  const year = fecha.getFullYear();
+  const month = String(fecha.getMonth() + 1).padStart(2, "0");
+  const day = String(fecha.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 const styles = {
@@ -718,7 +765,7 @@ const styles = {
   subtitle: { margin: "8px 0 0", color: "#cbd5e1", fontWeight: 700 },
   heroActions: { display: "flex", gap: 10, flexWrap: "wrap" },
   heroActionsMobile: { display: "grid", gridTemplateColumns: "1fr", gap: 10 },
-  secondaryHeroButton: { textDecoration: "none", border: "1px solid rgba(255,255,255,.22)", background: "rgba(255,255,255,.08)", color: "white", borderRadius: 14, padding: "12px 16px", fontWeight: 1000, cursor: "pointer" },
+  secondaryHeroButton: { textDecoration: "none", border: "1px solid rgba(255,255,255,.22)", background: "rgba(255,255,255,.08)", color: "white", borderRadius: 14, padding: "12px 16px", fontWeight: 1000, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, whiteSpace: "nowrap" },
   success: { background: "#ecfdf5", color: "#047857", border: "1px solid #86efac", borderRadius: 14, padding: 12, marginBottom: 14, fontWeight: 800 },
   error: { background: "#fff1f0", color: "#b42318", border: "1px solid #fecdca", borderRadius: 14, padding: 12, marginBottom: 14, fontWeight: 800 },
   metricsGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))", gap: 12, marginBottom: 16 },
@@ -750,13 +797,17 @@ const styles = {
   eyebrow: { margin: 0, color: "#f97316", fontSize: 12, fontWeight: 1000, textTransform: "uppercase", letterSpacing: ".08em" },
   cardTitle: { margin: "3px 0 0", fontSize: 22, letterSpacing: "-.02em" },
   counterBadge: { background: "#f8fafc", border: "1px solid #e2e8f0", color: "#475569", borderRadius: 999, padding: "8px 10px", fontWeight: 900 },
-  filtersGrid: { display: "grid", gridTemplateColumns: "minmax(260px, 1.4fr) repeat(5, minmax(130px, .7fr)) auto auto", gap: 12, alignItems: "end" },
+  filtersGrid: { display: "grid", gridTemplateColumns: "repeat(6, minmax(130px, 1fr))", gap: 12, alignItems: "end" },
   filtersGridMobile: { display: "grid", gridTemplateColumns: "1fr", gap: 10, alignItems: "stretch" },
   field: { display: "grid", gap: 7, fontSize: 14, fontWeight: 900 },
-  fieldWide: { display: "grid", gap: 7, fontSize: 14, fontWeight: 900 },
+  fieldWide: { display: "grid", gridColumn: "span 2", gap: 7, fontSize: 14, fontWeight: 900 },
   label: { color: "#334155", fontSize: 13, fontWeight: 900 },
   input: { width: "100%", border: "1px solid #cbd5e1", borderRadius: 13, padding: "12px 13px", fontWeight: 700, color: "#0f172a", boxSizing: "border-box", background: "white" },
-  secondaryButton: { border: "1px solid #cbd5e1", background: "white", color: "#0f172a", borderRadius: 13, padding: "12px 14px", fontWeight: 1000, cursor: "pointer" },
+  filterActions: { gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, paddingTop: 2 },
+  filterActionsMobile: { gridColumn: "1 / -1", display: "grid", gridTemplateColumns: "1fr", gap: 8 },
+  periodButton: { minHeight: 44, border: "1px solid #cbd5e1", background: "#f8fafc", color: "#0f172a", borderRadius: 12, padding: "10px 14px", fontWeight: 1000, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, whiteSpace: "nowrap" },
+  periodButtonActive: { borderColor: "#f97316", background: "#fff7ed", color: "#c2410c", boxShadow: "0 0 0 2px rgba(249,115,22,.1)" },
+  secondaryButton: { minHeight: 44, border: "1px solid #cbd5e1", background: "white", color: "#0f172a", borderRadius: 12, padding: "10px 14px", fontWeight: 1000, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, whiteSpace: "nowrap" },
   paymentsList: { display: "grid", gap: 10, padding: 16 },
   paymentCard: { border: "1px solid #e2e8f0", borderRadius: 18, padding: 14, display: "grid", gap: 12, cursor: "pointer", background: "white" },
   paymentCardSelected: { border: "1px solid #f97316", borderRadius: 18, padding: 14, display: "grid", gap: 12, cursor: "pointer", background: "#fff7ed", boxShadow: "0 10px 22px rgba(249,115,22,.12)" },

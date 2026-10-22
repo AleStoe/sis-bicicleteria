@@ -139,6 +139,12 @@ class ReservaDetalleItemOutput(BaseModel):
     cantidad: Decimal
     precio_estimado: Decimal
     subtotal_estimado: Decimal
+    id_oferta: int | None = None
+    precio_catalogo_original: Decimal | None = None
+    descuento_oferta_unitario: Decimal = Decimal("0")
+    oferta_nombre_snapshot: str | None = None
+    oferta_alcance_snapshot: str | None = None
+    oferta_politica_contado_snapshot: str | None = None
 
 
 class ReservaEventoOutput(BaseModel):

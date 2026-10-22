@@ -69,6 +69,16 @@ def clean_db(db_conn):
         cur.execute(
             """
             TRUNCATE TABLE
+                bicicleta_acondicionamiento_recuperos,
+                bicicleta_acondicionamiento_eventos,
+                bicicleta_acondicionamiento_costos,
+                bicicleta_acondicionamiento_items,
+                bicicleta_acondicionamientos,
+                recepcion_documentos,
+                proveedor_producto_codigos,
+                recepcion_mercaderia_costos,
+                recepcion_mercaderia_items,
+                recepciones_mercaderia,
                 inventario_fisico_items,
                 inventarios_fisicos,
                 cotizacion_items,

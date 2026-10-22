@@ -15,6 +15,7 @@ from .repository import (
     get_pago_recibo_by_id,
     get_resumen_cobros_venta_by_id,
     get_resumen_cobros_pagos_by_venta_id,
+    get_resumen_cobros_creditos_by_venta_id,
     get_resumen_cobros_items_preview_by_venta_id,
     get_cliente_estado_deuda_by_id,
     get_deudas_estado_cuenta_by_cliente_id,
@@ -197,11 +198,12 @@ def obtener_datos_resumen_cobros_venta(venta_id: int):
             )
 
         pagos = get_resumen_cobros_pagos_by_venta_id(conn, venta_id)
+        creditos = get_resumen_cobros_creditos_by_venta_id(conn, venta_id)
         items_preview = get_resumen_cobros_items_preview_by_venta_id(conn, venta_id)
 
         return {
             "venta": venta,
-            "pagos": pagos,
+            "pagos": [*pagos, *creditos],
             "items_preview": items_preview,
         }
 

@@ -17,6 +17,7 @@ SUGERENCIAS_DEFAULT = [
     "Taller pendiente",
     "Deudas abiertas",
     "Stock critico",
+    "Última recepción de mercadería",
 ]
 
 
@@ -167,6 +168,13 @@ def responder_pregunta_asistente(*, pregunta: str, id_sucursal: int | None, usua
     texto = _norm(pregunta)
     hoy = date.today()
 
+    if any(palabra in texto for palabra in ["recepcion", "mercaderia", "factura proveedor", "ingreso proveedor"]):
+        match = re.search(r"(?:recepcion|mercaderia)\s*#?\s*(\d+)", texto)
+        return _respuesta_recepcion(
+            recepcion_id=int(match.group(1)) if match else None,
+            id_sucursal=id_sucursal,
+        )
+
     if any(frase in texto for frase in ["resolver hoy", "pendiente hoy", "mirar hoy", "urgente", "que hago hoy"]):
         return _respuesta_resolver_hoy(hoy=hoy, id_sucursal=id_sucursal)
 
@@ -200,6 +208,73 @@ def responder_pregunta_asistente(*, pregunta: str, id_sucursal: int | None, usua
         return _respuesta_rentabilidad_basica(hoy=hoy, id_sucursal=id_sucursal)
 
     return _respuesta_ventas_hoy(hoy=hoy, id_sucursal=id_sucursal)
+
+
+def _respuesta_recepcion(*, recepcion_id, id_sucursal):
+    conn = get_connection()
+    try:
+        recepcion = repository.get_recepcion_explicada(
+            conn,
+            recepcion_id=recepcion_id,
+            id_sucursal=id_sucursal,
+        )
+    finally:
+        conn.close()
+
+    if recepcion is None:
+        buscada = f" #{recepcion_id}" if recepcion_id else ""
+        return {
+            "intent": "recepcion_mercaderia",
+            "titulo": "Recepción no encontrada",
+            "resumen": f"No encontré una recepción{buscada} en la sucursal seleccionada.",
+            "cards": [],
+            "items": [],
+            "sugerencias": ["Última recepción de mercadería", "Stock crítico"],
+            "fuentes": ["recepciones_mercaderia"],
+            "solo_lectura": True,
+        }
+
+    total = recepcion.get("total_calculado") or recepcion.get("total_costo") or 0
+    confirmador = recepcion.get("usuario_confirmador_nombre") or recepcion.get("usuario_confirmador_username")
+    if recepcion["estado"] == "confirmada":
+        lectura = (
+            f"La recepción #{recepcion['id']} de {recepcion['proveedor_nombre_snapshot']} está confirmada "
+            f"por {_money(total)}. Ingresó {recepcion['unidades']} unidad(es) en {recepcion['lineas']} línea(s)."
+        )
+        if confirmador:
+            lectura += f" La confirmó {confirmador}."
+    else:
+        lectura = (
+            f"La recepción #{recepcion['id']} de {recepcion['proveedor_nombre_snapshot']} está en estado "
+            f"{recepcion['estado']}. Tiene {recepcion['lineas']} línea(s) por {_money(total)}."
+        )
+
+    items = [
+        _item(
+            item["producto_nombre"] or item["descripcion_original"] or f"Línea {item['numero_linea']}",
+            subtitulo=f"{item['codigo_proveedor'] or 'Sin código'} · {item['estado_resolucion']}",
+            detalle=item["alerta_costo"] or f"Costo final unitario {_money(item['costo_unitario_calculado'])}",
+            estado="alerta" if item["alerta_costo"] else item["origen_resolucion"],
+            metadata={"precio_revisado": item["precio_revisado"]},
+        )
+        for item in recepcion["items"]
+    ]
+    return {
+        "intent": "recepcion_mercaderia",
+        "titulo": f"Recepción #{recepcion['id']}",
+        "resumen": lectura,
+        "cards": [
+            _card("Costo final", _money(total), "Total conciliado", "success" if recepcion.get("conciliado") else "warning", "/recepciones-mercaderia"),
+            _card("Automáticas", recepcion["automaticas"], f"{recepcion['total_correcciones']} corrección(es)", "info", "/recepciones-mercaderia"),
+            _card("Documentos", len(recepcion["documentos"]), "Archivos vinculados", "neutral", "/recepciones-mercaderia"),
+            _card("Alertas", recepcion["alertas_costo"], f"{recepcion['posibles_duplicados']} posible(s) duplicado(s)", "warning" if recepcion["alertas_costo"] else "neutral", "/recepciones-mercaderia"),
+            _card("Precios", recepcion["precios_revisados"], "Líneas con precio revisado", "neutral", "/recepciones-mercaderia"),
+        ],
+        "items": items,
+        "sugerencias": ["Última recepción de mercadería", "Stock crítico", "Ventas de hoy"],
+        "fuentes": ["recepciones_mercaderia", "recepcion_documentos", "auditoria_eventos"],
+        "solo_lectura": True,
+    }
 
 
 def _respuesta_ventas_hoy(*, hoy, id_sucursal):

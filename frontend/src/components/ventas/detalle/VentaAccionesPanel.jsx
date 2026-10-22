@@ -9,10 +9,12 @@ export default function VentaAccionesPanel({
   puedeEntregar,
   puedeAnular,
   puedeDevolver,
+  puedeCompletarDevolucion,
   estaCerradaOperativamente,
   onEntregar,
   onAnular,
   onDevolverCompleta,
+  onCompletarDevolucion,
 }) {
   const { isMobile } = useBreakpoint();
   const accionPrincipal = puedeCobrar
@@ -118,19 +120,36 @@ export default function VentaAccionesPanel({
           {puedeDevolver && (
             <div style={dangerZoneStyle}>
               <div style={dangerZoneText}>
-                <strong>Operación destructiva</strong>
-                <span>Devuelve stock y genera crédito al cliente. No revierte pagos.</span>
+                <strong>{puedeCompletarDevolucion ? "Corrección administrativa" : "Operación destructiva"}</strong>
+                <span>
+                  {puedeCompletarDevolucion
+                    ? "Completa lo pendiente y anula solamente el crédito nuevo."
+                    : "Devuelve stock y genera crédito al cliente. No revierte pagos."}
+                </span>
               </div>
 
-              <Button
-                fullWidth
-                variant="outline"
-                onClick={onDevolverCompleta}
-                disabled={procesando}
-                style={dangerReturnButtonStyle}
-              >
-                ↩ Generar devolución completa y crédito
-              </Button>
+              {!puedeCompletarDevolucion && (
+                <Button
+                  fullWidth
+                  variant="outline"
+                  onClick={onDevolverCompleta}
+                  disabled={procesando}
+                  style={dangerReturnButtonStyle}
+                >
+                  ↩ Generar devolución completa y crédito
+                </Button>
+              )}
+
+              {puedeCompletarDevolucion && (
+                <Button
+                  fullWidth
+                  variant="danger"
+                  onClick={onCompletarDevolucion}
+                  disabled={procesando}
+                >
+                  Completar devolución sin dejar crédito
+                </Button>
+              )}
             </div>
           )}
         </div>

@@ -92,7 +92,7 @@ def _draw_datos_venta(c, venta, y, width, margin_x):
     y -= 8 * mm
 
     rows = [
-        ("Fecha", _fecha(venta.get("fecha")), "Estado", _text(venta.get("estado"))),
+        ("Fecha", _fecha(venta.get("fecha")), "Estado", _estado_venta_label(venta.get("estado"))),
         ("Cliente", _text(venta.get("cliente_nombre")), "Sucursal", _text(venta.get("sucursal_nombre"))),
         ("Total venta", _money(venta.get("total_final")), "Saldo", _money(venta.get("saldo_pendiente"))),
     ]
@@ -111,6 +111,35 @@ def _draw_datos_venta(c, venta, y, width, margin_x):
         y -= 6 * mm
 
     return y - 6 * mm
+
+
+def _estado_venta_label(estado):
+    labels = {
+        "creada": "Pendiente",
+        "pagada_parcial": "Pago parcial",
+        "pagada_total": "Pagada",
+        "entregada": "Entregada",
+        "anulada": "Anulada",
+        "devuelta": "Devuelta",
+        "devuelta_parcial": "Devuelta parcial",
+    }
+    return labels.get(_text(estado), _text(estado))
+
+
+def _es_credito(row):
+    return _text(row.get("medio_pago")).lower() == "credito"
+
+
+def _label_medio(row):
+    medio = _text(row.get("medio_pago")).lower()
+    labels = {
+        "credito": "Saldo a favor",
+        "efectivo": "Efectivo",
+        "transferencia": "Transferencia",
+        "mercadopago": "MercadoPago",
+        "tarjeta": "Tarjeta",
+    }
+    return labels.get(medio, _text(row.get("medio_pago")).capitalize())
 
 def _fit_text(text, font_name, font_size, max_width):
     text = _text(text)
@@ -183,7 +212,7 @@ def _draw_items_preview(c, items, y, width, margin_x):
 
 def _draw_pagos_table(c, pagos, y, width, margin_x):
     c.setFont("Helvetica-Bold", 11)
-    c.drawString(margin_x, y, "Pagos registrados")
+    c.drawString(margin_x, y, "Cobertura registrada")
 
     y -= 8 * mm
 
@@ -216,7 +245,7 @@ def _draw_pagos_table(c, pagos, y, width, margin_x):
             c.showPage()
             y = A4[1] - 18 * mm
 
-        medio = _text(pago.get("medio_pago")).capitalize()
+        medio = _label_medio(pago)
 
         plan = "-"
         if pago.get("tarjeta_plan_nombre"):
@@ -263,25 +292,29 @@ def _draw_pagos_table(c, pagos, y, width, margin_x):
 
 
 def _draw_totales(c, venta, pagos, y, width, margin_x):
+    pagos_reales = [pago for pago in pagos if not _es_credito(pago)]
+    creditos = [pago for pago in pagos if _es_credito(pago)]
     total_base = _total(pagos, "monto_base_aplicado")
     total_descuento = _total(pagos, "monto_descuento_aplicado")
-    total_recargo = _total(pagos, "monto_recargo_aplicado")
-    total_cobrado = _total(pagos, "monto_total_cobrado")
+    total_recargo = _total(pagos_reales, "monto_recargo_aplicado")
+    total_cobrado = _total(pagos_reales, "monto_total_cobrado")
+    total_credito = _total(creditos, "monto_total_cobrado")
 
     c.line(width - margin_x - 70 * mm, y, width - margin_x, y)
     y -= 7 * mm
 
     rows = [
-        ("Cubre ventas", _money(total_base)),
+        ("Total cubierto", _money(total_base)),
+        ("Pagos reales", _money(total_cobrado)),
+        ("Saldo a favor aplicado", _money(total_credito)),
         ("Total descuentos", f"- {_money(total_descuento)}"),
         ("Total financiacion", f"+ {_money(total_recargo)}"),
-        ("Total cobrado", _money(total_cobrado)),
         ("Total venta", _money(venta.get("total_final"))),
         ("Saldo restante", _money(venta.get("saldo_pendiente"))),
     ]
 
     for label, value in rows:
-        is_strong = label in {"Total cobrado", "Saldo restante"}
+        is_strong = label in {"Total cubierto", "Saldo restante"}
 
         c.setFont("Helvetica-Bold" if is_strong else "Helvetica", 9)
         c.drawRightString(width - margin_x - 35 * mm, y, label)
@@ -296,7 +329,13 @@ def _draw_totales(c, venta, pagos, y, width, margin_x):
 
 def generar_resumen_cobros_pdf(data: dict) -> bytes:
     venta = data["venta"]
-    pagos = data.get("pagos", [])
+    pagos = sorted(
+        data.get("pagos", []),
+        key=lambda row: (
+            _text(row.get("fecha")),
+            int(row.get("id") or 0),
+        ),
+    )
     items_preview = data.get("items_preview", [])
 
     buffer = BytesIO()

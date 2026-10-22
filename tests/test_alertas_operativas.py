@@ -1,5 +1,7 @@
 from decimal import Decimal
 
+from app.modules.alertas_operativas.service import _separar_alertas_stock
+
 from tests.test_deudas import (
     _crear_deuda_automatica_por_entrega,
     _crear_venta_basica,
@@ -17,6 +19,8 @@ def test_alertas_operativas_expone_salud_operativa(client, clean_db):
         "deudas_vencidas",
         "taller_atrasado",
         "stock_critico",
+        "reponer_ahora",
+        "stock_bajo",
         "ventas_cobradas_no_entregadas",
         "ventas_saldo_sin_deuda",
         "ventas_saldo_desincronizado",
@@ -31,6 +35,28 @@ def test_alertas_operativas_expone_salud_operativa(client, clean_db):
         assert isinstance(data[key], list)
         assert key in data["resumen"]
         assert data["resumen"][key] == len(data[key])
+
+
+def test_alertas_stock_priorizan_demanda_repetida_sin_bicicletas():
+    def item(variante_id, unidades, ventas, disponible, bicicleta=False):
+        return {
+            "id_variante": variante_id,
+            "producto_nombre": f"Producto {variante_id}",
+            "unidades_90d": Decimal(unidades),
+            "ventas_90d": ventas,
+            "stock_disponible": Decimal(disponible),
+            "es_bicicleta": bicicleta,
+        }
+
+    reponer, revisar = _separar_alertas_stock([
+        item(1, "12", 4, "1"),
+        item(2, "12", 1, "0"),
+        item(3, "12", 4, "0", bicicleta=True),
+        item(4, "3", 3, "1"),
+    ])
+
+    assert [row["id_variante"] for row in reponer] == [1]
+    assert {row["id_variante"] for row in revisar} == {2, 3, 4}
 
 
 def test_salud_operativa_sincroniza_venta_con_deuda_formal(

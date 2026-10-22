@@ -270,6 +270,8 @@ def get_variantes(conn):
                 oferta.id AS oferta_id,
                 oferta.nombre AS oferta_nombre,
                 oferta.precio_oferta,
+                oferta.alcance AS oferta_alcance,
+                oferta.politica_contado AS oferta_politica_contado,
                 oferta.fecha_desde AS oferta_fecha_desde,
                 oferta.fecha_hasta AS oferta_fecha_hasta,
                 CASE
@@ -290,10 +292,13 @@ def get_variantes(conn):
                     o.id,
                     o.nombre,
                     o.precio_oferta,
+                    o.alcance,
+                    o.politica_contado,
                     o.fecha_desde,
                     o.fecha_hasta
                 FROM ofertas o
                 WHERE o.id_variante = v.id
+                  AND o.alcance = 'variante'
                   AND o.activa = TRUE
                   AND CURRENT_DATE BETWEEN o.fecha_desde AND o.fecha_hasta
                 ORDER BY o.fecha_desde DESC, o.id DESC
@@ -655,6 +660,7 @@ def get_catalogo_pos(
                 WHERE bs.id_variante = v.id
                   AND bs.id_sucursal_actual = %(id_sucursal)s
                   AND bs.estado = 'disponible'
+                  AND bs.estado_tecnico = 'lista'
             ) serializadas ON TRUE
             WHERE {where_sql}
         """, params)
@@ -691,6 +697,8 @@ def get_catalogo_pos(
                 oferta.id AS oferta_id,
                 oferta.nombre AS oferta_nombre,
                 oferta.precio_oferta,
+                oferta.alcance AS oferta_alcance,
+                oferta.politica_contado AS oferta_politica_contado,
                 oferta.fecha_desde AS oferta_fecha_desde,
                 oferta.fecha_hasta AS oferta_fecha_hasta,
               
@@ -778,10 +786,13 @@ def get_catalogo_pos(
                     o.id,
                     o.nombre,
                     o.precio_oferta,
+                    o.alcance,
+                    o.politica_contado,
                     o.fecha_desde,
                     o.fecha_hasta
                 FROM ofertas o
                 WHERE o.id_variante = v.id
+                  AND o.alcance = 'variante'
                   AND o.activa = TRUE
                   AND CURRENT_DATE BETWEEN o.fecha_desde AND o.fecha_hasta
                 ORDER BY o.fecha_desde DESC, o.id DESC
@@ -798,6 +809,7 @@ def get_catalogo_pos(
                 WHERE bs.id_variante = v.id
                   AND bs.id_sucursal_actual = %(id_sucursal)s
                   AND bs.estado = 'disponible'
+                  AND bs.estado_tecnico = 'lista'
             ) serializadas ON TRUE
 
             LEFT JOIN LATERAL (
@@ -956,6 +968,7 @@ def get_catalogo_mayorista_pdf_items(
                 WHERE bs.id_variante = v.id
                   AND bs.id_sucursal_actual = %(id_sucursal)s
                   AND bs.estado = 'disponible'
+                  AND bs.estado_tecnico = 'lista'
             ) serializadas ON TRUE
             LEFT JOIN LATERAL (
                 SELECT ci.url
@@ -1265,6 +1278,7 @@ def get_catalogo_bicicletas_pdf_items(
                 WHERE bs.id_variante = v.id
                   AND bs.id_sucursal_actual = %(id_sucursal)s
                   AND bs.estado = 'disponible'
+                  AND bs.estado_tecnico = 'lista'
             ) serializadas ON TRUE
             LEFT JOIN LATERAL (
                 SELECT ci.url
@@ -1329,6 +1343,8 @@ def get_catalogo_pos_por_codigo(
                 oferta.id AS oferta_id,
                 oferta.nombre AS oferta_nombre,
                 oferta.precio_oferta,
+                oferta.alcance AS oferta_alcance,
+                oferta.politica_contado AS oferta_politica_contado,
                 oferta.fecha_desde AS oferta_fecha_desde,
                 oferta.fecha_hasta AS oferta_fecha_hasta,
 
@@ -1410,10 +1426,13 @@ def get_catalogo_pos_por_codigo(
                     o.id,
                     o.nombre,
                     o.precio_oferta,
+                    o.alcance,
+                    o.politica_contado,
                     o.fecha_desde,
                     o.fecha_hasta
                 FROM ofertas o
                 WHERE o.id_variante = v.id
+                  AND o.alcance = 'variante'
                   AND o.activa = TRUE
                   AND CURRENT_DATE BETWEEN o.fecha_desde AND o.fecha_hasta
                 ORDER BY o.fecha_desde DESC, o.id DESC
@@ -1429,6 +1448,7 @@ def get_catalogo_pos_por_codigo(
                 WHERE bs.id_variante = v.id
                   AND bs.id_sucursal_actual = %(id_sucursal)s
                   AND bs.estado = 'disponible'
+                  AND bs.estado_tecnico = 'lista'
             ) serializadas ON TRUE
 
             LEFT JOIN LATERAL (

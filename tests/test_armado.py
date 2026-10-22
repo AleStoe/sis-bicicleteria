@@ -1782,7 +1782,10 @@ def test_finalizar_crea_serializada_disponible_sin_stock_final_ni_movimiento_fin
                 estado,
                 numero_cuadro,
                 id_orden_armado_origen,
-                costo_fabricacion_final
+                costo_fabricacion_final,
+                costo_base_unitario,
+                costo_base_origen,
+                costo_total_unitario
             FROM bicicletas_serializadas
             WHERE id = %s
             """,
@@ -1793,6 +1796,9 @@ def test_finalizar_crea_serializada_disponible_sin_stock_final_ni_movimiento_fin
         assert bici["numero_cuadro"] == "ARMADO-CONSUMO"
         assert bici["id_orden_armado_origen"] == orden["id"]
         assert bici["costo_fabricacion_final"] == Decimal("170000.0000")
+        assert bici["costo_base_unitario"] == Decimal("170000.00")
+        assert bici["costo_base_origen"] == "fabricacion_propia"
+        assert bici["costo_total_unitario"] == Decimal("170000.00")
 
         cur.execute(
             """
@@ -1980,6 +1986,38 @@ def test_venta_de_bicicleta_fabricada_congela_costo_fabricacion_final(
     assert item["origen_costo"] == "fabricacion_propia"
     assert item["id_orden_armado_origen"] == fabricada["id"]
     assert Decimal(str(item["costo_unitario_aplicado"])) == Decimal("170000.00")
+
+
+def test_venta_de_bicicleta_fabricada_usa_costo_total_con_acondicionamiento(
+    client,
+    db_conn,
+    clean_db,
+    auth_habilitada,
+    seed_armado,
+):
+    fabricada = _finalizar_orden_armado(client, seed_armado)
+    bicicleta_id = fabricada["id_bicicleta_serializada_resultante"]
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE bicicletas_serializadas
+            SET costo_base_unitario = 170000,
+                costo_acondicionamiento = 12500,
+                costo_total_unitario = 182500
+            WHERE id = %s
+            """,
+            (bicicleta_id,),
+        )
+    db_conn.commit()
+
+    venta_id = _crear_venta_serializada_armado(client, seed_armado, bicicleta_id)
+
+    detalle = client.get(f"/ventas/{venta_id}", headers=seed_armado["headers"])
+    assert detalle.status_code == 200, detalle.text
+    item = detalle.json()["items"][0]
+    assert item["origen_costo"] == "costo_unidad_serializada"
+    assert item["id_orden_armado_origen"] == fabricada["id"]
+    assert Decimal(str(item["costo_unitario_aplicado"])) == Decimal("182500.00")
 
 
 def test_venta_serializadas_misma_variante_respeta_costo_individual_o_promedio(

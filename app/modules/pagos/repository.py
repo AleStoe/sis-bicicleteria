@@ -231,9 +231,29 @@ def get_venta_for_update(conn, venta_id: int):
                 id_sucursal,
                 total_final,
                 saldo_pendiente,
-                estado
-            FROM ventas
-            WHERE id = %s
+                estado,
+                base_sin_descuento_contado,
+                (
+                    SELECT COALESCE(SUM(COALESCE(p.monto_base_aplicado, 0)), 0)
+                    FROM pagos p
+                    WHERE (
+                            (p.origen_tipo = 'venta' AND p.origen_id = v.id)
+                            OR (
+                                p.origen_tipo = 'reserva'
+                                AND v.id_reserva_origen IS NOT NULL
+                                AND p.origen_id = v.id_reserva_origen
+                            )
+                        )
+                      AND p.estado = 'confirmado'
+                ) + (
+                    SELECT COALESCE(SUM(COALESCE(cm.monto_base_aplicado, cm.monto)), 0)
+                    FROM credito_movimientos cm
+                    WHERE cm.origen_tipo = 'venta'
+                      AND cm.origen_id = v.id
+                      AND cm.tipo_movimiento = 'aplicacion_a_venta'
+                ) AS base_cubierta_confirmada
+            FROM ventas v
+            WHERE v.id = %s
             FOR UPDATE
             """,
             (venta_id,),

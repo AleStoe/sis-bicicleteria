@@ -16,6 +16,7 @@ export function buildVentaItemPayload(item) {
 
 export function buildVentaSimulacionPayload({
   clienteId,
+  sucursalId,
   tipoPrecio,
   items,
   pagos = [],
@@ -25,6 +26,7 @@ export function buildVentaSimulacionPayload({
 }) {
   return {
     id_cliente: clienteId ? Number(clienteId) : null,
+    id_sucursal: sucursalId ? Number(sucursalId) : null,
     tipo_precio: tipoPrecio || "minorista",
     items: items.map(buildVentaItemPayload),
     pagos: pagos.map(buildPagoVentaPayload),

@@ -82,3 +82,39 @@ def test_asistente_resolver_hoy_prioriza_caja_cerrada(client, seed_venta_basica)
     assert data["solo_lectura"] is True
     assert any(item["titulo"] == "Abrir caja" for item in data["items"])
     assert any(card["titulo"] == "Caja" and card["valor"] == "Cerrada" for card in data["cards"])
+
+
+def test_asistente_explica_recepcion_mercaderia(client, db_conn, seed_venta_basica):
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO proveedores (nombre, activo) VALUES ('PROVEEDOR ATENEA', TRUE) RETURNING id"
+        )
+        proveedor_id = cur.fetchone()["id"]
+    db_conn.commit()
+
+    creada = client.post(
+        "/recepciones-mercaderia/importar-tabla",
+        json={
+            "id_proveedor": proveedor_id,
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "texto": "ATENEA-01\tPRODUCTO PARA EXPLICAR\t2\t$1.500,00",
+        },
+    )
+    assert creada.status_code == 200, creada.text
+    recepcion_id = creada.json()["id"]
+
+    response = client.post(
+        "/asistente/preguntar",
+        json={
+            "pregunta": f"mostrame la recepcion #{recepcion_id}",
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+        },
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["intent"] == "recepcion_mercaderia"
+    assert data["titulo"] == f"Recepción #{recepcion_id}"
+    assert "PROVEEDOR ATENEA" in data["resumen"]
+    assert any(card["titulo"] == "Documentos" for card in data["cards"])
+    assert data["solo_lectura"] is True

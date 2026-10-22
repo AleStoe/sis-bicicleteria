@@ -50,6 +50,18 @@ export default function VentaItemVendidoCard({
             )}
           </div>
 
+          {item.componentes_incluidos?.length > 0 && (
+            <div style={includedBoxStyle}>
+              <strong>Incluido en esta bicicleta</strong>
+              {item.componentes_incluidos.map((componente, index) => (
+                <span key={`${componente.producto}-${index}`}>
+                  {Number(componente.cantidad || 0).toLocaleString("es-AR")} × {componente.producto}
+                  {componente.variante ? ` · ${componente.variante}` : ""}
+                </span>
+              ))}
+            </div>
+          )}
+
           <div style={metaStyle}>
             Item #{item.id} · Variante #{item.id_variante} · Cantidad{" "}
             {cantidadVendida.toLocaleString("es-AR")} ·{" "}
@@ -127,6 +139,8 @@ export default function VentaItemVendidoCard({
                 label={
                   item.origen_costo === "fabricacion_propia"
                     ? "Costo fabricacion"
+                    : item.origen_costo === "costo_unidad_serializada"
+                      ? "Costo individual"
                     : "Costo aplicado"
                 }
                 value={formatMoney(item.costo_unitario_aplicado)}
@@ -134,7 +148,13 @@ export default function VentaItemVendidoCard({
               />
             )}
 
-          {item.origen_costo === "fabricacion_propia" && item.id_orden_armado_origen ? (
+          {item.origen_costo === "costo_unidad_serializada" ? (
+            <Metric
+              label="Origen costo"
+              value="Bicicleta acondicionada"
+              isMobile={isMobile}
+            />
+          ) : item.origen_costo === "fabricacion_propia" && item.id_orden_armado_origen ? (
             <Metric
               label="Origen costo"
               value={item.codigo_orden_armado || `Armado #${item.id_orden_armado_origen}`}
@@ -237,6 +257,17 @@ const metaStyle = {
   color: "#667085",
   fontSize: 12,
   lineHeight: 1.3,
+};
+
+const includedBoxStyle = {
+  display: "grid",
+  gap: 3,
+  padding: "8px 10px",
+  border: "1px solid #bbf7d0",
+  borderRadius: 8,
+  background: "#f0fdf4",
+  color: "#166534",
+  fontSize: 12,
 };
 
 const linkButtonStyle = {

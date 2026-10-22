@@ -34,6 +34,8 @@ from app.modules.pedidos_compra.routes import router as pedidos_compra_router
 from app.modules.pedidos_cliente.routes import router as pedidos_cliente_router
 from app.modules.postventa.routes import router as postventa_router
 from app.modules.asistente.routes import router as asistente_router
+from app.modules.recepciones_mercaderia.routes import router as recepciones_mercaderia_router
+from app.modules.acondicionamientos.routes import router as acondicionamientos_router
 
 router = APIRouter()
 
@@ -72,3 +74,13 @@ router.include_router(pedidos_compra_router, prefix="/pedidos-compra", tags=["Pe
 router.include_router(pedidos_cliente_router, prefix="/pedidos-cliente", tags=["Pedidos Cliente"])
 router.include_router(postventa_router, prefix="/postventa", tags=["Postventa"])
 router.include_router(asistente_router, prefix="/asistente", tags=["Asistente"])
+router.include_router(
+    acondicionamientos_router,
+    prefix="/acondicionamientos",
+    tags=["Acondicionamientos"],
+)
+router.include_router(
+    recepciones_mercaderia_router,
+    prefix="/recepciones-mercaderia",
+    tags=["Recepciones Mercaderia"],
+)

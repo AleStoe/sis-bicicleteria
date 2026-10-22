@@ -78,6 +78,7 @@ def insert_venta(conn, data: dict):
                 estado,
                 tipo_precio,
                 subtotal_base,
+                base_sin_descuento_contado,
                 descuento_total,
                 recargo_total,
                 total_final,
@@ -87,7 +88,7 @@ def insert_venta(conn, data: dict):
                 id_reserva_origen,
                 id_orden_taller
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
             (
@@ -96,6 +97,7 @@ def insert_venta(conn, data: dict):
                 data.get("estado", "creada"),
                 data.get("tipo_precio", "minorista"),
                 data.get("subtotal_base", 0),
+                data.get("base_sin_descuento_contado", 0),
                 data.get("descuento_total", 0),
                 data.get("recargo_total", 0),
                 data.get("total_final", 0),
@@ -134,7 +136,11 @@ def insert_venta_item(conn, data: dict):
             precio_catalogo_original,
             descuento_oferta_unitario,
             oferta_nombre_snapshot,
+            oferta_alcance_snapshot,
+            oferta_politica_contado_snapshot,
             costo_unitario_aplicado,
+            origen_costo_snapshot,
+            id_orden_armado_origen_snapshot,
             subtotal
         )
         VALUES (
@@ -142,7 +148,8 @@ def insert_venta_item(conn, data: dict):
             %s, %s, %s, %s, %s,
             %s, %s, %s, %s, %s,
             %s, %s, %s, %s, %s,
-            %s, %s
+            %s, %s, %s, %s, %s,
+            %s
         )
             RETURNING id
             """,
@@ -167,7 +174,11 @@ def insert_venta_item(conn, data: dict):
                 data.get("precio_catalogo_original"),
                 data.get("descuento_oferta_unitario", 0),
                 data.get("oferta_nombre_snapshot"),
+                data.get("oferta_alcance_snapshot"),
+                data.get("oferta_politica_contado_snapshot"),
                 data["costo_unitario_aplicado"],
+                data.get("origen_costo_snapshot"),
+                data.get("id_orden_armado_origen_snapshot"),
                 data["subtotal"],
             ),
         )
@@ -450,12 +461,37 @@ def get_venta_items_by_venta_id(conn, venta_id: int):
                 vi.precio_catalogo_original,
                 vi.descuento_oferta_unitario,
                 vi.oferta_nombre_snapshot,
+                vi.oferta_alcance_snapshot,
+                vi.oferta_politica_contado_snapshot,
+                COALESCE((
+                    SELECT jsonb_agg(
+                        jsonb_build_object(
+                            'tipo', bai.tipo_intervencion,
+                            'producto', bai.producto_nombre_snapshot,
+                            'variante', bai.variante_nombre_snapshot,
+                            'cantidad', bai.cantidad_consumida
+                        ) ORDER BY bai.id
+                    )
+                    FROM bicicleta_acondicionamientos ba
+                    INNER JOIN bicicleta_acondicionamiento_items bai
+                        ON bai.id_acondicionamiento = ba.id
+                    WHERE ba.id_bicicleta_serializada = vi.id_bicicleta_serializada
+                      AND ba.estado = 'aplicado'
+                      AND bai.estado = 'consumido'
+                ), '[]'::jsonb) AS componentes_incluidos,
+                COALESCE(
+                    vi.origen_costo_snapshot,
+                    CASE
+                        WHEN bs.id_orden_armado_origen IS NOT NULL
+                            THEN 'fabricacion_propia'
+                        ELSE 'costo_promedio_variante'
+                    END
+                ) AS origen_costo,
                 CASE
-                    WHEN bs.id_orden_armado_origen IS NOT NULL
-                        THEN 'fabricacion_propia'
-                    ELSE 'costo_promedio_variante'
-                END AS origen_costo,
-                bs.id_orden_armado_origen,
+                    WHEN vi.origen_costo_snapshot IS NOT NULL
+                        THEN vi.id_orden_armado_origen_snapshot
+                    ELSE bs.id_orden_armado_origen
+                END AS id_orden_armado_origen,
                 ao.codigo AS codigo_orden_armado,
                 COALESCE(dev.cantidad_devuelta, 0) AS cantidad_devuelta,
                 CASE
@@ -523,12 +559,37 @@ def get_venta_items_detallados_by_venta_id(conn, venta_id: int):
                 vi.precio_catalogo_original,
                 vi.descuento_oferta_unitario,
                 vi.oferta_nombre_snapshot,
+                vi.oferta_alcance_snapshot,
+                vi.oferta_politica_contado_snapshot,
+                COALESCE((
+                    SELECT jsonb_agg(
+                        jsonb_build_object(
+                            'tipo', bai.tipo_intervencion,
+                            'producto', bai.producto_nombre_snapshot,
+                            'variante', bai.variante_nombre_snapshot,
+                            'cantidad', bai.cantidad_consumida
+                        ) ORDER BY bai.id
+                    )
+                    FROM bicicleta_acondicionamientos ba
+                    INNER JOIN bicicleta_acondicionamiento_items bai
+                        ON bai.id_acondicionamiento = ba.id
+                    WHERE ba.id_bicicleta_serializada = vi.id_bicicleta_serializada
+                      AND ba.estado = 'aplicado'
+                      AND bai.estado = 'consumido'
+                ), '[]'::jsonb) AS componentes_incluidos,
+                COALESCE(
+                    vi.origen_costo_snapshot,
+                    CASE
+                        WHEN bs.id_orden_armado_origen IS NOT NULL
+                            THEN 'fabricacion_propia'
+                        ELSE 'costo_promedio_variante'
+                    END
+                ) AS origen_costo,
                 CASE
-                    WHEN bs.id_orden_armado_origen IS NOT NULL
-                        THEN 'fabricacion_propia'
-                    ELSE 'costo_promedio_variante'
-                END AS origen_costo,
-                bs.id_orden_armado_origen,
+                    WHEN vi.origen_costo_snapshot IS NOT NULL
+                        THEN vi.id_orden_armado_origen_snapshot
+                    ELSE bs.id_orden_armado_origen
+                END AS id_orden_armado_origen,
                 ao.codigo AS codigo_orden_armado
             FROM venta_items vi
             LEFT JOIN variantes v

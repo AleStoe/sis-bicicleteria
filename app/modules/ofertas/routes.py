@@ -6,12 +6,15 @@ from app.shared.constants import PERMISO_GESTIONAR_OFERTAS
 
 from .schema import (
     OfertaCreateInput,
+    OfertaCierreVencidasInput,
+    OfertaCierreVencidasOutput,
     OfertaEstadoInput,
     OfertaOutput,
     OfertaUpdateInput,
 )
 from .service import (
     cambiar_estado_oferta,
+    cerrar_ofertas_vencidas,
     crear_oferta,
     editar_oferta,
     listar_ofertas,
@@ -41,6 +44,15 @@ def crear_oferta_route(
 ):
     aplicar_actor_actual(data, usuario)
     return crear_oferta(data)
+
+
+@router.patch("/vencidas/desactivar", response_model=OfertaCierreVencidasOutput)
+def cerrar_ofertas_vencidas_route(
+    data: OfertaCierreVencidasInput,
+    usuario: CurrentUser = Depends(puede_gestionar_ofertas),
+):
+    aplicar_actor_actual(data, usuario)
+    return cerrar_ofertas_vencidas(data)
 
 
 @router.put("/{oferta_id}", response_model=OfertaOutput)

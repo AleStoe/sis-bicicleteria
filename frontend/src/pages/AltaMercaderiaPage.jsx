@@ -142,7 +142,7 @@ export default function AltaMercaderiaPage() {
 
   useEffect(() => {
     cargarDatos();
-    setTimeout(() => buscarRef.current?.focus(), 100);
+    if (!isMobile) setTimeout(() => buscarRef.current?.focus(), 100);
   }, []);
 
   async function cargarDatos() {
@@ -608,7 +608,7 @@ export default function AltaMercaderiaPage() {
       observacion: "",
     }));
 
-    setTimeout(() => buscarRef.current?.focus(), 100);
+    if (!isMobile) setTimeout(() => buscarRef.current?.focus(), 100);
   }
 
   function limpiarAltaRapida() {
@@ -689,6 +689,7 @@ export default function AltaMercaderiaPage() {
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
+                if (isMobile) e.currentTarget.blur();
                 buscarProducto(e.currentTarget.value);
               }
             }}
@@ -702,7 +703,10 @@ export default function AltaMercaderiaPage() {
               ...styles.primaryButton,
               opacity: buscando ? 0.7 : 1,
             }}
-            onClick={() => buscarProducto()}
+            onClick={() => {
+              if (isMobile) buscarRef.current?.blur();
+              buscarProducto();
+            }}
             disabled={buscando}
           >
             {buscando ? "Buscando..." : "Buscar"}

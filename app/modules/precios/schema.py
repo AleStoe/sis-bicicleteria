@@ -91,6 +91,7 @@ class ReglaPrecioCreateInput(BaseModel):
     margen_minimo_porcentaje: Decimal = Field(default=Decimal("0"), ge=0)
     id_familia_precio: Optional[int] = Field(default=None, gt=0)
     id_proveedor: Optional[int] = Field(default=None, gt=0)
+    rubro: Optional[str] = Field(default=None, min_length=2, max_length=80)
 
 class ReglaPrecioOutput(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -114,6 +115,7 @@ class ReglaPrecioOutput(BaseModel):
 
     id_proveedor: Optional[int] = None
     proveedor_nombre: Optional[str] = None
+    rubro: Optional[str] = None
 
 
 class ReglaPrecioEstadoInput(BaseModel):

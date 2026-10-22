@@ -77,6 +77,8 @@ class PedidoClienteItemOut(BaseModel):
     oferta_id: int | None = None
     oferta_nombre: str | None = None
     precio_oferta: Decimal | None = None
+    oferta_alcance: str | None = None
+    oferta_politica_contado: str | None = None
     oferta_fecha_desde: object | None = None
     oferta_fecha_hasta: object | None = None
     cantidad: Decimal
