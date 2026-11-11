@@ -106,14 +106,17 @@ export default function PedidoCompraSugeridoPage() {
   const resumenVisible = useMemo(() => {
     let items = 0;
     let cantidad = 0;
+    let costoEstimado = 0;
     for (const proveedor of proveedoresVisibles) {
       for (const item of proveedor.items || []) {
         if (omitidos.has(String(item.variante_id))) continue;
+        const cantidadItem = Number(cantidades[item.variante_id] || item.cantidad_sugerida || 0);
         items += 1;
-        cantidad += Number(cantidades[item.variante_id] || item.cantidad_sugerida || 0);
+        cantidad += cantidadItem;
+        costoEstimado += cantidadItem * costoReferenciaCompra(item);
       }
     }
-    return { items, cantidad };
+    return { items, cantidad, costoEstimado };
   }, [proveedoresVisibles, cantidades, omitidos]);
 
   function actualizarCantidad(varianteId, value) {
@@ -177,7 +180,10 @@ export default function PedidoCompraSugeridoPage() {
       "Demanda mensual",
       "Cobertura días",
       "Última venta",
+      "Costo promedio",
+      "Costo reposición",
       "Cantidad a pedir",
+      "Pedido estimado",
       "Estado",
     ]];
 
@@ -199,7 +205,10 @@ export default function PedidoCompraSugeridoPage() {
           item.demanda_mensual || 0,
           item.cobertura_dias ?? "",
           item.ultima_venta ? formatDate(item.ultima_venta) : "",
+          item.costo_promedio_vigente ?? "",
+          item.costo_reposicion ?? "",
           cantidades[item.variante_id] ?? item.cantidad_sugerida ?? 0,
+          Number(cantidades[item.variante_id] ?? item.cantidad_sugerida ?? 0) * costoReferenciaCompra(item),
           omitido ? "Omitido" : "Incluido",
         ]);
       }
@@ -444,6 +453,7 @@ export default function PedidoCompraSugeridoPage() {
         <Metric label="Ítems visibles" value={resumenVisible.items} />
         <Metric label="Ítems a pedir" value={resumenVisible.items} />
         <Metric label="Unidades editadas" value={formatNumber(resumenVisible.cantidad)} />
+        <Metric label="Compra estimada" value={formatMoney(resumenVisible.costoEstimado)} />
       </section>
 
       {loading ? (
@@ -615,6 +625,10 @@ function RecepcionPedidoPanel({
                     Pedido {formatNumber(item.cantidad_pedida)} · Recibido {formatNumber(item.cantidad_recibida)} · Pendiente {formatNumber(pendiente)}
                   </span>
                   <small>SKU {item.sku_snapshot || "-"} · Prov {item.codigo_proveedor_snapshot || "-"}</small>
+                  <small>
+                    Reposición vigente {item.costo_reposicion == null ? "sin registrar" : formatMoney(item.costo_reposicion)}
+                    {item.costo_promedio_vigente == null ? "" : ` · Promedio ${formatMoney(item.costo_promedio_vigente)}`}
+                  </small>
                 </div>
                 <label style={styles.field}>
                   <span>Sucursal</span>
@@ -717,12 +731,16 @@ function ProveedorPedido({
     (total, item) => total + Number(cantidades[item.variante_id] || item.cantidad_sugerida || 0),
     0
   );
+  const costoEstimado = visibles.reduce(
+    (total, item) => total + Number(cantidades[item.variante_id] || item.cantidad_sugerida || 0) * costoReferenciaCompra(item),
+    0
+  );
   const grupos = agruparItemsPedido(proveedor.items);
 
   return (
     <Card
       title={proveedor.proveedor_nombre}
-      subtitle={`${visibles.length} de ${proveedor.items.length} ítem(s) incluidos · ${formatNumber(cantidadTotal)} unidad(es)`}
+      subtitle={`${visibles.length} de ${proveedor.items.length} ítem(s) incluidos · ${formatNumber(cantidadTotal)} unidad(es) · Estimado ${formatMoney(costoEstimado)}`}
       actions={
         <div style={styles.cardActions}>
           <Button type="button" variant="outline" onClick={onCopiar} disabled={visibles.length === 0}>
@@ -778,6 +796,11 @@ function ProveedorPedido({
                   <Mini label="Demanda 90 días" value={`${formatNumber(item.unidades_vendidas_90d || 0)} u. / ${item.ventas_distintas_90d || 0} ventas`} />
                   <Mini label="Cobertura" value={item.cobertura_dias === null ? "Sin demanda" : `${formatNumber(item.cobertura_dias)} días`} />
                   <Mini label="Última venta" value={formatDate(item.ultima_venta)} />
+                  <Mini label="Costo reposición" value={item.costo_reposicion == null ? "Sin registrar" : formatMoney(item.costo_reposicion)} />
+                  <Mini
+                    label="Pedido estimado"
+                    value={textoPedidoEstimado(item, cantidades[item.variante_id] || item.cantidad_sugerida || 0)}
+                  />
 
                   <label style={styles.qtyField}>
                     <span>Pedir</span>
@@ -839,6 +862,20 @@ function nombreItem(item) {
 function nombreSnapshotItem(item) {
   if (esVarianteUnica(item.variante_nombre_snapshot)) return item.producto_nombre_snapshot;
   return `${item.producto_nombre_snapshot} - ${item.variante_nombre_snapshot || ""}`.trim();
+}
+
+function costoReferenciaCompra(item) {
+  const reposicion = Number(item?.costo_reposicion);
+  if (Number.isFinite(reposicion) && reposicion > 0) return reposicion;
+  const promedio = Number(item?.costo_promedio_vigente);
+  return Number.isFinite(promedio) && promedio > 0 ? promedio : 0;
+}
+
+function textoPedidoEstimado(item, cantidad) {
+  const total = Number(cantidad || 0) * costoReferenciaCompra(item);
+  if (total <= 0) return "Sin costo";
+  const usaPromedio = !(Number(item?.costo_reposicion) > 0);
+  return `${formatMoney(total)}${usaPromedio ? " · usa promedio" : ""}`;
 }
 
 function textoPedidoProveedor(proveedor, cantidades, omitidos) {
@@ -981,7 +1018,7 @@ const styles = {
   },
   metrics: {
     display: "grid",
-    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+    gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
     gap: spacing.md,
   },
   metric: {
@@ -1070,7 +1107,7 @@ const styles = {
   },
   itemRow: {
     display: "grid",
-    gridTemplateColumns: "minmax(260px, 1fr) 115px 130px 100px 110px 100px 175px",
+    gridTemplateColumns: "minmax(260px, 1fr) 110px 125px 95px 105px 115px 135px 90px 165px",
     gap: spacing.md,
     alignItems: "center",
     padding: spacing.md,

@@ -28,6 +28,7 @@ VALUES
     ('gestionar_agenda_taller', 'Crear, editar y administrar turnos de taller'),
     ('gestionar_postventa', 'Crear y consumir services de postventa'),
     ('gestionar_garantias', 'Autorizar garantías y coberturas de postventa'),
+    ('gestionar_crm', 'Crear, reprogramar y cerrar seguimientos de clientes'),
     ('gestionar_catalogo', 'Administrar catálogo y maestros comerciales'),
     ('gestionar_correcciones', 'Gestionar correcciones operativas auditadas'),
     ('gestionar_precios', 'Consultar costos y administrar precios'),
@@ -71,6 +72,7 @@ JOIN public.permisos p
       'gestionar_agenda_taller',
       'gestionar_postventa',
       'gestionar_garantias',
+      'gestionar_crm',
       'gestionar_catalogo',
       'gestionar_precios',
       'modificar_precio_venta',
@@ -90,6 +92,7 @@ JOIN public.permisos p
       'abrir_caja',
       'aplicar_credito_venta',
       'crear_venta',
+      'gestionar_crm',
       'registrar_pago'
   )
 WHERE r.nombre = 'operador'

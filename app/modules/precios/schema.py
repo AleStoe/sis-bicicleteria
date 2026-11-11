@@ -27,7 +27,34 @@ class VariantePrecioOutput(BaseModel):
     precio_minorista: Decimal
     precio_mayorista: Decimal
     costo_promedio_vigente: Optional[Decimal] = None
+    costo_reposicion: Optional[Decimal] = None
+    costo_reposicion_moneda: str = "ARS"
+    costo_reposicion_fecha: Optional[datetime] = None
+    costo_reposicion_proveedor_id: Optional[int] = None
+    costo_reposicion_proveedor_nombre: Optional[str] = None
+    costo_reposicion_origen: Optional[str] = None
     activo: bool
+
+
+class CostoReposicionActualizarInput(BaseModel):
+    costo_reposicion: Decimal = Field(gt=0)
+    moneda: Literal["ARS"] = "ARS"
+    proveedor_id: Optional[int] = Field(default=None, gt=0)
+    fecha_vigencia: Optional[datetime] = None
+    motivo: str = Field(min_length=3, max_length=500)
+    id_usuario: int = Field(gt=0)
+
+
+class CostoReposicionActualizarOutput(BaseModel):
+    ok: bool
+    id_variante: int
+    movimiento_id: int
+    costo_reposicion_anterior: Optional[Decimal] = None
+    costo_reposicion_nuevo: Decimal
+    costo_promedio_vigente: Optional[Decimal] = None
+    moneda: str
+    proveedor_id: Optional[int] = None
+    fecha_vigencia: datetime
 
 
 class PrecioActualizarInput(BaseModel):
@@ -130,6 +157,7 @@ class PrecioSugeridoOutput(BaseModel):
     id_variante: int
     tipo_cliente: str
     costo_base: Decimal
+    costo_base_origen: str
     precio_actual: Decimal
     precio_sugerido: Decimal
     margen_porcentaje: Decimal
@@ -149,6 +177,7 @@ class PrecioDesfasadoOutput(BaseModel):
     nombre_variante: str
     tipo_cliente: str
     costo_base: Decimal
+    costo_base_origen: str
     precio_actual: Decimal
     precio_sugerido: Decimal
     diferencia: Decimal
@@ -176,6 +205,7 @@ class RecalculoProveedorItemOutput(BaseModel):
     nombre_variante: str
     tipo_cliente: str
     costo_base: Decimal
+    costo_base_origen: str
     precio_actual: Decimal
     precio_sugerido: Decimal
     diferencia: Decimal

@@ -57,8 +57,11 @@ export default function LoginPage() {
       <section style={{ ...styles.shell, ...(isMobile ? styles.shellMobile : {}) }}>
         <section style={{ ...styles.hero, ...(isMobile ? styles.heroMobile : {}) }}>
           <div style={styles.brand}>
-            <div style={styles.brandIcon}>🚲</div>
-            <span>Emprendimiento Agus</span>
+            <img
+              src="/brand/emprendimiento-agus-logo.png"
+              alt="Emprendimiento Agus - La bici de tus sueños"
+              style={{ ...styles.brandLogo, ...(isMobile ? styles.brandLogoMobile : {}) }}
+            />
           </div>
 
           <div style={{ ...styles.heroContent, ...(isMobile ? styles.heroContentMobile : {}) }}>
@@ -86,7 +89,6 @@ export default function LoginPage() {
         <section style={{ ...styles.loginArea, ...(isMobile ? styles.loginAreaMobile : {}) }}>
           <form style={styles.loginCard} onSubmit={handleSubmit}>
             <div style={styles.loginTop}>
-              <div style={styles.bikeBadge}>🚲</div>
               <h2 style={styles.loginTitle}>Ingresar</h2>
               <p style={styles.loginText}>Usá tu usuario del sistema</p>
             </div>
@@ -211,20 +213,18 @@ const styles = {
   brand: {
     display: "flex",
     alignItems: "center",
-    gap: 14,
-    fontWeight: 800,
-    fontSize: 19,
+    minHeight: 190,
   },
-  brandIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    background: "rgba(255,255,255,0.12)",
-    display: "grid",
-    placeItems: "center",
-    border: "1px solid rgba(255,255,255,0.18)",
-    fontSize: 26,
-    flexShrink: 0,
+  brandLogo: {
+    display: "block",
+    width: 220,
+    height: "auto",
+    borderRadius: 18,
+    boxShadow: "0 18px 40px rgba(2, 6, 23, 0.28)",
+  },
+  brandLogoMobile: {
+    width: 150,
+    borderRadius: 14,
   },
   heroContent: {
     position: "absolute",
@@ -237,7 +237,7 @@ const styles = {
     left: "auto",
     right: "auto",
     bottom: "auto",
-    marginTop: 44,
+    marginTop: 28,
   },
   pill: {
     width: "fit-content",
@@ -314,17 +314,6 @@ const styles = {
   loginTop: {
     textAlign: "center",
     marginBottom: 28,
-  },
-  bikeBadge: {
-    width: 74,
-    height: 74,
-    margin: "0 auto 16px",
-    display: "grid",
-    placeItems: "center",
-    borderRadius: 26,
-    background: "#dbeafe",
-    color: "#2563eb",
-    fontSize: 38,
   },
   loginTitle: {
     margin: "0 0 8px",

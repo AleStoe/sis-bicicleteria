@@ -938,6 +938,7 @@ function RecepcionDetalle({ detalle, resumen, catalogos, configuracionNegocio, u
 
       <PreciosPanel
         detalle={detalle}
+        configuracionNegocio={configuracionNegocio}
         usuarioId={usuarioId}
         onChange={onChange}
         onError={onError}
@@ -1692,13 +1693,14 @@ function describirBloqueoConfirmacion(detalle) {
   return "Revisá los datos pendientes antes de confirmar el ingreso.";
 }
 
-function PreciosPanel({ detalle, usuarioId, onChange, onError, onMessage }) {
+function PreciosPanel({ detalle, configuracionNegocio, usuarioId, onChange, onError, onMessage }) {
   const revisados = detalle.items.filter((item) => item.precio_revisado).length;
   const [abierto, setAbierto] = useState(revisados > 0);
   const [procesando, setProcesando] = useState(false);
   const [estrategia, setEstrategia] = useState("reglas");
-  const [alerta, setAlerta] = useState("30");
+  const [alerta, setAlerta] = useState("10");
   const [redondeo, setRedondeo] = useState("100");
+  const [confirmarPrecioLibre, setConfirmarPrecioLibre] = useState(false);
   const [editando, setEditando] = useState(null);
 
   async function generarPreview() {
@@ -1707,8 +1709,11 @@ function PreciosPanel({ detalle, usuarioId, onChange, onError, onMessage }) {
     try {
       const data = await previsualizarPreciosRecepcionMercaderia(detalle.id, {
         estrategia,
-        variacion_alerta_pct: alerta || "30",
+        variacion_alerta_pct: alerta || "10",
         redondeo_base: redondeo || "100",
+        descuento_minorista_pct: configuracionNegocio.porcentaje_descuento_contado_calculadora_precios || 0,
+        descuento_mayorista_pct: 0,
+        confirmar_precio_libre: confirmarPrecioLibre,
         id_usuario: usuarioId,
       });
       onChange(data);
@@ -1761,14 +1766,19 @@ function PreciosPanel({ detalle, usuarioId, onChange, onError, onMessage }) {
             </label>
             <MoneyField label="Alertar desde" suffix="%" value={alerta} onChange={setAlerta} />
             <MoneyField label="Redondear a" value={redondeo} onChange={setRedondeo} />
+            <label style={styles.checkboxField}>
+              <input type="checkbox" checked={confirmarPrecioLibre} onChange={(event) => setConfirmarPrecioLibre(event.target.checked)} />
+              Confirmar productos con precio libre
+            </label>
             <button type="button" style={styles.primaryButton} disabled={procesando || !detalle.costos?.conciliado || ["confirmada", "anulada"].includes(detalle.estado)} onClick={generarPreview}>
               <ChartNoAxesCombined size={17} /> {procesando ? "Calculando..." : "Generar vista previa"}
             </button>
           </div>
           {!detalle.costos?.conciliado ? <p style={styles.priceWarning}>Primero conciliá los costos para calcular precios confiables.</p> : null}
+          <p style={styles.hint}>Usa el mismo motor que Actualizar precios: costo de reposición del ingreso, descuento contado y reglas comerciales. Esta vista previa no modifica el catálogo.</p>
           <div style={styles.tableWrap}>
             <table style={{ ...styles.table, minWidth: 1050 }}>
-              <thead><tr><th>Producto</th><th>Costo</th><th>Minorista</th><th>Margen</th><th>Mayorista</th><th>Margen</th><th>Regla / alerta</th><th>Acción</th></tr></thead>
+              <thead><tr><th>Producto</th><th>Costo reposición</th><th>Minorista</th><th>Margen</th><th>Mayorista</th><th>Margen</th><th>Regla / alerta</th><th>Acción</th></tr></thead>
               <tbody>
                 {detalle.items.map((item) => (
                   <tr key={`precio-${item.id}`}>
@@ -1925,6 +1935,7 @@ const styles = {
   importHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, borderBottom: "1px solid #e5eaf1", paddingBottom: 14 },
   formGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 14 },
   field: { display: "grid", gap: 7, fontWeight: 800, fontSize: 14 },
+  checkboxField: { display: "flex", alignItems: "center", gap: 8, minHeight: 42, fontWeight: 750, fontSize: 13, color: "#344054" },
   checkField: { display: "flex", alignItems: "center", gap: 8, minHeight: 42, fontWeight: 800, fontSize: 14 },
   importFooter: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" },
   documentsBand: { display: "grid", gap: 10, padding: 14, border: "1px solid #cbd5e1", background: "#f8fafc", borderRadius: 8 },

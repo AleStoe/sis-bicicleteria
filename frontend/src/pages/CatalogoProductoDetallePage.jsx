@@ -892,7 +892,10 @@ export default function CatalogoProductoDetallePage() {
                       <Info label="Pendiente entrega" value={formatNumber(itemPOS?.stock_vendido_pendiente_entrega ?? 0)} />
                       <Info label="Minorista" value={formatMoney(variante.precio_minorista)} />
                       <Info label="Mayorista" value={formatMoney(variante.precio_mayorista)} />
-                      {puedeVerFichaAdministrativa && <Info label="Costo vigente" value={formatMoney(variante.costo_promedio_vigente)} />}
+                      {puedeVerFichaAdministrativa && <Info label="Costo promedio (stock)" value={formatMoney(variante.costo_promedio_vigente)} />}
+                      {puedeVerFichaAdministrativa && <Info label="Costo reposición (compra)" value={variante.costo_reposicion == null ? "Sin registrar" : formatMoney(variante.costo_reposicion)} />}
+                      {puedeVerFichaAdministrativa && <Info label="Reposición actualizada" value={formatDateSafe(variante.costo_reposicion_fecha)} />}
+                      {puedeVerFichaAdministrativa && <Info label="Origen reposición" value={labelOrigenCosto(variante.costo_reposicion_origen, variante.costo_reposicion_proveedor_nombre)} />}
                       <Info label="SKU" value={variante.sku} />
                       <Info label="EAN" value={variante.codigo_barras} />
                       <Info label="Código proveedor" value={variante.codigo_proveedor} />
@@ -919,7 +922,7 @@ export default function CatalogoProductoDetallePage() {
                     </div>
 
                     <CorreccionCargaInicialPanel
-                      key={`correccion-${variante.id}-${variante.costo_promedio_vigente}-${variante.precio_minorista}-${variante.precio_mayorista}`}
+                      key={`correccion-${variante.id}-${variante.costo_promedio_vigente}-${variante.costo_reposicion}-${variante.precio_minorista}-${variante.precio_mayorista}`}
                       variante={variante}
                       proveedores={proveedores}
                       usuarioId={usuarioId}
@@ -1095,6 +1098,16 @@ function labelVarianteDemanda(item) {
 function formatDateSafe(value) {
   if (!value) return "-";
   return String(value).slice(0, 10).split("-").reverse().join("/");
+}
+
+function labelOrigenCosto(origen, proveedor) {
+  const labels = {
+    ingreso_stock: "Último ingreso de stock",
+    lista_proveedor: "Lista del proveedor",
+    actualizacion_manual: "Corrección manual",
+  };
+  const base = labels[origen] || (origen ? String(origen).replaceAll("_", " ") : "Sin registrar");
+  return proveedor ? `${base} · ${proveedor}` : base;
 }
 
 function lecturaDemanda(item) {

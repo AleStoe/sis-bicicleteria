@@ -14,6 +14,7 @@ import {
   cancelarItemOrdenTaller,
   quitarItemBorradorOrdenTaller,
   generarVentaDesdeOrdenTaller,
+  finalizarRetiroOrdenTaller,
   getHojaReparacionTallerUrl,
   getPresupuestoTallerUrl,
   actualizarOperativoOrdenTaller,
@@ -1139,6 +1140,37 @@ export default function TallerDetallePage() {
     navigate(`/ventas/${orden.id_venta_generada}/cobro`);
   }
 
+  async function finalizarRetiro(destino) {
+    if (!orden?.id_venta_generada) {
+      return cambiarEstadoDirecto(
+        destino,
+        destino === "retirada"
+          ? "Orden retirada y finalizada."
+          : "Trabajo marcado como listo para retirar.",
+      );
+    }
+
+    try {
+      setGuardando(true);
+      setError("");
+      setMensaje("");
+      const resultado = await finalizarRetiroOrdenTaller(ordenId, {
+        destino,
+        id_usuario: usuarioId,
+      });
+      await refrescarOrden();
+      setMensaje(
+        resultado.estado_orden === "retirada"
+          ? "Cobro, entrega y retiro quedaron cerrados correctamente."
+          : "La bicicleta quedó lista para retirar.",
+      );
+    } catch (err) {
+      setError(err?.detail || err?.message || "No se pudo finalizar el retiro");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
 
   function imprimirPresupuesto() {
     if (!orden?.id) return;
@@ -1348,8 +1380,8 @@ export default function TallerDetallePage() {
             onTerminar={() => cambiarEstadoDirecto("terminada", "Trabajo marcado como terminado")}
             onGenerarVenta={generarVenta}
             onCobrar={irACobrarVenta}
-            onListaParaRetirar={() => cambiarEstadoDirecto("lista_para_retirar", "Trabajo marcado como listo para retirar.")}
-            onRetirada={() => cambiarEstadoDirecto("retirada", "Orden retirada y finalizada.")}
+            onListaParaRetirar={() => finalizarRetiro("lista_para_retirar")}
+            onRetirada={() => finalizarRetiro("retirada")}
           />
 
           <ItemDrawer
@@ -1574,7 +1606,7 @@ export default function TallerDetallePage() {
                 </div>
               ) : null}
 
-              {esOrdenPostventa && itemForm.tipo_item === "repuesto" ? (
+              {itemForm.tipo_item === "repuesto" ? (
                 <div style={styles.coveragePanel}>
                   <label style={styles.coverageToggle}>
                     <input
@@ -1585,18 +1617,29 @@ export default function TallerDetallePage() {
                           ...actual,
                           cubrir_garantia: e.target.checked,
                           valor_cobertura_unitario: e.target.checked
-                            ? actual.valor_cobertura_unitario
+                            ? actual.precio_unitario
                             : "",
+                          motivo_cobertura: e.target.checked
+                            ? esOrdenPostventa
+                              ? actual.motivo_cobertura
+                            : "Cortesía comercial"
+                            : actual.motivo_cobertura,
                         }))
                       }
                     />
-                    Cubrir por garantía / postventa
+                    {esOrdenPostventa
+                      ? "Cubrir por garantía / postventa"
+                      : "Bonificar repuesto"}
                   </label>
 
                   {itemForm.cubrir_garantia ? (
                     <div style={styles.coverageFields}>
                       <label style={styles.field}>
-                        <span style={styles.label}>Valor reconocido por garantía</span>
+                        <span style={styles.label}>
+                          {esOrdenPostventa
+                            ? "Valor reconocido por garantía"
+                            : "Importe bonificado por unidad"}
+                        </span>
                         <input
                           type="number"
                           min="0"
@@ -1624,6 +1667,7 @@ export default function TallerDetallePage() {
                           }
                           style={styles.input}
                         >
+                          {!esOrdenPostventa ? <option>Cortesía comercial</option> : null}
                           <option>Garantía fábrica</option>
                           <option>Garantía local</option>
                           <option>Service postventa</option>
@@ -1642,7 +1686,11 @@ export default function TallerDetallePage() {
                               observacion_cobertura: e.target.value,
                             }))
                           }
-                          placeholder="Ej: se reconoce el valor del piñón original"
+                          placeholder={
+                            esOrdenPostventa
+                              ? "Ej: se reconoce el valor del piñón original"
+                              : "Ej: repuesto de cortesía"
+                          }
                           style={styles.input}
                         />
                       </label>
@@ -1652,7 +1700,7 @@ export default function TallerDetallePage() {
                   <div style={styles.coverageResult}>
                     <span>Precio: {formatMoney(itemForm.precio_unitario || 0)}</span>
                     <span>
-                      Cobertura: -
+                      {esOrdenPostventa ? "Cobertura" : "Bonificación"}: -
                       {formatMoney(
                         itemForm.cubrir_garantia
                           ? itemForm.valor_cobertura_unitario || 0
@@ -1660,7 +1708,7 @@ export default function TallerDetallePage() {
                       )}
                     </span>
                     <strong>
-                      Diferencia por unidad:{" "}
+                      Cliente paga por unidad:{" "}
                       {formatMoney(
                         Math.max(
                           0,
@@ -1753,9 +1801,9 @@ export default function TallerDetallePage() {
               onImprimirPresupuesto={imprimirPresupuesto}
               onGenerarVenta={generarVenta}
               onCobrar={irACobrarVenta}
-              onListaParaRetirar={() => cambiarEstadoDirecto("lista_para_retirar", "Trabajo marcado como listo para retirar.")}
+              onListaParaRetirar={() => finalizarRetiro("lista_para_retirar")}
               onWhatsappRetiro={enviarWhatsappRetiro}
-              onRetirada={() => cambiarEstadoDirecto("retirada", "Orden retirada y finalizada.")}
+              onRetirada={() => finalizarRetiro("retirada")}
             />
           </CollapsiblePanel></aside>
       </main>
@@ -2232,6 +2280,10 @@ function TrabajoGrupo({
 }
 
 function TrabajoFila({ item, selectable, selected, onToggle, cantidadControl, actions }) {
+  const sinCargo =
+    Number(item.valor_cobertura_unitario || 0) >= Number(item.precio_unitario || 0) &&
+    Number(item.valor_cobertura_unitario || 0) > 0;
+
   return (
     <div style={selectable ? styles.workRowSelectable : styles.workRow}>
       {selectable ? (
@@ -2241,8 +2293,11 @@ function TrabajoFila({ item, selectable, selected, onToggle, cantidadControl, ac
         <strong>{item.descripcion_snapshot}</strong>
         {Number(item.valor_cobertura_unitario || 0) > 0 ? (
           <small style={styles.workCoverage}>
-            Cobertura {item.motivo_cobertura}: -
-            {formatMoney(Number(item.valor_cobertura_unitario) * Number(item.cantidad || 1))}
+            {sinCargo
+              ? `SIN CARGO · ${item.motivo_cobertura}`
+              : `Cobertura ${item.motivo_cobertura}: -${formatMoney(
+                  Number(item.valor_cobertura_unitario) * Number(item.cantidad || 1),
+                )}`}
           </small>
         ) : null}
       </div>
@@ -2251,8 +2306,19 @@ function TrabajoFila({ item, selectable, selected, onToggle, cantidadControl, ac
       </span>
       {cantidadControl || <span style={styles.workRowText}>{formatNumber(item.cantidad)}</span>}
       <span style={styles.workRowPrice}>
-        <strong>{formatMoney(item.subtotal)}</strong>
-        <small>{formatMoney(item.precio_unitario)} c/u</small>
+        {sinCargo ? (
+          <>
+            <strong style={{ color: "#047857" }}>$0 · SIN CARGO</strong>
+            <small style={{ textDecoration: "line-through", color: "#64748b" }}>
+              {formatMoney(item.precio_unitario)} c/u
+            </small>
+          </>
+        ) : (
+          <>
+            <strong>{formatMoney(item.subtotal)}</strong>
+            <small>{formatMoney(item.precio_unitario)} c/u</small>
+          </>
+        )}
       </span>
       <span style={stageStyle(item.etapa)}>{labelEtapa(item.etapa)}</span>
       <div style={styles.workRowActions}>{actions}</div>

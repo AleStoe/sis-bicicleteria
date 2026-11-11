@@ -17,6 +17,9 @@ export default function PrecioManualPanel({
   formPrecio,
   setFormPrecio,
   guardarPrecioManual,
+  formCostoReposicion,
+  setFormCostoReposicion,
+  guardarCostoReposicion,
   tipoSugerencia,
   setTipoSugerencia,
   calcularSugerencia,
@@ -99,6 +102,13 @@ export default function PrecioManualPanel({
                 value={formatMoney(varianteSeleccionada.costo_promedio_vigente)}
               />
               <InfoBox
+                label="Costo de reposición"
+                value={formatMoney(
+                  varianteSeleccionada.costo_reposicion ??
+                    varianteSeleccionada.costo_promedio_vigente,
+                )}
+              />
+              <InfoBox
                 label="Minorista actual"
                 value={formatMoney(varianteSeleccionada.precio_minorista)}
               />
@@ -111,7 +121,10 @@ export default function PrecioManualPanel({
             </div>
 
             <HerramientasPrecioPanel
-              costo={varianteSeleccionada.costo_promedio_vigente}
+              costo={
+                varianteSeleccionada.costo_reposicion ??
+                varianteSeleccionada.costo_promedio_vigente
+              }
               porcentajeDescuentoContado={porcentajeDescuentoContado}
               styles={styles}
               onAplicarMinorista={(precio) =>
@@ -121,6 +134,53 @@ export default function PrecioManualPanel({
                 setFormPrecio((p) => ({ ...p, precio_mayorista: precio }))
               }
             />
+
+            <form onSubmit={guardarCostoReposicion} style={styles.form}>
+              <div style={styles.selectedBox}>
+                <strong>Costo para volver a comprar hoy</strong>
+                <span>
+                  No modifica el costo promedio ni la rentabilidad histórica.
+                  {varianteSeleccionada.costo_reposicion_fecha
+                    ? ` Vigente desde ${formatDate(varianteSeleccionada.costo_reposicion_fecha)}.`
+                    : ""}
+                </span>
+              </div>
+
+              <label style={styles.label}>
+                Costo de reposición
+                <input
+                  style={styles.input}
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={formCostoReposicion.costo_reposicion}
+                  onChange={(e) =>
+                    setFormCostoReposicion((actual) => ({
+                      ...actual,
+                      costo_reposicion: e.target.value,
+                    }))
+                  }
+                />
+              </label>
+
+              <label style={styles.label}>
+                Motivo
+                <input
+                  style={styles.input}
+                  value={formCostoReposicion.motivo}
+                  onChange={(e) =>
+                    setFormCostoReposicion((actual) => ({
+                      ...actual,
+                      motivo: e.target.value,
+                    }))
+                  }
+                />
+              </label>
+
+              <button type="submit" style={styles.secondaryButton} disabled={procesando}>
+                Actualizar costo de reposición
+              </button>
+            </form>
 
             <form onSubmit={guardarPrecioManual} style={styles.form}>
               <label style={styles.label}>
@@ -193,6 +253,11 @@ export default function PrecioManualPanel({
                     <span>
                       Regla: {sugerencia.regla_nombre || "-"} · Margen:{" "}
                       {formatPercent(sugerencia.margen_porcentaje)}
+                      {` · Base: ${
+                        sugerencia.costo_base_origen === "costo_reposicion"
+                          ? "reposición"
+                          : "promedio"
+                      }`}
                     </span>
                   </div>
 

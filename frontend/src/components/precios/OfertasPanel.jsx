@@ -27,7 +27,7 @@ function initialForm() {
     fecha_hasta: isoDate(hasta),
     motivo: "",
     alcance: "variante",
-    politica_contado: "precio_final_contado",
+    politica_contado: "precio_lista_promocional",
     ids_bicicletas_serializadas: [],
   };
 }
@@ -136,7 +136,7 @@ export default function OfertasPanel({
       fecha_hasta: item.fecha_hasta,
       motivo: item.motivo || "",
       alcance: item.alcance || "variante",
-      politica_contado: item.politica_contado || "precio_lista_promocional",
+      politica_contado: "precio_lista_promocional",
       ids_bicicletas_serializadas: (item.unidades || []).map((unidad) => unidad.id),
     });
     try {
@@ -173,7 +173,7 @@ export default function OfertasPanel({
         fecha_hasta: form.fecha_hasta,
         motivo: form.motivo.trim() || null,
         alcance: form.alcance,
-        politica_contado: form.politica_contado,
+        politica_contado: "precio_lista_promocional",
         ids_bicicletas_serializadas:
           form.alcance === "unidades"
             ? form.ids_bicicletas_serializadas.map(Number)
@@ -417,17 +417,9 @@ export default function OfertasPanel({
                 />
               </label>
             </div>
-            <label style={styles.label}>
-              Política de contado
-              <select
-                style={styles.input}
-                value={form.politica_contado}
-                onChange={(e) => setForm((actual) => ({ ...actual, politica_contado: e.target.value }))}
-              >
-                <option value="precio_final_contado">Precio final de contado</option>
-                <option value="precio_lista_promocional">Admite descuento por medio de pago</option>
-              </select>
-            </label>
+            <div style={styles.infoBox}>
+              El precio promocional es precio de lista. Efectivo o transferencia aplica el beneficio vigente sobre la oferta.
+            </div>
             <label style={styles.label}>
               Motivo
               <input
@@ -551,9 +543,7 @@ export default function OfertasPanel({
                 {formatDate(oferta.fecha_desde)} al {formatDate(oferta.fecha_hasta)}
               </p>
               <p style={styles.offerDates}>
-                {oferta.politica_contado === "precio_final_contado"
-                  ? "Precio final de contado"
-                  : "Admite beneficios por medio de pago"}
+                Efectivo o transferencia aplica el beneficio vigente sobre la oferta.
               </p>
               {oferta.unidades?.length > 0 && (
                 <div style={unitStyles.chips}>

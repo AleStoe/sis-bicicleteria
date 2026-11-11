@@ -61,6 +61,16 @@ def test_oferta_vigente_aparece_en_catalogo_pos(client, seed_venta_basica):
     assert items[0]["oferta_nombre"] == "OFERTA CAMPEONES"
 
 
+def test_oferta_no_permite_excluir_beneficio_contado(client, seed_venta_basica):
+    response = _crear_oferta(
+        client,
+        seed_venta_basica,
+        politica_contado="precio_final_contado",
+    )
+
+    assert response.status_code == 422
+
+
 def test_historia_png_se_genera_con_oferta_vigente(client, seed_venta_basica):
     crear = _crear_oferta(client, seed_venta_basica)
     assert crear.status_code == 201, crear.text
@@ -238,12 +248,12 @@ def test_oferta_por_cuadro_tiene_prioridad_y_congela_alcance_en_venta(
         alcance="unidades",
         ids_bicicletas_serializadas=[bici_oferta_id],
         precio_oferta="18000",
-        politica_contado="precio_final_contado",
+        politica_contado="precio_lista_promocional",
     )
     assert individual.status_code == 201, individual.text
     individual_data = individual.json()
     assert individual_data["alcance"] == "unidades"
-    assert individual_data["politica_contado"] == "precio_final_contado"
+    assert individual_data["politica_contado"] == "precio_lista_promocional"
     assert [unidad["id"] for unidad in individual_data["unidades"]] == [bici_oferta_id]
     assert Decimal(individual_data["unidades"][0]["ganancia_estimada"]) == Decimal("8000.00")
 
@@ -310,11 +320,11 @@ def test_oferta_por_cuadro_tiene_prioridad_y_congela_alcance_en_venta(
 
     assert items[bici_oferta_id]["precio_lista"] == Decimal("18000.00")
     assert items[bici_oferta_id]["oferta_alcance_snapshot"] == "unidades"
-    assert items[bici_oferta_id]["oferta_politica_contado_snapshot"] == "precio_final_contado"
+    assert items[bici_oferta_id]["oferta_politica_contado_snapshot"] == "precio_lista_promocional"
     assert items[bici_general_id]["precio_lista"] == Decimal("20000.00")
     assert items[bici_general_id]["oferta_alcance_snapshot"] == "variante"
     assert venta_guardada["subtotal_base"] == Decimal("38000.00")
-    assert venta_guardada["base_sin_descuento_contado"] == Decimal("18000.00")
+    assert venta_guardada["base_sin_descuento_contado"] == Decimal("0.00")
 
     simulacion = client.post(
         "/pagos/ventas/simular-tramo",
@@ -327,8 +337,8 @@ def test_oferta_por_cuadro_tiene_prioridad_y_congela_alcance_en_venta(
     assert simulacion.status_code == 200, simulacion.text
     tramo = simulacion.json()
     assert Decimal(tramo["monto_base_aplicado"]) == Decimal("38000.00")
-    assert Decimal(tramo["descuento_aplicado"]) == Decimal("2000.00")
-    assert Decimal(tramo["monto_total_cobrado"]) == Decimal("36000.00")
+    assert Decimal(tramo["descuento_aplicado"]) == Decimal("3800.00")
+    assert Decimal(tramo["monto_total_cobrado"]) == Decimal("34200.00")
 
 
 def test_oferta_individual_bloquea_unidad_no_lista_y_solapamiento(
@@ -384,7 +394,7 @@ def test_oferta_individual_bloquea_unidad_no_lista_y_solapamiento(
     assert "no está disponible y listo" in invalida.json()["detail"]
 
 
-def test_oferta_precio_final_contado_no_duplica_descuento_en_pago_inicial(
+def test_oferta_aplica_descuento_contado_en_pago_inicial(
     client,
     db_conn,
     seed_venta_basica,
@@ -394,11 +404,10 @@ def test_oferta_precio_final_contado_no_duplica_descuento_en_pago_inicial(
     oferta = _crear_oferta(
         client,
         seed_venta_basica,
-        nombre="PRECIO FINAL CUADRO",
+        nombre="OFERTA CON BENEFICIO CONTADO",
         alcance="unidades",
         ids_bicicletas_serializadas=[bici_id],
         precio_oferta="18000",
-        politica_contado="precio_final_contado",
     )
     assert oferta.status_code == 201, oferta.text
 
@@ -459,9 +468,9 @@ def test_oferta_precio_final_contado_no_duplica_descuento_en_pago_inicial(
         pago = cur.fetchone()
 
     assert venta_guardada["subtotal_base"] == Decimal("18000.00")
-    assert venta_guardada["descuento_total"] == Decimal("0.00")
-    assert venta_guardada["total_final"] == Decimal("18000.00")
+    assert venta_guardada["descuento_total"] == Decimal("1800.00")
+    assert venta_guardada["total_final"] == Decimal("16200.00")
     assert venta_guardada["saldo_pendiente"] == Decimal("0.00")
     assert pago["monto_base_aplicado"] == Decimal("18000.00")
-    assert pago["monto_descuento_aplicado"] == Decimal("0.00")
-    assert pago["monto_total_cobrado"] == Decimal("18000.00")
+    assert pago["monto_descuento_aplicado"] == Decimal("1800.00")
+    assert pago["monto_total_cobrado"] == Decimal("16200.00")

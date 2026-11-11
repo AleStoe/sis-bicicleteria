@@ -4,7 +4,17 @@ import re
 import unicodedata
 
 from app.db.connection import get_connection
-from app.shared.constants import PERMISO_VER_RENTABILIDAD
+from app.shared.constants import PERMISO_GESTIONAR_CRM, PERMISO_VER_RENTABILIDAD
+from app.modules.clientes.service import (
+    listar_clientes_service,
+    obtener_analisis_cliente_service,
+    obtener_cliente_service,
+)
+from app.modules.clientes.crm_service import (
+    listar_oportunidades_crm_service,
+    listar_seguimientos_crm_service,
+)
+from app.modules.clientes.crm_messages import borrador_apertura_conversacion
 
 from . import repository
 
@@ -18,6 +28,7 @@ SUGERENCIAS_DEFAULT = [
     "Deudas abiertas",
     "Stock critico",
     "Última recepción de mercadería",
+    "Analizar este cliente",
 ]
 
 
@@ -164,9 +175,25 @@ def obtener_resumen_asistente(*, id_sucursal: int | None, usuario):
     }
 
 
-def responder_pregunta_asistente(*, pregunta: str, id_sucursal: int | None, usuario):
+def responder_pregunta_asistente(
+    *,
+    pregunta: str,
+    id_sucursal: int | None,
+    usuario,
+    cliente_id: int | None = None,
+    periodo: str = "365d",
+):
     texto = _norm(pregunta)
     hoy = date.today()
+
+    if _es_consulta_cliente(texto) or (cliente_id and _es_consulta_cliente_contextual(texto)):
+        return _respuesta_cliente_crm(
+            pregunta=pregunta,
+            texto=texto,
+            cliente_id=cliente_id,
+            periodo=periodo,
+            usuario=usuario,
+        )
 
     if any(palabra in texto for palabra in ["recepcion", "mercaderia", "factura proveedor", "ingreso proveedor"]):
         match = re.search(r"(?:recepcion|mercaderia)\s*#?\s*(\d+)", texto)
@@ -208,6 +235,212 @@ def responder_pregunta_asistente(*, pregunta: str, id_sucursal: int | None, usua
         return _respuesta_rentabilidad_basica(hoy=hoy, id_sucursal=id_sucursal)
 
     return _respuesta_ventas_hoy(hoy=hoy, id_sucursal=id_sucursal)
+
+
+def _es_consulta_cliente(texto: str) -> bool:
+    return "cliente" in texto and any(
+        palabra in texto
+        for palabra in (
+            "analiza", "analisis", "actividad", "compra", "saldo", "segmento",
+            "inactivo", "recurrente", "mensaje", "contactar", "seguimiento", "tarea",
+            "como esta", "relacion",
+        )
+    )
+
+
+def _es_consulta_cliente_contextual(texto: str) -> bool:
+    return any(
+        frase in texto
+        for frase in (
+            "este cliente", "analiza", "analisis", "sus compra", "su actividad",
+            "su saldo", "segmento", "pertenece", "preparar mensaje", "contactar",
+            "seguimiento", "tarea para", "como esta",
+        )
+    )
+
+
+def _resolver_cliente_consulta(*, pregunta: str, cliente_id: int | None):
+    if cliente_id:
+        return cliente_id, []
+
+    match = re.search(r"cliente\s*#?\s*(\d+)", _norm(pregunta))
+    if match:
+        return int(match.group(1)), []
+
+    texto = re.sub(
+        r"\b(analiza|analisis|analizar|cliente|como|esta|actividad|compras?|saldos?|segmentos?|"
+        r"inactivo|recurrente|mensaje|whatsapp|contactar|seguimiento|tarea|relacion|de|del|la|el|para|por|que)\b",
+        " ",
+        _norm(pregunta),
+    )
+    termino = re.sub(r"\s+", " ", texto).strip()
+    if len(termino) < 3:
+        return None, []
+    candidatos = listar_clientes_service(q=termino, solo_activos=False)[:6]
+    return (candidatos[0]["id"], candidatos) if len(candidatos) == 1 else (None, candidatos)
+
+
+def _respuesta_cliente_crm(*, pregunta, texto, cliente_id, periodo, usuario):
+    cliente_resuelto, candidatos = _resolver_cliente_consulta(
+        pregunta=pregunta,
+        cliente_id=cliente_id,
+    )
+    if cliente_resuelto is None:
+        if candidatos:
+            return {
+                "intent": "cliente_ambiguo",
+                "titulo": "Elegí el cliente",
+                "resumen": "Encontré más de una coincidencia. Abrí la ficha correcta y volvé a preguntarme desde ahí.",
+                "items": [
+                    _item(
+                        candidato["nombre"],
+                        subtitulo=candidato.get("telefono") or "Sin teléfono",
+                        to=f"/clientes/{candidato['id']}",
+                    )
+                    for candidato in candidatos
+                ],
+                "cards": [],
+                "sugerencias": ["Analizar este cliente"],
+                "fuentes": ["clientes"],
+                "solo_lectura": True,
+            }
+        return {
+            "intent": "cliente_requerido",
+            "titulo": "Necesito identificar al cliente",
+            "resumen": "Abrí su ficha y preguntame desde ahí, o escribí por ejemplo: analizar cliente #25.",
+            "cards": [],
+            "items": [],
+            "sugerencias": ["Analizar este cliente", "Qué tengo que resolver hoy"],
+            "fuentes": ["clientes"],
+            "solo_lectura": True,
+        }
+
+    puede_ver_rentabilidad = _tiene_permiso(usuario, PERMISO_VER_RENTABILIDAD)
+    contexto_cliente = obtener_cliente_service(cliente_resuelto)
+    cliente = contexto_cliente["cliente"]
+    analisis = obtener_analisis_cliente_service(
+        cliente_resuelto,
+        periodo=periodo,
+        puede_ver_rentabilidad=puede_ver_rentabilidad,
+    )
+    seguimientos = listar_seguimientos_crm_service(
+        bandeja="pendientes",
+        id_cliente=cliente_resuelto,
+        limit=3,
+    )
+    oportunidades = listar_oportunidades_crm_service(
+        id_cliente=cliente_resuelto,
+        limit=3,
+    )
+
+    resumen = analisis["resumen"]
+    estado = analisis["estado_financiero"]
+    cards = [
+        _card("Ventas netas", _money(resumen["ventas_netas"]), f"{resumen['cantidad_operaciones']} operación(es)", "success", f"/clientes/{cliente_resuelto}"),
+        _card("Deuda vigente", _money(estado["deuda_vigente"]), "Saldo actual", "danger" if estado["deuda_vigente"] else "neutral", f"/clientes/{cliente_resuelto}"),
+        _card("Crédito disponible", _money(estado["credito_vigente"]), "Saldo a favor", "info" if estado["credito_vigente"] else "neutral", f"/clientes/{cliente_resuelto}"),
+    ]
+    if puede_ver_rentabilidad:
+        cards.append(
+            _card("Ganancia comercial", _money(resumen["ganancia_comercial"]), f"Margen {resumen['margen_porcentaje']}%", "success", f"/clientes/{cliente_resuelto}")
+        )
+
+    items = [
+        _item(
+            rubro["nombre"],
+            subtitulo=f"{rubro['cantidad_operaciones']} operación(es) · {rubro['cantidad_unidades']} unidad(es)",
+            detalle=f"Ventas netas {_money(rubro['ventas_netas'])}",
+            monto=rubro["ventas_netas"],
+            estado="rubro",
+            to=f"/clientes/{cliente_resuelto}",
+        )
+        for rubro in analisis["rubros"][:3]
+    ]
+    items.extend([
+        _item(
+            segmento["nombre"],
+            subtitulo="Segmento explicado",
+            detalle=segmento["motivo"],
+            estado=segmento["clave"],
+            to=f"/clientes/{cliente_resuelto}",
+        )
+        for segmento in analisis["segmentos"]
+    ])
+    items.extend(
+        _item(
+            f"Seguimiento: {item['motivo']}",
+            subtitulo=f"Responsable {item['responsable_nombre']}",
+            detalle=f"Fecha objetivo {item['fecha_objetivo']}",
+            estado=item["prioridad"],
+            to=f"/clientes/{cliente_resuelto}",
+        )
+        for item in seguimientos["items"][:2]
+    )
+
+    quiere_mensaje = any(palabra in texto for palabra in ("mensaje", "whatsapp", "contactar"))
+    quiere_tarea = any(palabra in texto for palabra in ("seguimiento", "tarea", "recordatorio"))
+    borrador = _borrador_cliente(cliente, analisis, oportunidades) if quiere_mensaje else None
+    puede_gestionar = _tiene_permiso(usuario, PERMISO_GESTIONAR_CRM)
+    acciones = []
+    if quiere_tarea or oportunidades["total"]:
+        if puede_gestionar:
+            acciones.append({"label": "Revisar y crear seguimiento", "to": f"/clientes/{cliente_resuelto}?tab=seguimientos"})
+
+    lectura = analisis["lectura"]
+    if seguimientos["total"]:
+        lectura += f" Tiene {seguimientos['total']} seguimiento(s) pendiente(s)."
+    elif oportunidades["total"]:
+        lectura += f" Hay {oportunidades['total']} oportunidad(es) verificable(s) para revisar."
+
+    fecha_desde = analisis["periodo"]["fecha_desde"]
+    fecha_hasta = analisis["periodo"]["fecha_hasta"]
+    ventas_referencia = [
+        venta for venta in contexto_cliente["ventas_recientes"]
+        if venta["estado"] not in ("anulada", "devuelta")
+        and fecha_desde <= (venta["fecha"].date() if hasattr(venta["fecha"], "date") else venta["fecha"]) <= fecha_hasta
+    ][:3]
+    referencias = [
+        {"label": f"Ficha del cliente #{cliente_resuelto}", "to": f"/clientes/{cliente_resuelto}"},
+        {"label": f"Análisis oficial · {periodo}", "to": f"/clientes/{cliente_resuelto}?tab=analisis"},
+    ]
+    referencias.extend(
+        {
+            "label": f"Venta #{venta['id']} · {_money(venta['total'])}",
+            "to": f"/ventas/{venta['id']}",
+        }
+        for venta in ventas_referencia
+    )
+
+    return {
+        "intent": "cliente_crm",
+        "titulo": f"Análisis de {cliente['nombre']}",
+        "resumen": lectura,
+        "cards": cards,
+        "items": items[:8],
+        "sugerencias": [
+            "Por qué pertenece a esos segmentos",
+            "Preparar un seguimiento para este cliente",
+            "Preparar mensaje para este cliente",
+        ],
+        "fuentes": ["analisis_cliente", "seguimientos_crm", "oportunidades_crm"],
+        "referencias": referencias,
+        "acciones": acciones,
+        "borrador_mensaje": borrador,
+        "requiere_confirmacion": bool(acciones or borrador),
+        "solo_lectura": True,
+    }
+
+
+def _borrador_cliente(cliente, analisis, oportunidades):
+    tiene_bicicleta = int(analisis["actividad"].get("bicicletas_registradas") or 0) > 0
+    return borrador_apertura_conversacion(
+        nombre=cliente.get("nombre_persona") or cliente.get("nombre"),
+        tiene_bicicleta=tiene_bicicleta,
+        retomar_contacto=(
+            analisis["actividad"].get("dias_desde_ultima_actividad") is not None
+            and analisis["actividad"]["dias_desde_ultima_actividad"] >= 90
+        ),
+    )
 
 
 def _respuesta_recepcion(*, recepcion_id, id_sucursal):

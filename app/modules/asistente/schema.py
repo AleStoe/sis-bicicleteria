@@ -7,6 +7,8 @@ from pydantic import BaseModel, Field
 class AsistentePreguntaInput(BaseModel):
     pregunta: str = Field(min_length=1, max_length=300)
     id_sucursal: int | None = Field(default=None, gt=0)
+    cliente_id: int | None = Field(default=None, gt=0)
+    periodo: str = Field(default="365d", pattern="^(30d|90d|365d|all)$")
 
 
 class AsistenteAccionOutput(BaseModel):
@@ -40,6 +42,10 @@ class AsistenteRespuestaOutput(BaseModel):
     items: list[AsistenteItemOutput] = Field(default_factory=list)
     sugerencias: list[str] = Field(default_factory=list)
     fuentes: list[str] = Field(default_factory=list)
+    referencias: list[AsistenteAccionOutput] = Field(default_factory=list)
+    acciones: list[AsistenteAccionOutput] = Field(default_factory=list)
+    borrador_mensaje: str | None = None
+    requiere_confirmacion: bool = False
     solo_lectura: bool = True
 
 

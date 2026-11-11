@@ -285,6 +285,7 @@ def _draw_row_chunk(
     subtotal,
     imagen,
     es_servicio,
+    sin_cargo,
     first_chunk,
     last_chunk,
 ):
@@ -342,16 +343,24 @@ def _draw_row_chunk(
             value_y,
             f"{cantidad:g}",
         )
-        c.drawRightString(
-            width - margin_x - 24 * mm,
-            value_y,
-            _money(precio),
-        )
+        precio_texto = _money(precio)
+        precio_x = width - margin_x - 24 * mm
+        if sin_cargo:
+            c.setFillColorRGB(0.40, 0.45, 0.52)
+        c.drawRightString(precio_x, value_y, precio_texto)
+        if sin_cargo:
+            ancho_precio = c.stringWidth(precio_texto, "Helvetica", 7.5)
+            c.setStrokeColorRGB(0.70, 0.12, 0.12)
+            c.setLineWidth(0.6)
+            c.line(precio_x - ancho_precio, value_y + 1.6, precio_x, value_y + 1.6)
+            c.setFillColorRGB(0, 0.45, 0.28)
         c.drawRightString(
             width - margin_x - 1 * mm,
             value_y,
             _money(subtotal),
         )
+        c.setFillColorRGB(0, 0, 0)
+        c.setStrokeColorRGB(0, 0, 0)
 
     y -= row_height
     if last_chunk:
@@ -375,6 +384,7 @@ def _draw_item(
     subtotal,
     imagen,
     es_servicio,
+    sin_cargo=False,
     incluir_marca_agua=True,
 ):
     text_x = margin_x + 20 * mm
@@ -403,6 +413,7 @@ def _draw_item(
             subtotal=subtotal,
             imagen=imagen,
             es_servicio=es_servicio,
+            sin_cargo=sin_cargo,
             first_chunk=first_chunk,
             last_chunk=not lines,
         )
@@ -589,11 +600,23 @@ def generar_presupuesto_taller_pdf(data: dict, incluir_marca_agua: bool = True) 
             item.get("descripcion_snapshot"),
             item,
         )
+        es_regalo = False
         if cobertura > 0:
-            detalle += (
-                f"\nCobertura {normalize_inline_text(item.get('motivo_cobertura'))}: "
-                f"-{_money(cobertura * cantidad)}"
-            )
+            motivo = normalize_inline_text(item.get("motivo_cobertura"))
+            es_regalo = cobertura >= precio and motivo.lower() in {
+                "regalo al cliente",
+                "cortesia comercial",
+                "cortesía comercial",
+                "atencion comercial",
+                "atención comercial",
+            }
+            if es_regalo:
+                detalle += f"\nSIN CARGO - Valor habitual {_money(precio * cantidad)}"
+            else:
+                detalle += (
+                    f"\nCobertura {motivo}: "
+                    f"-{_money(cobertura * cantidad)}"
+                )
             if item.get("observacion_cobertura"):
                 detalle += (
                     f"\n{normalize_inline_text(item.get('observacion_cobertura'))}"
@@ -611,6 +634,7 @@ def generar_presupuesto_taller_pdf(data: dict, incluir_marca_agua: bool = True) 
             subtotal=subtotal,
             imagen=item.get("imagen_principal"),
             es_servicio=_es_item_servicio(item),
+            sin_cargo=es_regalo,
             incluir_marca_agua=incluir_marca_agua,
         )
 

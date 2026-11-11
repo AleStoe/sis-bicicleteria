@@ -61,6 +61,10 @@ class PedidoCompraItemOut(BaseModel):
     cantidad_pedida: Decimal
     cantidad_recibida: Decimal
     observacion: str | None = None
+    costo_promedio_vigente: Decimal | None = None
+    costo_reposicion: Decimal | None = None
+    costo_reposicion_fecha: datetime | None = None
+    costo_reposicion_origen: str | None = None
     created_at: datetime
     updated_at: datetime
 

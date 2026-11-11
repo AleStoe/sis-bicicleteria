@@ -20,7 +20,11 @@ import {
 } from "../services/ventasService";
 import { listarClientes } from "../services/clientesService";
 import VentaItemsVendidos from "../components/ventas/detalle/VentaItemsVendidos";
-import { listarPagosDeVenta, revertirPago } from "../services/pagosService";
+import {
+  corregirMedioPago,
+  listarPagosDeVenta,
+  revertirPago,
+} from "../services/pagosService";
 import { useSession } from "../context/SessionContext";
 import { formatMoney } from "../utils/formatters";
 import VentaAccionesPanel from "../components/ventas/detalle/VentaAccionesPanel";
@@ -35,7 +39,10 @@ import {
   esBicicletaSerializableEnCaja,
 } from "../builders/ventasPayloadBuilder";
 import { obtenerAccionesVentaDetalle } from "../rules/ventaDetalleActionRules";
-import { puedeRevertirPago } from "../rules/ventaDetalleActionRules";
+import {
+  puedeCorregirMedioPago,
+  puedeRevertirPago,
+} from "../rules/ventaDetalleActionRules";
 import CorregirNumeroCuadroModal from "../components/serializadas/CorregirNumeroCuadroModal";
 
 export default function VentaDetallePage() {
@@ -298,6 +305,46 @@ export default function VentaDetallePage() {
       setMensaje(`Pago #${pago.id} revertido correctamente`);
     } catch (err) {
       setError(err.message || "No se pudo revertir el pago");
+    } finally {
+      setProcesando(false);
+    }
+  }
+
+  async function handleCorregirMedioPago(pago) {
+    if (!puedeCorregirMedioPago(pago, usuarioActual)) {
+      setError("Este pago no admite corrección directa de medio.");
+      return;
+    }
+
+    const medioNuevo = pago.medio_pago === "efectivo" ? "transferencia" : "efectivo";
+    const motivo = await pedirPrompt({
+      title: "Corregir medio de pago",
+      message: `Pago #${pago.id}: ${labelMedioPago(pago.medio_pago)} → ${labelMedioPago(medioNuevo)}.\n\nEl importe no cambia y la corrección quedará registrada en caja y auditoría.`,
+      label: "Motivo de la corrección",
+      placeholder: "Ej: Se registró como transferencia y fue efectivo",
+      required: true,
+      minLength: 3,
+      confirmText: "Corregir medio",
+      cancelText: "Cancelar",
+    });
+
+    if (!motivo?.trim()) return;
+
+    try {
+      setProcesando(true);
+      setError("");
+      setMensaje("");
+      await corregirMedioPago(pago.id, {
+        medio_pago_nuevo: medioNuevo,
+        motivo: motivo.trim(),
+        id_usuario: usuarioId,
+      });
+      await cargarVenta({ mostrarCarga: false, limpiarMensaje: false });
+      setMensaje(
+        `Pago #${pago.id} corregido: ${labelMedioPago(pago.medio_pago)} → ${labelMedioPago(medioNuevo)}`
+      );
+    } catch (err) {
+      setError(err.message || "No se pudo corregir el medio de pago");
     } finally {
       setProcesando(false);
     }
@@ -906,7 +953,9 @@ const {
         formatMoney={formatMoney}
         procesando={procesando}
         canRevertirPago={(pago) => puedeRevertirPago(pago, usuarioActual)}
+        canCorregirMedioPago={(pago) => puedeCorregirMedioPago(pago, usuarioActual)}
         onRevertirPago={handleRevertirPago}
+        onCorregirMedioPago={handleCorregirMedioPago}
       />
 
       <VentaItemsVendidos
@@ -990,6 +1039,14 @@ const {
       )}
     </div>
   );
+}
+
+function labelMedioPago(medio) {
+  if (medio === "efectivo") return "Efectivo";
+  if (medio === "transferencia") return "Transferencia";
+  if (medio === "mercadopago") return "MercadoPago";
+  if (medio === "tarjeta") return "Tarjeta";
+  return medio || "Sin medio";
 }
 
 function AsignarNumeroCuadroVentaModal({

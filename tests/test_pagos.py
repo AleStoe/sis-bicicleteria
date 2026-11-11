@@ -1439,6 +1439,114 @@ def test_revertir_pago_de_venta_entregada_genera_deuda(
     assert Decimal(str(deuda_venta[0]["saldo_actual"])) == Decimal("24440.00")
     assert reversion.json()["deuda_generada_id"] == deuda_venta[0]["id"]
 
+
+def test_corregir_medio_pago_compensa_caja_y_conserva_importes(
+    client, db_conn, seed_venta_basica
+):
+    venta_id = crear_venta_base(client, seed_venta_basica)
+    caja = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+    assert caja.status_code == 200, caja.text
+    caja_id = caja.json()["caja_id"]
+
+    pago = client.post(
+        "/pagos/",
+        json=_payload_pago(
+            venta_id,
+            "transferencia",
+            10000,
+            seed_venta_basica["usuario_id"],
+            "Pago con medio cargado por error",
+        ),
+    )
+    assert pago.status_code == 200, pago.text
+    pago_id = pago.json()["pago_id"]
+    venta_antes = get_venta(db_conn, venta_id)
+    movimientos_antes = get_caja_movimientos(db_conn, caja_id)
+
+    correccion = client.post(
+        f"/pagos/{pago_id}/corregir-medio",
+        json={
+            "medio_pago_nuevo": "efectivo",
+            "motivo": "El cliente pagó en efectivo",
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert correccion.status_code == 200, correccion.text
+
+    pagos = get_pagos_by_venta(db_conn, venta_id)
+    venta_despues = get_venta(db_conn, venta_id)
+    movimientos_despues = get_caja_movimientos(db_conn, caja_id)
+    auditoria = get_auditoria_by_entidad(db_conn, "pago", pago_id)
+
+    assert len(pagos) == 1
+    assert pagos[0]["medio_pago"] == "efectivo"
+    assert pagos[0]["estado"] == "confirmado"
+    assert Decimal(str(pagos[0]["monto_total_cobrado"])) == Decimal("10000.00")
+    assert venta_despues["estado"] == venta_antes["estado"]
+    assert Decimal(str(venta_despues["saldo_pendiente"])) == Decimal(
+        str(venta_antes["saldo_pendiente"])
+    )
+
+    assert len(movimientos_despues) == len(movimientos_antes) + 2
+    egreso, ingreso = movimientos_despues[-2:]
+    assert egreso["tipo_movimiento"] == "egreso"
+    assert egreso["submedio"] == "transferencia"
+    assert ingreso["tipo_movimiento"] == "ingreso"
+    assert ingreso["submedio"] == "efectivo"
+    assert Decimal(str(egreso["monto"])) == Decimal(str(ingreso["monto"]))
+    assert auditoria[-1]["accion"] == "corregir_medio_pago"
+
+
+def test_corregir_medio_pago_entregado_no_genera_deuda(
+    client, db_conn, seed_venta_basica
+):
+    venta_id = crear_venta_base(client, seed_venta_basica)
+    caja = _abrir_caja(
+        client,
+        seed_venta_basica["sucursal_id"],
+        seed_venta_basica["usuario_id"],
+    )
+    assert caja.status_code == 200, caja.text
+
+    pago = client.post(
+        "/pagos/",
+        json=_payload_pago(
+            venta_id,
+            "efectivo",
+            24440,
+            seed_venta_basica["usuario_id"],
+            "Pago total",
+        ),
+    )
+    assert pago.status_code == 200, pago.text
+    pago_id = pago.json()["pago_id"]
+
+    entrega = client.post(
+        f"/ventas/{venta_id}/entregar",
+        json={"id_usuario": seed_venta_basica["usuario_id"]},
+    )
+    assert entrega.status_code == 200, entrega.text
+
+    correccion = client.post(
+        f"/pagos/{pago_id}/corregir-medio",
+        json={
+            "medio_pago_nuevo": "transferencia",
+            "motivo": "El cobro real fue transferencia",
+            "id_usuario": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert correccion.status_code == 200, correccion.text
+
+    venta = get_venta(db_conn, venta_id)
+    deudas = get_deudas_by_cliente(db_conn, seed_venta_basica["cliente_id"])
+    assert venta["estado"] == "entregada"
+    assert Decimal(str(venta["saldo_pendiente"])) == Decimal("0.00")
+    assert not [deuda for deuda in deudas if deuda["origen_id"] == venta_id]
+
 def test_pago_y_caja_siempre_consistentes(client, db_conn, seed_venta_basica):
     venta_id = crear_venta_base(client, seed_venta_basica)
 

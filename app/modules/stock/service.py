@@ -150,6 +150,10 @@ def obtener_pedido_compra_sugerido(filtros: dict | None = None):
                 "prioridad_reposicion": "reponer_ahora" if reponer_ahora else "revisar",
                 "ultima_venta": item.get("ultima_venta"),
                 "primer_movimiento_stock": item.get("primer_movimiento_stock"),
+                "costo_promedio_vigente": item.get("costo_promedio_vigente"),
+                "costo_reposicion": item.get("costo_reposicion"),
+                "costo_reposicion_fecha": item.get("costo_reposicion_fecha"),
+                "costo_reposicion_origen": item.get("costo_reposicion_origen"),
                 "motivo": motivo,
             }
         )

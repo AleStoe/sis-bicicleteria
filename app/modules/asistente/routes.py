@@ -28,5 +28,7 @@ def preguntar_asistente_route(
     return responder_pregunta_asistente(
         pregunta=data.pregunta,
         id_sucursal=data.id_sucursal,
+        cliente_id=data.cliente_id,
+        periodo=data.periodo,
         usuario=usuario,
     )

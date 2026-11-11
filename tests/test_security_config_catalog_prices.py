@@ -296,6 +296,9 @@ def test_operador_no_modifica_precios_y_actor_real_queda_en_historial(
     )
     assert stock_operador.status_code == 200, stock_operador.text
     assert stock_operador.json()[0]["costo_promedio_vigente"] is None
+    assert stock_operador.json()[0]["costo_reposicion"] is None
+    assert stock_operador.json()[0]["costo_reposicion_fecha"] is None
+    assert stock_operador.json()[0]["costo_reposicion_origen"] is None
     assert stock_operador.json()[0]["capital_inmovilizado"] is None
 
     stock_encargado = client.get(
@@ -304,6 +307,42 @@ def test_operador_no_modifica_precios_y_actor_real_queda_en_historial(
     )
     assert stock_encargado.status_code == 200, stock_encargado.text
     assert stock_encargado.json()[0]["costo_promedio_vigente"] is not None
+    assert "costo_reposicion" in stock_encargado.json()[0]
+
+    pedido_operador = client.get(
+        "/stock/pedido-sugerido",
+        params={
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "stock_bajo_umbral": 999999,
+        },
+        headers=_headers(token_operador),
+    )
+    assert pedido_operador.status_code == 200, pedido_operador.text
+    items_operador = [
+        item
+        for proveedor in pedido_operador.json()["proveedores"]
+        for item in proveedor["items"]
+    ]
+    assert items_operador
+    assert all(item["costo_promedio_vigente"] is None for item in items_operador)
+    assert all(item["costo_reposicion"] is None for item in items_operador)
+
+    pedido_encargado = client.get(
+        "/stock/pedido-sugerido",
+        params={
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "stock_bajo_umbral": 999999,
+        },
+        headers=_headers(token_encargado),
+    )
+    assert pedido_encargado.status_code == 200, pedido_encargado.text
+    items_encargado = [
+        item
+        for proveedor in pedido_encargado.json()["proveedores"]
+        for item in proveedor["items"]
+    ]
+    assert items_encargado
+    assert items_encargado[0]["costo_promedio_vigente"] is not None
 
     precio_nuevo = Decimal(str(seed_venta_basica["precio_venta"])) + Decimal("100")
     actualizar = client.post(

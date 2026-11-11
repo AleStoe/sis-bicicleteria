@@ -1,10 +1,12 @@
 ﻿from decimal import Decimal
 from urllib.parse import quote_plus
+from types import SimpleNamespace
 from fastapi import HTTPException
 from pydantic import ValidationError
 from app.core.text_normalization import normalize_text_upper
 from app.modules.clientes.repository import marcar_service_gratis_utilizado
 from app.db.connection import get_connection
+from app.modules.pagos.repository import sincronizar_venta_financiera_desde_pagos
 from app.shared.constants import (
     ORDEN_TALLER_ESTADO_INGRESADA,
     ORDEN_TALLER_EVENTO_CREADA,
@@ -50,8 +52,8 @@ from app.modules.stock.repository import (
     incrementar_stock_fisico,
 )
 
-from app.modules.ventas.schema import VentaCreateInput
-from app.modules.ventas.service import crear_venta
+from app.modules.ventas.schema import VentaCreateInput, VentaEntregaInput
+from app.modules.ventas.service import crear_venta, entregar_venta, obtener_venta
 
 from .repository import (
     validar_sucursal_activa,
@@ -608,19 +610,6 @@ def agregar_item_orden_taller(orden_id: int, data):
             if orden.get("es_service_postventa") is True and data.tipo_item == "servicio":
                 cobertura_unitaria = precio_unitario
                 motivo_cobertura = "Service postventa"
-            elif (
-                cobertura_unitaria > 0
-                and orden.get("es_service_postventa") is not True
-                and data.tipo_item == "repuesto"
-            ):
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        "La cobertura por garantía sólo puede cargarse "
-                        "en una OT postventa."
-                    ),
-                )
-
             if cobertura_unitaria > precio_unitario:
                 raise HTTPException(
                     status_code=400,
@@ -1329,6 +1318,100 @@ def generar_venta_desde_orden_taller(orden_id: int, data):
     finally:
         conn.close()
 
+
+def finalizar_retiro_orden_taller(orden_id: int, data):
+    orden = obtener_orden_taller(orden_id)
+    if orden is None:
+        raise HTTPException(status_code=404, detail=f"No existe la orden de taller {orden_id}")
+
+    venta_id = orden.get("id_venta_generada")
+    if not venta_id:
+        raise HTTPException(
+            status_code=400,
+            detail="La orden no tiene una venta vinculada para entregar.",
+        )
+
+    if orden["estado"] not in {
+        "terminada",
+        "facturada",
+        "lista_para_retirar",
+        "retirada",
+    }:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "La orden debe estar terminada, facturada o lista para retirar "
+                "antes de finalizar el retiro."
+            ),
+        )
+
+    venta = obtener_venta(venta_id)["venta"]
+    if orden["estado"] == "retirada" and venta["estado"] == "entregada":
+        return {
+            "ok": True,
+            "orden_id": orden_id,
+            "venta_id": venta_id,
+            "estado_orden": orden["estado"],
+            "estado_venta": venta["estado"],
+        }
+
+    conn = get_connection()
+    try:
+        with conn.transaction():
+            sincronizar_venta_financiera_desde_pagos(conn, venta_id)
+    finally:
+        conn.close()
+
+    venta = obtener_venta(venta_id)["venta"]
+    saldo = Decimal(str(venta.get("saldo_pendiente") or 0))
+    if saldo > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Todavía faltan cobrar {saldo}. Registrá el saldo o formalizá "
+                "la deuda antes de entregar."
+            ),
+        )
+
+    if data.destino == "retirada" and venta["estado"] != "entregada":
+        entregar_venta(
+            venta_id,
+            VentaEntregaInput(
+                id_usuario=data.id_usuario,
+                condicion_entrega_bicicleta="armada",
+            ),
+        )
+
+    orden = obtener_orden_taller(orden_id)
+    if orden["estado"] in {"terminada", "facturada"}:
+        cambiar_estado_orden_taller(
+            orden_id,
+            SimpleNamespace(
+                nuevo_estado="lista_para_retirar",
+                id_usuario=data.id_usuario,
+            ),
+        )
+        orden = obtener_orden_taller(orden_id)
+
+    if data.destino == "retirada" and orden["estado"] == "lista_para_retirar":
+        cambiar_estado_orden_taller(
+            orden_id,
+            SimpleNamespace(
+                nuevo_estado="retirada",
+                id_usuario=data.id_usuario,
+            ),
+        )
+        orden = obtener_orden_taller(orden_id)
+
+    venta = obtener_venta(venta_id)["venta"]
+    return {
+        "ok": True,
+        "orden_id": orden_id,
+        "venta_id": venta_id,
+        "estado_orden": orden["estado"],
+        "estado_venta": venta["estado"],
+    }
+
 def _capitalizar_texto_cliente(texto: str | None) -> str | None:
     if not texto:
         return None
@@ -1523,8 +1606,17 @@ def _build_mensaje_lista_retiro(orden, conn, items, notas_cliente):
                 )
 
             cantidad = _format_cantidad_mensaje(item.get("cantidad"))
-            subtotal = _format_money_mensaje(item.get("subtotal"))
-            trabajos_lineas.append(f"• {cantidad} x {descripcion}: {subtotal}")
+            cobertura = Decimal(str(item.get("valor_cobertura_unitario") or 0))
+            precio = Decimal(str(item.get("precio_unitario") or 0))
+            es_regalo = cobertura > 0 and cobertura >= precio
+            if es_regalo:
+                valor_habitual = _format_money_mensaje(
+                    precio * Decimal(str(item.get("cantidad") or 0))
+                )
+                importe = f"~{valor_habitual}~ → *SIN CARGO ($0)*"
+            else:
+                importe = _format_money_mensaje(item.get("subtotal"))
+            trabajos_lineas.append(f"• {cantidad} x {descripcion}: {importe}")
 
         if notas_cliente:
             trabajos_lineas.extend(["", "*Notas y recomendaciones:*", ""])

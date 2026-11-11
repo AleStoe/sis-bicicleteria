@@ -62,6 +62,12 @@ class VarianteOut(BaseModel):
     precio_mayorista: Decimal
     permite_precio_libre: bool
     costo_promedio_vigente: Decimal | None = None
+    costo_reposicion: Decimal | None = None
+    costo_reposicion_moneda: str | None = None
+    costo_reposicion_fecha: datetime | None = None
+    costo_reposicion_proveedor_id: int | None = None
+    costo_reposicion_proveedor_nombre: str | None = None
+    costo_reposicion_origen: str | None = None
     ventas_historicas: int = 0
     reponer_stock: bool = True
 
@@ -259,6 +265,12 @@ class VarianteCreateOut(BaseModel):
     precio_mayorista: Decimal
     permite_precio_libre: bool
     costo_promedio_vigente: Decimal | None = None
+    costo_reposicion: Decimal | None = None
+    costo_reposicion_moneda: str | None = None
+    costo_reposicion_fecha: datetime | None = None
+    costo_reposicion_proveedor_id: int | None = None
+    costo_reposicion_proveedor_nombre: str | None = None
+    costo_reposicion_origen: str | None = None
     reponer_stock: bool = True
     activo: bool
     talle: str | None = None

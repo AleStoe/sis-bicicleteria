@@ -1510,17 +1510,6 @@ def test_preview_precios_por_reglas_y_confirmacion_actualiza_variante(
             (proveedor_id, variante_id),
         )
         cur.execute(
-            "SELECT precio_minorista, precio_mayorista, costo_promedio_vigente FROM variantes WHERE id = %s",
-            (variante_id,),
-        )
-        anterior = cur.fetchone()
-        cur.execute(
-            "SELECT stock_fisico FROM stock_sucursal WHERE id_sucursal = %s AND id_variante = %s",
-            (sucursal_id, variante_id),
-        )
-        stock_row = cur.fetchone()
-        stock_anterior = Decimal(str(stock_row["stock_fisico"] if stock_row else 0))
-        cur.execute(
             """
             INSERT INTO reglas_precio (
                 nombre, id_proveedor, tipo_cliente, margen_porcentaje,
@@ -1564,20 +1553,14 @@ def test_preview_precios_por_reglas_y_confirmacion_actualiza_variante(
     )
     assert preview.status_code == 200, preview.text
     item = preview.json()["items"][0]
-    costo_anterior = Decimal(str(anterior["costo_promedio_vigente"] or 0))
-    costo_proyectado = (
-        Decimal("20000")
-        if stock_anterior <= 0
-        else ((stock_anterior * costo_anterior) + Decimal("40000"))
-        / (stock_anterior + Decimal("2"))
-    ).quantize(Decimal("0.01"))
+    costo_reposicion = Decimal("20000")
     esperado_minorista = (
-        (costo_proyectado * Decimal("2") / Decimal("100"))
+        (costo_reposicion * Decimal("2") / Decimal("100"))
         .to_integral_value(rounding=ROUND_CEILING)
         * Decimal("100")
     )
     esperado_mayorista = (
-        (costo_proyectado * Decimal("1.5") / Decimal("100"))
+        (costo_reposicion * Decimal("1.5") / Decimal("100"))
         .to_integral_value(rounding=ROUND_CEILING)
         * Decimal("100")
     )

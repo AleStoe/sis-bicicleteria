@@ -42,6 +42,12 @@ class PagoReversionInput(BaseModel):
     id_usuario: int = Field(gt=0)
 
 
+class PagoCorreccionMedioInput(BaseModel):
+    medio_pago_nuevo: str
+    motivo: str = Field(min_length=3, max_length=500)
+    id_usuario: int = Field(gt=0)
+
+
 class PagoCreateOutput(BaseModel):
     ok: bool
     pago_id: int
@@ -61,6 +67,17 @@ class PagoReversionOutput(BaseModel):
     saldo_restante: Decimal
     reversion_id: int
     deuda_generada_id: int | None = None
+
+
+class PagoCorreccionMedioOutput(BaseModel):
+    ok: bool
+    pago_id: int
+    venta_id: int
+    medio_pago_anterior: str
+    medio_pago_nuevo: str
+    monto_caja: Decimal
+    movimiento_egreso_id: int
+    movimiento_ingreso_id: int
 
 
 class PagoResumenOutput(BaseModel):

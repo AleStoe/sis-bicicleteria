@@ -418,7 +418,8 @@ def get_venta_by_id(conn, venta_id: int):
                 v.total_final,
                 v.saldo_pendiente,
                 v.observaciones,
-                v.id_reserva_origen
+                v.id_reserva_origen,
+                v.id_orden_taller
             FROM ventas v
             INNER JOIN clientes c
                 ON c.id = v.id_cliente

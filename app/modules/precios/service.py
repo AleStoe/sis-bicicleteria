@@ -1,4 +1,5 @@
 from decimal import Decimal, ROUND_HALF_UP
+from datetime import datetime, timezone
 
 from fastapi import HTTPException
 
@@ -8,6 +9,7 @@ from app.modules.auditoria.service import registrar_evento
 from .repository import (
     get_variante_precio_by_id,
     get_variante_precio_for_update,
+    update_variante_costo_reposicion,
     update_variante_precios,
     insert_precio_movimiento,
     get_historial_precios_by_variante,
@@ -45,6 +47,15 @@ def _margen_sobre_costo(costo: Decimal, precio: Decimal) -> Decimal:
     return (
         (precio - costo) / costo * Decimal("100")
     ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def _costo_base_para_precio(variante: dict) -> tuple[Decimal, str]:
+    costo_reposicion = _dec(variante.get("costo_reposicion") or 0)
+    if costo_reposicion > 0:
+        return costo_reposicion, "costo_reposicion"
+
+    costo_promedio = _dec(variante.get("costo_promedio_vigente") or 0)
+    return costo_promedio, "costo_promedio_vigente"
 
 
 def obtener_precio_variante(id_variante: int):
@@ -86,7 +97,7 @@ def actualizar_precio_variante(id_variante: int, data):
 
             precio_minorista_anterior = _dec(variante["precio_minorista"])
             precio_mayorista_anterior = _dec(variante["precio_mayorista"])
-            costo_anterior = _dec(variante["costo_promedio_vigente"])
+            costo_anterior, _ = _costo_base_para_precio(variante)
 
             precio_minorista_nuevo = _dec(data.precio_minorista)
             precio_mayorista_nuevo = _dec(data.precio_mayorista)
@@ -137,6 +148,115 @@ def actualizar_precio_variante(id_variante: int, data):
             "precio_mayorista_nuevo": precio_mayorista_nuevo,
         }
 
+    finally:
+        conn.close()
+
+
+def actualizar_costo_reposicion_variante(id_variante: int, data):
+    conn = get_connection()
+
+    try:
+        with conn.transaction():
+            variante = get_variante_precio_for_update(conn, id_variante)
+            if variante is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No existe la variante {id_variante}",
+                )
+            if not variante["activo"]:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"La variante {id_variante} está inactiva",
+                )
+
+            proveedor_id = data.proveedor_id or variante.get("costo_reposicion_proveedor_id")
+            if proveedor_id is not None:
+                proveedor = get_proveedor_by_id(conn, proveedor_id)
+                if proveedor is None or not proveedor["activo"]:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="El proveedor del costo de reposición no existe o está inactivo",
+                    )
+
+            costo_anterior = (
+                _dec(variante["costo_reposicion"])
+                if variante.get("costo_reposicion") is not None
+                else None
+            )
+            costo_nuevo = _dec(data.costo_reposicion)
+            if costo_anterior == costo_nuevo:
+                raise HTTPException(
+                    status_code=400,
+                    detail="El costo de reposición informado no cambia el valor actual",
+                )
+
+            fecha_vigencia = data.fecha_vigencia or datetime.now(timezone.utc)
+            precio_minorista = _dec(variante["precio_minorista"])
+            precio_mayorista = _dec(variante["precio_mayorista"])
+
+            movimiento_id = insert_precio_movimiento(
+                conn,
+                {
+                    "id_variante": id_variante,
+                    "precio_minorista_anterior": precio_minorista,
+                    "precio_minorista_nuevo": precio_minorista,
+                    "precio_mayorista_anterior": precio_mayorista,
+                    "precio_mayorista_nuevo": precio_mayorista,
+                    "costo_anterior": costo_anterior,
+                    "costo_nuevo": costo_nuevo,
+                    "tipo_movimiento": "actualizacion_por_lista_proveedor",
+                    "motivo": data.motivo,
+                    "origen_tipo": "costo_reposicion_manual",
+                    "origen_id": proveedor_id,
+                    "id_usuario": data.id_usuario,
+                },
+            )
+
+            update_variante_costo_reposicion(
+                conn,
+                id_variante,
+                {
+                    "costo_reposicion": costo_nuevo,
+                    "moneda": data.moneda,
+                    "fecha_vigencia": fecha_vigencia,
+                    "proveedor_id": proveedor_id,
+                    "origen": "actualizacion_manual",
+                },
+            )
+
+            registrar_evento(
+                conn,
+                id_usuario=data.id_usuario,
+                id_sucursal=None,
+                entidad="variante",
+                entidad_id=id_variante,
+                accion="costo_reposicion_actualizado",
+                detalle=data.motivo,
+                metadata={
+                    "costo_reposicion_anterior": (
+                        str(costo_anterior) if costo_anterior is not None else None
+                    ),
+                    "costo_reposicion_nuevo": str(costo_nuevo),
+                    "costo_promedio_modificado": False,
+                    "moneda": data.moneda,
+                    "proveedor_id": proveedor_id,
+                    "movimiento_precio_id": movimiento_id,
+                },
+                origen_tipo="costo_reposicion_manual",
+                origen_id=proveedor_id,
+            )
+
+            return {
+                "ok": True,
+                "id_variante": id_variante,
+                "movimiento_id": movimiento_id,
+                "costo_reposicion_anterior": costo_anterior,
+                "costo_reposicion_nuevo": costo_nuevo,
+                "costo_promedio_vigente": variante.get("costo_promedio_vigente"),
+                "moneda": data.moneda,
+                "proveedor_id": proveedor_id,
+                "fecha_vigencia": fecha_vigencia,
+            }
     finally:
         conn.close()
 
@@ -380,7 +500,7 @@ def sugerir_precio_variante(id_variante: int, data):
                 ),
             )
 
-        costo_base = _dec(variante["costo_promedio_vigente"])
+        costo_base, costo_base_origen = _costo_base_para_precio(variante)
         calculo = _calcular_precio_desde_regla(costo_base, regla)
 
         precio_actual = (
@@ -393,6 +513,7 @@ def sugerir_precio_variante(id_variante: int, data):
             "id_variante": id_variante,
             "tipo_cliente": data.tipo_cliente,
             "costo_base": costo_base,
+            "costo_base_origen": costo_base_origen,
             "precio_actual": precio_actual,
             "precio_sugerido": calculo["precio_lista"],
             "margen_porcentaje": calculo["margen_porcentaje"],
@@ -447,7 +568,7 @@ def listar_precios_desfasados(
             if regla is None:
                 continue
 
-            costo_base = _dec(variante["costo_promedio_vigente"])
+            costo_base, costo_base_origen = _costo_base_para_precio(variante)
             calculo = _calcular_precio_desde_regla(costo_base, regla)
 
             precio_sugerido = calculo["precio_lista"]
@@ -477,6 +598,7 @@ def listar_precios_desfasados(
                     "nombre_variante": variante["nombre_variante"],
                     "tipo_cliente": tipo_cliente,
                     "costo_base": costo_base,
+                    "costo_base_origen": costo_base_origen,
                     "precio_actual": precio_actual,
                     "precio_sugerido": precio_sugerido,
                     "diferencia": diferencia,
@@ -547,7 +669,7 @@ def recalcular_precios_por_proveedor(data):
                 if regla is None:
                     continue
 
-                costo_base = _dec(variante["costo_promedio_vigente"])
+                costo_base, costo_base_origen = _costo_base_para_precio(variante)
                 calculo = _calcular_precio_desde_regla(costo_base, regla)
 
                 precio_sugerido = calculo["precio_lista"]
@@ -624,6 +746,7 @@ def recalcular_precios_por_proveedor(data):
                         "nombre_variante": variante["nombre_variante"],
                         "tipo_cliente": data.tipo_cliente,
                         "costo_base": costo_base,
+                        "costo_base_origen": costo_base_origen,
                         "precio_actual": precio_actual,
                         "precio_sugerido": precio_sugerido,
                         "diferencia": diferencia,

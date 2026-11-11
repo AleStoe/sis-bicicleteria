@@ -3,6 +3,7 @@ from io import BytesIO
 import re
 
 from PIL import Image
+from pypdf import PdfReader
 from app.modules.documentos.pdf import _detalle_pago_financiero
 from app.modules.documentos.pdf import _money
 from app.modules.documentos.pdf import generar_comprobante_x_pdf
@@ -252,6 +253,40 @@ def test_presupuesto_taller_oculta_codigo_fabrica_en_detalle():
         item["descripcion_snapshot"],
         item,
     ) == "PIÑON A ROSCA SHIMANO 7V"
+
+
+def test_presupuesto_taller_identifica_repuesto_sin_cargo_y_conserva_valor():
+    pdf = generar_presupuesto_taller_pdf(
+        {
+            "orden": {
+                "id": 902,
+                "estado": "presupuestada",
+                "cliente_nombre": "CLIENTE BONIFICADO",
+                "bicicleta_descripcion": "BICICLETA DE PRUEBA",
+                "problema_reportado": "Cambio de repuesto",
+            },
+            "items": [
+                {
+                    "cantidad": 1,
+                    "precio_unitario": "15000",
+                    "valor_cobertura_unitario": "15000",
+                    "motivo_cobertura": "Cortesía comercial",
+                    "observacion_cobertura": "Repuesto de cortesia",
+                    "subtotal": "0",
+                    "descripcion_snapshot": "CABLE DE FRENO",
+                    "imagen_principal": None,
+                }
+            ],
+            "notas": [],
+        }
+    )
+
+    texto = "\n".join(
+        pagina.extract_text() or ""
+        for pagina in PdfReader(BytesIO(pdf)).pages
+    )
+    assert "SIN CARGO" in texto
+    assert "Valor habitual $ 15.000" in texto
 
 
 def test_comprobante_x_no_trunca_items_largos_y_mueve_totales():

@@ -23,6 +23,7 @@ from .repository import (
     obtener_pagos_por_venta,
     sincronizar_venta_financiera_desde_pagos,
     update_pago_estado,
+    update_pago_medio,
     insert_pago_tarjeta_detalle,
 )
 
@@ -35,14 +36,19 @@ from app.shared.constants import (
     VENTA_ESTADO_ENTREGADA,
     VENTA_ESTADO_PAGADA_TOTAL,
     VENTA_ESTADO_PAGADA_PARCIAL,
+    PAGO_ESTADO_CONFIRMADO,
     PAGO_ESTADO_REVERTIDO,
     AUDITORIA_ENTIDAD_PAGO,
     AUDITORIA_ACCION_PAGO_REGISTRADO,
+    AUDITORIA_ACCION_PAGO_MEDIO_CORREGIDO,
     AUDITORIA_ACCION_PAGO_REVERTIDO,
     CAJA_MOVIMIENTO_INGRESO,
     CAJA_MOVIMIENTO_EGRESO,
     CAJA_ORIGEN_PAGO,
 )
+
+
+MEDIOS_CORREGIBLES_SIN_RECALCULO = {"efectivo", "transferencia"}
 
 
 def _obtener_caja_abierta_obligatoria(conn, id_sucursal: int):
@@ -730,6 +736,135 @@ def crear_pago(data):
 
             return registrar_pago(conn, payload)
 
+    finally:
+        conn.close()
+
+
+def corregir_medio_pago(pago_id: int, data):
+    conn = get_connection()
+
+    try:
+        with conn.transaction():
+            exigir_permiso_revertir_pago(conn, data.id_usuario)
+
+            pago = get_pago_by_id_for_update(conn, pago_id)
+            if pago is None:
+                raise HTTPException(status_code=404, detail=f"No existe el pago {pago_id}")
+            if pago["estado"] != PAGO_ESTADO_CONFIRMADO:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Solo se puede corregir un pago confirmado",
+                )
+            if pago["origen_tipo"] != ORIGEN_VENTA:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Por ahora solo se puede corregir el medio de pagos de venta",
+                )
+
+            medio_anterior = pago["medio_pago"]
+            medio_nuevo = data.medio_pago_nuevo
+            if medio_anterior not in MEDIOS_CORREGIBLES_SIN_RECALCULO:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Este pago requiere recalcular condiciones financieras. "
+                        "La corrección directa solo está disponible para Efectivo y Transferencia"
+                    ),
+                )
+            if medio_nuevo not in MEDIOS_CORREGIBLES_SIN_RECALCULO:
+                raise HTTPException(
+                    status_code=400,
+                    detail="El nuevo medio debe ser Efectivo o Transferencia",
+                )
+            if medio_nuevo == medio_anterior:
+                raise HTTPException(
+                    status_code=400,
+                    detail="El pago ya tiene seleccionado ese medio",
+                )
+
+            venta = get_venta_for_update(conn, pago["origen_id"])
+            if venta is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No existe la venta {pago['origen_id']}",
+                )
+
+            caja = _obtener_caja_abierta_obligatoria(conn, venta["id_sucursal"])
+            tramo = {
+                "monto_total_cobrado": pago["monto_total_cobrado"],
+                "monto_neto_liquidado": pago.get("monto_neto_liquidado"),
+            }
+            monto_caja = _calcular_monto_caja_para_pago(medio_anterior, tramo)
+
+            movimiento_egreso_id = insert_caja_movimiento(
+                conn,
+                id_caja=caja["id"],
+                tipo_movimiento=CAJA_MOVIMIENTO_EGRESO,
+                submedio=medio_anterior,
+                monto=monto_caja,
+                origen_tipo="pago_correccion_medio",
+                origen_id=pago["id"],
+                nota=(
+                    f"Corrección pago #{pago['id']} venta #{venta['id']}: "
+                    f"anula medio {medio_anterior}"
+                ),
+                id_usuario=data.id_usuario,
+            )
+            movimiento_ingreso_id = insert_caja_movimiento(
+                conn,
+                id_caja=caja["id"],
+                tipo_movimiento=CAJA_MOVIMIENTO_INGRESO,
+                submedio=medio_nuevo,
+                monto=monto_caja,
+                origen_tipo="pago_correccion_medio",
+                origen_id=pago["id"],
+                nota=(
+                    f"Corrección pago #{pago['id']} venta #{venta['id']}: "
+                    f"aplica medio {medio_nuevo}"
+                ),
+                id_usuario=data.id_usuario,
+            )
+
+            update_pago_medio(conn, pago["id"], medio_nuevo)
+
+            auditoria_service.registrar_evento(
+                conn,
+                id_usuario=data.id_usuario,
+                id_sucursal=venta["id_sucursal"],
+                entidad=AUDITORIA_ENTIDAD_PAGO,
+                entidad_id=pago["id"],
+                accion=AUDITORIA_ACCION_PAGO_MEDIO_CORREGIDO,
+                detalle=(
+                    f"Medio de pago corregido. "
+                    f"anterior={medio_anterior}, nuevo={medio_nuevo}, "
+                    f"monto_caja={monto_caja}, motivo={data.motivo}"
+                ),
+                metadata={
+                    "tipo": "pago_medio_corregido",
+                    "pago_id": pago["id"],
+                    "venta_id": venta["id"],
+                    "cliente_id": venta["id_cliente"],
+                    "medio_pago_anterior": medio_anterior,
+                    "medio_pago_nuevo": medio_nuevo,
+                    "monto_caja": str(monto_caja),
+                    "movimiento_egreso_id": movimiento_egreso_id,
+                    "movimiento_ingreso_id": movimiento_ingreso_id,
+                    "motivo": data.motivo,
+                },
+                origen_tipo="venta",
+                origen_id=venta["id"],
+            )
+
+        return {
+            "ok": True,
+            "pago_id": pago["id"],
+            "venta_id": venta["id"],
+            "medio_pago_anterior": medio_anterior,
+            "medio_pago_nuevo": medio_nuevo,
+            "monto_caja": monto_caja,
+            "movimiento_egreso_id": movimiento_egreso_id,
+            "movimiento_ingreso_id": movimiento_ingreso_id,
+        }
     finally:
         conn.close()
 

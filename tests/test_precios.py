@@ -93,6 +93,67 @@ def test_obtiene_precio_de_variante(client, seed_venta_basica):
     assert data["precio_minorista"] is not None
     assert data["precio_mayorista"] is not None
     assert data["costo_promedio_vigente"] is not None
+    assert "costo_reposicion" in data
+
+
+def test_actualiza_costo_reposicion_sin_modificar_promedio_ni_stock(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    variante_id = seed_venta_basica["variante_id"]
+    usuario_id = seed_venta_basica["usuario_id"]
+    proveedor_id = _preparar_variante_para_precios(
+        db_conn,
+        variante_id=variante_id,
+        costo="10000",
+    )
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "SELECT * FROM stock_sucursal WHERE id = %s",
+            (seed_venta_basica["stock_id"],),
+        )
+        stock_antes = dict(cur.fetchone())
+
+    response = client.post(
+        f"/precios/variantes/{variante_id}/costo-reposicion",
+        json={
+            "costo_reposicion": "12500",
+            "moneda": "ARS",
+            "proveedor_id": proveedor_id,
+            "motivo": "Nueva lista del proveedor",
+            "id_usuario": usuario_id,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert _dec(data["costo_reposicion_nuevo"]) == Decimal("12500")
+    assert _dec(data["costo_promedio_vigente"]) == Decimal("10000")
+
+    variante = _get_variante(db_conn, variante_id)
+    assert _dec(variante["costo_promedio_vigente"]) == Decimal("10000")
+    assert _dec(variante["costo_reposicion"]) == Decimal("12500")
+    assert variante["costo_reposicion_moneda"] == "ARS"
+    assert variante["costo_reposicion_proveedor_id"] == proveedor_id
+    assert variante["costo_reposicion_origen"] == "actualizacion_manual"
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "SELECT * FROM stock_sucursal WHERE id = %s",
+            (seed_venta_basica["stock_id"],),
+        )
+        assert dict(cur.fetchone()) == stock_antes
+
+    movimientos = _get_precios_movimientos(db_conn, variante_id)
+    assert len(movimientos) == 1
+    assert movimientos[0]["tipo_movimiento"] == "actualizacion_por_lista_proveedor"
+    assert _dec(movimientos[0]["costo_nuevo"]) == Decimal("12500")
+
+    eventos = get_auditoria_by_entidad(db_conn, "variante", variante_id)
+    evento = next(item for item in eventos if item["accion"] == "costo_reposicion_actualizado")
+    assert evento["metadata"]["costo_promedio_modificado"] is False
 
 
 def test_correccion_inicial_actualiza_maestros_sin_tocar_stock(
@@ -407,6 +468,46 @@ def test_sugiere_precio_lista_con_margen_descuento_y_redondeo(
     assert _dec(data["margen_porcentaje"]) == Decimal("130")
     assert _dec(data["descuento_base_porcentaje"]) == Decimal("10")
     assert _dec(data["margen_minimo_porcentaje"]) == Decimal("100")
+    assert data["costo_base_origen"] == "costo_promedio_vigente"
+
+
+def test_sugerencia_prioriza_costo_reposicion_sobre_promedio(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    variante_id = seed_venta_basica["variante_id"]
+    proveedor_id = _preparar_variante_para_precios(
+        db_conn,
+        variante_id=variante_id,
+        costo="10000",
+    )
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE variantes
+            SET costo_reposicion = 12000,
+                costo_reposicion_moneda = 'ARS',
+                costo_reposicion_fecha = NOW(),
+                costo_reposicion_proveedor_id = %s,
+                costo_reposicion_origen = 'lista_proveedor'
+            WHERE id = %s
+            """,
+            (proveedor_id, variante_id),
+        )
+    db_conn.commit()
+
+    _crear_regla_minorista_130(client, "Regla sobre costo reposicion")
+    response = client.post(
+        f"/precios/variantes/{variante_id}/sugerir",
+        json={"tipo_cliente": "minorista"},
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert _dec(data["costo_base"]) == Decimal("12000")
+    assert data["costo_base_origen"] == "costo_reposicion"
+    assert _dec(data["precio_sugerido"]) == Decimal("31000")
 
 
 def test_lista_precios_desfasados_usando_precio_lista(

@@ -98,6 +98,9 @@ def _stock_base_select():
             v.reponer_stock,
             {TIPO_OPERATIVO_SQL} AS tipo_operativo,
             v.costo_promedio_vigente,
+            v.costo_reposicion,
+            v.costo_reposicion_fecha,
+            v.costo_reposicion_origen,
             (COALESCE(ss.stock_fisico, 0) * v.costo_promedio_vigente)::numeric(14,2) AS capital_inmovilizado,
             COALESCE(vs.unidades_vendidas_total, 0)::numeric(14,3) AS unidades_vendidas_total,
             COALESCE(vs.ventas_distintas_total, 0)::int AS ventas_distintas_total,
@@ -1674,10 +1677,20 @@ def crear_ingreso_stock(conn, data: dict):
             """
             UPDATE variantes
             SET costo_promedio_vigente = %s,
+                costo_reposicion = %s,
+                costo_reposicion_moneda = 'ARS',
+                costo_reposicion_fecha = NOW(),
+                costo_reposicion_proveedor_id = %s,
+                costo_reposicion_origen = 'ingreso_stock',
                 updated_at = NOW()
             WHERE id = %s
             """,
-            (nuevo_costo_promedio, data["id_variante"]),
+            (
+                nuevo_costo_promedio,
+                costo_unitario_calculado,
+                data.get("id_proveedor"),
+                data["id_variante"],
+            ),
         )
 
     # 5. registrar historial de costo en precios_movimientos

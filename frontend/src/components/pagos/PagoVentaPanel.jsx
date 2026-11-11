@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  corregirMedioPago,
   crearPago,
   listarPagosDeVenta,
   revertirPago,
@@ -13,7 +14,10 @@ import PagoVentaResumen from "./PagoVentaResumen";
 import PagoVentaFormulario from "./PagoVentaFormulario";
 import PagoVentaPreview from "./PagoVentaPreview";
 import PagoVentaTabla from "./PagoVentaTabla";
-import { puedeRevertirPago } from "../../rules/ventaDetalleActionRules";
+import {
+  puedeCorregirMedioPago,
+  puedeRevertirPago,
+} from "../../rules/ventaDetalleActionRules";
 import { ConfirmModal } from "../ui/ConfirmModal";
 
 export default function PagoVentaPanel({
@@ -555,6 +559,38 @@ export default function PagoVentaPanel({
     }
   }
 
+  async function handleCorregirMedioPago(pago) {
+    if (!puedeCorregirMedioPago(pago, usuarioActual)) {
+      setError("Este pago no admite corrección directa de medio.");
+      return;
+    }
+
+    const medioNuevo = pago.medio_pago === "efectivo" ? "transferencia" : "efectivo";
+    const motivo = window.prompt(
+      `Pago #${pago.id}: ${formatMedioPago(pago.medio_pago)} → ${formatMedioPago(medioNuevo)}.\n\nMotivo de la corrección:`
+    );
+    if (!motivo || motivo.trim().length < 3) return;
+
+    try {
+      setGuardando(true);
+      setError("");
+      setMensaje("");
+      await corregirMedioPago(pago.id, {
+        medio_pago_nuevo: medioNuevo,
+        motivo: motivo.trim(),
+        id_usuario: usuarioId,
+      });
+      await refrescarTodo();
+      setMensaje(
+        `Pago #${pago.id} corregido: ${formatMedioPago(pago.medio_pago)} → ${formatMedioPago(medioNuevo)}`
+      );
+    } catch (err) {
+      setError(err.message || "No se pudo corregir el medio de pago");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
   return (
     <section ref={panelRef} style={styles.card}>
       <ConfirmModal
@@ -648,7 +684,9 @@ export default function PagoVentaPanel({
         pagos={pagosConfirmados}
         guardando={guardando}
         onRevertir={handleRevertirPago}
+        onCorregirMedio={handleCorregirMedioPago}
         canRevertirPago={(pago) => puedeRevertirPago(pago, usuarioActual)}
+        canCorregirMedioPago={(pago) => puedeCorregirMedioPago(pago, usuarioActual)}
         vacio="No hay pagos confirmados para esta venta."
       />
 

@@ -16,9 +16,16 @@ def get_variante_precio_by_id(conn, id_variante: int):
                 v.precio_minorista,
                 v.precio_mayorista,
                 v.costo_promedio_vigente,
+                v.costo_reposicion,
+                v.costo_reposicion_moneda,
+                v.costo_reposicion_fecha,
+                v.costo_reposicion_proveedor_id,
+                crp.nombre AS costo_reposicion_proveedor_nombre,
+                v.costo_reposicion_origen,
                 v.activo
             FROM variantes v
             INNER JOIN productos p ON p.id = v.id_producto
+            LEFT JOIN proveedores crp ON crp.id = v.costo_reposicion_proveedor_id
             WHERE v.id = %s
             """,
             (id_variante,),
@@ -35,12 +42,44 @@ def get_variante_precio_for_update(conn, id_variante: int):
                 precio_minorista,
                 precio_mayorista,
                 costo_promedio_vigente,
+                costo_reposicion,
+                costo_reposicion_moneda,
+                costo_reposicion_fecha,
+                costo_reposicion_proveedor_id,
+                costo_reposicion_origen,
                 activo
             FROM variantes
             WHERE id = %s
             FOR UPDATE
             """,
             (id_variante,),
+        )
+        return cur.fetchone()
+
+
+def update_variante_costo_reposicion(conn, id_variante: int, data: dict):
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            UPDATE variantes
+            SET
+                costo_reposicion = %s,
+                costo_reposicion_moneda = %s,
+                costo_reposicion_fecha = %s,
+                costo_reposicion_proveedor_id = %s,
+                costo_reposicion_origen = %s,
+                updated_at = NOW()
+            WHERE id = %s
+            RETURNING *
+            """,
+            (
+                data["costo_reposicion"],
+                data.get("moneda") or "ARS",
+                data["fecha_vigencia"],
+                data.get("proveedor_id"),
+                data.get("origen") or "actualizacion_manual",
+                id_variante,
+            ),
         )
         return cur.fetchone()
 
@@ -79,6 +118,11 @@ def update_variante_correccion_inicial(conn, id_variante: int, data: dict):
             """
             UPDATE variantes
             SET costo_promedio_vigente = %s,
+                costo_reposicion = %s,
+                costo_reposicion_moneda = 'ARS',
+                costo_reposicion_fecha = NOW(),
+                costo_reposicion_proveedor_id = %s,
+                costo_reposicion_origen = 'correccion_carga_inicial',
                 precio_minorista = %s,
                 precio_mayorista = %s,
                 alicuota_iva = %s,
@@ -89,6 +133,8 @@ def update_variante_correccion_inicial(conn, id_variante: int, data: dict):
             """,
             (
                 data["costo_promedio_vigente"],
+                data["costo_promedio_vigente"],
+                data.get("proveedor_preferido_id"),
                 data["precio_minorista"],
                 data["precio_mayorista"],
                 data["alicuota_iva"],
@@ -400,6 +446,11 @@ def get_variante_contexto_precio(conn, id_variante: int):
                 v.precio_minorista,
                 v.precio_mayorista,
                 v.costo_promedio_vigente,
+                v.costo_reposicion,
+                v.costo_reposicion_moneda,
+                v.costo_reposicion_fecha,
+                v.costo_reposicion_proveedor_id,
+                v.costo_reposicion_origen,
                 v.activo,
 
                 p.nombre AS producto_nombre,
@@ -502,11 +553,17 @@ def get_variantes_contexto_precio(conn, filtros: dict):
                 v.precio_minorista,
                 v.precio_mayorista,
                 v.costo_promedio_vigente,
+                v.costo_reposicion,
+                v.costo_reposicion_moneda,
+                v.costo_reposicion_fecha,
+                v.costo_reposicion_proveedor_id,
+                v.costo_reposicion_origen,
                 v.proveedor_preferido_id,
 
                 p.id_categoria,
                 p.id_marca,
-                p.id_familia_precio
+                p.id_familia_precio,
+                p.rubro
 
             FROM variantes v
             INNER JOIN productos p
@@ -533,6 +590,11 @@ def get_variantes_contexto_precio_by_proveedor(conn, id_proveedor: int):
             v.precio_minorista,
             v.precio_mayorista,
             v.costo_promedio_vigente,
+            v.costo_reposicion,
+            v.costo_reposicion_moneda,
+            v.costo_reposicion_fecha,
+            v.costo_reposicion_proveedor_id,
+            v.costo_reposicion_origen,
             v.permite_precio_libre,
             v.proveedor_preferido_id,
             v.activo,
@@ -636,6 +698,7 @@ def get_variantes_ajuste_rapido_proveedor(conn, filtros: dict):
                 v.precio_minorista,
                 v.precio_mayorista,
                 v.costo_promedio_vigente,
+                v.costo_reposicion,
                 v.activo AS variante_activa,
                 p.activo AS producto_activo,
                 COALESCE(ss.stock_fisico, 0) AS stock_fisico,

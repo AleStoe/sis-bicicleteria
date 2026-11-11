@@ -166,6 +166,11 @@ def _resumen_por_rubro(detalles):
     return salida
 
 
+def resumir_detalles_por_rubro(detalles):
+    """Fuente compartida para agrupar el detalle comercial oficial."""
+    return _resumen_por_rubro(detalles)
+
+
 def _conciliar_resumen_rubros(resumen, ventas_general, costos_general):
     ventas_rubros = sum((_decimal(item["venta_comercial"]) for item in resumen), Decimal("0"))
     costos_rubros = sum((_decimal(item["cmv_comercial"]) for item in resumen), Decimal("0"))
@@ -271,6 +276,11 @@ def _validar_resumen(data, detalles):
         "mercaderia_sin_costo": mercaderia_sin_costo,
         "notas": notas,
     }
+
+
+def validar_detalles_rentabilidad(data, detalles):
+    """Expone la conciliacion oficial sin duplicar reglas en otros modulos."""
+    return _validar_resumen(data, detalles)
 
 
 def _metrica_comparada(clave, nombre, actual, anterior, *, margen=False):

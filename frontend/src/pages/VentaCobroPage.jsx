@@ -1,8 +1,14 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import PagoVentaPanel from "../components/pagos/PagoVentaPanel";
-import { obtenerVenta } from "../services/ventasService";
+import { entregarVenta, obtenerVenta } from "../services/ventasService";
+import { finalizarRetiroOrdenTaller } from "../services/tallerService";
+import { useSession } from "../context/SessionContext";
+import {
+  buildEntregaVentaPayload,
+  esBicicletaSerializableEnCaja,
+} from "../builders/ventasPayloadBuilder";
 import { formatDateTime } from "../utils/formatters";
 import {
   Button,
@@ -14,10 +20,14 @@ import { puedeCobrarVenta } from "../rules/ventaDetalleActionRules";
 
 export default function VentaCobroPage() {
   const { ventaId } = useParams();
+  const navigate = useNavigate();
+  const { usuarioId } = useSession();
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [mensaje, setMensaje] = useState("");
+  const [procesandoEntrega, setProcesandoEntrega] = useState(false);
 
   useEffect(() => {
     cargarTodo();
@@ -37,6 +47,71 @@ export default function VentaCobroPage() {
     }
   }
 
+  async function finalizarRetiroTaller(destino) {
+    const ordenId = data?.venta?.id_orden_taller;
+    if (!ordenId || !usuarioId) return;
+
+    if (
+      destino === "retirada" &&
+      !window.confirm("¿El cliente se lleva la bicicleta ahora? Se entregará la venta y se cerrará la OT.")
+    ) {
+      return;
+    }
+
+    try {
+      setProcesandoEntrega(true);
+      setError("");
+      const resultado = await finalizarRetiroOrdenTaller(ordenId, {
+        destino,
+        id_usuario: usuarioId,
+      });
+      navigate(`/taller/${ordenId}`, {
+        state: {
+          mensaje:
+            resultado.estado_orden === "retirada"
+              ? "Cobro, entrega y retiro cerrados correctamente."
+              : "Cobro registrado. Bicicleta lista para retirar.",
+        },
+      });
+    } catch (err) {
+      setError(err?.detail || err?.message || "No se pudo finalizar el retiro");
+    } finally {
+      setProcesandoEntrega(false);
+    }
+  }
+
+  async function entregarVentaComun() {
+    const ventaActual = data?.venta;
+    const items = data?.items || [];
+    if (!ventaActual || !usuarioId) return;
+
+    const entregaEnCaja = items.some(esBicicletaSerializableEnCaja);
+    const detalle = entregaEnCaja
+      ? "La venta incluye una bicicleta sin número de cuadro asignado y se entregará en caja."
+      : "Se marcará la mercadería como entregada.";
+    if (!window.confirm(`${detalle}\n\n¿Confirmás la entrega ahora?`)) return;
+
+    try {
+      setProcesandoEntrega(true);
+      setError("");
+      setMensaje("");
+      await entregarVenta(
+        ventaActual.id,
+        buildEntregaVentaPayload({
+          usuarioId,
+          items,
+          condicionEntregaBicicleta: entregaEnCaja ? "en_caja" : "armada",
+        }),
+      );
+      await cargarTodo();
+      setMensaje("Venta cobrada y entregada correctamente.");
+    } catch (err) {
+      setError(err?.detail || err?.message || "No se pudo entregar la venta");
+    } finally {
+      setProcesandoEntrega(false);
+    }
+  }
+
   if (loading) {
     return <EmptyState title="Cargando cobro..." description="Actualizando pagos y saldo de la venta." />;
   }
@@ -52,6 +127,8 @@ export default function VentaCobroPage() {
 
   const cobroDirectoBloqueadoPorDeuda = Boolean(tieneDeuda && deuda);
   const puedeCobrarDirecto = puedeCobrarVenta(venta, situacion_financiera);
+  const ventaSaldada = Number(venta.saldo_pendiente || 0) <= 0;
+  const esVentaTaller = Boolean(venta.id_orden_taller);
 
   return (
     <div style={pageStyle}>
@@ -74,6 +151,7 @@ export default function VentaCobroPage() {
       />
 
       {error && <div style={alertStyle}>Error: {error}</div>}
+      {mensaje && <div style={successAlertStyle}>{mensaje}</div>}
 
       {cobroDirectoBloqueadoPorDeuda ? (
         <Card
@@ -108,6 +186,49 @@ export default function VentaCobroPage() {
           autoFocusPago
           onPagoCambiado={cargarTodo}
         />
+      ) : ventaSaldada && venta.estado !== "entregada" ? (
+        <Card
+          title="Cobro completado"
+          subtitle={
+            esVentaTaller
+              ? `Venta de la OT #${venta.id_orden_taller}. Elegí qué sucede con la bicicleta.`
+              : "La venta quedó saldada. Podés completar la entrega sin volver al detalle."
+          }
+        >
+          <div style={completionBoxStyle}>
+            <div>
+              <strong>Saldo pendiente: $0</strong>
+              <div style={mutedStyle}>
+                {esVentaTaller
+                  ? "Venta y Taller se actualizarán juntos."
+                  : "El cobro ya está registrado; sólo falta confirmar la entrega."}
+              </div>
+            </div>
+            <div style={completionActionsStyle}>
+              {esVentaTaller ? (
+                <>
+                  <Button
+                    variant="outline"
+                    disabled={procesandoEntrega}
+                    onClick={() => finalizarRetiroTaller("lista_para_retirar")}
+                  >
+                    Dejar lista para retirar
+                  </Button>
+                  <Button
+                    disabled={procesandoEntrega}
+                    onClick={() => finalizarRetiroTaller("retirada")}
+                  >
+                    Entregar y cerrar retiro
+                  </Button>
+                </>
+              ) : (
+                <Button disabled={procesandoEntrega} onClick={entregarVentaComun}>
+                  Entregar ahora
+                </Button>
+              )}
+            </div>
+          </div>
+        </Card>
       ) : (
         <Card
           title="Sin cobro pendiente"
@@ -133,6 +254,32 @@ const alertStyle = {
   padding: "12px 14px",
   borderRadius: "12px",
   border: "1px solid #f4c7c3",
+};
+
+const successAlertStyle = {
+  background: "#ecfdf3",
+  color: "#067647",
+  padding: "12px 14px",
+  borderRadius: "12px",
+  border: "1px solid #abefc6",
+};
+
+const completionBoxStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "16px",
+  alignItems: "center",
+  flexWrap: "wrap",
+  background: "#f0fdf4",
+  border: "1px solid #bbf7d0",
+  borderRadius: "12px",
+  padding: "16px",
+};
+
+const completionActionsStyle = {
+  display: "flex",
+  gap: "10px",
+  flexWrap: "wrap",
 };
 
 const blockedBoxStyle = {

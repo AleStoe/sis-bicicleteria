@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ConfirmModal } from "../components/ui/ConfirmModal";
 import {
   Badge,
@@ -26,8 +26,12 @@ import {
   obtenerTallerCliente,
 } from "../services/clientesService";
 import { normalizeTextUpper } from "../utils/textNormalization";
+import ClienteAnalisisPanel from "../components/clientes/ClienteAnalisisPanel";
+import ClienteSeguimientosPanel from "../components/clientes/ClienteSeguimientosPanel";
 
 const TAB_RESUMEN = "resumen";
+const TAB_ANALISIS = "analisis";
+const TAB_SEGUIMIENTOS = "seguimientos";
 const TAB_HISTORIAL = "historial";
 const TAB_TALLER = "taller";
 const TAB_VENTAS = "ventas";
@@ -40,6 +44,8 @@ const TAB_DATOS = "datos";
 
 const TABS = [
   { id: TAB_RESUMEN, label: "Resumen" },
+  { id: TAB_ANALISIS, label: "Análisis" },
+  { id: TAB_SEGUIMIENTOS, label: "Seguimientos" },
   { id: TAB_HISTORIAL, label: "Historial" },
   { id: TAB_TALLER, label: "Taller" },
   { id: TAB_VENTAS, label: "Ventas" },
@@ -89,7 +95,16 @@ export default function ClienteDetallePage() {
   const [reservas, setReservas] = useState([]);
   const [pagos, setPagos] = useState([]);
   const [ordenesTaller, setOrdenesTaller] = useState([]);
-  const [tabActiva, setTabActiva] = useState(TAB_RESUMEN);
+  const [seguimientoEventos, setSeguimientoEventos] = useState([]);
+  const [searchParams] = useSearchParams();
+  const tabSolicitada = searchParams.get("tab");
+  const [tabActiva, setTabActiva] = useState(
+    TABS.some((tab) => tab.id === tabSolicitada) ? tabSolicitada : TAB_RESUMEN,
+  );
+
+  useEffect(() => {
+    if (TABS.some((tab) => tab.id === tabSolicitada)) setTabActiva(tabSolicitada);
+  }, [tabSolicitada]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [confirmConfig, setConfirmConfig] = useState(null);
@@ -142,6 +157,7 @@ export default function ClienteDetallePage() {
       setDeudas(Array.isArray(historialData?.deudas) ? historialData.deudas : []);
       setReservas(Array.isArray(historialData?.reservas) ? historialData.reservas : []);
       setPagos(Array.isArray(historialData?.pagos) ? historialData.pagos : []);
+      setSeguimientoEventos(Array.isArray(historialData?.seguimiento_eventos) ? historialData.seguimiento_eventos : []);
       setOrdenesTaller(Array.isArray(tallerData) ? tallerData : []);
     } catch (err) {
       setError(err.message || "No se pudo cargar el cliente");
@@ -236,8 +252,8 @@ export default function ClienteDetallePage() {
   const resumen = data?.resumen_ventas || {};
   const ventas = data?.ventas_recientes || [];
   const historialCliente = useMemo(
-    () => buildHistorialCliente({ ventas, deudas, creditos, reservas, pagos, bicicletas }),
-    [ventas, deudas, creditos, reservas, pagos, bicicletas]
+    () => buildHistorialCliente({ ventas, deudas, creditos, reservas, pagos, bicicletas, seguimientoEventos }),
+    [ventas, deudas, creditos, reservas, pagos, bicicletas, seguimientoEventos]
   );
 
   const resumenFinanciero = useMemo(() => {
@@ -427,6 +443,14 @@ export default function ClienteDetallePage() {
         </TwoColumnGrid>
       )}
 
+      {tabActiva === TAB_ANALISIS && (
+        <ClienteAnalisisPanel clienteId={clienteId} />
+      )}
+
+      {tabActiva === TAB_SEGUIMIENTOS && (
+        <ClienteSeguimientosPanel clienteId={clienteId} />
+      )}
+
       {tabActiva === TAB_HISTORIAL && (
         <Card title="Historial del cliente" subtitle="Movimientos recientes con el contexto necesario para entenderlos sin abrir cada detalle.">
           <HistorialCliente items={historialCliente} />
@@ -587,7 +611,7 @@ function getAccionRecomendadaCliente({ cliente, tieneDeuda, deudasAbiertas, bici
   };
 }
 
-function buildHistorialCliente({ ventas, deudas, creditos, reservas, pagos, bicicletas }) {
+function buildHistorialCliente({ ventas, deudas, creditos, reservas, pagos, bicicletas, seguimientoEventos = [] }) {
   const items = [
     ...ventas.map((venta) => ({
       tipo: "Venta",
@@ -669,12 +693,48 @@ function buildHistorialCliente({ ventas, deudas, creditos, reservas, pagos, bici
       estado: bici.plan_postventa,
       to: `/clientes/${bici.id_cliente}/bicicletas/${bici.id}`,
     })),
+    ...seguimientoEventos.map((evento) => ({
+      tipo: "Seguimiento CRM",
+      fecha: evento.fecha,
+      titulo: renderEventoSeguimiento(evento.tipo_evento),
+      lineas: [
+        `${renderTipoSeguimiento(evento.seguimiento_tipo)}: ${evento.seguimiento_motivo}`,
+        evento.detalle,
+        evento.fecha_objetivo_anterior && evento.fecha_objetivo_nueva
+          ? `Fecha: ${formatDate(evento.fecha_objetivo_anterior)} → ${formatDate(evento.fecha_objetivo_nueva)}`
+          : null,
+        `Registrado por ${evento.usuario_nombre}`,
+      ],
+      estado: evento.estado_nuevo || evento.seguimiento_estado,
+    })),
   ];
 
   return items
     .filter((item) => item.fecha)
     .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
     .slice(0, 30);
+}
+
+function renderEventoSeguimiento(tipo) {
+  return {
+    creado: "Seguimiento creado",
+    reprogramado: "Seguimiento reprogramado",
+    realizado: "Seguimiento realizado",
+    cancelado: "Seguimiento cancelado",
+  }[tipo] || "Seguimiento actualizado";
+}
+
+function renderTipoSeguimiento(tipo) {
+  return {
+    llamada: "Llamada",
+    whatsapp: "WhatsApp",
+    service: "Service",
+    presupuesto: "Presupuesto",
+    reserva: "Reserva",
+    deuda: "Deuda",
+    postventa: "Postventa",
+    otro: "Otro",
+  }[tipo] || tipo;
 }
 
 function HistorialCliente({ items }) {

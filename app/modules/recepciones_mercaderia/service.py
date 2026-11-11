@@ -13,6 +13,7 @@ from app.db.connection import get_connection
 from app.modules.auditoria import service as auditoria_service
 from app.modules.catalogo import repository as catalogo_repository
 from app.modules.precios import repository as precios_repository
+from app.modules.precios.motor import calcular_vista_previa_precios
 from app.modules.precios.service import _calcular_precio_desde_regla
 from app.modules.stock.service import registrar_ingreso_stock
 
@@ -1621,18 +1622,6 @@ def _redondear_arriba(valor: Decimal, base: Decimal) -> Decimal:
     return _dinero(unidades * base)
 
 
-def _costo_proyectado(contexto: dict) -> Decimal:
-    costo_ingreso = _dinero(contexto.get("costo_unitario_calculado") or 0)
-    if contexto.get("id_variante") is None:
-        return costo_ingreso
-    stock = Decimal(contexto.get("stock_fisico_actual") or 0)
-    cantidad = Decimal(contexto.get("cantidad") or 0)
-    costo_anterior = Decimal(contexto.get("costo_anterior") or 0)
-    if stock <= 0:
-        return costo_ingreso
-    return _dinero(((stock * costo_anterior) + (cantidad * costo_ingreso)) / (stock + cantidad))
-
-
 def _regla_para_contexto(conn, contexto: dict, tipo_cliente: str):
     return precios_repository.buscar_regla_precio_aplicable(
         conn,
@@ -1688,7 +1677,7 @@ def sugerir_precios_item(recepcion_id: int, item_id: int, data):
         contexto["id_categoria_precio"] = payload.get("id_categoria") or contexto.get("id_categoria_precio")
         contexto["id_marca_precio"] = payload.get("id_marca")
 
-        costo = _costo_proyectado(contexto)
+        costo = _dinero(contexto.get("costo_unitario_calculado") or 0)
         redondeo = payload["redondeo_base"]
         minorista, regla_minorista = _precio_segun_estrategia(
             conn, contexto, "minorista", "reglas", costo, redondeo
@@ -1719,47 +1708,63 @@ def sugerir_precios_item(recepcion_id: int, item_id: int, data):
 
 def _construir_preview_item(conn, contexto: dict, *, estrategia: str, alerta_pct: Decimal, redondeo: Decimal, usuario_id: int | None):
     costo_anterior = _dinero(contexto.get("costo_anterior") or 0)
-    costo_nuevo = _costo_proyectado(contexto)
+    costo_nuevo = _dinero(contexto.get("costo_unitario_calculado") or 0)
     minorista_anterior = _dinero(contexto.get("precio_minorista_actual") or contexto.get("precio_minorista_propuesto") or 0)
     mayorista_anterior = _dinero(contexto.get("precio_mayorista_actual") or contexto.get("precio_mayorista_propuesto") or 0)
-    minorista, regla_minorista = _precio_segun_estrategia(conn, contexto, "minorista", estrategia, costo_nuevo, redondeo)
-    mayorista, regla_mayorista = _precio_segun_estrategia(conn, contexto, "mayorista", estrategia, costo_nuevo, redondeo)
-
-    faltantes = []
-    if minorista <= 0:
-        faltantes.append("minorista")
-    if mayorista <= 0:
-        faltantes.append("mayorista")
-    if faltantes:
+    strategy = {
+        "reglas": "usar_regla",
+        "mantener_margen": "conservar_margen",
+        "mantener_actuales": "mantener_precio",
+    }[estrategia]
+    preview = calcular_vista_previa_precios(
+        conn,
+        context={
+            "id_categoria": contexto.get("id_categoria_precio"),
+            "id_marca": contexto.get("id_marca_precio"),
+            "id_familia_precio": contexto.get("id_familia_precio"),
+            "rubro": contexto.get("rubro_precio"),
+        },
+        provider_id=contexto["id_proveedor"],
+        old_cost=costo_anterior,
+        new_cost=costo_nuevo,
+        current_minor=minorista_anterior,
+        current_wholesale=mayorista_anterior,
+        strategy_minor=strategy,
+        strategy_wholesale=strategy,
+        discount_minor=contexto.get("descuento_minorista_pct", 10),
+        discount_wholesale=contexto.get("descuento_mayorista_pct", 0),
+        rounding_minor=contexto.get("redondeo_minorista") or redondeo,
+        rounding_wholesale=contexto.get("redondeo_mayorista") or redondeo,
+        alert_pct=alerta_pct,
+        offer=contexto.get("oferta_snapshot"),
+        free_price=bool(contexto.get("permite_precio_libre")),
+        confirm_free_price=bool(contexto.get("confirmar_precio_libre")),
+    )
+    bloqueos = [alerta["mensaje"] for alerta in preview["alertas"] if alerta["tipo"] == "bloqueo"]
+    if bloqueos:
         raise HTTPException(
             status_code=422,
-            detail=f"La linea {contexto['numero_linea']} no tiene precio {' ni '.join(faltantes)} ni una regla aplicable.",
+            detail=f"La linea {contexto['numero_linea']} no puede calcularse: {' '.join(bloqueos)}",
         )
-
-    alertas = []
-    var_costo = _variacion_pct(costo_anterior, costo_nuevo)
-    var_minorista = _variacion_pct(minorista_anterior, minorista)
-    var_mayorista = _variacion_pct(mayorista_anterior, mayorista)
-    for etiqueta, valor in (("Costo", var_costo), ("Minorista", var_minorista), ("Mayorista", var_mayorista)):
-        if valor is not None and abs(valor) >= alerta_pct:
-            alertas.append(f"{etiqueta} {valor:+.2f}%")
+    regla_minorista = preview["regla_minorista"]
+    regla_mayorista = preview["regla_mayorista"]
 
     return {
         "estrategia_precio": estrategia,
         "costo_anterior_snapshot": costo_anterior,
         "precio_minorista_anterior_snapshot": minorista_anterior,
         "precio_mayorista_anterior_snapshot": mayorista_anterior,
-        "precio_minorista_propuesto": minorista,
-        "precio_mayorista_propuesto": mayorista,
-        "margen_minorista_anterior_pct": _margen_pct(costo_anterior, minorista_anterior),
-        "margen_mayorista_anterior_pct": _margen_pct(costo_anterior, mayorista_anterior),
-        "margen_minorista_resultante_pct": _margen_pct(costo_nuevo, minorista),
-        "margen_mayorista_resultante_pct": _margen_pct(costo_nuevo, mayorista),
+        "precio_minorista_propuesto": preview["precio_minorista_nuevo"],
+        "precio_mayorista_propuesto": preview["precio_mayorista_nuevo"],
+        "margen_minorista_anterior_pct": preview["margen_minorista_anterior"],
+        "margen_mayorista_anterior_pct": preview["margen_mayorista_anterior"],
+        "margen_minorista_resultante_pct": preview["margen_minorista_nuevo"],
+        "margen_mayorista_resultante_pct": preview["margen_mayorista_nuevo"],
         "id_regla_minorista": regla_minorista["id"] if regla_minorista else None,
         "id_regla_mayorista": regla_mayorista["id"] if regla_mayorista else None,
-        "regla_minorista_snapshot": regla_minorista["nombre"] if regla_minorista else None,
-        "regla_mayorista_snapshot": regla_mayorista["nombre"] if regla_mayorista else None,
-        "alerta_precio": " · ".join(alertas) or None,
+        "regla_minorista_snapshot": regla_minorista["nombre"] if regla_minorista else preview["explicacion"]["minorista"],
+        "regla_mayorista_snapshot": regla_mayorista["nombre"] if regla_mayorista else preview["explicacion"]["mayorista"],
+        "alerta_precio": " · ".join(alerta["mensaje"] for alerta in preview["alertas"]) or None,
         "id_usuario_precio": usuario_id,
     }
 
@@ -1783,6 +1788,16 @@ def previsualizar_precios(recepcion_id: int, data):
                 if item["estado_resolucion"] not in {"exacta", "alta_preparada"}:
                     raise HTTPException(status_code=409, detail="Resolvé todas las líneas antes de calcular precios.")
                 contexto = repository.get_contexto_precio_item(conn, recepcion_id, item["id"])
+                contexto = dict(contexto)
+                contexto.update(
+                    {
+                        "descuento_minorista_pct": payload["descuento_minorista_pct"],
+                        "descuento_mayorista_pct": payload["descuento_mayorista_pct"],
+                        "redondeo_minorista": payload.get("redondeo_minorista"),
+                        "redondeo_mayorista": payload.get("redondeo_mayorista"),
+                        "confirmar_precio_libre": payload.get("confirmar_precio_libre", False),
+                    }
+                )
                 preview = _construir_preview_item(
                     conn,
                     contexto,
@@ -1808,6 +1823,9 @@ def previsualizar_precios(recepcion_id: int, data):
                     "estrategia": payload["estrategia"],
                     "variacion_alerta_pct": str(payload["variacion_alerta_pct"]),
                     "redondeo_base": str(payload["redondeo_base"]),
+                    "descuento_minorista_pct": str(payload["descuento_minorista_pct"]),
+                    "descuento_mayorista_pct": str(payload["descuento_mayorista_pct"]),
+                    "motor": "precios_compartido_v1",
                     "alertas": alertas,
                 },
                 origen_tipo="recepcion_mercaderia",
@@ -1827,7 +1845,7 @@ def guardar_precio_item(recepcion_id: int, item_id: int, data):
             _validar_recepcion_editable(contexto)
             if contexto.get("costo_unitario_calculado") is None:
                 raise HTTPException(status_code=409, detail="Primero conciliá los costos de la recepción.")
-            costo_nuevo = _costo_proyectado(contexto)
+            costo_nuevo = _dinero(contexto.get("costo_unitario_calculado") or 0)
             preview = {
                 "estrategia_precio": "manual",
                 "costo_anterior_snapshot": _dinero(contexto.get("costo_anterior") or 0),

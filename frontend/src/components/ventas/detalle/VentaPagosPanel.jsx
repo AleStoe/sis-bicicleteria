@@ -6,7 +6,9 @@ export default function VentaPagosPanel({
   formatMoney,
   procesando = false,
   canRevertirPago = () => false,
+  canCorregirMedioPago = () => false,
   onRevertirPago,
+  onCorregirMedioPago,
 }) {
   const { isMobile } = useBreakpoint();
   const tieneCreditoAplicado = Number(creditoAplicadoReal || 0) > 0;
@@ -134,8 +136,19 @@ export default function VentaPagosPanel({
 
               {pago.nota && <div style={styles.note}>Nota: {pago.nota}</div>}
 
-              {canRevertirPago(pago) && (
+              {(canCorregirMedioPago(pago) || canRevertirPago(pago)) && (
                 <div style={styles.actionsRow}>
+                  {canCorregirMedioPago(pago) && (
+                    <button
+                      type="button"
+                      disabled={procesando}
+                      onClick={() => onCorregirMedioPago?.(pago)}
+                      style={styles.secondaryButton}
+                    >
+                      Corregir medio
+                    </button>
+                  )}
+                  {canRevertirPago(pago) && (
                   <button
                     type="button"
                     disabled={procesando}
@@ -144,6 +157,7 @@ export default function VentaPagosPanel({
                   >
                     Revertir pago
                   </button>
+                  )}
                 </div>
               )}
             </div>
@@ -350,7 +364,17 @@ const styles = {
   actionsRow: {
     display: "flex",
     justifyContent: "flex-end",
+    flexWrap: "wrap",
     gap: 8,
+  },
+  secondaryButton: {
+    border: "1px solid #bfdbfe",
+    background: "#eff6ff",
+    color: "#1d4ed8",
+    borderRadius: 10,
+    padding: "8px 12px",
+    fontWeight: 900,
+    cursor: "pointer",
   },
   dangerButton: {
     border: "1px solid #fecaca",

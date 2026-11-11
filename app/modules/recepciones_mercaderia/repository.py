@@ -555,19 +555,38 @@ def get_contexto_precio_item(conn, recepcion_id: int, item_id: int):
                 r.estado AS recepcion_estado,
                 v.precio_minorista AS precio_minorista_actual,
                 v.precio_mayorista AS precio_mayorista_actual,
-                v.costo_promedio_vigente AS costo_anterior,
+                COALESCE(v.costo_reposicion, v.costo_promedio_vigente) AS costo_anterior,
                 v.permite_precio_libre,
                 COALESCE(p.id_categoria, i.id_categoria_propuesta) AS id_categoria_precio,
                 COALESCE(p.id_marca, i.id_marca_propuesta) AS id_marca_precio,
                 p.id_familia_precio,
                 COALESCE(p.rubro, i.rubro_propuesto) AS rubro_precio,
-                COALESCE(ss.stock_fisico, 0) AS stock_fisico_actual
+                COALESCE(ss.stock_fisico, 0) AS stock_fisico_actual,
+                oferta.oferta_snapshot
             FROM recepcion_mercaderia_items i
             INNER JOIN recepciones_mercaderia r ON r.id = i.id_recepcion
             LEFT JOIN variantes v ON v.id = i.id_variante
             LEFT JOIN productos p ON p.id = v.id_producto
             LEFT JOIN stock_sucursal ss
               ON ss.id_sucursal = r.id_sucursal AND ss.id_variante = v.id
+            LEFT JOIN LATERAL (
+                SELECT jsonb_build_object(
+                    'id', o.id,
+                    'nombre', o.nombre,
+                    'precio_regular_referencia', o.precio_regular_referencia,
+                    'precio_oferta', o.precio_oferta,
+                    'politica_contado', o.politica_contado,
+                    'fecha_desde', o.fecha_desde,
+                    'fecha_hasta', o.fecha_hasta
+                ) AS oferta_snapshot
+                FROM ofertas o
+                WHERE o.id_variante = v.id
+                  AND o.activa = TRUE
+                  AND o.alcance = 'variante'
+                  AND CURRENT_DATE BETWEEN o.fecha_desde AND o.fecha_hasta
+                ORDER BY o.fecha_desde DESC, o.id DESC
+                LIMIT 1
+            ) oferta ON TRUE
             WHERE i.id_recepcion = %s AND i.id = %s
             """,
             (recepcion_id, item_id),

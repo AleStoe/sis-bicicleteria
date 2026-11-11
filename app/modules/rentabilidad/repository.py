@@ -1094,6 +1094,7 @@ def get_detalle_rentabilidad_diaria(
     fecha,
     fecha_hasta=None,
     id_sucursal=None,
+    id_cliente=None,
 ):
     fecha_hasta = fecha_hasta or fecha
     params = [fecha, fecha_hasta, list(RENTABILIDAD_ESTADOS_COMERCIALES)]
@@ -1101,6 +1102,10 @@ def get_detalle_rentabilidad_diaria(
     if id_sucursal is not None:
         sucursal_sql = "AND v.id_sucursal = %s"
         params.append(id_sucursal)
+    cliente_sql = ""
+    if id_cliente is not None:
+        cliente_sql = "AND v.id_cliente = %s"
+        params.append(id_cliente)
 
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
@@ -1151,6 +1156,7 @@ def get_detalle_rentabilidad_diaria(
             SELECT
                 vi.id AS id_venta_item,
                 v.id AS id_venta,
+                v.id_cliente,
                 v.fecha,
                 c.nombre AS cliente_nombre,
                 v.estado AS estado_venta,
@@ -1616,6 +1622,7 @@ def get_detalle_rentabilidad_diaria(
               AND v.fecha::date <= %s
               AND v.estado = ANY(%s)
               {sucursal_sql}
+              {cliente_sql}
             ORDER BY vi.tipo_item, producto, variante, v.fecha, v.id
             """,
             params,

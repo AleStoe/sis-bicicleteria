@@ -125,6 +125,24 @@ def test_ingreso_stock_lote_registra_varias_lineas_en_una_operacion(client, db_c
             """
         )
         assert cur.fetchone()["total"] == 2
+        cur.execute(
+            """
+            SELECT
+                costo_promedio_vigente,
+                costo_reposicion,
+                costo_reposicion_proveedor_id,
+                costo_reposicion_origen
+            FROM variantes
+            WHERE id = %s
+            """,
+            (seed_venta_basica["variante_id"],),
+        )
+        variante = cur.fetchone()
+
+    assert Decimal(str(variante["costo_reposicion"])) == Decimal("18000")
+    assert variante["costo_reposicion_proveedor_id"] == proveedor_id
+    assert variante["costo_reposicion_origen"] == "ingreso_stock"
+    assert Decimal(str(variante["costo_promedio_vigente"])) != Decimal("18000")
 
 
 def test_analisis_demanda_devuelve_historial_mensual_y_stock(

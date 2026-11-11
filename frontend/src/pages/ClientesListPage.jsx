@@ -10,7 +10,7 @@ import {
   ResponsiveMetricsGrid,
 } from "../components/ui";
 import SearchField from "../components/ui/SearchField";
-import { RefreshCw, Search, UserPlus, Users } from "lucide-react";
+import { ArrowDownAZ, BarChart3, Clock3, RefreshCw, UserPlus, Users, X } from "lucide-react";
 import { colors, controls, radius, shadows, spacing, typography } from "../theme";
 
 
@@ -47,16 +47,17 @@ export default function ClientesListPage() {
   const [error, setError] = useState("");
   const [busqueda, setBusqueda] = useState("");
   const [soloActivos, setSoloActivos] = useState(true);
+  const [orden, setOrden] = useState("recientes");
   const requestIdRef = useRef(0);
 
   useEffect(() => {
     const delay = busqueda.trim() ? 300 : 100;
     const timer = setTimeout(() => {
-      cargarClientes({ q: busqueda, soloActivosFiltro: soloActivos });
+      cargarClientes({ q: busqueda, soloActivosFiltro: soloActivos, ordenFiltro: orden });
     }, delay);
 
     return () => clearTimeout(timer);
-  }, [busqueda, soloActivos]);
+  }, [busqueda, soloActivos, orden]);
 
   const totalActivos = useMemo(
     () => clientes.filter((cliente) => cliente.activo).length,
@@ -68,7 +69,11 @@ export default function ClientesListPage() {
     [clientes]
   );
 
-  async function cargarClientes({ q = busqueda, soloActivosFiltro = soloActivos } = {}) {
+  async function cargarClientes({
+    q = busqueda,
+    soloActivosFiltro = soloActivos,
+    ordenFiltro = orden,
+  } = {}) {
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
 
@@ -79,6 +84,7 @@ export default function ClientesListPage() {
       const data = await listarClientes({
         q: q.trim() || undefined,
         solo_activos: soloActivosFiltro,
+        orden: ordenFiltro,
       });
 
       if (requestId === requestIdRef.current) {
@@ -99,7 +105,7 @@ export default function ClientesListPage() {
   async function buscar(e) {
     e.preventDefault();
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-    await cargarClientes({ q: busqueda, soloActivosFiltro: soloActivos });
+    await cargarClientes({ q: busqueda, soloActivosFiltro: soloActivos, ordenFiltro: orden });
   }
 
   function limpiarBusqueda() {
@@ -124,6 +130,7 @@ export default function ClientesListPage() {
             <Button type="button" variant="outline" onClick={cargarClientes} disabled={buscando}>
               <RefreshCw size={16} /> {buscando ? "Buscando..." : "Refrescar"}
             </Button>
+            <Link to="/clientes/crm" style={styles.crmLink}><BarChart3 size={16} /> Ver CRM</Link>
             <Link to="/clientes/nuevo" style={styles.primaryLink}><UserPlus size={16} /> Nuevo cliente</Link>
           </>
         )}
@@ -137,28 +144,32 @@ export default function ClientesListPage() {
         <MetricCard label="Inactivos" value={totalInactivos} tone={totalInactivos > 0 ? "warning" : "default"} />
       </ResponsiveMetricsGrid>
 
-      <Card title="Buscar clientes" subtitle="Nombre, teléfono, documento o razón social.">
+      <Card title="Encontrar cliente" subtitle="Buscá por nombre, teléfono, documento o razón social.">
         <form onSubmit={buscar} style={{ ...filterFormStyle, ...(isMobile ? filterFormMobileStyle : {}) }}>
           <SearchField
             value={busqueda}
             onChange={setBusqueda}
-            onSearch={() => cargarClientes({ q: busqueda, soloActivosFiltro: soloActivos })}
+            onSearch={() => cargarClientes({ q: busqueda, soloActivosFiltro: soloActivos, ordenFiltro: orden })}
             placeholder="Ej: Juan, 291..., 30-..., razón social"
-            style={styles.searchBox}
+            style={{ ...styles.searchBox, ...(isMobile ? styles.searchBoxMobile : {}) }}
             inputStyle={styles.searchInput}
           />
 
-          <label style={checkStyle}>
+          <label style={{ ...activeFilterStyle, ...(soloActivos ? activeFilterSelectedStyle : {}) }}>
             <input
               type="checkbox"
               checked={soloActivos}
               onChange={(e) => setSoloActivos(e.target.checked)}
+              style={activeCheckboxStyle}
             />
             Solo activos
           </label>
 
-          <Button type="submit">{buscando ? "Buscando..." : "Buscar ahora"}</Button>
-          <Button type="button" variant="outline" onClick={limpiarBusqueda}>Limpiar</Button>
+          {busqueda && (
+            <Button type="button" variant="ghost" onClick={limpiarBusqueda}>
+              <X size={16} /> Limpiar
+            </Button>
+          )}
         </form>
       </Card>
 
@@ -166,14 +177,32 @@ export default function ClientesListPage() {
         <div style={tableHeaderStyle}>
           <div>
             <h2 style={tableTitleStyle}>Listado</h2>
-            <span style={hintStyle}>Doble click en una fila para abrir el detalle.</span>
+            <span style={hintStyle}>{clientes.length} cliente(s) encontrados</span>
+          </div>
+          <div style={sortControlStyle} aria-label="Orden del listado">
+            <button
+              type="button"
+              aria-pressed={orden === "recientes"}
+              onClick={() => setOrden("recientes")}
+              style={{ ...sortButtonStyle, ...(orden === "recientes" ? sortButtonActiveStyle : {}) }}
+            >
+              <Clock3 size={15} /> Recientes
+            </button>
+            <button
+              type="button"
+              aria-pressed={orden === "nombre"}
+              onClick={() => setOrden("nombre")}
+              style={{ ...sortButtonStyle, ...(orden === "nombre" ? sortButtonActiveStyle : {}) }}
+            >
+              <ArrowDownAZ size={15} /> A-Z
+            </button>
           </div>
         </div>
 
         {clientes.length === 0 ? (
           <EmptyState icon={Users} title="No hay clientes para mostrar" description="Probá otra búsqueda o incluí clientes inactivos." />
         ) : isMobile ? (
-          <ClientesMobileList clientes={clientes} abrirCliente={abrirCliente} />
+          <ClientesMobileList clientes={clientes} abrirCliente={abrirCliente} orden={orden} />
         ) : (
           <div style={tableWrapStyle}>
             <table style={tableStyle}>
@@ -183,13 +212,14 @@ export default function ClientesListPage() {
                   <th style={thStyle}>Contacto</th>
                   <th style={thStyle}>Fiscal</th>
                   <th style={thStyle}>Tipo</th>
+                  <th style={thStyle}>Alta</th>
                   <th style={thStyle}>Estado</th>
                   <th style={thStyle}>Acción</th>
                 </tr>
               </thead>
 
               <tbody>
-                {clientes.map((cliente) => (
+                {clientes.map((cliente, index) => (
                   <tr
                     key={cliente.id}
                     onDoubleClick={() => abrirCliente(cliente.id)}
@@ -199,6 +229,9 @@ export default function ClientesListPage() {
                     <td style={tdStyle}>
                       <strong>{cliente.nombre}</strong>
                       <div style={mutedStyle}>#{cliente.id}</div>
+                      {orden === "recientes" && index === 0 && (
+                        <span style={latestBadgeStyle}>Último registrado</span>
+                      )}
                     </td>
 
                     <td style={tdStyle}>
@@ -219,6 +252,10 @@ export default function ClientesListPage() {
                       <span style={badgeTipo(cliente.tipo_cliente)}>
                         {renderTipo(cliente.tipo_cliente)}
                       </span>
+                    </td>
+
+                    <td style={tdStyle}>
+                      <div>{formatFechaAlta(cliente.created_at)}</div>
                     </td>
 
                     <td style={tdStyle}>
@@ -244,6 +281,20 @@ export default function ClientesListPage() {
 }
 
 const styles = {
+  crmLink: {
+    minHeight: controls.minHeight,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    padding: controls.padding,
+    borderRadius: radius.md,
+    border: `1px solid ${colors.border}`,
+    background: colors.surface,
+    color: colors.text,
+    fontWeight: typography.button.fontWeight,
+    textDecoration: "none",
+  },
   primaryLink: {
     minHeight: controls.minHeight,
     display: "inline-flex",
@@ -277,18 +328,26 @@ const styles = {
     color: colors.text,
     fontSize: typography.body.fontSize,
   },
+  searchBoxMobile: {
+    gridColumn: "1 / -1",
+    width: "100%",
+    boxSizing: "border-box",
+  },
 };
 
 
-function ClientesMobileList({ clientes, abrirCliente }) {
+function ClientesMobileList({ clientes, abrirCliente, orden }) {
   return (
     <div style={mobileListStyle}>
-      {clientes.map((cliente) => (
+      {clientes.map((cliente, index) => (
         <article key={cliente.id} style={mobileClientCardStyle}>
           <div style={mobileClientHeaderStyle}>
             <div style={mobileClientTitleWrapStyle}>
               <strong style={mobileClientNameStyle}>{cliente.nombre}</strong>
               <span style={mutedStyle}>Cliente #{cliente.id}</span>
+              {orden === "recientes" && index === 0 && (
+                <span style={latestBadgeStyle}>Último registrado</span>
+              )}
             </div>
 
             <span style={cliente.activo ? activeBadgeStyle : inactiveBadgeStyle}>
@@ -301,6 +360,7 @@ function ClientesMobileList({ clientes, abrirCliente }) {
             <MobileInfo label="DNI" value={cliente.dni || "-"} />
             <MobileInfo label="Tipo" value={renderTipo(cliente.tipo_cliente)} />
             <MobileInfo label="IVA" value={renderCondicionIva(cliente.condicion_iva)} />
+            <MobileInfo label="Alta" value={formatFechaAlta(cliente.created_at)} full />
             <MobileInfo
               label="Fiscal"
               value={
@@ -353,6 +413,17 @@ function renderCondicionIva(condicion) {
   };
 
   return map[condicion] || condicion || "-";
+}
+
+function formatFechaAlta(value) {
+  if (!value) return "-";
+  return new Intl.DateTimeFormat("es-AR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
 }
 
 function colorTipo(tipo) {
@@ -454,12 +525,31 @@ const inputStyle = {
   border: "1px solid #d0d5dd",
 };
 
-const checkStyle = {
-  display: "flex",
-  gap: "8px",
+const activeFilterStyle = {
+  minHeight: controls.minHeight,
+  display: "inline-flex",
   alignItems: "center",
-  color: "#344054",
-  fontWeight: 700,
+  gap: "8px",
+  padding: "0 12px",
+  border: `1px solid ${colors.border}`,
+  borderRadius: radius.md,
+  background: colors.surface,
+  color: colors.textMuted,
+  fontSize: "13px",
+  fontWeight: 800,
+  cursor: "pointer",
+};
+
+const activeFilterSelectedStyle = {
+  borderColor: "#86efac",
+  background: "#f0fdf4",
+  color: "#166534",
+};
+
+const activeCheckboxStyle = {
+  width: "16px",
+  height: "16px",
+  accentColor: colors.success,
 };
 
 const tableCardStyle = {
@@ -472,6 +562,11 @@ const tableCardStyle = {
 const tableHeaderStyle = {
   padding: "16px 18px",
   borderBottom: "1px solid #eee",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "12px",
+  flexWrap: "wrap",
 };
 
 const tableTitleStyle = {
@@ -484,6 +579,51 @@ const hintStyle = {
   marginTop: "4px",
   color: "#667085",
   fontSize: "13px",
+};
+
+const sortControlStyle = {
+  display: "inline-grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: "3px",
+  padding: "3px",
+  border: "1px solid #e2e8f0",
+  borderRadius: "8px",
+  background: "#f8fafc",
+};
+
+const sortButtonStyle = {
+  minHeight: "34px",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: "6px",
+  padding: "0 11px",
+  border: 0,
+  borderRadius: "6px",
+  background: "transparent",
+  color: "#64748b",
+  fontSize: "13px",
+  fontWeight: 800,
+  cursor: "pointer",
+};
+
+const sortButtonActiveStyle = {
+  background: "white",
+  color: "#175cd3",
+  boxShadow: "0 1px 3px rgba(15, 23, 42, 0.12)",
+};
+
+const latestBadgeStyle = {
+  width: "fit-content",
+  display: "inline-flex",
+  alignItems: "center",
+  marginTop: "6px",
+  padding: "3px 7px",
+  borderRadius: "6px",
+  background: "#eff6ff",
+  color: "#1d4ed8",
+  fontSize: "11px",
+  fontWeight: 900,
 };
 
 const tableWrapStyle = {

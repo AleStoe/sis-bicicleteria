@@ -68,6 +68,7 @@ const groups = [
       { to: "/ventas", label: "Ventas", icon: Receipt, roles: OPERACION },
       { to: "/caja", label: "Caja", icon: DollarSign, roles: OPERACION },
       { to: "/clientes", label: "Clientes", icon: Users, roles: OPERACION },
+      { to: "/clientes/crm", label: "CRM clientes", icon: BarChart3, roles: OPERACION },
       { to: "/cotizaciones", label: "Cotizaciones", icon: FileText, roles: OPERACION_TALLER },
       { to: "/pedidos-cliente", label: "Pedidos cliente", icon: ClipboardList, roles: OPERACION },
       { to: "/reservas", label: "Reservas", icon: ClipboardList, roles: OPERACION },
@@ -199,19 +200,12 @@ export default function Sidebar({ onNavigate, mobile = false }) {
     <aside style={sidebarContainerStyle(mobile)}>
       <div style={sidebarHeaderStyle}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div
-            style={{
-              width: 36,
-              height: 36,
-              display: "grid",
-              placeItems: "center",
-              borderRadius: 12,
-              background: "linear-gradient(135deg, #FF6A00, #ea5f00)",
-              boxShadow: "0 8px 22px rgba(255,106,0,.25)",
-              flexShrink: 0,
-            }}
-          >
-            <Bike size={22} color="white" strokeWidth={2.4} />
+          <div style={brandMarkStyle} aria-hidden="true">
+            <img
+              src="/brand/emprendimiento-agus-logo.png"
+              alt=""
+              style={brandMarkImageStyle}
+            />
           </div>
 
           <div>
@@ -318,6 +312,26 @@ export default function Sidebar({ onNavigate, mobile = false }) {
     </aside>
   );
 }
+
+const brandMarkStyle = {
+  position: "relative",
+  width: 42,
+  height: 40,
+  overflow: "hidden",
+  borderRadius: 12,
+  background: "#526f77",
+  boxShadow: "0 8px 22px rgba(255,106,0,.18)",
+  flexShrink: 0,
+};
+
+const brandMarkImageStyle = {
+  position: "absolute",
+  width: 60,
+  height: "auto",
+  left: -9,
+  top: -1,
+  maxWidth: "none",
+};
 
 function normalizarBusqueda(value) {
   return String(value || "")

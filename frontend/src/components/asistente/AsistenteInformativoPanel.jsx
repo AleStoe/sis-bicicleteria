@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Bot, ExternalLink, Loader2, MessageCircle, RefreshCw, Send, X } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { Bot, Check, ClipboardCopy, ExternalLink, Loader2, MessageCircle, RefreshCw, Send, X } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { getAsistenteResumen, preguntarAsistente } from "../../services/asistenteService";
 import { useSession } from "../../context/SessionContext";
 
@@ -16,6 +16,7 @@ const PREGUNTAS_BASE = [
 
 export default function AsistenteInformativoPanel() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { sucursalId } = useSession();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -23,7 +24,12 @@ export default function AsistenteInformativoPanel() {
   const [input, setInput] = useState("");
   const [resumen, setResumen] = useState(null);
   const [respuesta, setRespuesta] = useState(null);
+  const [copiado, setCopiado] = useState(false);
   const inputRef = useRef(null);
+  const clienteId = useMemo(() => {
+    const match = location.pathname.match(/^\/clientes\/(\d+)(?:\/|$)/);
+    return match ? Number(match[1]) : null;
+  }, [location.pathname]);
 
   const sugerencias = useMemo(() => {
     const fromData = respuesta?.sugerencias?.length
@@ -79,8 +85,10 @@ export default function AsistenteInformativoPanel() {
       const data = await preguntarAsistente({
         pregunta,
         id_sucursal: sucursalId,
+        cliente_id: clienteId || undefined,
       });
       setRespuesta(data);
+      setCopiado(false);
     } catch (err) {
       setError(err.message || "No pude responder esa consulta");
     } finally {
@@ -93,6 +101,12 @@ export default function AsistenteInformativoPanel() {
     if (!to) return;
     setOpen(false);
     navigate(to);
+  }
+
+  async function copiarBorrador() {
+    if (!respuesta?.borrador_mensaje) return;
+    await navigator.clipboard.writeText(respuesta.borrador_mensaje);
+    setCopiado(true);
   }
 
   return (
@@ -113,8 +127,8 @@ export default function AsistenteInformativoPanel() {
               <Bot size={20} />
             </div>
             <div style={{ minWidth: 0 }}>
-              <strong style={styles.title}>Asistente</strong>
-              <span style={styles.subtitle}>Solo lectura del negocio</span>
+              <strong style={styles.title}>Atenea</strong>
+              <span style={styles.subtitle}>{clienteId ? `Contexto del cliente #${clienteId}` : "Solo lectura del negocio"}</span>
             </div>
             <button
               type="button"
@@ -188,6 +202,39 @@ export default function AsistenteInformativoPanel() {
               </div>
             ) : null}
 
+            {respuesta?.borrador_mensaje ? (
+              <div style={styles.draftBox}>
+                <div style={styles.sectionLabel}>Borrador, todavía no enviado</div>
+                <p style={styles.draftText}>{respuesta.borrador_mensaje}</p>
+                <button type="button" onClick={copiarBorrador} style={styles.copyButton}>
+                  {copiado ? <Check size={16} /> : <ClipboardCopy size={16} />}
+                  {copiado ? "Copiado" : "Copiar borrador"}
+                </button>
+              </div>
+            ) : null}
+
+            {respuesta?.acciones?.length ? (
+              <div style={styles.actionsBlock}>
+                <div style={styles.sectionLabel}>Acciones con confirmación</div>
+                {respuesta.acciones.map((accion) => (
+                  <button key={`${accion.label}-${accion.to}`} type="button" onClick={() => irA(accion.to)} style={styles.actionButton}>
+                    {accion.label}<ExternalLink size={15} />
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            {respuesta?.referencias?.length ? (
+              <div style={styles.references}>
+                <span style={styles.sectionLabel}>Referencias verificables</span>
+                {respuesta.referencias.map((referencia) => (
+                  <button key={`${referencia.label}-${referencia.to}`} type="button" onClick={() => irA(referencia.to)} style={styles.referenceButton}>
+                    {referencia.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
             <div style={styles.chips}>
               {sugerencias.slice(0, 6).map((sugerencia) => (
                 <button
@@ -224,7 +271,7 @@ export default function AsistenteInformativoPanel() {
               style={styles.input}
               maxLength={300}
             />
-            <button type="submit" disabled={loading || !input.trim()} style={styles.sendButton}>
+            <button type="submit" disabled={loading || !input.trim()} style={styles.sendButton} aria-label="Enviar pregunta">
               {loading ? <Loader2 size={18} /> : <Send size={18} />}
             </button>
           </form>
@@ -467,6 +514,53 @@ const styles = {
     color: "#64748b",
     fontSize: 11,
     fontWeight: 800,
+  },
+  draftBox: {
+    display: "grid",
+    gap: 9,
+    border: "1px solid #bfdbfe",
+    background: "#eff6ff",
+    borderRadius: 14,
+    padding: 12,
+  },
+  draftText: { margin: 0, color: "#1e293b", fontSize: 13, lineHeight: 1.45, whiteSpace: "pre-wrap" },
+  copyButton: {
+    justifySelf: "start",
+    border: "1px solid #93c5fd",
+    background: "white",
+    color: "#1d4ed8",
+    borderRadius: 10,
+    padding: "8px 10px",
+    display: "flex",
+    alignItems: "center",
+    gap: 7,
+    fontWeight: 900,
+    cursor: "pointer",
+  },
+  actionsBlock: { display: "grid", gap: 7 },
+  actionButton: {
+    width: "100%",
+    border: "1px solid #fdba74",
+    background: "#fff7ed",
+    color: "#c2410c",
+    borderRadius: 11,
+    padding: "9px 10px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    fontWeight: 900,
+    cursor: "pointer",
+  },
+  references: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 7 },
+  referenceButton: {
+    border: "none",
+    background: "transparent",
+    color: "#1d4ed8",
+    padding: 0,
+    fontSize: 11,
+    fontWeight: 900,
+    cursor: "pointer",
   },
   form: {
     display: "flex",

@@ -263,7 +263,7 @@ def test_reserva_con_oferta_individual_congela_precio_y_lo_pasa_a_venta(
             "id_variante": seed_reserva_serializada["variante_id"],
             "alcance": "unidades",
             "ids_bicicletas_serializadas": [bicicleta_id],
-            "politica_contado": "precio_final_contado",
+            "politica_contado": "precio_lista_promocional",
             "nombre": "OFERTA RESERVA POR CUADRO",
             "precio_oferta": "800000",
             "fecha_desde": hoy.isoformat(),
@@ -299,8 +299,8 @@ def test_reserva_con_oferta_individual_congela_precio_y_lo_pasa_a_venta(
     assert Decimal(str(item_reserva["precio_estimado"])) == Decimal("800000.00")
     assert item_reserva["id_oferta"] == oferta_id
     assert item_reserva["oferta_alcance_snapshot"] == "unidades"
-    assert item_reserva["oferta_politica_contado_snapshot"] == "precio_final_contado"
-    assert Decimal(str(reserva["base_sin_descuento_contado"])) == Decimal("800000.00")
+    assert item_reserva["oferta_politica_contado_snapshot"] == "precio_lista_promocional"
+    assert Decimal(str(reserva["base_sin_descuento_contado"])) == Decimal("0.00")
 
     with db_conn.cursor() as cur:
         cur.execute("UPDATE ofertas SET activa = FALSE WHERE id = %s", (oferta_id,))
@@ -334,11 +334,11 @@ def test_reserva_con_oferta_individual_congela_precio_y_lo_pasa_a_venta(
         venta = cur.fetchone()
 
     assert Decimal(str(venta["subtotal_base"])) == Decimal("800000.00")
-    assert Decimal(str(venta["base_sin_descuento_contado"])) == Decimal("800000.00")
+    assert Decimal(str(venta["base_sin_descuento_contado"])) == Decimal("0.00")
     assert Decimal(str(venta["precio_lista"])) == Decimal("800000.00")
     assert venta["id_oferta"] == oferta_id
     assert venta["oferta_alcance_snapshot"] == "unidades"
-    assert venta["oferta_politica_contado_snapshot"] == "precio_final_contado"
+    assert venta["oferta_politica_contado_snapshot"] == "precio_lista_promocional"
 
     listado = client.get(
         "/bicicletas_serializadas/",

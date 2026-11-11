@@ -12,6 +12,7 @@ import AnalisisDemandaPage from "./pages/AnalisisDemandaPage";
 import PedidoCompraSugeridoPage from "./pages/PedidoCompraSugeridoPage";
 import CajaPage from "./pages/CajaPage";
 import ClientesListPage from "./pages/ClientesListPage";
+import ClientesCrmPage from "./pages/ClientesCrmPage";
 import ClienteDetallePage from "./pages/ClienteDetallePage";
 import ClienteFormPage from "./pages/ClienteFormPage";
 import TallerListPage from "./pages/TallerListPage";
@@ -86,6 +87,7 @@ const TITULOS_RUTA = [
   [/^\/ventas$/, "Ventas"],
   [/^\/caja$/, "Caja"],
   [/^\/clientes\/nuevo$/, "Nuevo cliente"],
+  [/^\/clientes\/crm$/, "CRM de clientes"],
   [/^\/clientes\/\d+\/editar$/, "Editar cliente"],
   [/^\/clientes\/\d+\/bicicletas\/\d+$/, "Bicicleta del cliente"],
   [/^\/clientes\/\d+$/, "Detalle de cliente"],
@@ -391,6 +393,14 @@ export default function App() {
             element={
               <ProtectedRoute rolesPermitidos={OPERACION}>
                 <ClientesListPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/clientes/crm"
+            element={
+              <ProtectedRoute rolesPermitidos={OPERACION}>
+                <ClientesCrmPage />
               </ProtectedRoute>
             }
           />

@@ -31,6 +31,9 @@ class StockSucursalOut(BaseModel):
     tipo_operativo: str | None = None
 
     costo_promedio_vigente: Decimal | None = None
+    costo_reposicion: Decimal | None = None
+    costo_reposicion_fecha: datetime | None = None
+    costo_reposicion_origen: str | None = None
     capital_inmovilizado: Decimal | None = None
     ultima_venta: datetime | None = None
     dias_sin_movimiento: int | None = None
@@ -130,6 +133,10 @@ class PedidoCompraSugeridoItemOut(BaseModel):
     prioridad_reposicion: str = "revisar"
     ultima_venta: datetime | None = None
     primer_movimiento_stock: datetime | None = None
+    costo_promedio_vigente: Decimal | None = None
+    costo_reposicion: Decimal | None = None
+    costo_reposicion_fecha: datetime | None = None
+    costo_reposicion_origen: str | None = None
     motivo: str
 
 

@@ -114,6 +114,13 @@ export function generarVentaDesdeOrdenTaller(ordenId, data) {
   });
 }
 
+export function finalizarRetiroOrdenTaller(ordenId, data) {
+  return apiRequest(`/ordenes_taller/${ordenId}/finalizar-retiro`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
 
 export function getPresupuestoTallerUrl(ordenId) {
   return buildPresupuestoTallerUrl(ordenId);

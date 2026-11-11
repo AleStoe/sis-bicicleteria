@@ -296,6 +296,19 @@ class OrdenTallerGenerarVentaOutput(BaseModel):
     venta_id: int
     estado_orden: str
 
+
+class OrdenTallerFinalizarRetiroInput(BaseModel):
+    destino: Literal["lista_para_retirar", "retirada"]
+    id_usuario: int = Field(gt=0)
+
+
+class OrdenTallerFinalizarRetiroOutput(BaseModel):
+    ok: bool
+    orden_id: int
+    venta_id: int
+    estado_orden: str
+    estado_venta: str
+
 class OrdenTallerPostventaCreate(BaseModel):
     id_sucursal: int = Field(gt=0)
     id_usuario: int = Field(gt=0)

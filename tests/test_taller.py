@@ -1525,30 +1525,55 @@ def test_no_permite_revertir_ejecucion_en_orden_retirada(
     assert generar.status_code == 200, generar.text
     venta_id = generar.json()["venta_id"]
 
-    with db_conn.cursor() as cur:
-        cur.execute(
-            """
-            UPDATE ventas
-            SET estado = 'pagada_total',
-                saldo_pendiente = 0
-            WHERE id = %s
-            """,
-            (venta_id,),
-        )
-    db_conn.commit()
+    venta_detalle = client.get(f"/ventas/{venta_id}")
+    assert venta_detalle.status_code == 200, venta_detalle.text
+    assert venta_detalle.json()["venta"]["id_orden_taller"] == orden_id
 
-    for estado in [
-        "lista_para_retirar",
-        "retirada",
-    ]:
-        cambiar = client.post(
-            f"/ordenes_taller/{orden_id}/estado",
-            json={
-                "nuevo_estado": estado,
-                "id_usuario": seed_taller_basico["usuario_id"],
-            },
-        )
-        assert cambiar.status_code == 200, cambiar.text
+    abrir_caja = client.post(
+        "/cajas/abrir",
+        json={
+            "id_sucursal": seed_taller_basico["sucursal_id"],
+            "id_usuario": seed_taller_basico["usuario_id"],
+            "monto_apertura": 0,
+        },
+    )
+    assert abrir_caja.status_code == 200, abrir_caja.text
+
+    pago = client.post(
+        "/pagos/",
+        json={
+            "origen_tipo": "venta",
+            "origen_id": venta_id,
+            "medio_pago": "mercadopago",
+            "monto_base": 1000,
+            "id_usuario": seed_taller_basico["usuario_id"],
+            "nota": "Pago total antes del retiro",
+        },
+    )
+    assert pago.status_code == 200, pago.text
+    assert pago.json()["estado_venta"] == "pagada_total"
+
+    finalizar = client.post(
+        f"/ordenes_taller/{orden_id}/finalizar-retiro",
+        json={
+            "destino": "retirada",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert finalizar.status_code == 200, finalizar.text
+    assert finalizar.json()["estado_orden"] == "retirada"
+    assert finalizar.json()["estado_venta"] == "entregada"
+
+    repetir = client.post(
+        f"/ordenes_taller/{orden_id}/finalizar-retiro",
+        json={
+            "destino": "retirada",
+            "id_usuario": seed_taller_basico["usuario_id"],
+        },
+    )
+    assert repetir.status_code == 200, repetir.text
+    assert repetir.json()["estado_orden"] == "retirada"
+    assert repetir.json()["estado_venta"] == "entregada"
 
     response = client.post(
         f"/ordenes_taller/{orden_id}/items/{item_id}/revertir-ejecucion",
@@ -3253,7 +3278,7 @@ def test_postventa_mano_obra_se_bonifica_automaticamente(
     assert Decimal(str(item.json()["subtotal"])) == Decimal("0")
 
 
-def test_ot_comun_no_aplica_cobertura_y_cobra_precio_completo(
+def test_ot_comun_permite_bonificar_repuesto_como_regalo(
     client,
     seed_taller_basico,
     seed_venta_basica,
@@ -3271,19 +3296,24 @@ def test_ot_comun_no_aplica_cobertura_y_cobra_precio_completo(
     assert crear.status_code == 201, crear.text
     orden_id = crear.json()["id"]
 
-    cobertura_invalida = client.post(
+    bonificado = client.post(
         f"/ordenes_taller/{orden_id}/items",
         json={
             "tipo_item": "repuesto",
             "id_variante": seed_venta_basica["variante_id"],
             "cantidad": 1,
             "precio_unitario": 17000,
-            "valor_cobertura_unitario": 10000,
-            "motivo_cobertura": "Garantía local",
+            "valor_cobertura_unitario": 17000,
+            "motivo_cobertura": "Cortesía comercial",
+            "observacion_cobertura": "Repuesto de cortesía",
             "id_usuario": seed_taller_basico["usuario_id"],
         },
     )
-    assert cobertura_invalida.status_code == 400
+    assert bonificado.status_code == 201, bonificado.text
+    assert Decimal(str(bonificado.json()["precio_unitario"])) == Decimal("17000")
+    assert Decimal(str(bonificado.json()["valor_cobertura_unitario"])) == Decimal("17000")
+    assert Decimal(str(bonificado.json()["subtotal"])) == Decimal("0")
+    assert bonificado.json()["motivo_cobertura"] == "Cortesía comercial"
 
     item_normal = client.post(
         f"/ordenes_taller/{orden_id}/items",

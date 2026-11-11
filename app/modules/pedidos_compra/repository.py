@@ -159,10 +159,15 @@ def list_items(conn, pedido_id: int):
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
-            SELECT *
-            FROM pedido_compra_items
-            WHERE id_pedido = %s
-            ORDER BY id ASC
+            SELECT i.*,
+                   v.costo_promedio_vigente,
+                   v.costo_reposicion,
+                   v.costo_reposicion_fecha,
+                   v.costo_reposicion_origen
+            FROM pedido_compra_items i
+            LEFT JOIN variantes v ON v.id = i.id_variante
+            WHERE i.id_pedido = %s
+            ORDER BY i.id ASC
             """,
             (pedido_id,),
         )

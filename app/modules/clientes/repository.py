@@ -1,4 +1,7 @@
-def get_clientes(conn, q=None, solo_activos=False):
+from app.modules.rentabilidad.repository import RENTABILIDAD_ESTADOS_COMERCIALES
+
+
+def get_clientes(conn, q=None, solo_activos=False, orden="nombre"):
     sql = """
         SELECT
             id,
@@ -13,7 +16,9 @@ def get_clientes(conn, q=None, solo_activos=False):
             cuit,
             razon_social,
             notas,
-            activo
+            activo,
+            created_at,
+            updated_at
         FROM clientes
         WHERE 1=1
     """
@@ -47,10 +52,130 @@ def get_clientes(conn, q=None, solo_activos=False):
             q_like,
         ])
 
-    sql += " ORDER BY activo DESC, nombre ASC, id ASC"
+    if orden == "recientes":
+        sql += " ORDER BY created_at DESC, id DESC"
+    else:
+        sql += " ORDER BY activo DESC, nombre ASC, id ASC"
 
     with conn.cursor() as cur:
         cur.execute(sql, params)
+        return cur.fetchall()
+
+
+def get_contexto_crm_clientes(conn, fecha_desde, fecha_hasta):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            WITH ventas_actividad AS (
+                SELECT
+                    id_cliente,
+                    MIN(fecha) AS primera_venta_fecha,
+                    MAX(fecha) AS ultima_venta_fecha
+                FROM ventas
+                WHERE estado = ANY(%s)
+                GROUP BY id_cliente
+            ),
+            taller AS (
+                SELECT
+                    id_cliente,
+                    MAX(fecha_ingreso) AS ultima_orden_taller_fecha,
+                    COUNT(*) FILTER (
+                        WHERE fecha_ingreso::date BETWEEN %s AND %s
+                    )::int AS ordenes_taller_periodo
+                FROM ordenes_taller
+                WHERE estado <> 'cancelada'
+                GROUP BY id_cliente
+            ),
+            deudas AS (
+                SELECT id_cliente, SUM(saldo_actual)::numeric(14,2) AS deuda_vigente
+                FROM deudas_cliente
+                WHERE estado = 'abierta'
+                  AND saldo_actual > 0
+                GROUP BY id_cliente
+            ),
+            creditos AS (
+                SELECT id_cliente, SUM(saldo_actual)::numeric(14,2) AS credito_vigente
+                FROM creditos_cliente
+                WHERE estado = 'disponible'
+                  AND saldo_actual > 0
+                GROUP BY id_cliente
+            ),
+            bicicletas AS (
+                SELECT
+                    id_cliente,
+                    COUNT(*)::int AS bicicletas_registradas,
+                    STRING_AGG(
+                        CONCAT_WS(' ', marca, modelo, rodado, color, numero_cuadro),
+                        ' '
+                    ) AS bicicletas_busqueda
+                FROM bicicletas_clientes
+                GROUP BY id_cliente
+            ),
+            seguimientos AS (
+                SELECT DISTINCT ON (s.id_cliente)
+                    s.id_cliente,
+                    s.id AS seguimiento_pendiente_id,
+                    s.tipo AS seguimiento_pendiente_tipo,
+                    s.motivo AS seguimiento_pendiente_motivo,
+                    s.fecha_objetivo AS seguimiento_pendiente_fecha,
+                    s.prioridad AS seguimiento_pendiente_prioridad,
+                    s.id_usuario_responsable AS seguimiento_responsable_id,
+                    u.nombre AS seguimiento_responsable_nombre
+                FROM cliente_seguimientos s
+                JOIN usuarios u ON u.id = s.id_usuario_responsable
+                WHERE s.estado = 'pendiente'
+                ORDER BY
+                    s.id_cliente,
+                    s.fecha_objetivo,
+                    CASE s.prioridad
+                        WHEN 'urgente' THEN 0
+                        WHEN 'alta' THEN 1
+                        WHEN 'normal' THEN 2
+                        ELSE 3
+                    END,
+                    s.id
+            )
+            SELECT
+                c.id,
+                c.nombre,
+                c.telefono,
+                c.dni,
+                c.cuit,
+                c.razon_social,
+                c.tipo_cliente,
+                c.activo,
+                c.created_at,
+                va.primera_venta_fecha,
+                va.ultima_venta_fecha,
+                t.ultima_orden_taller_fecha,
+                COALESCE(t.ordenes_taller_periodo, 0)::int AS ordenes_taller_periodo,
+                COALESCE(b.bicicletas_registradas, 0)::int AS bicicletas_registradas,
+                COALESCE(b.bicicletas_busqueda, '') AS bicicletas_busqueda,
+                COALESCE(d.deuda_vigente, 0)::numeric(14,2) AS deuda_vigente,
+                COALESCE(cr.credito_vigente, 0)::numeric(14,2) AS credito_vigente,
+                s.seguimiento_pendiente_id,
+                s.seguimiento_pendiente_tipo,
+                s.seguimiento_pendiente_motivo,
+                s.seguimiento_pendiente_fecha,
+                s.seguimiento_pendiente_prioridad,
+                s.seguimiento_responsable_id,
+                s.seguimiento_responsable_nombre
+            FROM clientes c
+            LEFT JOIN ventas_actividad va ON va.id_cliente = c.id
+            LEFT JOIN taller t ON t.id_cliente = c.id
+            LEFT JOIN bicicletas b ON b.id_cliente = c.id
+            LEFT JOIN deudas d ON d.id_cliente = c.id
+            LEFT JOIN creditos cr ON cr.id_cliente = c.id
+            LEFT JOIN seguimientos s ON s.id_cliente = c.id
+            WHERE c.id <> 1
+            ORDER BY c.nombre, c.id
+            """,
+            (
+                list(RENTABILIDAD_ESTADOS_COMERCIALES),
+                fecha_desde,
+                fecha_hasta,
+            ),
+        )
         return cur.fetchall()
 
 
@@ -490,12 +615,40 @@ def get_historial_cliente_enriquecido(conn, cliente_id: int, limit: int = 50):
         )
         creditos = cur.fetchall()
 
+        cur.execute(
+            """
+            SELECT
+                e.id,
+                e.created_at AS fecha,
+                e.tipo_evento,
+                e.detalle,
+                e.estado_anterior,
+                e.estado_nuevo,
+                e.fecha_objetivo_anterior,
+                e.fecha_objetivo_nueva,
+                u.nombre AS usuario_nombre,
+                s.id AS seguimiento_id,
+                s.tipo AS seguimiento_tipo,
+                s.motivo AS seguimiento_motivo,
+                s.estado AS seguimiento_estado
+            FROM cliente_seguimiento_eventos e
+            JOIN cliente_seguimientos s ON s.id = e.id_seguimiento
+            JOIN usuarios u ON u.id = e.id_usuario
+            WHERE s.id_cliente = %s
+            ORDER BY e.created_at DESC, e.id DESC
+            LIMIT %s
+            """,
+            (cliente_id, limit),
+        )
+        seguimiento_eventos = cur.fetchall()
+
     return {
         "ventas": ventas,
         "pagos": pagos,
         "reservas": reservas,
         "deudas": deudas,
         "creditos": creditos,
+        "seguimiento_eventos": seguimiento_eventos,
     }
 
 
@@ -602,6 +755,75 @@ def get_resumen_ventas_cliente(conn, cliente_id: int):
             WHERE id_cliente = %s
             """,
             (cliente_id,),
+        )
+        return cur.fetchone()
+
+
+def get_contexto_analisis_cliente(conn, cliente_id: int, fecha_desde, fecha_hasta):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT
+                (
+                    SELECT MIN(v.fecha)
+                    FROM ventas v
+                    WHERE v.id_cliente = c.id
+                      AND v.estado = ANY(%s)
+                ) AS primera_venta_fecha,
+                (
+                    SELECT MAX(v.fecha)
+                    FROM ventas v
+                    WHERE v.id_cliente = c.id
+                      AND v.estado = ANY(%s)
+                ) AS ultima_venta_fecha,
+                (
+                    SELECT MIN(ot.fecha_ingreso)
+                    FROM ordenes_taller ot
+                    WHERE ot.id_cliente = c.id
+                      AND ot.estado <> 'cancelada'
+                ) AS primera_orden_taller_fecha,
+                (
+                    SELECT MAX(ot.fecha_ingreso)
+                    FROM ordenes_taller ot
+                    WHERE ot.id_cliente = c.id
+                      AND ot.estado <> 'cancelada'
+                ) AS ultima_orden_taller_fecha,
+                (
+                    SELECT COUNT(*)::int
+                    FROM ordenes_taller ot
+                    WHERE ot.id_cliente = c.id
+                      AND ot.fecha_ingreso::date BETWEEN %s AND %s
+                      AND ot.estado <> 'cancelada'
+                ) AS ordenes_taller_periodo,
+                (
+                    SELECT COUNT(*)::int
+                    FROM bicicletas_clientes bc
+                    WHERE bc.id_cliente = c.id
+                ) AS bicicletas_registradas,
+                COALESCE((
+                    SELECT SUM(d.saldo_actual)
+                    FROM deudas_cliente d
+                    WHERE d.id_cliente = c.id
+                      AND d.estado = 'abierta'
+                      AND d.saldo_actual > 0
+                ), 0)::numeric(14,2) AS deuda_vigente,
+                COALESCE((
+                    SELECT SUM(cr.saldo_actual)
+                    FROM creditos_cliente cr
+                    WHERE cr.id_cliente = c.id
+                      AND cr.estado = 'disponible'
+                      AND cr.saldo_actual > 0
+                ), 0)::numeric(14,2) AS credito_vigente
+            FROM clientes c
+            WHERE c.id = %s
+            """,
+            (
+                list(RENTABILIDAD_ESTADOS_COMERCIALES),
+                list(RENTABILIDAD_ESTADOS_COMERCIALES),
+                fecha_desde,
+                fecha_hasta,
+                cliente_id,
+            ),
         )
         return cur.fetchone()
 

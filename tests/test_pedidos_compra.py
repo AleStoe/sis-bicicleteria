@@ -1,3 +1,6 @@
+from decimal import Decimal
+
+
 def test_pedido_compra_guarda_borrador_con_items_e_historial(
     client,
     db_conn,
@@ -12,6 +15,17 @@ def test_pedido_compra_guarda_borrador_con_items_e_historial(
             """
         )
         proveedor_id = cur.fetchone()["id"]
+        cur.execute(
+            """
+            UPDATE variantes
+            SET costo_promedio_vigente = 10000,
+                costo_reposicion = 12500,
+                costo_reposicion_fecha = NOW(),
+                costo_reposicion_origen = 'ingreso_stock'
+            WHERE id = %s
+            """,
+            (seed_venta_basica["variante_id"],),
+        )
     db_conn.commit()
 
     response = client.post(
@@ -44,6 +58,10 @@ def test_pedido_compra_guarda_borrador_con_items_e_historial(
     assert data["total_items"] == 1
     assert data["cantidad_total_pedida"] == "3.000"
     assert data["items"][0]["id_variante"] == seed_venta_basica["variante_id"]
+    assert Decimal(data["items"][0]["costo_promedio_vigente"]) == Decimal("10000")
+    assert Decimal(data["items"][0]["costo_reposicion"]) == Decimal("12500")
+    assert data["items"][0]["costo_reposicion_fecha"] is not None
+    assert data["items"][0]["costo_reposicion_origen"] == "ingreso_stock"
     assert data["historial"][0]["accion"] == "pedido_compra_creado"
 
     listado = client.get("/pedidos-compra/", params={"estado": "borrador"})

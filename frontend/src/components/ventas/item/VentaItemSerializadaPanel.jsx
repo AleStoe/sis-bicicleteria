@@ -75,7 +75,7 @@ export default function VentaItemSerializadaPanel({ item, bicicletasDisponibles,
           <div><strong>{seleccionada.numero_cuadro}</strong><span>{seleccionada.condicion_comercial || "normal"}{seleccionada.ubicacion_fisica ? ` · ${seleccionada.ubicacion_fisica}` : ""}</span></div>
           <div style={styles.priceReason}>
             <strong>{precio.titulo}</strong><span>{precio.detalle}</span>
-            {item.oferta_politica_contado === "precio_final_contado" && <small>Precio final: efectivo o transferencia no agregan otro descuento.</small>}
+            {item.en_oferta && <small>Efectivo o transferencia aplica el beneficio vigente sobre la oferta.</small>}
           </div>
         </div>
       )}

@@ -2,7 +2,11 @@ from fastapi import APIRouter, Depends, Query
 
 from app.core.security import CurrentUser, aplicar_actor_actual, obtener_usuario_actual
 from app.modules.authz.service import requerir_permiso
-from app.shared.constants import PERMISO_GESTIONAR_CATALOGO
+from app.shared.constants import (
+    PERMISO_GESTIONAR_CATALOGO,
+    PERMISO_GESTIONAR_PRECIOS,
+    PERMISO_VER_RENTABILIDAD,
+)
 
 from .schema import PedidoCompraCreate, PedidoCompraEstadoUpdate, PedidoCompraOut, PedidoCompraRecepcionCreate
 from .service import (
@@ -15,6 +19,33 @@ from .service import (
 
 router = APIRouter()
 puede_gestionar_catalogo = requerir_permiso(PERMISO_GESTIONAR_CATALOGO)
+
+
+def _puede_ver_costos(usuario: CurrentUser) -> bool:
+    return (
+        usuario.auth_disabled
+        or "*" in usuario.permisos
+        or PERMISO_GESTIONAR_PRECIOS in usuario.permisos
+        or PERMISO_VER_RENTABILIDAD in usuario.permisos
+    )
+
+
+def _ocultar_costos_pedido(pedido, usuario: CurrentUser):
+    if _puede_ver_costos(usuario):
+        return pedido
+    return {
+        **dict(pedido),
+        "items": [
+            {
+                **dict(item),
+                "costo_promedio_vigente": None,
+                "costo_reposicion": None,
+                "costo_reposicion_fecha": None,
+                "costo_reposicion_origen": None,
+            }
+            for item in pedido.get("items", [])
+        ],
+    }
 
 
 @router.get("/", response_model=list[PedidoCompraOut])
@@ -33,15 +64,15 @@ def crear_pedido_route(
     usuario: CurrentUser = Depends(puede_gestionar_catalogo),
 ):
     aplicar_actor_actual(data, usuario)
-    return crear_pedido_compra(data)
+    return _ocultar_costos_pedido(crear_pedido_compra(data), usuario)
 
 
 @router.get("/{pedido_id}", response_model=PedidoCompraOut)
 def obtener_pedido_route(
     pedido_id: int,
-    _usuario: CurrentUser = Depends(obtener_usuario_actual),
+    usuario: CurrentUser = Depends(obtener_usuario_actual),
 ):
-    return obtener_pedido_compra(pedido_id)
+    return _ocultar_costos_pedido(obtener_pedido_compra(pedido_id), usuario)
 
 
 @router.patch("/{pedido_id}/estado", response_model=PedidoCompraOut)
@@ -51,7 +82,7 @@ def cambiar_estado_route(
     usuario: CurrentUser = Depends(puede_gestionar_catalogo),
 ):
     aplicar_actor_actual(data, usuario)
-    return cambiar_estado_pedido_compra(pedido_id, data)
+    return _ocultar_costos_pedido(cambiar_estado_pedido_compra(pedido_id, data), usuario)
 
 
 @router.post("/{pedido_id}/recepciones", response_model=PedidoCompraOut)
@@ -61,4 +92,4 @@ def recibir_pedido_route(
     usuario: CurrentUser = Depends(puede_gestionar_catalogo),
 ):
     aplicar_actor_actual(data, usuario)
-    return recibir_pedido_compra(pedido_id, data)
+    return _ocultar_costos_pedido(recibir_pedido_compra(pedido_id, data), usuario)

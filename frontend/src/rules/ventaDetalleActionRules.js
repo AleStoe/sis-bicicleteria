@@ -60,6 +60,11 @@ export function puedeRevertirPago(pago, usuarioActual) {
   return rol === "administrador" || rol === "encargado";
 }
 
+export function puedeCorregirMedioPago(pago, usuarioActual) {
+  if (!puedeRevertirPago(pago, usuarioActual)) return false;
+  return pago.medio_pago === "efectivo" || pago.medio_pago === "transferencia";
+}
+
 export function obtenerAccionesVentaDetalle(venta, situacionFinanciera) {
   return {
     puedeCobrar: puedeCobrarVenta(venta, situacionFinanciera),

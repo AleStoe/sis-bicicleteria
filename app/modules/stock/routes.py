@@ -124,6 +124,9 @@ def stock(
         {
             **dict(item),
             "costo_promedio_vigente": None,
+            "costo_reposicion": None,
+            "costo_reposicion_fecha": None,
+            "costo_reposicion_origen": None,
             "capital_inmovilizado": None,
         }
         for item in items
@@ -178,9 +181,9 @@ def pedido_compra_sugerido(
     tipo_operativo: str | None = Query(default=None, pattern="^(todos|bicicleta|repuesto|accesorio|producto|no_bicicletas)$"),
     stock_bajo_umbral: int = Query(default=2, ge=0, le=999999),
     limit: int = Query(default=2000, ge=1, le=5000),
-    _usuario: CurrentUser = Depends(obtener_usuario_actual),
+    usuario: CurrentUser = Depends(obtener_usuario_actual),
 ):
-    return obtener_pedido_compra_sugerido(
+    resultado = obtener_pedido_compra_sugerido(
         {
             "q": q,
             "id_sucursal": id_sucursal,
@@ -192,6 +195,27 @@ def pedido_compra_sugerido(
             "limit": limit,
         }
     )
+    if _puede_ver_costos(usuario):
+        return resultado
+    return {
+        **resultado,
+        "proveedores": [
+            {
+                **proveedor,
+                "items": [
+                    {
+                        **item,
+                        "costo_promedio_vigente": None,
+                        "costo_reposicion": None,
+                        "costo_reposicion_fecha": None,
+                        "costo_reposicion_origen": None,
+                    }
+                    for item in proveedor["items"]
+                ],
+            }
+            for proveedor in resultado["proveedores"]
+        ],
+    }
 
 
 @router.get("/demanda", response_model=DemandaResumenOut)

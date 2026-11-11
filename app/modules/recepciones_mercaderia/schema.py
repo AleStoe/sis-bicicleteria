@@ -67,8 +67,13 @@ class RecepcionConfirmarInput(BaseModel):
 
 class RecepcionPreciosPreviewInput(BaseModel):
     estrategia: str = Field(pattern="^(reglas|mantener_margen|mantener_actuales)$")
-    variacion_alerta_pct: Decimal = Field(default=Decimal("30"), ge=0, le=1000)
+    variacion_alerta_pct: Decimal = Field(default=Decimal("10"), ge=0, le=1000)
     redondeo_base: Decimal = Field(default=Decimal("100"), gt=0)
+    descuento_minorista_pct: Decimal = Field(default=Decimal("10"), ge=0, lt=100)
+    descuento_mayorista_pct: Decimal = Field(default=Decimal("0"), ge=0, lt=100)
+    redondeo_minorista: Decimal | None = Field(default=None, gt=0)
+    redondeo_mayorista: Decimal | None = Field(default=None, gt=0)
+    confirmar_precio_libre: bool = False
     id_usuario: int | None = None
 
 

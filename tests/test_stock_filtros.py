@@ -1,3 +1,6 @@
+from decimal import Decimal
+
+
 def test_stock_listado_acepta_filtros_avanzados(client, seed_venta_basica):
     response = client.get(
         "/stock/",
@@ -439,14 +442,18 @@ def test_pedido_sugerido_agrupa_por_proveedor_y_excluye_no_reponer(
                 sku,
                 codigo_proveedor,
                 proveedor_preferido_id,
+                costo_promedio_vigente,
+                costo_reposicion,
+                costo_reposicion_fecha,
+                costo_reposicion_origen,
                 precio_minorista,
                 precio_mayorista,
                 reponer_stock,
                 activo
             )
             VALUES
-                (%s, 'UNICA', 'PEDIDO-INCLUIR', 'PEDIDO-INCLUIR', %s, 1000, 800, TRUE, TRUE),
-                (%s, 'UNICA', 'PEDIDO-NO-REPONER', 'PEDIDO-NO-REPONER', %s, 1000, 800, FALSE, TRUE)
+                (%s, 'UNICA', 'PEDIDO-INCLUIR', 'PEDIDO-INCLUIR', %s, 900, 1100, NOW(), 'ingreso_stock', 1000, 800, TRUE, TRUE),
+                (%s, 'UNICA', 'PEDIDO-NO-REPONER', 'PEDIDO-NO-REPONER', %s, 700, 850, NOW(), 'ingreso_stock', 1000, 800, FALSE, TRUE)
             RETURNING id
             """,
             (producto_incluir_id, proveedor_id, producto_no_reponer_id, proveedor_id),
@@ -499,3 +506,7 @@ def test_pedido_sugerido_agrupa_por_proveedor_y_excluye_no_reponer(
     assert float(item["unidades_vendidas_90d"]) == 0
     assert item["ventas_distintas_90d"] == 0
     assert item["prioridad_reposicion"] == "revisar"
+    assert Decimal(item["costo_promedio_vigente"]) == Decimal("900")
+    assert Decimal(item["costo_reposicion"]) == Decimal("1100")
+    assert item["costo_reposicion_fecha"] is not None
+    assert item["costo_reposicion_origen"] == "ingreso_stock"

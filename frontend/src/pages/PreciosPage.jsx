@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Calculator, FileSpreadsheet, Percent, Settings, SlidersHorizontal, Tag } from "lucide-react";
 import { listarCatalogoPOS, listarCategorias, listarMarcas, listarRubros } from "../services/catalogoService";
 import { listarProveedores } from "../services/proveedoresService";
 import { obtenerConfiguracionNegocio } from "../services/configuracionNegocioService";
@@ -8,6 +9,8 @@ import PrecioManualPanel from "../components/precios/PrecioManualPanel";
 import ReglasPrecioPanel from "../components/precios/ReglasPrecioPanel";
 import HerramientasPrecioPanel from "../components/precios/HerramientasPrecioPanel";
 import OfertasPanel from "../components/precios/OfertasPanel";
+import ListasPreciosPanel from "../components/precios/ListasPreciosPanel";
+import PerfilesListasPanel from "../components/precios/PerfilesListasPanel";
 import { ConfirmModal } from "../components/ui/ConfirmModal";
 import {
   buildRecalculoProveedorPayload,
@@ -19,6 +22,7 @@ import {
 } from "../utils/preciosUtils";
 import {
   actualizarPrecioVariante,
+  actualizarCostoReposicionVariante,
   ajustarPreciosProveedor,
   crearReglaPrecio,
   desactivarReglaPrecio,
@@ -39,7 +43,7 @@ export default function PreciosPage() {
   const isNarrow = useMediaQuery("(max-width: 1120px)");
   const buscarRef = useRef(null);
 
-  const [tab, setTab] = useState("manual");
+  const [tab, setTab] = useState(() => localStorage.getItem("precios_seccion_activa") || "listas");
   const { usuarioId, sucursalId } = useSession();
 
   const [proveedores, setProveedores] = useState([]);
@@ -62,6 +66,10 @@ export default function PreciosPage() {
     precio_minorista: "",
     precio_mayorista: "",
     motivo: "Actualización manual de precio",
+  });
+  const [formCostoReposicion, setFormCostoReposicion] = useState({
+    costo_reposicion: "",
+    motivo: "Actualización manual de costo de reposición",
   });
 
   const [idProveedor, setIdProveedor] = useState("");
@@ -124,6 +132,10 @@ export default function PreciosPage() {
     cargarInicial();
     if (!isMobile) setTimeout(() => buscarRef.current?.focus(), 100);
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem("precios_seccion_activa", tab);
+  }, [tab]);
 
   async function cargarInicial() {
     try {
@@ -214,8 +226,54 @@ export default function PreciosPage() {
         precio_mayorista: String(precio.precio_mayorista ?? "0"),
         motivo: "Actualización manual de precio",
       });
+      setFormCostoReposicion({
+        costo_reposicion: String(
+          precio.costo_reposicion ?? precio.costo_promedio_vigente ?? "",
+        ),
+        motivo: "Actualización manual de costo de reposición",
+      });
     } catch (err) {
       setError(err.message || "No se pudo cargar el precio de la variante");
+    } finally {
+      setProcesando(false);
+    }
+  }
+
+  async function guardarCostoReposicion(e) {
+    e.preventDefault();
+
+    if (!varianteSeleccionada) {
+      setError("Seleccioná una variante");
+      return;
+    }
+    if (!formCostoReposicion.motivo.trim() || formCostoReposicion.motivo.trim().length < 3) {
+      setError("El motivo del costo de reposición es obligatorio");
+      return;
+    }
+
+    try {
+      setProcesando(true);
+      setError("");
+      setMensaje("");
+
+      await actualizarCostoReposicionVariante(varianteSeleccionada.id, {
+        costo_reposicion: formCostoReposicion.costo_reposicion,
+        moneda: "ARS",
+        proveedor_id: varianteSeleccionada.costo_reposicion_proveedor_id || undefined,
+        motivo: formCostoReposicion.motivo.trim(),
+        id_usuario: usuarioId,
+      });
+
+      const [actualizado, historialData] = await Promise.all([
+        obtenerPrecioVariante(varianteSeleccionada.id),
+        obtenerHistorialPrecioVariante(varianteSeleccionada.id),
+      ]);
+      setVarianteSeleccionada(actualizado);
+      setHistorial(historialData?.movimientos || []);
+      setSugerencia(null);
+      setMensaje("Costo de reposición actualizado. El costo promedio no fue modificado.");
+    } catch (err) {
+      setError(err.message || "No se pudo actualizar el costo de reposición");
     } finally {
       setProcesando(false);
     }
@@ -558,12 +616,14 @@ export default function PreciosPage() {
   );
 
   const margenMinorista = calcularMargen(
-    varianteSeleccionada?.costo_promedio_vigente,
+    varianteSeleccionada?.costo_reposicion ??
+      varianteSeleccionada?.costo_promedio_vigente,
     varianteSeleccionada?.precio_minorista
   );
 
   const margenMayorista = calcularMargen(
-    varianteSeleccionada?.costo_promedio_vigente,
+    varianteSeleccionada?.costo_reposicion ??
+      varianteSeleccionada?.costo_promedio_vigente,
     varianteSeleccionada?.precio_mayorista
   );
   const viewStyles = {
@@ -605,12 +665,23 @@ export default function PreciosPage() {
 
   return (
     <div style={viewStyles.page}>
-      <header style={viewStyles.header}>
+      <header style={{ ...viewStyles.header, ...styles.pageHeader }}>
         <div>
           <h1 style={viewStyles.title}>Precios</h1>
           <p style={viewStyles.subtitle}>
-            Edición puntual, calculadora, sugerencias, historial, reglas y recalculo masivo.
+            Actualización de listas, costos y decisiones comerciales.
           </p>
+        </div>
+        <div style={styles.toolNav}>
+          <button type="button" style={tab === "calculadora" ? styles.toolButtonActive : styles.toolButton} onClick={() => setTab("calculadora")}>
+            <Calculator size={17} /> Calculadora
+          </button>
+          <button type="button" style={tab === "masivo" ? styles.toolButtonActive : styles.toolButton} onClick={() => setTab("masivo")}>
+            <SlidersHorizontal size={17} /> Masivos
+          </button>
+          <button type="button" style={tab === "reglas" ? styles.toolButtonActive : styles.toolButton} onClick={() => setTab("reglas")}>
+            <Settings size={17} /> Configuración
+          </button>
         </div>
       </header>
 
@@ -620,40 +691,40 @@ export default function PreciosPage() {
       <div style={viewStyles.tabs}>
         <button
           type="button"
+          style={tab === "listas" ? viewStyles.tabActive : viewStyles.tab}
+          onClick={() => setTab("listas")}
+        >
+          <FileSpreadsheet size={17} /> Actualizar listas
+        </button>
+        <button
+          type="button"
           style={tab === "manual" ? viewStyles.tabActive : viewStyles.tab}
           onClick={() => setTab("manual")}
         >
-          Precio puntual
+          <Tag size={17} /> Precio puntual
         </button>
         <button
           type="button"
           style={tab === "ofertas" ? viewStyles.tabActive : viewStyles.tab}
           onClick={() => setTab("ofertas")}
         >
-          Ofertas 🔥
-        </button>
-        <button
-          type="button"
-          style={tab === "calculadora" ? viewStyles.tabActive : viewStyles.tab}
-          onClick={() => setTab("calculadora")}
-        >
-          Calculadora
-        </button>
-        <button
-          type="button"
-          style={tab === "masivo" ? viewStyles.tabActive : viewStyles.tab}
-          onClick={() => setTab("masivo")}
-        >
-          Desfasados / masivo
-        </button>
-        <button
-          type="button"
-          style={tab === "reglas" ? viewStyles.tabActive : viewStyles.tab}
-          onClick={() => setTab("reglas")}
-        >
-          Reglas
+          <Percent size={17} /> Ofertas
         </button>
       </div>
+
+      {tab === "listas" && (
+        <ListasPreciosPanel
+          proveedores={proveedores}
+          usuarioId={usuarioId}
+          sucursalId={sucursalId}
+          porcentajeDescuentoContado={
+            configuracionNegocio.porcentaje_descuento_contado_calculadora_precios
+          }
+          styles={viewStyles}
+          isMobile={isMobile}
+          isNarrow={isNarrow}
+        />
+      )}
 
       {tab === "manual" && (
         <PrecioManualPanel
@@ -671,6 +742,9 @@ export default function PreciosPage() {
           formPrecio={formPrecio}
           setFormPrecio={setFormPrecio}
           guardarPrecioManual={guardarPrecioManual}
+          formCostoReposicion={formCostoReposicion}
+          setFormCostoReposicion={setFormCostoReposicion}
+          guardarCostoReposicion={guardarCostoReposicion}
           tipoSugerencia={tipoSugerencia}
           setTipoSugerencia={setTipoSugerencia}
           calcularSugerencia={calcularSugerencia}
@@ -744,21 +818,24 @@ export default function PreciosPage() {
       )}
 
       {tab === "reglas" && (
-        <ReglasPrecioPanel
-          reglaForm={reglaForm}
-          setReglaForm={setReglaForm}
-          reglas={reglas}
-          familias={familias}
-          proveedores={proveedores}
-          rubros={rubros}
-          categorias={categorias}
-          marcas={marcas}
-          crearRegla={crearRegla}
-          desactivarRegla={desactivarRegla}
-          cargarInicial={cargarInicial}
-          procesando={procesando}
-          styles={viewStyles}
-        />
+        <>
+          <PerfilesListasPanel proveedores={proveedores} styles={viewStyles} isMobile={isMobile} />
+          <ReglasPrecioPanel
+            reglaForm={reglaForm}
+            setReglaForm={setReglaForm}
+            reglas={reglas}
+            familias={familias}
+            proveedores={proveedores}
+            rubros={rubros}
+            categorias={categorias}
+            marcas={marcas}
+            crearRegla={crearRegla}
+            desactivarRegla={desactivarRegla}
+            cargarInicial={cargarInicial}
+            procesando={procesando}
+            styles={viewStyles}
+          />
+        </>
       )}
 
       <ConfirmModal
@@ -804,6 +881,42 @@ const styles = {
   headerMobile: {
     marginBottom: "14px",
   },
+  pageHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: "12px",
+    flexWrap: "wrap",
+  },
+  toolNav: {
+    display: "flex",
+    gap: "6px",
+    flexWrap: "wrap",
+  },
+  toolButton: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "7px",
+    border: "1px solid #d0d5dd",
+    background: "#fff",
+    color: "#344054",
+    borderRadius: "6px",
+    padding: "8px 10px",
+    fontWeight: 700,
+    cursor: "pointer",
+  },
+  toolButtonActive: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "7px",
+    border: "1px solid #94a3b8",
+    background: "#eef2f7",
+    color: "#0f172a",
+    borderRadius: "6px",
+    padding: "8px 10px",
+    fontWeight: 800,
+    cursor: "pointer",
+  },
   title: {
     margin: 0,
     fontSize: "28px",
@@ -829,6 +942,10 @@ const styles = {
     marginBottom: "14px",
   },
   tab: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "7px",
     border: "1px solid #d0d5dd",
     background: "white",
     borderRadius: "10px",
@@ -837,6 +954,10 @@ const styles = {
     cursor: "pointer",
   },
   tabActive: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "7px",
     border: "1px solid #1f6feb",
     background: "#1f6feb",
     color: "white",
@@ -1271,6 +1392,15 @@ const styles = {
   mutedText: {
     margin: "-6px 0 14px",
     color: "#667085",
+    fontSize: "13px",
+    fontWeight: 700,
+  },
+  infoBox: {
+    padding: "10px 12px",
+    border: "1px solid #bfdbfe",
+    borderRadius: "8px",
+    background: "#eff6ff",
+    color: "#1e3a8a",
     fontSize: "13px",
     fontWeight: 700,
   },

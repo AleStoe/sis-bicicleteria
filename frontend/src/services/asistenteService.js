@@ -15,9 +15,9 @@ export function getAsistenteResumen(params = {}) {
   return apiRequest(`/asistente/resumen${query ? `?${query}` : ""}`);
 }
 
-export function preguntarAsistente({ pregunta, id_sucursal }) {
+export function preguntarAsistente({ pregunta, id_sucursal, cliente_id, periodo = "365d" }) {
   return apiRequest("/asistente/preguntar", {
     method: "POST",
-    body: JSON.stringify({ pregunta, id_sucursal }),
+    body: JSON.stringify({ pregunta, id_sucursal, cliente_id, periodo }),
   });
 }

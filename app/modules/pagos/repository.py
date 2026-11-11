@@ -113,6 +113,19 @@ def update_pago_estado(conn, pago_id: int, estado: str):
         )
 
 
+def update_pago_medio(conn, pago_id: int, medio_pago: str):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE pagos
+            SET medio_pago = %s,
+                updated_at = NOW()
+            WHERE id = %s
+            """,
+            (medio_pago, pago_id),
+        )
+
+
 def get_pagos(conn, id_cliente: int | None = None):
     where = []
     params = []

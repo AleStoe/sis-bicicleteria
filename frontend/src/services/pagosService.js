@@ -35,3 +35,10 @@ export function revertirPago(pagoId, data) {
     body: JSON.stringify(data),
   });
 }
+
+export function corregirMedioPago(pagoId, data) {
+  return apiRequest(`/pagos/${pagoId}/corregir-medio`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}

@@ -59,6 +59,10 @@ export async function apiRequest(path, options = {}) {
       throw new Error(detail.map((e) => e.msg).join(" | "));
     }
 
+    if (detail && typeof detail === "object") {
+      throw new Error(detail.mensaje || JSON.stringify(detail));
+    }
+
     throw new Error(
       detail ||
         data?.message ||

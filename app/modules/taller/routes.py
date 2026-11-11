@@ -22,6 +22,8 @@ from .schemas import (
     OrdenTallerItemCancelarInput,
     OrdenTallerGenerarVentaInput,
     OrdenTallerGenerarVentaOutput,
+    OrdenTallerFinalizarRetiroInput,
+    OrdenTallerFinalizarRetiroOutput,
     OrdenTallerOperativoUpdate,
     OrdenTallerAvisoRetiroInput,
     OrdenTallerMensajeRetiroOutput,
@@ -44,6 +46,7 @@ from .service import (
     cancelar_item_orden_taller,
     quitar_item_borrador_orden_taller,
     generar_venta_desde_orden_taller,
+    finalizar_retiro_orden_taller,
     actualizar_datos_operativos_orden_taller,
     generar_mensaje_lista_retiro_orden_taller,
     registrar_aviso_retiro_orden_taller,
@@ -287,3 +290,17 @@ def generar_venta(
     if orden.get("es_service_postventa") is True:
         exigir_permiso_actual(usuario, PERMISO_GESTIONAR_POSTVENTA)
     return generar_venta_desde_orden_taller(orden_id, payload)
+
+
+@router.post(
+    "/{orden_id}/finalizar-retiro",
+    response_model=OrdenTallerFinalizarRetiroOutput,
+)
+def finalizar_retiro(
+    orden_id: int,
+    payload: OrdenTallerFinalizarRetiroInput,
+    usuario: CurrentUser = Depends(puede_gestionar_taller),
+):
+    aplicar_actor_actual(payload, usuario)
+    exigir_permiso_actual(usuario, PERMISO_CREAR_VENTA)
+    return finalizar_retiro_orden_taller(orden_id, payload)

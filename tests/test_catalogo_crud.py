@@ -595,7 +595,7 @@ def test_crear_variante_basica(client):
     assert variante["activo"] is True
 
 
-def test_obtener_variante_detalle(client):
+def test_obtener_variante_detalle(client, db_conn):
     categoria = _get_first_categoria(client)
     producto = _crear_producto(
         client,
@@ -610,6 +610,21 @@ def test_obtener_variante_detalle(client):
         codigo_barras="7790000000033",
     )
 
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE variantes
+            SET costo_promedio_vigente = 1250,
+                costo_reposicion = 1500,
+                costo_reposicion_moneda = 'ARS',
+                costo_reposicion_fecha = '2026-11-11 10:00:00',
+                costo_reposicion_origen = 'ingreso_stock'
+            WHERE id = %s
+            """,
+            (variante["id"],),
+        )
+    db_conn.commit()
+
     response = client.get(f"/catalogo/variantes/{variante['id']}")
 
     assert response.status_code == 200, response.text
@@ -621,6 +636,11 @@ def test_obtener_variante_detalle(client):
     assert data["nombre_variante"] == "DETALLE VARIANTE"
     assert data["sku"] == f"VAR-{variante['id']:08d}"
     assert _ean13_valido(data["codigo_barras"])
+    assert _dec(data["costo_promedio_vigente"]) == Decimal("1250")
+    assert _dec(data["costo_reposicion"]) == Decimal("1500")
+    assert data["costo_reposicion_moneda"] == "ARS"
+    assert data["costo_reposicion_origen"] == "ingreso_stock"
+    assert data["costo_reposicion_fecha"] is not None
 
 
 def test_obtener_variante_inexistente_devuelve_404(client):

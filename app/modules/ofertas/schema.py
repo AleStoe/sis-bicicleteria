@@ -20,8 +20,8 @@ class OfertaCreateInput(BaseModel):
     alcance: str = Field(default="variante", pattern="^(variante|unidades)$")
     ids_bicicletas_serializadas: list[int] = Field(default_factory=list)
     politica_contado: str = Field(
-        default="precio_final_contado",
-        pattern="^(precio_lista_promocional|precio_final_contado)$",
+        default="precio_lista_promocional",
+        pattern="^precio_lista_promocional$",
     )
     nombre: str = Field(min_length=3, max_length=120)
     precio_oferta: Decimal = Field(gt=0)
@@ -45,8 +45,8 @@ class OfertaUpdateInput(BaseModel):
     alcance: str = Field(default="variante", pattern="^(variante|unidades)$")
     ids_bicicletas_serializadas: list[int] = Field(default_factory=list)
     politica_contado: str = Field(
-        default="precio_final_contado",
-        pattern="^(precio_lista_promocional|precio_final_contado)$",
+        default="precio_lista_promocional",
+        pattern="^precio_lista_promocional$",
     )
     nombre: str = Field(min_length=3, max_length=120)
     precio_oferta: Decimal = Field(gt=0)

@@ -6,6 +6,8 @@ from app.modules.authz.service import requerir_permiso
 from app.shared.constants import PERMISO_REGISTRAR_PAGO, PERMISO_REVERTIR_PAGO
 
 from .schema import (
+    PagoCorreccionMedioInput,
+    PagoCorreccionMedioOutput,
     PagoCreateInput,
     PagoCreateOutput,
     PagoReversionInput,
@@ -14,7 +16,14 @@ from .schema import (
     PagoVentaSimulacionInput,
     PagoVentaSimulacionOutput,
 )
-from .service import crear_pago, listar_pagos, obtener_pagos_venta, revertir_pago, simular_pago_venta
+from .service import (
+    corregir_medio_pago,
+    crear_pago,
+    listar_pagos,
+    obtener_pagos_venta,
+    revertir_pago,
+    simular_pago_venta,
+)
 
 router = APIRouter()
 puede_registrar_pago = requerir_permiso(PERMISO_REGISTRAR_PAGO)
@@ -38,6 +47,19 @@ def revertir_pago_route(
 ):
     aplicar_actor_actual(data, usuario)
     return revertir_pago(pago_id, data)
+
+
+@router.post(
+    "/{pago_id}/corregir-medio",
+    response_model=PagoCorreccionMedioOutput,
+)
+def corregir_medio_pago_route(
+    pago_id: int,
+    data: PagoCorreccionMedioInput,
+    usuario: CurrentUser = Depends(puede_revertir_pago),
+):
+    aplicar_actor_actual(data, usuario)
+    return corregir_medio_pago(pago_id, data)
 
 
 @router.get("/", response_model=List[PagoResumenOutput])

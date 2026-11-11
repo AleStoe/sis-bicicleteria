@@ -1,3 +1,7 @@
+from app.core.security import CurrentUser
+from app.modules.asistente.service import responder_pregunta_asistente
+
+
 def _crear_venta_asistente(client, seed_venta_basica):
     response = client.post(
         "/ventas/",
@@ -118,3 +122,93 @@ def test_asistente_explica_recepcion_mercaderia(client, db_conn, seed_venta_basi
     assert "PROVEEDOR ATENEA" in data["resumen"]
     assert any(card["titulo"] == "Documentos" for card in data["cards"])
     assert data["solo_lectura"] is True
+
+
+def test_atenea_cliente_reutiliza_analisis_oficial_y_cita_fuentes(client, seed_venta_basica):
+    _crear_venta_asistente(client, seed_venta_basica)
+    cliente_id = seed_venta_basica["cliente_id"]
+
+    oficial = client.get(f"/clientes/{cliente_id}/analisis?periodo=365d")
+    assert oficial.status_code == 200, oficial.text
+
+    response = client.post(
+        "/asistente/preguntar",
+        json={
+            "pregunta": "analizar este cliente",
+            "cliente_id": cliente_id,
+            "periodo": "365d",
+        },
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["intent"] == "cliente_crm"
+    assert data["solo_lectura"] is True
+    assert "analisis_cliente" in data["fuentes"]
+    assert any(ref["label"].startswith("Análisis oficial") for ref in data["referencias"])
+    assert any(card["titulo"] == "Ventas netas" for card in data["cards"])
+    assert str(oficial.json()["resumen"]["cantidad_operaciones"]) in data["resumen"]
+
+
+def test_atenea_prepara_borrador_sin_crear_seguimiento(client, seed_venta_basica):
+    cliente_id = seed_venta_basica["cliente_id"]
+    antes = client.get(f"/clientes/{cliente_id}/seguimientos?bandeja=pendientes").json()["total"]
+
+    response = client.post(
+        "/asistente/preguntar",
+        json={
+            "pregunta": "preparar mensaje para este cliente",
+            "cliente_id": cliente_id,
+        },
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["borrador_mensaje"]
+    assert "registramos actividad" not in data["borrador_mensaje"].lower()
+    assert data["requiere_confirmacion"] is True
+    assert data["solo_lectura"] is True
+    despues = client.get(f"/clientes/{cliente_id}/seguimientos?bandeja=pendientes").json()["total"]
+    assert despues == antes
+
+
+def test_atenea_cliente_oculta_ganancia_sin_permiso(seed_venta_basica):
+    usuario = CurrentUser(
+        id=seed_venta_basica["usuario_id"],
+        username="consulta_crm",
+        nombre="Consulta CRM",
+        roles=frozenset({"operador"}),
+        permisos=frozenset(),
+    )
+    data = responder_pregunta_asistente(
+        pregunta="analizar este cliente",
+        id_sucursal=seed_venta_basica["sucursal_id"],
+        cliente_id=seed_venta_basica["cliente_id"],
+        usuario=usuario,
+    )
+    assert all(card["titulo"] != "Ganancia comercial" for card in data["cards"])
+
+
+def test_contexto_cliente_no_reemplaza_consultas_generales(client, seed_venta_basica):
+    response = client.post(
+        "/asistente/preguntar",
+        json={
+            "pregunta": "ventas de hoy",
+            "cliente_id": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["intent"] == "ventas_hoy"
+
+
+def test_atenea_resuelve_cliente_por_nombre_cuando_es_unico(client, seed_venta_basica):
+    response = client.post(
+        "/asistente/preguntar",
+        json={"pregunta": "analizar cliente Test"},
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["intent"] == "cliente_crm"
+    assert any(
+        ref["to"] == f"/clientes/{seed_venta_basica['cliente_id']}"
+        for ref in data["referencias"]
+    )

@@ -1,3 +1,10 @@
+from datetime import date, timedelta
+from decimal import Decimal
+
+from app.modules.clientes.service import obtener_analisis_cliente_service
+from app.modules.clientes.crm_service import _borrador_comunicacion_crm
+
+
 def test_crear_cliente_con_datos_fiscales(client, db_conn, clean_db):
     response = client.post(
         "/clientes/",
@@ -124,6 +131,35 @@ def test_buscar_cliente_por_apellido_y_nombre_completo_generado(client, clean_db
     por_completo = client.get("/clientes/?q=Lucia Fernandez")
     assert por_completo.status_code == 200, por_completo.text
     assert any(cliente["id"] == cliente_id for cliente in por_completo.json())
+
+
+def test_listar_clientes_por_ultimos_dados_de_alta(client, clean_db):
+    primero = client.post(
+        "/clientes/",
+        json={
+            "nombre": "Cliente Primero",
+            "telefono": "2915557101",
+            "tipo_cliente": "minorista",
+        },
+    )
+    segundo = client.post(
+        "/clientes/",
+        json={
+            "nombre": "Cliente Segundo",
+            "telefono": "2915557102",
+            "tipo_cliente": "minorista",
+        },
+    )
+    assert primero.status_code == 200, primero.text
+    assert segundo.status_code == 200, segundo.text
+
+    response = client.get("/clientes/?orden=recientes")
+    assert response.status_code == 200, response.text
+    clientes = response.json()
+
+    assert clientes[0]["id"] == segundo.json()["cliente_id"]
+    assert clientes[1]["id"] == primero.json()["cliente_id"]
+    assert clientes[0]["created_at"] is not None
 
 
 def test_ventas_taller_reservas_siguen_devolviendo_cliente_nombre(
@@ -511,6 +547,7 @@ def test_historial_y_taller_cliente_sin_movimientos(client, clean_db):
         "reservas": [],
         "deudas": [],
         "creditos": [],
+        "seguimiento_eventos": [],
     }
     assert taller.status_code == 200, taller.text
     assert taller.json() == []
@@ -907,3 +944,451 @@ def test_historial_bicicleta_cliente_devuelve_taller_y_venta_origen(client, db_c
         data["historial_taller"][0]["problema_reportado"]
         == "Hace ruido la transmisión"
     )
+
+
+def test_analisis_cliente_concilia_venta_costo_y_ganancia(
+    client,
+    seed_venta_basica,
+):
+    venta = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 1,
+                }
+            ],
+        },
+    )
+    assert venta.status_code == 200, venta.text
+
+    response = client.get(
+        f"/clientes/{seed_venta_basica['cliente_id']}/analisis?periodo=365d"
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+
+    assert data["puede_ver_rentabilidad"] is True
+    assert data["resumen"]["cantidad_operaciones"] == 1
+    assert Decimal(data["resumen"]["ventas_netas"]) == Decimal("24440.00")
+    assert Decimal(data["resumen"]["costo_mercaderia"]) == Decimal("10000.00")
+    assert Decimal(data["resumen"]["ganancia_comercial"]) == Decimal("14440.00")
+    assert Decimal(data["resumen"]["ticket_promedio"]) == Decimal("24440.00")
+    assert data["calidad_datos"]["valida"] is True
+    assert sum(Decimal(rubro["ventas_netas"]) for rubro in data["rubros"]) == Decimal("24440.00")
+    assert data["actividad"]["dias_desde_ultima_actividad"] == 0
+
+
+def test_analisis_cliente_sin_actividad_devuelve_estado_vacio(client, clean_db):
+    crear = client.post(
+        "/clientes/",
+        json={
+            "nombre": "Cliente Sin Actividad",
+            "telefono": "2915557999",
+            "tipo_cliente": "minorista",
+        },
+    )
+    assert crear.status_code == 200, crear.text
+
+    response = client.get(
+        f"/clientes/{crear.json()['cliente_id']}/analisis?periodo=90d"
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+
+    assert data["resumen"]["cantidad_operaciones"] == 0
+    assert Decimal(data["resumen"]["ventas_netas"]) == Decimal("0.00")
+    assert data["actividad"]["ultima_actividad_fecha"] is None
+    assert data["rubros"] == []
+    assert data["productos_principales"] == []
+
+
+def test_analisis_cliente_oculta_costos_sin_permiso(client, seed_venta_basica):
+    venta = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [
+                {
+                    "id_variante": seed_venta_basica["variante_id"],
+                    "cantidad": 1,
+                }
+            ],
+        },
+    )
+    assert venta.status_code == 200, venta.text
+
+    data = obtener_analisis_cliente_service(
+        seed_venta_basica["cliente_id"],
+        periodo="365d",
+        puede_ver_rentabilidad=False,
+    )
+
+    assert data["resumen"]["ventas_netas"] == Decimal("24440.00")
+    assert data["resumen"]["costo_mercaderia"] is None
+    assert data["resumen"]["ganancia_comercial"] is None
+    assert data["resumen"]["margen_porcentaje"] is None
+    assert data["rubros"][0]["costo_mercaderia"] is None
+    assert data["calidad_datos"] is None
+
+
+def test_panel_crm_concilia_con_analisis_individual(client, seed_venta_basica):
+    venta = client.post(
+        "/ventas/",
+        json={
+            "id_cliente": seed_venta_basica["cliente_id"],
+            "id_sucursal": seed_venta_basica["sucursal_id"],
+            "id_usuario": seed_venta_basica["usuario_id"],
+            "items": [{"id_variante": seed_venta_basica["variante_id"], "cantidad": 1}],
+        },
+    )
+    assert venta.status_code == 200, venta.text
+
+    individual = client.get(
+        f"/clientes/{seed_venta_basica['cliente_id']}/analisis?periodo=365d"
+    )
+    panel = client.get(
+        f"/clientes/crm/panel?q=Cliente%20Test&limit=10"
+    )
+    assert individual.status_code == 200, individual.text
+    assert panel.status_code == 200, panel.text
+
+    individual_data = individual.json()
+    panel_data = panel.json()
+    assert panel_data["total"] == 1
+    cliente = panel_data["items"][0]
+    assert cliente["id"] == seed_venta_basica["cliente_id"]
+    assert Decimal(cliente["ventas_365"]) == Decimal(individual_data["resumen"]["ventas_netas"])
+    assert Decimal(cliente["ganancia_365"]) == Decimal(individual_data["resumen"]["ganancia_comercial"])
+    assert cliente["operaciones_365"] == individual_data["resumen"]["cantidad_operaciones"]
+
+
+def test_panel_crm_filtra_recurrente_y_busca_por_bicicleta(client, seed_venta_basica):
+    for _ in range(2):
+        venta = client.post(
+            "/ventas/",
+            json={
+                "id_cliente": seed_venta_basica["cliente_id"],
+                "id_sucursal": seed_venta_basica["sucursal_id"],
+                "id_usuario": seed_venta_basica["usuario_id"],
+                "items": [{"id_variante": seed_venta_basica["variante_id"], "cantidad": 1}],
+            },
+        )
+        assert venta.status_code == 200, venta.text
+
+    bicicleta = client.post(
+        f"/clientes/{seed_venta_basica['cliente_id']}/bicicletas",
+        json={
+            "marca": "Topmega",
+            "modelo": "R29",
+            "numero_cuadro": "CRM-CUADRO-001",
+        },
+    )
+    assert bicicleta.status_code == 201, bicicleta.text
+
+    response = client.get(
+        "/clientes/crm/panel?"
+        "vista=recurrentes&q=CRM-CUADRO-001&orden=actividad"
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+
+    assert data["total"] == 1
+    assert data["items"][0]["operaciones_365"] == 2
+    assert "recurrente" in {
+        segmento["clave"] for segmento in data["items"][0]["segmentos"]
+    }
+
+
+def test_seguimiento_crm_ciclo_completo_conserva_historial(client, seed_venta_basica):
+    cliente_id = seed_venta_basica["cliente_id"]
+    usuario_id = seed_venta_basica["usuario_id"]
+    fecha_inicial = date.today() + timedelta(days=1)
+
+    crear = client.post(
+        f"/clientes/{cliente_id}/seguimientos",
+        json={
+            "tipo": "whatsapp",
+            "motivo": "Consultar si necesita service de la bicicleta",
+            "fecha_objetivo": fecha_inicial.isoformat(),
+            "prioridad": "alta",
+            "id_usuario_responsable": usuario_id,
+            "id_usuario_actor": usuario_id,
+        },
+    )
+    assert crear.status_code == 201, crear.text
+    seguimiento_id = crear.json()["id"]
+    assert crear.json()["estado"] == "pendiente"
+
+    nueva_fecha = fecha_inicial + timedelta(days=2)
+    reprogramar = client.patch(
+        f"/clientes/{cliente_id}/seguimientos/{seguimiento_id}/reprogramar",
+        json={
+            "fecha_objetivo": nueva_fecha.isoformat(),
+            "prioridad": "normal",
+            "id_usuario_responsable": usuario_id,
+            "nota": "El cliente pidio que lo contactemos mas adelante",
+            "id_usuario_actor": usuario_id,
+        },
+    )
+    assert reprogramar.status_code == 200, reprogramar.text
+    assert reprogramar.json()["fecha_objetivo"] == nueva_fecha.isoformat()
+
+    cerrar = client.patch(
+        f"/clientes/{cliente_id}/seguimientos/{seguimiento_id}/cerrar",
+        json={
+            "estado": "realizada",
+            "resultado": "Respondio y coordinara el ingreso la proxima semana",
+            "id_usuario_actor": usuario_id,
+        },
+    )
+    assert cerrar.status_code == 200, cerrar.text
+    assert cerrar.json()["estado"] == "realizada"
+    assert cerrar.json()["fecha_resolucion"] is not None
+
+    eventos = client.get(
+        f"/clientes/{cliente_id}/seguimientos/{seguimiento_id}/eventos"
+    )
+    assert eventos.status_code == 200, eventos.text
+    assert [evento["tipo_evento"] for evento in reversed(eventos.json())] == [
+        "creado",
+        "reprogramado",
+        "realizado",
+    ]
+
+    historial_cliente = client.get(f"/clientes/{cliente_id}/historial")
+    assert historial_cliente.status_code == 200, historial_cliente.text
+    assert [
+        evento["tipo_evento"]
+        for evento in reversed(historial_cliente.json()["seguimiento_eventos"])
+    ] == ["creado", "reprogramado", "realizado"]
+
+    segundo_cierre = client.patch(
+        f"/clientes/{cliente_id}/seguimientos/{seguimiento_id}/cerrar",
+        json={
+            "estado": "cancelada",
+            "resultado": "No corresponde",
+            "id_usuario_actor": usuario_id,
+        },
+    )
+    assert segundo_cierre.status_code == 409
+
+
+def test_agenda_crm_separa_vencidos_hoy_y_proximos(client, seed_venta_basica):
+    cliente_id = seed_venta_basica["cliente_id"]
+    usuario_id = seed_venta_basica["usuario_id"]
+    hoy = date.today()
+
+    for indice, fecha_objetivo in enumerate(
+        [hoy - timedelta(days=1), hoy, hoy + timedelta(days=1)],
+        start=1,
+    ):
+        response = client.post(
+            f"/clientes/{cliente_id}/seguimientos",
+            json={
+                "tipo": "llamada",
+                "motivo": f"Seguimiento agenda {indice}",
+                "fecha_objetivo": fecha_objetivo.isoformat(),
+                "prioridad": "normal",
+                "id_usuario_responsable": usuario_id,
+                "id_usuario_actor": usuario_id,
+            },
+        )
+        assert response.status_code == 201, response.text
+
+    vencidos = client.get("/clientes/crm/seguimientos?bandeja=vencidos")
+    agenda_hoy = client.get("/clientes/crm/seguimientos?bandeja=hoy")
+    proximos = client.get("/clientes/crm/seguimientos?bandeja=proximos")
+
+    assert vencidos.status_code == 200, vencidos.text
+    assert agenda_hoy.status_code == 200, agenda_hoy.text
+    assert proximos.status_code == 200, proximos.text
+    assert vencidos.json()["total"] == 1
+    assert agenda_hoy.json()["total"] == 1
+    assert proximos.json()["total"] == 1
+    assert agenda_hoy.json()["resumen"] == {
+        "vencidos": 1,
+        "hoy": 1,
+        "proximos": 1,
+    }
+
+    panel = client.get(f"/clientes/crm/panel?q=Cliente%20Test&limit=10")
+    assert panel.status_code == 200, panel.text
+    cliente = panel.json()["items"][0]
+    assert cliente["seguimiento_pendiente"]["fecha_objetivo"] == (hoy - timedelta(days=1)).isoformat()
+    assert cliente["accion_sugerida"]["clave"] == "seguimiento_vencido"
+    assert "seguimiento_vencido" in {
+        segmento["clave"] for segmento in cliente["segmentos"]
+    }
+
+
+def test_oportunidad_service_se_confirma_y_no_se_duplica(
+    client,
+    db_conn,
+    seed_venta_basica,
+):
+    cliente_id = seed_venta_basica["cliente_id"]
+    usuario_id = seed_venta_basica["usuario_id"]
+    fecha_limite = date.today() + timedelta(days=5)
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO bicicletas_clientes (
+                id_cliente, marca, modelo, numero_cuadro,
+                plan_postventa, fecha_limite_service_gratis,
+                service_gratis_usado
+            )
+            VALUES (%s, 'VENZO', 'RAPTOR', 'CRM-SERVICE-001',
+                    'service_30_dias', %s, FALSE)
+            RETURNING id
+            """,
+            (cliente_id, fecha_limite),
+        )
+        bicicleta_id = cur.fetchone()["id"]
+    db_conn.commit()
+
+    response = client.get(
+        f"/clientes/{cliente_id}/oportunidades?tipo=service"
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["total"] == 1
+    oportunidad = data["items"][0]
+    assert oportunidad["referencia_id"] == bicicleta_id
+    assert oportunidad["fecha_evidencia"] == fecha_limite.isoformat()
+    assert oportunidad["referencias"] == {
+        "id_bicicleta_cliente": bicicleta_id,
+    }
+
+    crear = client.post(
+        f"/clientes/{cliente_id}/seguimientos",
+        json={
+            "tipo": oportunidad["tipo_seguimiento"],
+            "motivo": oportunidad["motivo_sugerido"],
+            "fecha_objetivo": oportunidad["fecha_sugerida"],
+            "prioridad": oportunidad["prioridad"],
+            "id_usuario_responsable": usuario_id,
+            "id_usuario_actor": usuario_id,
+            **oportunidad["referencias"],
+        },
+    )
+    assert crear.status_code == 201, crear.text
+    assert crear.json()["id_bicicleta_cliente"] == bicicleta_id
+
+    despues = client.get(
+        f"/clientes/{cliente_id}/oportunidades?tipo=service"
+    )
+    assert despues.status_code == 200, despues.text
+    assert despues.json()["total"] == 0
+
+
+def test_comunicaciones_crm_registra_resultado_y_mide_conversion(client, seed_venta_basica):
+    cliente_id = seed_venta_basica["cliente_id"]
+    candidatos = client.get("/clientes/crm/comunicaciones?vista=todos&limit=20")
+    assert candidatos.status_code == 200, candidatos.text
+    item = next(item for item in candidatos.json()["items"] if item["id"] == cliente_id)
+    assert item["puede_contactar"] is True
+    assert item["borrador_mensaje"]
+    assert "registramos actividad" not in item["borrador_mensaje"].lower()
+
+    creado = client.post(
+        f"/clientes/{cliente_id}/comunicaciones",
+        json={
+            "canal": "whatsapp",
+            "resultado": "convertido",
+            "mensaje": item["borrador_mensaje"],
+            "nota": "Confirmó una nueva visita",
+            "id_usuario_actor": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert creado.status_code == 200, creado.text
+
+    historial = client.get(f"/clientes/{cliente_id}/comunicaciones")
+    assert historial.status_code == 200, historial.text
+    assert historial.json()["total"] == 1
+    assert historial.json()["items"][0]["resultado"] == "convertido"
+
+    actualizado = client.get("/clientes/crm/comunicaciones?vista=todos&limit=20")
+    resumen = actualizado.json()["resumen_comunicaciones"]
+    assert resumen["contactos"] == 1
+    assert resumen["convertidos"] == 1
+    assert resumen["clientes_contactados"] == 1
+
+
+def test_preferencia_no_contactar_exige_motivo_y_bloquea_contactos(client, seed_venta_basica):
+    cliente_id = seed_venta_basica["cliente_id"]
+    sin_motivo = client.patch(
+        f"/clientes/{cliente_id}/preferencia-contacto",
+        json={
+            "estado": "no_contactar",
+            "id_usuario_actor": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert sin_motivo.status_code == 422
+
+    excluir = client.patch(
+        f"/clientes/{cliente_id}/preferencia-contacto",
+        json={
+            "estado": "no_contactar",
+            "motivo_exclusion": "Pidió no recibir mensajes",
+            "id_usuario_actor": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert excluir.status_code == 200, excluir.text
+
+    bloqueado = client.post(
+        f"/clientes/{cliente_id}/comunicaciones",
+        json={
+            "canal": "whatsapp",
+            "resultado": "contactado",
+            "id_usuario_actor": seed_venta_basica["usuario_id"],
+        },
+    )
+    assert bloqueado.status_code == 400
+    assert "no contactar" in bloqueado.json()["detail"].lower()
+
+    candidatos = client.get("/clientes/crm/comunicaciones?vista=todos&limit=20")
+    item = next(item for item in candidatos.json()["items"] if item["id"] == cliente_id)
+    assert item["puede_contactar"] is False
+    assert item["borrador_mensaje"] is None
+    assert item["preferencia_contacto"]["motivo_exclusion"] == "Pidió no recibir mensajes"
+
+
+def test_borrador_inactivo_es_humano_y_no_expone_dias_del_crm():
+    mensaje = _borrador_comunicacion_crm({
+        "nombre": "JUAN PEREZ",
+        "dias_desde_ultima_actividad": 120,
+        "bicicletas_registradas": 1,
+        "segmentos": [{"clave": "inactivo"}],
+    })
+    assert "120" not in mensaje
+    assert "registramos actividad" not in mensaje.lower()
+    assert "cómo viene la bici" in mensaje.lower()
+
+
+def test_borrador_no_menciona_bici_si_cliente_no_tiene_una_registrada():
+    mensaje = _borrador_comunicacion_crm({
+        "nombre": "MARIA LOPEZ",
+        "bicicletas_registradas": 0,
+        "segmentos": [{"clave": "inactivo"}],
+    })
+    assert "bici" not in mensaje.lower()
+    assert "repuesto" not in mensaje.lower()
+    assert "service" not in mensaje.lower()
+    assert "quería saber si viene todo bien" in mensaje.lower()
+
+
+def test_borrador_cliente_activo_no_inventa_que_hace_tiempo_no_hablan():
+    mensaje = _borrador_comunicacion_crm({
+        "nombre": "LUCAS GOMEZ",
+        "bicicletas_registradas": 1,
+        "segmentos": [{"clave": "recurrente"}],
+    })
+    assert "hace un tiempo" not in mensaje.lower()
+    assert "cómo viene la bici" in mensaje.lower()

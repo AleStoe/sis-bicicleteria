@@ -259,6 +259,12 @@ def get_variantes(conn):
                 v.precio_mayorista,
                 v.permite_precio_libre,
                 v.costo_promedio_vigente,
+                v.costo_reposicion,
+                v.costo_reposicion_moneda,
+                v.costo_reposicion_fecha,
+                v.costo_reposicion_proveedor_id,
+                crp.nombre AS costo_reposicion_proveedor_nombre,
+                v.costo_reposicion_origen,
                 v.reponer_stock,
                 (
                     SELECT COUNT(DISTINCT vi.id_venta)::int
@@ -286,6 +292,8 @@ def get_variantes(conn):
                 ON c.id = p.id_categoria
             LEFT JOIN proveedores pr
                 ON pr.id = v.proveedor_preferido_id
+            LEFT JOIN proveedores crp
+                ON crp.id = v.costo_reposicion_proveedor_id
 
             LEFT JOIN LATERAL (
                 SELECT
@@ -1862,6 +1870,12 @@ def get_variante_by_id(conn, variante_id: int):
                 v.precio_mayorista,
                 v.permite_precio_libre,
                 v.costo_promedio_vigente,
+                v.costo_reposicion,
+                v.costo_reposicion_moneda,
+                v.costo_reposicion_fecha,
+                v.costo_reposicion_proveedor_id,
+                crp.nombre AS costo_reposicion_proveedor_nombre,
+                v.costo_reposicion_origen,
                 v.reponer_stock,
                 (
                     SELECT COUNT(DISTINCT vi.id_venta)::int
@@ -1878,6 +1892,7 @@ def get_variante_by_id(conn, variante_id: int):
             INNER JOIN productos p ON p.id = v.id_producto
             INNER JOIN categorias c ON c.id = p.id_categoria
             LEFT JOIN proveedores pr ON pr.id = v.proveedor_preferido_id
+            LEFT JOIN proveedores crp ON crp.id = v.costo_reposicion_proveedor_id
 
             LEFT JOIN LATERAL (
                 SELECT ci.url

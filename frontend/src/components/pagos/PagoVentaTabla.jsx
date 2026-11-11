@@ -5,7 +5,9 @@ export default function PagoVentaTabla({
   pagos,
   guardando,
   onRevertir,
+  onCorregirMedio,
   canRevertirPago = () => false,
+  canCorregirMedioPago = () => false,
   vacio,
   soloHistorial = false,
 }) {
@@ -55,15 +57,29 @@ export default function PagoVentaTabla({
                   {formatMoney(pago.monto_total_cobrado)}
                 </div>
 
-                {!soloHistorial && canRevertirPago(pago) ? (
-                  <button
-                    type="button"
-                    disabled={guardando}
-                    onClick={() => onRevertir(pago)}
-                    style={styles.dangerButton}
-                  >
-                    Revertir
-                  </button>
+                {!soloHistorial && (canCorregirMedioPago(pago) || canRevertirPago(pago)) ? (
+                  <div style={styles.actions}>
+                    {canCorregirMedioPago(pago) && (
+                      <button
+                        type="button"
+                        disabled={guardando}
+                        onClick={() => onCorregirMedio(pago)}
+                        style={styles.secondaryButton}
+                      >
+                        Corregir medio
+                      </button>
+                    )}
+                    {canRevertirPago(pago) && (
+                      <button
+                        type="button"
+                        disabled={guardando}
+                        onClick={() => onRevertir(pago)}
+                        style={styles.dangerButton}
+                      >
+                        Revertir
+                      </button>
+                    )}
+                  </div>
                 ) : (
                   <span style={styles.muted}>Sin acciones</span>
                 )}
@@ -188,6 +204,21 @@ const styles = {
     display: "grid",
     gap: 8,
     justifyItems: "end",
+  },
+  actions: {
+    display: "flex",
+    justifyContent: "flex-end",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  secondaryButton: {
+    border: "1px solid #bfdbfe",
+    background: "#eff6ff",
+    color: "#1d4ed8",
+    borderRadius: 10,
+    padding: "8px 11px",
+    fontWeight: 800,
+    cursor: "pointer",
   },
 
   amount: {
